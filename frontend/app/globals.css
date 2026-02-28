@@ -1,0 +1,83 @@
+/* 8px spacing scale: 8 / 12 / 16 / 24 / 32 */
+:root {
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-24: 24px;
+  --space-32: 32px;
+
+  --bg: #0f0f0e;
+  --surface: #1a1a18;
+  --surface-elevated: #222220;
+  --border: #2d2d2a;
+  --text: rgba(255, 255, 255, 0.92);
+  --text-body: rgba(255, 255, 255, 0.8);
+  --muted: #a0a09a;
+  --accent: #e8b86d;
+  --accent-hover: #f0c97a;
+  --accent-active: #ddaa5c;
+
+  --radius-card: 16px;
+  --radius-btn: 12px;
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.12);
+  --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.18);
+
+  /* Typography */
+  --font-title: 1.5rem;
+  --font-title-weight: 600;
+  --font-section: 1.1rem;
+  --font-section-weight: 500;
+  --font-body: 0.95rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "DM Sans", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--font-body);
+  line-height: 1.5;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
+
+/* Subtle button feedback (works with inline styles) */
+button {
+  border-radius: var(--radius-btn);
+  transition: opacity 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+button:active:not(:disabled) {
+  opacity: 0.88;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Card hover lift for recipe/library cards */
+.recipe-card-hover {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.recipe-card-hover:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
+}
