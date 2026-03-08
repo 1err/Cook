@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://cooking:QAws10009750%@cooking-db.co944gii0fur.us-east-1.rds.amazonaws.com:5432/postgres
+      - CORS_ALLOW_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+    volumes:
+      - backend_data:/app/data
+      - ./backend/uploads:/app/uploads
+    env_file:
+      - backend/.env
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_BASE=http://localhost:8000
+    depends_on:
+      - backend
+
+volumes:
+  backend_data:

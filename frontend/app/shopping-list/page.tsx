@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { Suspense, useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { getApiBase } from "../config";
+import { apiFetch } from "../lib/api";
+import { RequireAuth } from "../components/RequireAuth";
 import { getWeekBounds, getPrevNextWeek, formatWeekLabel } from "../lib/week";
 import {
   type Store,
@@ -81,7 +82,7 @@ function groupByCategory(items: ShoppingListItem[]): Map<string, { index: number
   return map;
 }
 
-export default function ShoppingListPage() {
+function ShoppingListPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const weekParam = searchParams.get("week");
@@ -116,7 +117,7 @@ export default function ShoppingListPage() {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch(`${getApiBase()}/shopping-list?start=${start}&end=${end}`);
+        const res = await apiFetch(`/shopping-list?start=${start}&end=${end}`);
         if (!res.ok) throw new Error("Failed to load");
         const data: ShoppingListItem[] = await res.json();
         if (!cancelled) {
@@ -221,9 +222,8 @@ export default function ShoppingListPage() {
     setRefineError(null);
     setRefining(true);
     try {
-      const res = await fetch(`${getApiBase()}/shopping-list/refine`, {
+      const res = await apiFetch("/shopping-list/refine", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: items.map((i) => ({ name: i.name, quantity: i.total_quantity })),
         }),
@@ -515,6 +515,18 @@ export default function ShoppingListPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function ShoppingListPage() {
+  return (
+    <RequireAuth>
+      <div className="app-container">
+        <Suspense fallback={<p style={mutedStyle}>Loading…</p>}>
+          <ShoppingListPageContent />
+        </Suspense>
+      </div>
+    </RequireAuth>
   );
 }
 

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { getApiBase } from "../config";
+import { apiFetch } from "../lib/api";
+import { RequireAuth } from "../components/RequireAuth";
 import type { Recipe } from "../types";
 
 export default function ImportPage() {
@@ -18,9 +19,8 @@ export default function ImportPage() {
     setLoading(true);
     try {
       if (mode === "transcript") {
-        const res = await fetch(`${getApiBase()}/recipes/import/transcript`, {
+        const res = await apiFetch("/recipes/import/transcript", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ transcript }),
         });
         if (!res.ok) {
@@ -33,7 +33,7 @@ export default function ImportPage() {
       }
       // mode === "link"
       const params = new URLSearchParams({ url });
-      const res = await fetch(`${getApiBase()}/recipes/import/link?${params}`, {
+      const res = await apiFetch(`/recipes/import/link?${params}`, {
         method: "POST",
       });
       if (!res.ok) {
@@ -50,12 +50,12 @@ export default function ImportPage() {
   }
 
   return (
-    <div>
+    <RequireAuth>
+    <div className="app-container">
       <h1 style={h1Style}>Import Recipe from Video</h1>
       <p style={mutedStyle}>
-        Paste a video link (TikTok, YouTube, etc.) or paste transcript text to
-        extract a recipe. No transcript API yet — use &quot;Paste transcript&quot;
-        to test.
+        Paste a video link (TikTok, YouTube, etc.) or paste a transcript to
+        extract a structured recipe using AI.
       </p>
 
       <div style={tabsStyle}>
@@ -106,6 +106,7 @@ export default function ImportPage() {
         {loading ? "Importing…" : "Import recipe"}
       </button>
     </div>
+    </RequireAuth>
   );
 }
 

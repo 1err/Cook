@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
+import { RequireAuth } from "../components/RequireAuth";
 import {
   type Store,
   STORE_LABELS,
@@ -14,7 +15,7 @@ import {
   buildItemQuery,
 } from "../lib/store";
 
-export default function StorePreviewPage() {
+function StorePreviewPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const storeParam = searchParams.get("store");
@@ -135,6 +136,16 @@ export default function StorePreviewPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function StorePreviewPage() {
+  return (
+    <RequireAuth>
+      <Suspense fallback={<p style={mutedStyle}>Loading…</p>}>
+        <StorePreviewPageContent />
+      </Suspense>
+    </RequireAuth>
   );
 }
 

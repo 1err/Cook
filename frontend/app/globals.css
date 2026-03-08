@@ -19,6 +19,8 @@
 
   --radius-card: 16px;
   --radius-btn: 12px;
+  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.12);
+  --shadow-hover: 0 6px 20px rgba(0, 0, 0, 0.2);
   --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.12);
   --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.18);
 
@@ -57,7 +59,70 @@ a:hover {
 /* Subtle button feedback (works with inline styles) */
 button {
   border-radius: var(--radius-btn);
-  transition: opacity 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+  transition: opacity 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Reusable hover lift for cards and surfaces */
+.hoverLift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+.hoverLift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+}
+
+/* Header nav link hover */
+.headerNavLink {
+  transition: opacity 0.2s ease;
+}
+.headerNavLink:hover {
+  opacity: 0.85;
+}
+
+/* Recipe card gradient placeholder overlay */
+.recipeCardPlaceholder::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 30% 20%, rgba(255, 255, 255, 0.05) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* Centered container for library, import, recipe, shopping-list */
+.app-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--space-32) var(--space-24);
+  padding-bottom: calc(var(--space-32) + 88px);
+}
+
+/* Full-width container for planner */
+.app-wide {
+  width: 100%;
+  padding-left: 32px;
+  padding-right: 32px;
+  padding-top: var(--space-32);
+  padding-bottom: calc(var(--space-32) + 88px);
+}
+
+/* Library recipe grid: 1 col small, 2 medium, 3 large */
+.libraryGrid {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-24);
+}
+@media (min-width: 640px) {
+  .libraryGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (min-width: 960px) {
+  .libraryGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 button:hover:not(:disabled) {
@@ -78,6 +143,6 @@ button:disabled {
   transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 .recipe-card-hover:hover {
-  box-shadow: var(--shadow-card-hover);
+  box-shadow: var(--shadow-hover);
   transform: translateY(-2px);
 }

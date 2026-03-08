@@ -10,6 +10,7 @@ __pycache__/
 out/
 *.db
 cooking.db
+backend/uploads/
 
 # Env
 .env

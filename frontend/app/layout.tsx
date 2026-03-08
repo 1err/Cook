@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "./lib/auth";
+import { Header } from "./components/Header";
 
 export const metadata: Metadata = {
   title: "Cooking Recipe Planner",
@@ -20,29 +22,12 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <nav style={navStyle}>
-          <a href="/">Import</a>
-          <a href="/library">Library</a>
-          <a href="/planner">Planner</a>
-          <a href="/shopping-list">Shopping list</a>
-        </nav>
-        <main style={mainStyle}>{children}</main>
+        <AuthProvider>
+          <Header />
+          <main>{children}</main>
+        </AuthProvider>
       </body>
     </html>
   );
 }
 
-const navStyle: React.CSSProperties = {
-  borderBottom: "1px solid var(--border)",
-  padding: "var(--space-16) var(--space-24)",
-  display: "flex",
-  gap: "var(--space-24)",
-  background: "var(--bg)",
-};
-
-const mainStyle: React.CSSProperties = {
-  maxWidth: 720,
-  margin: "0 auto",
-  padding: "var(--space-32) var(--space-24)",
-  paddingBottom: "calc(var(--space-32) + 88px)",
-};

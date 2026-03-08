@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { getApiBase } from "../../config";
+import { apiFetch } from "../../lib/api";
 import type { Recipe, IngredientItem } from "../../types";
 
 export default function RecipeEditPage() {
@@ -12,22 +12,26 @@ export default function RecipeEditPage() {
   const id = params?.id as string;
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [title, setTitle] = useState("");
+  const [thumbnailUrl, setThumbnailUrl] = useState("");
   const [ingredients, setIngredients] = useState<IngredientItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch(`${getApiBase()}/recipes/${id}`);
+        const res = await apiFetch(`/recipes/${id}`);
         if (!res.ok) throw new Error("Recipe not found");
         const data: Recipe = await res.json();
         if (!cancelled) {
           setRecipe(data);
           setTitle(data.title);
+          setThumbnailUrl(data.thumbnail_url ?? "");
           setIngredients(data.ingredients?.length ? [...data.ingredients] : []);
         }
       } catch (e) {
@@ -59,16 +63,44 @@ export default function RecipeEditPage() {
     setIngredients((prev) => [...prev, { name: "", quantity: "", notes: null }]);
   }
 
+  async function handleImageFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    setUploadingImage(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await apiFetch("/recipes/upload-image", { method: "POST", body: form });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Upload failed");
+      }
+      const { upload_url, file_url } = (await res.json()) as { upload_url: string; file_url: string };
+      await fetch(upload_url, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      setThumbnailUrl(file_url ?? "");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadingImage(false);
+      e.target.value = "";
+    }
+  }
+
   async function handleSave() {
     if (!id) return;
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`${getApiBase()}/recipes/${id}`, {
+      const res = await apiFetch(`/recipes/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim() || recipe?.title,
+          thumbnail_url: thumbnailUrl.trim() || null,
           ingredients: ingredients.filter((i) => i.name.trim() !== ""),
         }),
       });
@@ -104,6 +136,50 @@ export default function RecipeEditPage() {
             placeholder="Recipe title"
           />
         </label>
+
+        <div style={imageSectionStyle}>
+          <span style={labelStyle}>Recipe image</span>
+          <p style={imageHintStyle}>
+            Upload from your desktop or paste an image URL to show a photo on the library card.
+          </p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImageFile}
+            style={{ display: "none" }}
+            aria-hidden
+          />
+          <div style={imageActionsStyle}>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingImage}
+              style={uploadButtonStyle}
+            >
+              {uploadingImage ? "Uploading…" : "Upload from desktop"}
+            </button>
+          </div>
+          <input
+            type="url"
+            value={thumbnailUrl}
+            onChange={(e) => setThumbnailUrl(e.target.value)}
+            style={{ ...inputStyle, marginTop: "0.5rem" }}
+            placeholder="Or paste image URL (e.g. https://...)"
+          />
+          {thumbnailUrl.trim() && (
+            <div style={previewWrapStyle}>
+              <img
+                src={thumbnailUrl.trim()}
+                alt="Preview"
+                style={previewImgStyle}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = "none";
+                }}
+              />
+            </div>
+          )}
+        </div>
 
         <div style={ingredientsHeaderStyle}>
           <span style={labelStyle}>Ingredients</span>
@@ -214,6 +290,49 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 6,
   color: "var(--text)",
   fontSize: "0.95rem",
+};
+
+const imageSectionStyle: React.CSSProperties = {
+  marginTop: "0.5rem",
+};
+
+const imageHintStyle: React.CSSProperties = {
+  color: "var(--muted)",
+  fontSize: "0.85rem",
+  margin: "0.25rem 0 0.5rem 0",
+};
+
+const imageActionsStyle: React.CSSProperties = {
+  display: "flex",
+  gap: "0.5rem",
+  alignItems: "center",
+};
+
+const uploadButtonStyle: React.CSSProperties = {
+  padding: "0.5rem 1rem",
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-btn)",
+  color: "var(--accent)",
+  fontSize: "0.9rem",
+  cursor: "pointer",
+};
+
+const previewWrapStyle: React.CSSProperties = {
+  marginTop: "0.5rem",
+  width: "100%",
+  maxWidth: 200,
+  aspectRatio: "1",
+  borderRadius: "var(--radius-card)",
+  overflow: "hidden",
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
+};
+
+const previewImgStyle: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
 };
 
 const ingredientsHeaderStyle: React.CSSProperties = {
