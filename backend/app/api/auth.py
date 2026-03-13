@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.security import (
     create_access_token,
     decode_access_token,
@@ -19,14 +20,9 @@ from app.db.models import UserModel
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Cookie name and settings (secure=False for local dev)
 COOKIE_NAME = "access_token"
-COOKIE_HTTPONLY = True
-COOKIE_SAMESITE = "lax"
-COOKIE_SECURE = False
 COOKIE_PATH = "/"
-# 7 days in seconds (match token expiry)
-COOKIE_MAX_AGE = 7 * 24 * 60 * 60
+COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days
 
 
 class RegisterBody(BaseModel):
@@ -53,9 +49,9 @@ def _set_cookie(response: Response, token: str) -> None:
         key=COOKIE_NAME,
         value=token,
         max_age=COOKIE_MAX_AGE,
-        httponly=COOKIE_HTTPONLY,
-        samesite=COOKIE_SAMESITE,
-        secure=COOKIE_SECURE,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
         path=COOKIE_PATH,
     )
 
@@ -64,9 +60,9 @@ def _clear_cookie(response: Response) -> None:
     response.delete_cookie(
         key=COOKIE_NAME,
         path=COOKIE_PATH,
-        httponly=COOKIE_HTTPONLY,
-        samesite=COOKIE_SAMESITE,
-        secure=COOKIE_SECURE,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE,
+        secure=settings.COOKIE_SECURE,
     )
 
 

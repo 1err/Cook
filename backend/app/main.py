@@ -37,7 +37,7 @@ origins = get_cors_origins_list()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins if origins else ["*"],
-    allow_credentials=bool(origins),
+    allow_credentials=bool(origins),  # True when explicit origins (required for cookies cross-origin)
     allow_methods=["*"],
     allow_headers=["*"],
 )

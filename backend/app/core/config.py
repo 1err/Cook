@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     # Auth: JWT signing. Required for auth endpoints. Use a long random string (e.g. openssl rand -hex 32).
     AUTH_SECRET: str = ""
 
+    # Auth cookie: for cross-origin (e.g. frontend on Vercel, API on api.chef-world.com) set both.
+    # COOKIE_SECURE=true and COOKIE_SAMESITE=none so the cookie is sent with cross-site requests.
+    COOKIE_SECURE: bool = False
+    COOKIE_SAMESITE: str = "lax"  # use "none" for cross-site; requires COOKIE_SECURE=true
+
     # Optional: OpenAI for extraction and refine
     OPENAI_API_KEY: str | None = None
 
