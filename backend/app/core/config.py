@@ -5,7 +5,7 @@ Postgres only: DATABASE_URL is required and must be a Postgres URL.
 from functools import lru_cache
 from typing import List
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,9 +45,15 @@ class Settings(BaseSettings):
     AUTH_SECRET: str = ""
 
     # Auth cookie: for cross-origin (e.g. frontend on Vercel, API on api.chef-world.com) set both.
-    # COOKIE_SECURE=true and COOKIE_SAMESITE=none so the cookie is sent with cross-site requests.
-    COOKIE_SECURE: bool = False
-    COOKIE_SAMESITE: str = "lax"  # use "none" for cross-site; requires COOKIE_SECURE=true
+    # In ECS: COOKIE_SECURE=true, COOKIE_SAMESITE=none so the cookie is sent with cross-site requests.
+    COOKIE_SECURE: bool = Field(False, env="COOKIE_SECURE")
+    COOKIE_SAMESITE: str = Field("lax", env="COOKIE_SAMESITE")
+
+    @field_validator("COOKIE_SAMESITE", mode="after")
+    @classmethod
+    def normalize_cookie_samesite(cls, v: str) -> str:
+        """Normalize SameSite so 'None'/'NONE' from env become 'none' for the cookie."""
+        return v.strip().lower() if v else v
 
     # Optional: OpenAI for extraction and refine
     OPENAI_API_KEY: str | None = None

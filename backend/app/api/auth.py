@@ -45,6 +45,9 @@ class UserResponse(BaseModel):
 
 
 def _set_cookie(response: Response, token: str) -> None:
+    print("COOKIE_SECURE:", settings.COOKIE_SECURE)
+    print("COOKIE_SAMESITE:", settings.COOKIE_SAMESITE)
+
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
