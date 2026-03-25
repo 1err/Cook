@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Recipe Editor | The Digital Sous-Chef</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "inverse-surface": "#2f3130",
+              "on-secondary-container": "#5e617d",
+              "on-secondary-fixed-variant": "#424560",
+              "surface-container-highest": "#e3e2e1",
+              "primary": "#9a442d",
+              "secondary-fixed": "#dfe0ff",
+              "on-error": "#ffffff",
+              "surface-container-low": "#f4f3f2",
+              "on-tertiary": "#ffffff",
+              "surface-tint": "#9a442d",
+              "secondary-container": "#dcddff",
+              "surface-container-high": "#e9e8e7",
+              "on-surface": "#1a1c1c",
+              "tertiary-fixed": "#7df7dd",
+              "inverse-on-surface": "#f1f0f0",
+              "on-background": "#1a1c1c",
+              "surface-container-lowest": "#ffffff",
+              "surface-dim": "#dadad9",
+              "error-container": "#ffdad6",
+              "tertiary": "#006b5b",
+              "on-error-container": "#93000a",
+              "on-tertiary-fixed-variant": "#005144",
+              "on-tertiary-container": "#00362d",
+              "surface-container": "#eeeeed",
+              "inverse-primary": "#ffb4a1",
+              "on-secondary-fixed": "#161a32",
+              "background": "#faf9f8",
+              "surface-variant": "#e3e2e1",
+              "on-primary": "#ffffff",
+              "outline-variant": "#dbc1ba",
+              "surface-bright": "#faf9f8",
+              "on-surface-variant": "#55423e",
+              "surface": "#faf9f8",
+              "secondary-fixed-dim": "#c2c4e5",
+              "on-secondary": "#ffffff",
+              "tertiary-fixed-dim": "#5edbc1",
+              "on-tertiary-fixed": "#00201a",
+              "primary-fixed-dim": "#ffb4a1",
+              "secondary": "#5a5c79",
+              "error": "#ba1a1a",
+              "primary-fixed": "#ffdbd2",
+              "on-primary-fixed-variant": "#7c2e19",
+              "primary-container": "#e07a5f",
+              "tertiary-container": "#19a992",
+              "on-primary-fixed": "#3c0800",
+              "on-primary-container": "#5b1604",
+              "outline": "#88726d"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      .tap-highlight-transparent { -webkit-tap-highlight-color: transparent; }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 bg-stone-50/80 dark:bg-stone-900/80 backdrop-blur-xl shadow-[0px_12px_32px_rgba(26,28,28,0.04)] hidden md:flex justify-between items-center px-8 py-4 max-w-full">
+<div class="flex items-center gap-8">
+<span class="text-2xl font-extrabold text-orange-900 dark:text-orange-50 font-manrope tracking-tight">The Digital Sous-Chef</span>
+<div class="flex items-center gap-6">
+<a class="text-stone-500 dark:text-stone-400 font-medium hover:text-orange-700 dark:hover:text-orange-300 transition-colors duration-200" href="#">Library</a>
+<a class="text-stone-500 dark:text-stone-400 font-medium hover:text-orange-700 dark:hover:text-orange-300 transition-colors duration-200" href="#">Planner</a>
+<a class="text-stone-500 dark:text-stone-400 font-medium hover:text-orange-700 dark:hover:text-orange-300 transition-colors duration-200" href="#">Shopping List</a>
+<a class="text-orange-900 dark:text-orange-400 border-b-2 border-orange-900 dark:border-orange-400 pb-1 font-manrope font-bold tracking-tight" href="#">Profile</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined p-2 text-stone-500 hover:bg-stone-100 rounded-full transition-colors">notifications</button>
+<button class="material-symbols-outlined p-2 text-stone-500 hover:bg-stone-100 rounded-full transition-colors">settings</button>
+</div>
+</nav>
+<main class="pt-24 pb-32 px-4 md:px-8 max-w-5xl mx-auto">
+<!-- Header Section -->
+<header class="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
+<div class="space-y-2">
+<span class="text-primary font-bold tracking-widest uppercase text-xs">Creation Mode</span>
+<h1 class="text-4xl md:text-5xl font-headline font-extrabold text-on-surface tracking-tight">New Masterpiece</h1>
+<p class="text-on-surface-variant max-w-md">Capture your culinary intuition. Every detail helps your future self recreate the magic.</p>
+</div>
+<div class="flex items-center gap-4">
+<button class="px-6 py-3 rounded-xl font-bold text-on-surface-variant hover:bg-surface-container transition-all active:scale-95">Discard</button>
+<button class="px-8 py-3 bg-gradient-to-br from-primary to-primary-container text-on-primary rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all active:scale-95">Save Recipe</button>
+</div>
+</header>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+<!-- Left Column: Primary Content -->
+<div class="lg:col-span-8 space-y-12">
+<!-- Title Section -->
+<section class="space-y-4">
+<label class="block text-sm font-bold text-on-surface-variant tracking-wider uppercase">Recipe Title</label>
+<input class="w-full bg-transparent border-none text-3xl font-headline font-bold text-on-surface placeholder:text-surface-container-highest focus:ring-0 px-0 py-2" placeholder="e.g., Summer Truffle Risotto with Wild Mushrooms" type="text"/>
+</section>
+<!-- Ingredients Section -->
+<section class="space-y-6">
+<div class="flex items-center justify-between">
+<label class="text-sm font-bold text-on-surface-variant tracking-wider uppercase">Ingredients</label>
+<span class="text-xs text-on-surface-variant/60">Drag to reorder</span>
+</div>
+<div class="space-y-3">
+<div class="flex items-center gap-3 p-2 group">
+<span class="material-symbols-outlined text-surface-container-highest cursor-grab group-hover:text-outline-variant transition-colors">drag_indicator</span>
+<div class="flex-1 grid grid-cols-12 gap-3">
+<input class="col-span-3 bg-surface-container-high border-none rounded-xl px-4 py-3 text-sm focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all" placeholder="Quantity" type="text"/>
+<input class="col-span-9 bg-surface-container-high border-none rounded-xl px-4 py-3 text-sm focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all" placeholder="Ingredient name..." type="text"/>
+</div>
+<button class="material-symbols-outlined text-surface-container-highest hover:text-error transition-colors">delete</button>
+</div>
+<div class="flex items-center gap-3 p-2 group">
+<span class="material-symbols-outlined text-surface-container-highest cursor-grab group-hover:text-outline-variant transition-colors">drag_indicator</span>
+<div class="flex-1 grid grid-cols-12 gap-3">
+<input class="col-span-3 bg-surface-container-high border-none rounded-xl px-4 py-3 text-sm focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all" placeholder="Quantity" type="text"/>
+<input class="col-span-9 bg-surface-container-high border-none rounded-xl px-4 py-3 text-sm focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all" placeholder="Ingredient name..." type="text"/>
+</div>
+<button class="material-symbols-outlined text-surface-container-highest hover:text-error transition-colors">delete</button>
+</div>
+<button class="w-full mt-4 flex items-center justify-center gap-2 py-4 border-2 border-dashed border-surface-container-highest rounded-xl text-on-surface-variant font-semibold hover:border-primary-container hover:text-primary transition-all group">
+<span class="material-symbols-outlined text-lg">add</span>
+                            Add Ingredient
+                        </button>
+</div>
+</section>
+<!-- Steps Section -->
+<section class="space-y-8">
+<label class="block text-sm font-bold text-on-surface-variant tracking-wider uppercase">Preparation Steps</label>
+<div class="space-y-12">
+<div class="relative pl-12 group">
+<div class="absolute left-0 top-0 w-8 h-8 rounded-full bg-primary-container/20 text-primary flex items-center justify-center font-bold text-sm">1</div>
+<textarea class="w-full bg-transparent border-none text-lg leading-relaxed text-on-surface placeholder:text-surface-container-highest focus:ring-0 p-0 min-h-[100px] resize-none" placeholder="Describe the first step of your culinary journey..."></textarea>
+<div class="flex items-center gap-4 mt-2 opacity-0 group-focus-within:opacity-100 transition-opacity">
+<button class="flex items-center gap-1 text-xs font-bold text-tertiary hover:underline"><span class="material-symbols-outlined text-sm">timer</span> Add Timer</button>
+<button class="flex items-center gap-1 text-xs font-bold text-tertiary hover:underline"><span class="material-symbols-outlined text-sm">image</span> Add Photo</button>
+</div>
+</div>
+<div class="relative pl-12 group">
+<div class="absolute left-0 top-0 w-8 h-8 rounded-full bg-surface-container-high text-on-surface-variant flex items-center justify-center font-bold text-sm">2</div>
+<textarea class="w-full bg-transparent border-none text-lg leading-relaxed text-on-surface placeholder:text-surface-container-highest focus:ring-0 p-0 min-h-[100px] resize-none" placeholder="What happens next?"></textarea>
+</div>
+<button class="ml-12 flex items-center gap-2 px-6 py-2 bg-surface-container-low text-on-surface-variant rounded-full font-bold hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined">add_circle</span>
+                            Next Step
+                        </button>
+</div>
+</section>
+</div>
+<!-- Right Column: Media & Meta -->
+<div class="lg:col-span-4 space-y-8">
+<!-- Image Upload Zone -->
+<div class="bg-surface-container-low rounded-3xl p-8 text-center border-2 border-transparent hover:border-primary/20 transition-all group">
+<div class="w-20 h-20 bg-surface-container-lowest rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-3xl text-primary" data-weight="fill">add_a_photo</span>
+</div>
+<h3 class="font-headline font-bold text-lg mb-2">Cover Image</h3>
+<p class="text-sm text-on-surface-variant mb-6 leading-relaxed">Drag and drop your hero shot here, or browse your files.</p>
+<button class="w-full py-3 bg-surface-container-lowest text-on-surface font-bold rounded-xl shadow-sm hover:shadow-md transition-all">Upload Photo</button>
+</div>
+<!-- Video URL -->
+<div class="bg-surface-container-lowest rounded-3xl p-6 shadow-sm space-y-4">
+<label class="flex items-center gap-2 text-xs font-bold text-on-surface-variant tracking-wider uppercase">
+<span class="material-symbols-outlined text-lg">play_circle</span>
+                        Video Tutorial (Optional)
+                    </label>
+<input class="w-full bg-surface-container-high border-none rounded-xl px-4 py-3 text-sm focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary/20 transition-all" placeholder="YouTube or Vimeo URL" type="url"/>
+</div>
+<!-- Bento Style Meta Information -->
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-surface-container-low rounded-2xl p-4 flex flex-col gap-2">
+<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Prep Time</span>
+<div class="flex items-center gap-1">
+<input class="w-10 bg-transparent border-none p-0 font-bold text-primary focus:ring-0" type="text" value="15"/>
+<span class="text-sm font-medium">min</span>
+</div>
+</div>
+<div class="bg-surface-container-low rounded-2xl p-4 flex flex-col gap-2">
+<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Cook Time</span>
+<div class="flex items-center gap-1">
+<input class="w-10 bg-transparent border-none p-0 font-bold text-primary focus:ring-0" type="text" value="30"/>
+<span class="text-sm font-medium">min</span>
+</div>
+</div>
+<div class="bg-surface-container-low rounded-2xl p-4 flex flex-col gap-2 col-span-2">
+<span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Servings</span>
+<div class="flex items-center justify-between">
+<span class="text-lg font-bold">4 People</span>
+<div class="flex items-center gap-2">
+<button class="w-8 h-8 rounded-lg bg-surface-container-lowest flex items-center justify-center shadow-sm hover:bg-primary hover:text-white transition-colors"><span class="material-symbols-outlined text-sm">remove</span></button>
+<button class="w-8 h-8 rounded-lg bg-surface-container-lowest flex items-center justify-center shadow-sm hover:bg-primary hover:text-white transition-colors"><span class="material-symbols-outlined text-sm">add</span></button>
+</div>
+</div>
+</div>
+</div>
+<!-- Tags & Difficulty -->
+<div class="bg-surface-container-lowest rounded-3xl p-6 shadow-sm space-y-6">
+<div>
+<label class="block text-xs font-bold text-on-surface-variant tracking-wider uppercase mb-3">Difficulty</label>
+<div class="flex gap-2">
+<button class="flex-1 py-2 rounded-lg bg-tertiary-container/10 text-tertiary text-xs font-bold">Beginner</button>
+<button class="flex-1 py-2 rounded-lg bg-primary-container text-on-primary text-xs font-bold">Expert</button>
+</div>
+</div>
+<div>
+<label class="block text-xs font-bold text-on-surface-variant tracking-wider uppercase mb-3">Categories</label>
+<div class="flex flex-wrap gap-2">
+<span class="px-3 py-1 rounded-full bg-surface-container-high text-[11px] font-bold flex items-center gap-1">Dinner <button class="material-symbols-outlined text-xs">close</button></span>
+<span class="px-3 py-1 rounded-full bg-surface-container-high text-[11px] font-bold flex items-center gap-1">Italian <button class="material-symbols-outlined text-xs">close</button></span>
+<button class="px-3 py-1 rounded-full border border-outline-variant text-[11px] font-bold text-on-surface-variant">+ Add</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full flex justify-around items-center px-4 pb-safe pt-2 bg-stone-50/90 dark:bg-stone-900/90 backdrop-blur-lg shadow-[0px_-8px_24px_rgba(26,28,28,0.06)] z-50 rounded-t-3xl">
+<div class="flex flex-col items-center justify-center text-stone-400 dark:text-stone-500 px-5 py-2 tap-highlight-transparent duration-300 ease-in-out">
+<span class="material-symbols-outlined mb-1">menu_book</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest font-bold">Library</span>
+</div>
+<div class="flex flex-col items-center justify-center text-stone-400 dark:text-stone-500 px-5 py-2 tap-highlight-transparent duration-300 ease-in-out">
+<span class="material-symbols-outlined mb-1">calendar_today</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest font-bold">Planner</span>
+</div>
+<div class="flex flex-col items-center justify-center text-stone-400 dark:text-stone-500 px-5 py-2 tap-highlight-transparent duration-300 ease-in-out">
+<span class="material-symbols-outlined mb-1">shopping_cart</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest font-bold">Shopping</span>
+</div>
+<div class="flex flex-col items-center justify-center bg-orange-100 dark:bg-orange-900/30 text-orange-900 dark:text-orange-200 rounded-2xl px-5 py-2 tap-highlight-transparent duration-300 ease-in-out">
+<span class="material-symbols-outlined mb-1">person</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest font-bold">Profile</span>
+</div>
+</nav>
+</body></html>

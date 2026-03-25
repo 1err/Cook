@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Weekly Planner | The Digital Sous-Chef</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "inverse-surface": "#2f3130",
+              "on-secondary-container": "#5e617d",
+              "on-secondary-fixed-variant": "#424560",
+              "surface-container-highest": "#e3e2e1",
+              "primary": "#9a442d",
+              "secondary-fixed": "#dfe0ff",
+              "on-error": "#ffffff",
+              "surface-container-low": "#f4f3f2",
+              "on-tertiary": "#ffffff",
+              "surface-tint": "#9a442d",
+              "secondary-container": "#dcddff",
+              "surface-container-high": "#e9e8e7",
+              "on-surface": "#1a1c1c",
+              "tertiary-fixed": "#7df7dd",
+              "inverse-on-surface": "#f1f0f0",
+              "on-background": "#1a1c1c",
+              "surface-container-lowest": "#ffffff",
+              "surface-dim": "#dadad9",
+              "error-container": "#ffdad6",
+              "tertiary": "#006b5b",
+              "on-error-container": "#93000a",
+              "on-tertiary-fixed-variant": "#005144",
+              "on-tertiary-container": "#00362d",
+              "surface-container": "#eeeeed",
+              "inverse-primary": "#ffb4a1",
+              "on-secondary-fixed": "#161a32",
+              "background": "#faf9f8",
+              "surface-variant": "#e3e2e1",
+              "on-primary": "#ffffff",
+              "outline-variant": "#dbc1ba",
+              "surface-bright": "#faf9f8",
+              "on-surface-variant": "#55423e",
+              "surface": "#faf9f8",
+              "secondary-fixed-dim": "#c2c4e5",
+              "on-secondary": "#ffffff",
+              "tertiary-fixed-dim": "#5edbc1",
+              "on-tertiary-fixed": "#00201a",
+              "primary-fixed-dim": "#ffb4a1",
+              "secondary": "#5a5c79",
+              "error": "#ba1a1a",
+              "primary-fixed": "#ffdbd2",
+              "on-primary-fixed-variant": "#7c2e19",
+              "primary-container": "#e07a5f",
+              "tertiary-container": "#19a992",
+              "on-primary-fixed": "#3c0800",
+              "on-primary-container": "#5b1604",
+              "outline": "#88726d"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      body { font-family: 'Inter', sans-serif; }
+      .font-manrope { font-family: 'Manrope', sans-serif; }
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-background text-on-surface min-h-screen">
+<!-- TopNavBar (Shared Component) -->
+<nav class="fixed top-0 w-full z-50 bg-stone-50/80 dark:bg-stone-900/80 backdrop-blur-xl shadow-[0px_12px_32px_rgba(26,28,28,0.04)] hidden md:flex justify-between items-center px-8 py-4 max-w-full">
+<div class="text-2xl font-extrabold text-orange-900 dark:text-orange-50 font-manrope tracking-tight">The Digital Sous-Chef</div>
+<div class="flex items-center gap-8">
+<a class="text-stone-500 dark:text-stone-400 font-medium font-manrope hover:text-orange-700 transition-colors duration-200" href="#">Library</a>
+<a class="text-orange-900 dark:text-orange-400 border-b-2 border-orange-900 dark:border-orange-400 pb-1 font-bold font-manrope" href="#">Planner</a>
+<a class="text-stone-500 dark:text-stone-400 font-medium font-manrope hover:text-orange-700 transition-colors duration-200" href="#">Shopping List</a>
+<a class="text-stone-500 dark:text-stone-400 font-medium font-manrope hover:text-orange-700 transition-colors duration-200" href="#">Profile</a>
+</div>
+<div class="flex items-center gap-4">
+<button class="scale-95 active:scale-90 transition-transform p-2 text-stone-500 hover:text-orange-700">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="scale-95 active:scale-90 transition-transform p-2 text-stone-500 hover:text-orange-700">
+<span class="material-symbols-outlined">settings</span>
+</button>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="pt-24 pb-24 md:pb-8 px-4 md:px-8 max-w-[1600px] mx-auto flex flex-col md:flex-row gap-8">
+<!-- Sidebar: Saved Recipes -->
+<aside class="w-full md:w-80 flex-shrink-0">
+<div class="sticky top-28 space-y-6">
+<div>
+<h2 class="text-2xl font-extrabold font-manrope text-on-surface mb-2 tracking-tight">Your Saved Recipes</h2>
+<p class="text-on-surface-variant text-sm font-body">Drag and drop into your week.</p>
+</div>
+<!-- Search Bar -->
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full pl-12 pr-4 py-3 bg-surface-container-high border-none rounded-xl focus:ring-2 focus:ring-primary/20 focus:bg-surface-container-lowest transition-all duration-300 font-body text-sm" placeholder="Search library..." type="text"/>
+</div>
+<!-- Recipe Tray -->
+<div class="space-y-4 max-h-[calc(100vh-320px)] overflow-y-auto no-scrollbar pr-2">
+<!-- Recipe Card Item -->
+<div class="group cursor-grab active:cursor-grabbing bg-surface-container-lowest rounded-xl overflow-hidden shadow-[0px_12px_32px_rgba(26,28,28,0.04)] hover:scale-[1.02] transition-all duration-300">
+<div class="h-32 w-full overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" data-alt="vibrant mediterranean salad with chickpeas, cherry tomatoes and fresh herbs in a ceramic bowl" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC8-anJVALlrENEG0g40kfnzfN32NV0Zb6MX5Vyz-WEqmpSzY5ES5CW8dhk90uOKx7sz-zyb0xuaqrV-UoDwBLgnrBOTGuvasOBu0boMH6jryD7T8oTZj5YoRaQ0FZcCc8YZ3jOXSpedrD2zWLyiv4XB1hy57WPrTFPrgUczPdp62e3ewCGHuwqRyNYSK2e9QRt8B1Fzn0QR5tlNrXd2IWqlJ-ckKRkiKMhNHIg99e8JNARbUFvy2OmtBoz9V0PcBp531-UhLz5H2SO"/>
+</div>
+<div class="p-4">
+<span class="text-[10px] uppercase tracking-widest font-bold text-tertiary mb-1 block">Lunch</span>
+<h4 class="font-manrope font-bold text-on-surface text-sm line-clamp-1">Mediterranean Power Bowl</h4>
+<div class="flex items-center gap-2 mt-2 text-[10px] text-on-surface-variant">
+<span class="material-symbols-outlined text-xs">schedule</span> 15m
+                                <span class="material-symbols-outlined text-xs">local_fire_department</span> 420 kcal
+                            </div>
+</div>
+</div>
+<div class="group cursor-grab active:cursor-grabbing bg-surface-container-lowest rounded-xl overflow-hidden shadow-[0px_12px_32px_rgba(26,28,28,0.04)] hover:scale-[1.02] transition-all duration-300">
+<div class="h-32 w-full overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" data-alt="creamy roasted tomato basil soup served with a slice of sourdough bread on a rustic table" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAePRFfoc91u9jh5mhtcwK6etqvGKhBdzI7CY9eJ4y23fjwyLSlKmYS9jOVYwIVoTju9KGfwNFHIYE1Kyo7ylKYYZzPWMOL13apueuQp5G_0pksLwwCx-XuEjQusRRICEVlxMZ8v8n6-az30y5bJQq35SYesMCyIZG1gN7Q2D2HTCllj8AG3XlvS7T68qjX_Fef-1wA-NGg7iNqoxIgbbnT0bbvTT00Qq1i71Eut8zhPbJd-W0Bh2w4m6hr461Fg2xJT2MxHIwQ_T68"/>
+</div>
+<div class="p-4">
+<span class="text-[10px] uppercase tracking-widest font-bold text-primary mb-1 block">Dinner</span>
+<h4 class="font-manrope font-bold text-on-surface text-sm line-clamp-1">Roasted Tomato &amp; Basil Soup</h4>
+<div class="flex items-center gap-2 mt-2 text-[10px] text-on-surface-variant">
+<span class="material-symbols-outlined text-xs">schedule</span> 45m
+                                <span class="material-symbols-outlined text-xs">local_fire_department</span> 310 kcal
+                            </div>
+</div>
+</div>
+<div class="group cursor-grab active:cursor-grabbing bg-surface-container-lowest rounded-xl overflow-hidden shadow-[0px_12px_32px_rgba(26,28,28,0.04)] hover:scale-[1.02] transition-all duration-300">
+<div class="h-32 w-full overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" data-alt="overnight oats in a mason jar topped with fresh raspberries, chia seeds and almond slivers" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDvDHaXs1MmL8EbsTxOEzS8DHn2TYYeffDGdQrcEygiGrFPUWzTBv35rOlmfpiXb17M2o-VQXOwwEX-uP8dW-tpTNRcA192gd5fqJ87h0U9ALDPkSgASVr-KNt3KwDKYfIODxQrRdFt9VMRL-J_ZGFTbpqaYRZanWkAzXw8CFvbP0IlGAbYBApG5ua5A03L4oOjMJZcNqUYbrMYueZDyJscrqircVUWb48uJCxM6kQzrNRqMpRPlnkCvU-NUwIOf_awhmi1WCYr_lhz"/>
+</div>
+<div class="p-4">
+<span class="text-[10px] uppercase tracking-widest font-bold text-orange-600 mb-1 block">Breakfast</span>
+<h4 class="font-manrope font-bold text-on-surface text-sm line-clamp-1">Berry Overnight Oats</h4>
+<div class="flex items-center gap-2 mt-2 text-[10px] text-on-surface-variant">
+<span class="material-symbols-outlined text-xs">schedule</span> 5m
+                                <span class="material-symbols-outlined text-xs">local_fire_department</span> 285 kcal
+                            </div>
+</div>
+</div>
+</div>
+</div>
+</aside>
+<!-- Planner Grid -->
+<section class="flex-grow">
+<div class="flex justify-between items-end mb-8">
+<div>
+<span class="text-primary font-bold uppercase tracking-[0.2em] text-xs">October 23 – 29</span>
+<h1 class="text-4xl md:text-5xl font-extrabold font-manrope text-on-surface tracking-tighter mt-1">Weekly Planner</h1>
+</div>
+<div class="flex gap-2">
+<button class="p-2 rounded-full hover:bg-surface-container-low transition-colors text-on-surface-variant">
+<span class="material-symbols-outlined">chevron_left</span>
+</button>
+<button class="p-2 rounded-full hover:bg-surface-container-low transition-colors text-on-surface-variant">
+<span class="material-symbols-outlined">chevron_right</span>
+</button>
+</div>
+</div>
+<!-- Calendar Layout: Asymmetric Bento Style for 7 days -->
+<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-7 gap-4">
+<!-- Day Column: Monday -->
+<div class="flex flex-col gap-4">
+<div class="py-3 text-center border-b border-outline-variant/20">
+<p class="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Mon</p>
+<p class="font-manrope text-lg font-extrabold">23</p>
+</div>
+<div class="flex-grow space-y-3 bg-surface-container-low/40 rounded-2xl p-3 min-h-[400px]">
+<!-- Dropped Card -->
+<div class="bg-surface-container-lowest p-3 rounded-xl shadow-sm group">
+<span class="text-[9px] font-bold text-orange-600 block mb-1">Breakfast</span>
+<p class="text-xs font-bold font-manrope leading-tight">Green Smoothie Bowl</p>
+</div>
+<div class="bg-surface-container-lowest p-3 rounded-xl shadow-sm group">
+<span class="text-[9px] font-bold text-tertiary block mb-1">Lunch</span>
+<p class="text-xs font-bold font-manrope leading-tight">Quinoa Salad</p>
+</div>
+<!-- Placeholder Drop Zone -->
+<div class="border-2 border-dashed border-outline-variant/30 rounded-xl py-8 flex flex-col items-center justify-center gap-1 group hover:border-primary/40 transition-colors">
+<span class="material-symbols-outlined text-outline-variant group-hover:text-primary transition-colors">add</span>
+<span class="text-[9px] text-on-surface-variant font-medium">Add Dinner</span>
+</div>
+</div>
+</div>
+<!-- Day Column: Tuesday -->
+<div class="flex flex-col gap-4">
+<div class="py-3 text-center border-b border-outline-variant/20">
+<p class="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Tue</p>
+<p class="font-manrope text-lg font-extrabold">24</p>
+</div>
+<div class="flex-grow space-y-3 bg-surface-container-low/40 rounded-2xl p-3 min-h-[400px]">
+<div class="bg-surface-container-lowest p-3 rounded-xl shadow-sm">
+<span class="text-[9px] font-bold text-primary block mb-1">Dinner</span>
+<p class="text-xs font-bold font-manrope leading-tight">Lemon Herb Chicken</p>
+</div>
+<div class="border-2 border-dashed border-outline-variant/30 rounded-xl py-8 flex items-center justify-center">
+<span class="material-symbols-outlined text-outline-variant">add</span>
+</div>
+</div>
+</div>
+<!-- Day Column: Wednesday (Active/Focus Day) -->
+<div class="flex flex-col gap-4">
+<div class="py-3 text-center border-b-2 border-primary">
+<p class="text-[10px] uppercase tracking-widest font-bold text-primary">Wed</p>
+<p class="font-manrope text-lg font-extrabold text-primary">25</p>
+</div>
+<div class="flex-grow space-y-3 bg-primary/5 rounded-2xl p-3 min-h-[400px]">
+<!-- Ghost Card Visualization -->
+<div class="bg-surface-container-lowest/60 border border-primary/20 p-3 rounded-xl shadow-sm border-dashed">
+<p class="text-xs font-medium text-on-surface-variant italic">Drop here...</p>
+</div>
+<div class="border-2 border-dashed border-outline-variant/30 rounded-xl py-8 flex items-center justify-center">
+<span class="material-symbols-outlined text-outline-variant">add</span>
+</div>
+</div>
+</div>
+<!-- Day Column: Thursday -->
+<div class="flex flex-col gap-4">
+<div class="py-3 text-center border-b border-outline-variant/20">
+<p class="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Thu</p>
+<p class="font-manrope text-lg font-extrabold">26</p>
+</div>
+<div class="flex-grow space-y-3 bg-surface-container-low/40 rounded-2xl p-3 min-h-[400px]">
+<div class="border-2 border-dashed border-outline-variant/30 rounded-xl py-8 flex items-center justify-center">
+<span class="material-symbols-outlined text-outline-variant">add</span>
+</div>
+</div>
+</div>
+<!-- Day Column: Friday -->
+<div class="flex flex-col gap-4">
+<div class="py-3 text-center border-b border-outline-variant/20">
+<p class="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Fri</p>
+<p class="font-manrope text-lg font-extrabold">27</p>
+</div>
+<div class="flex-grow space-y-3 bg-surface-container-low/40 rounded-2xl p-3 min-h-[400px]">
+<div class="bg-surface-container-lowest p-3 rounded-xl shadow-sm">
+<span class="text-[9px] font-bold text-primary block mb-1">Dinner</span>
+<p class="text-xs font-bold font-manrope leading-tight">Homemade Margherita Pizza</p>
+</div>
+<div class="border-2 border-dashed border-outline-variant/30 rounded-xl py-8 flex items-center justify-center">
+<span class="material-symbols-outlined text-outline-variant">add</span>
+</div>
+</div>
+</div>
+<!-- Day Column: Saturday -->
+<div class="flex flex-col gap-4">
+<div class="py-3 text-center border-b border-outline-variant/20">
+<p class="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Sat</p>
+<p class="font-manrope text-lg font-extrabold">28</p>
+</div>
+<div class="flex-grow space-y-3 bg-surface-container-low/40 rounded-2xl p-3 min-h-[400px]">
+<div class="border-2 border-dashed border-outline-variant/30 rounded-xl py-8 flex items-center justify-center">
+<span class="material-symbols-outlined text-outline-variant">add</span>
+</div>
+</div>
+</div>
+<!-- Day Column: Sunday -->
+<div class="flex flex-col gap-4">
+<div class="py-3 text-center border-b border-outline-variant/20">
+<p class="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Sun</p>
+<p class="font-manrope text-lg font-extrabold">29</p>
+</div>
+<div class="flex-grow space-y-3 bg-surface-container-low/40 rounded-2xl p-3 min-h-[400px]">
+<div class="border-2 border-dashed border-outline-variant/30 rounded-xl py-8 flex items-center justify-center">
+<span class="material-symbols-outlined text-outline-variant">add</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar (Mobile Shell Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full flex justify-around items-center px-4 pb-safe pt-2 bg-stone-50/90 dark:bg-stone-900/90 backdrop-blur-lg shadow-[0px_-8px_24px_rgba(26,28,28,0.06)] z-50 rounded-t-3xl">
+<div class="flex flex-col items-center justify-center text-stone-400 dark:text-stone-500 px-5 py-2 tap-highlight-transparent duration-300 ease-in-out active:bg-stone-200">
+<span class="material-symbols-outlined">menu_book</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest font-bold mt-1">Library</span>
+</div>
+<div class="flex flex-col items-center justify-center bg-orange-100 dark:bg-orange-900/30 text-orange-900 dark:text-orange-200 rounded-2xl px-5 py-2 tap-highlight-transparent duration-300 ease-in-out">
+<span class="material-symbols-outlined">calendar_today</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest font-bold mt-1">Planner</span>
+</div>
+<div class="flex flex-col items-center justify-center text-stone-400 dark:text-stone-500 px-5 py-2 tap-highlight-transparent duration-300 ease-in-out active:bg-stone-200">
+<span class="material-symbols-outlined">shopping_cart</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest font-bold mt-1">Shopping</span>
+</div>
+<div class="flex flex-col items-center justify-center text-stone-400 dark:text-stone-500 px-5 py-2 tap-highlight-transparent duration-300 ease-in-out active:bg-stone-200">
+<span class="material-symbols-outlined">person</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest font-bold mt-1">Profile</span>
+</div>
+</nav>
+<!-- Floating Action Button: Create Meal -->
+<button class="fixed right-6 bottom-24 md:bottom-8 bg-gradient-to-br from-primary to-primary-container text-on-primary p-4 rounded-2xl shadow-xl flex items-center justify-center scale-100 active:scale-90 transition-transform z-40">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">add</span>
+<span class="hidden md:inline-block ml-2 font-manrope font-bold text-sm">New Meal</span>
+</button>
+</body></html>

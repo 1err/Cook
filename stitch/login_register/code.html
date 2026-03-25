@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Culinary Canvas - Login</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "inverse-surface": "#2f3130",
+                        "on-secondary-container": "#5e617d",
+                        "on-secondary-fixed-variant": "#424560",
+                        "surface-container-highest": "#e3e2e1",
+                        "primary": "#9a442d",
+                        "secondary-fixed": "#dfe0ff",
+                        "on-error": "#ffffff",
+                        "surface-container-low": "#f4f3f2",
+                        "on-tertiary": "#ffffff",
+                        "surface-tint": "#9a442d",
+                        "secondary-container": "#dcddff",
+                        "surface-container-high": "#e9e8e7",
+                        "on-surface": "#1a1c1c",
+                        "tertiary-fixed": "#7df7dd",
+                        "inverse-on-surface": "#f1f0f0",
+                        "on-background": "#1a1c1c",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-dim": "#dadad9",
+                        "error-container": "#ffdad6",
+                        "tertiary": "#006b5b",
+                        "on-error-container": "#93000a",
+                        "on-tertiary-fixed-variant": "#005144",
+                        "on-tertiary-container": "#00362d",
+                        "surface-container": "#eeeeed",
+                        "inverse-primary": "#ffb4a1",
+                        "on-secondary-fixed": "#161a32",
+                        "background": "#faf9f8",
+                        "surface-variant": "#e3e2e1",
+                        "on-primary": "#ffffff",
+                        "outline-variant": "#dbc1ba",
+                        "surface-bright": "#faf9f8",
+                        "on-surface-variant": "#55423e",
+                        "surface": "#faf9f8",
+                        "secondary-fixed-dim": "#c2c4e5",
+                        "on-secondary": "#ffffff",
+                        "tertiary-fixed-dim": "#5edbc1",
+                        "on-tertiary-fixed": "#00201a",
+                        "primary-fixed-dim": "#ffb4a1",
+                        "secondary": "#5a5c79",
+                        "error": "#ba1a1a",
+                        "primary-fixed": "#ffdbd2",
+                        "on-primary-fixed-variant": "#7c2e19",
+                        "primary-container": "#e07a5f",
+                        "tertiary-container": "#19a992",
+                        "on-primary-fixed": "#3c0800",
+                        "on-primary-container": "#5b1604",
+                        "outline": "#88726d"
+                    },
+                    fontFamily: {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-effect {
+            background: rgba(250, 249, 248, 0.8);
+            backdrop-filter: blur(20px);
+        }
+        .kitchen-glow {
+            box-shadow: 0px 12px 32px rgba(26, 28, 28, 0.04);
+        }
+        .primary-gradient {
+            background: linear-gradient(135deg, #9a442d 0%, #e07a5f 100%);
+        }
+    </style>
+</head>
+<body class="bg-background font-body text-on-surface min-h-screen">
+<main class="flex min-h-screen">
+<!-- Visual Anchor: Editorial Image Side -->
+<section class="hidden lg:block lg:w-1/2 relative overflow-hidden">
+<div class="absolute inset-0 bg-on-surface/10 z-10"></div>
+<img alt="Premium culinary scene" class="absolute inset-0 w-full h-full object-cover" data-alt="overhead shot of fresh organic vegetables, rosemary, and sea salt on a rustic stone countertop with elegant dramatic lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDeIDz9AZS7PlIo1CRpamY3fSC2IufrsadbFakMN102J-jNHpNZLKyw1CQWho3XZ8_H7t5f7xm8_DTikx-TLGIXYyMKNA75k2osaNbfd3VKZJToH-55avRpRjuJt8w5-vR5fIRrqfbW515A7L2kTpyOq5QL-ZRIVK2NjCdPumDGITLhMDQIHMWzY_PSDfFKEVlTjEWt_9-_Bhz81tPWecPJhImTYBujqgVdCc-tqcU42o7Mi_nwxvBLLj-hZ5H7PHYFURDoDD51UtJ7"/>
+<!-- Branding Overlay -->
+<div class="absolute bottom-16 left-16 z-20 max-w-md">
+<span class="inline-block px-4 py-1.5 rounded-full glass-effect text-primary font-bold text-xs uppercase tracking-widest mb-6">Premium Editorial Experience</span>
+<h2 class="font-headline text-5xl font-extrabold text-white leading-tight mb-4">Master the art of <br/>modern cooking.</h2>
+<p class="text-white/80 text-lg font-medium leading-relaxed">Join a community of culinary enthusiasts exploring the finest recipes from around the globe.</p>
+</div>
+<!-- Accent Detail -->
+<div class="absolute top-12 left-12 z-20">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 primary-gradient rounded-xl flex items-center justify-center shadow-lg">
+<span class="material-symbols-outlined text-white">restaurant</span>
+</div>
+<span class="font-headline font-extrabold text-xl tracking-tighter text-white">Culinary Canvas</span>
+</div>
+</div>
+</section>
+<!-- Form Side -->
+<section class="w-full lg:w-1/2 flex items-center justify-center p-8 md:p-16 lg:p-24 bg-surface">
+<div class="w-full max-w-md space-y-10">
+<!-- Header -->
+<div class="space-y-3">
+<h1 class="font-headline text-4xl font-extrabold text-on-surface tracking-tight">Welcome back to Culinary Canvas</h1>
+<p class="text-on-surface-variant font-medium">Please enter your details to continue your journey.</p>
+</div>
+<!-- Social Logins -->
+<div class="grid grid-cols-1 gap-4">
+<button class="w-full h-14 flex items-center justify-center gap-3 px-6 rounded-xl bg-surface-container-lowest border border-outline-variant/15 text-on-surface font-semibold kitchen-glow hover:bg-surface-container-low transition-all duration-200">
+<svg class="w-5 h-5" viewbox="0 0 24 24">
+<path d="M17.05,20.28c-.96,.95-2.22,1.67-3.71,1.67-3.14,0-5.71-2.57-5.71-5.71s2.57-5.71,5.71-5.71c1.39,0,2.67,.51,3.66,1.35l2.42-2.42c-1.63-1.53-3.76-2.48-6.08-2.48-5.02,0-9.08,4.06-9.08,9.08s4.06,9.08,9.08,9.08c2.47,0,4.72-1.01,6.34-2.64l-2.69-2.23Z" fill="currentColor"></path>
+<path d="M23.04,12.23c0-.82-.07-1.61-.19-2.38h-8.85v4.51h4.94c-.21,1.13-.85,2.09-1.81,2.73l2.69,2.23c1.57-1.45,2.47-3.58,2.47-7.09Z" fill="#4285F4"></path>
+</svg>
+                        Continue with Google
+                    </button>
+<button class="w-full h-14 flex items-center justify-center gap-3 px-6 rounded-xl bg-on-surface text-surface-container-lowest font-semibold hover:bg-on-surface/90 transition-all duration-200">
+<svg class="w-5 h-5" fill="currentColor" viewbox="0 0 24 24">
+<path d="M17.073 21.376c-.56.323-1.2.533-2.025.533-1.125 0-1.875-.638-2.813-.638-.975 0-1.838.6-2.738.6-.825 0-1.462-.21-2.025-.533-1.763-1.013-3.113-3.188-3.113-5.288 0-3.375 2.138-5.175 4.163-5.175 1.05 0 1.95.638 2.738.638.75 0 1.575-.638 2.738-.638 1.688 0 3.225.863 3.975 2.213-3.413 1.425-2.85 6.038.7 7.713-.375 1.012-.938 2.025-1.6 2.575zm-3.825-14.513c-.038-2.475 2.025-4.5 4.388-4.5.188 2.625-2.213 4.725-4.388 4.5z"></path>
+</svg>
+                        Continue with Apple
+                    </button>
+</div>
+<!-- Divider -->
+<div class="relative flex items-center py-2">
+<div class="flex-grow border-t border-outline-variant/20"></div>
+<span class="flex-shrink mx-4 text-on-surface-variant font-medium text-sm">or sign in with email</span>
+<div class="flex-grow border-t border-outline-variant/20"></div>
+</div>
+<!-- Main Form -->
+<form class="space-y-6">
+<div class="space-y-5">
+<div class="space-y-2">
+<label class="text-sm font-bold text-on-surface ml-1" for="email">Email Address</label>
+<input class="w-full h-14 px-6 rounded-xl bg-surface-container-high border-none focus:ring-2 focus:ring-primary/20 focus:bg-surface-container-lowest transition-all duration-200 text-on-surface placeholder:text-on-surface-variant/50" id="email" placeholder="chef@culinarycanvas.com" type="email"/>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between items-center px-1">
+<label class="text-sm font-bold text-on-surface" for="password">Password</label>
+<a class="text-sm font-bold text-primary hover:text-on-primary-fixed-variant transition-colors" href="#">Forgot?</a>
+</div>
+<input class="w-full h-14 px-6 rounded-xl bg-surface-container-high border-none focus:ring-2 focus:ring-primary/20 focus:bg-surface-container-lowest transition-all duration-200 text-on-surface placeholder:text-on-surface-variant/50" id="password" placeholder="••••••••" type="password"/>
+</div>
+</div>
+<button class="w-full h-14 rounded-xl primary-gradient text-white font-bold text-lg shadow-lg active:scale-[0.98] transition-all duration-200" type="submit">
+                        Sign In to Kitchen
+                    </button>
+</form>
+<!-- Footer Link -->
+<p class="text-center text-on-surface-variant font-medium">
+                    New to our table? 
+                    <a class="text-primary font-bold hover:underline ml-1" href="#">Create an account</a>
+</p>
+</div>
+</section>
+</main>
+<!-- Suppressed Navigation as per task: Login is a focused transactional screen -->
+</body></html>
