@@ -49,6 +49,8 @@ export const STORE_PREVIEW_ITEMS_KEY = "cooking-store-preview-items";
 export interface StorePreviewItem {
   name: string;
   suggested_purchase: string;
+  /** Grocery category from smart refine (optional). */
+  category?: string;
 }
 
 export function buildItemQuery(item: StorePreviewItem): string {

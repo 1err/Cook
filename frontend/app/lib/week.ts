@@ -61,3 +61,44 @@ export function formatWeekLabel(start: string, end: string): string {
   const [ey, em, ed] = end.split("-").map(Number);
   return `${sm}/${sd} – ${em}/${ed}`;
 }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** e.g. Oct 23 — Oct 29 (same month) or Sep 29 — Oct 5 */
+export function formatWeekRangeDisplay(start: string, end: string): string {
+  const [sy, sm, sd] = start.split("-").map(Number);
+  const [ey, em, ed] = end.split("-").map(Number);
+  const m1 = MONTHS[sm - 1];
+  const m2 = MONTHS[em - 1];
+  if (sy === ey && sm === em) {
+    return `${m1} ${sd} — ${ed}`;
+  }
+  return `${m1} ${sd} — ${m2} ${ed}`;
+}
+
+const MONTHS_FULL = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+/** Planner kicker line, e.g. October 23 – 29 (matches Stitch weekly planner). */
+export function formatWeekPlannerKicker(start: string, end: string): string {
+  const [sy, sm, sd] = start.split("-").map(Number);
+  const [ey, em, ed] = end.split("-").map(Number);
+  const m1 = MONTHS_FULL[sm - 1];
+  const m2 = MONTHS_FULL[em - 1];
+  if (sy === ey && sm === em) {
+    return `${m1} ${sd} – ${ed}`;
+  }
+  return `${m1} ${sd} – ${m2} ${ed}`;
+}

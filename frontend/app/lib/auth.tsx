@@ -38,6 +38,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         setUser({ id: data.id, email: data.email });
       } else {
+        // Stale cookie (e.g. user id from another DB) still sends a valid JWT; backend returns 401.
+        if (res.status === 401) {
+          await apiFetch("/auth/logout", { method: "POST" }).catch(() => {});
+        }
         setUser(null);
       }
     } catch {

@@ -4,6 +4,8 @@ export interface IngredientItem {
   notes?: string | null;
 }
 
+import type { LibraryCategorySlug } from "./lib/recipeCategories";
+
 export interface Recipe {
   id: string;
   title: string;
@@ -11,4 +13,6 @@ export interface Recipe {
   thumbnail_url?: string | null;
   ingredients: IngredientItem[];
   raw_extraction_text?: string | null;
+  /** Optional library filter chip (set on edit). */
+  library_category?: LibraryCategorySlug | null;
 }

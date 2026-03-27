@@ -1,110 +1,171 @@
 "use client";
 
-import { Suspense, useEffect, useState, useMemo } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
-import { getWeekBounds, getPrevNextWeek, formatWeekLabel } from "../lib/week";
+import { getWeekBounds, getPrevNextWeek, formatWeekRangeDisplay } from "../lib/week";
+import type { Recipe } from "../types";
 import {
   type Store,
   STORE_LABELS,
-  storeSearchUrl,
   getPreferredStore,
   PREFERRED_STORE_KEY,
   STORE_PREVIEW_ITEMS_KEY,
 } from "../lib/store";
+import {
+  GROCERY_CATEGORY_ORDER,
+  CATEGORY_MATERIAL_ICONS,
+  groceryCategoryBentoSpan,
+  normalizeGroceryCategory,
+  type GroceryCategory,
+} from "../lib/shoppingCategories";
 
-const SMART_SHOPPING_LIST_KEY = "smartShoppingList";
+const SMART_SHOPPING_LIST_PREFIX = "smartShoppingList";
+
+function smartListStorageKey(weekStart: string) {
+  return `${SMART_SHOPPING_LIST_PREFIX}:${weekStart}`;
+}
+
+const SLOT_ORDER = ["breakfast", "lunch", "dinner"] as const;
+type PlanSlot = (typeof SLOT_ORDER)[number];
+const DOW_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+const PREVIEW_MEAL_ROWS = 4;
+
+/** Served from /public — avoids Stitch/Google hotlink URLs that often 403 or expire. */
+const SHOP_CONFIRM_HERO_SRC = "/shopping-list-hero.jpg";
+
+function buildPlannedMealRows(
+  plans: { date: string; recipe_ids: string[] }[],
+  recipes: Record<string, Recipe | undefined>,
+  weekMondayYmd: string,
+): { recipeId: string; title: string; slot: PlanSlot; dayShort: string; date: string }[] {
+  const { dates: weekDates } = getWeekBounds(weekMondayYmd);
+  const dowByDate = new Map(weekDates.map((d, i) => [d, DOW_SHORT[i]]));
+  const rows: { recipeId: string; title: string; slot: PlanSlot; dayShort: string; date: string }[] = [];
+  for (const p of plans) {
+    const dayShort = dowByDate.get(p.date) ?? "";
+    const ids = p.recipe_ids ?? [];
+    for (let i = 0; i < 3; i++) {
+      const rid = ids[i];
+      if (!rid?.trim()) continue;
+      const rec = recipes[rid];
+      rows.push({
+        recipeId: rid,
+        title: rec?.title ?? "Recipe",
+        slot: SLOT_ORDER[i],
+        dayShort,
+        date: p.date,
+      });
+    }
+  }
+  rows.sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    return SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot);
+  });
+  return rows;
+}
+
+function slotLabel(slot: PlanSlot): string {
+  return slot.charAt(0).toUpperCase() + slot.slice(1);
+}
+
+function chipClassForSlot(slot: PlanSlot): string {
+  if (slot === "breakfast") return "shop-confirm-chip shop-confirm-chip--breakfast";
+  if (slot === "lunch") return "shop-confirm-chip shop-confirm-chip--lunch";
+  return "shop-confirm-chip shop-confirm-chip--dinner";
+}
 
 interface ShoppingListItem {
   name: string;
   total_quantity: string;
 }
 
+interface PurchaseItem {
+  name: string;
+  suggested_purchase: string;
+  category?: string;
+}
+
 interface RefineResponse {
   remove: string[];
   likely_pantry: { name: string; reason: string }[];
-  purchase_items: { name: string; suggested_purchase: string }[];
+  purchase_items: PurchaseItem[];
 }
 
-// Frontend-only rule-based categories. First match wins. Order matters.
-const CATEGORY_ORDER = [
-  "Vegetables",
-  "Meat & Seafood",
-  "Pantry",
-  "Dairy",
-  "Other",
-] as const;
-
-const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  "Vegetables": [
-    "garlic", "onion", "potato", "carrot", "tomato", "ginger", "scallion",
-    "green onion", "cabbage", "broccoli", "spinach", "mushroom", "pepper",
-    "celery", "lettuce", "cucumber", "pea", "bean", "corn", "leek", "shallot",
-    "bell pepper", "chili", "eggplant", "zucchini", "squash", "kale", "bok choy",
-  ],
-  "Meat & Seafood": [
-    "pork", "beef", "chicken", "fish", "shrimp", "salmon", "tuna", "crab",
-    "lamb", "turkey", "sausage", "bacon", "ground meat", "tilapia", "cod",
-  ],
-  "Pantry": [
-    "salt", "sugar", "pepper", "oil", "vinegar", "soy sauce", "flour", "starch",
-    "sauce", "broth", "wine", "baking", "honey", "sesame", "stock", "mirin",
-    "rice", "noodle", "pasta", "bean paste", "doubanjiang", "spice", "herb",
-  ],
-  "Dairy": [
-    "milk", "cheese", "butter", "cream", "tofu", "egg", "yogurt",
-  ],
-};
-
-function getCategory(name: string): string {
-  const lower = name.toLowerCase();
-  for (const cat of CATEGORY_ORDER) {
-    if (cat === "Other") continue;
-    const keywords = CATEGORY_KEYWORDS[cat];
-    if (keywords?.some((k) => lower.includes(k))) return cat;
-  }
-  return "Other";
+interface SmartStored extends RefineResponse {
+  _ui?: { hidden: number[]; checked: number[] };
 }
 
-function groupByCategory(items: ShoppingListItem[]): Map<string, { index: number; item: ShoppingListItem }[]> {
-  const map = new Map<string, { index: number; item: ShoppingListItem }[]>();
-  items.forEach((item, index) => {
-    const cat = getCategory(item.name);
-    if (!map.has(cat)) map.set(cat, []);
-    map.get(cat)!.push({ index, item });
-  });
-  for (const cat of CATEGORY_ORDER) {
-    if (map.has(cat)) continue;
-    map.set(cat, []);
+function bentoIconWrapClass(cat: GroceryCategory): string {
+  const extra: Record<GroceryCategory, string> = {
+    Produce: "shop-bento-icon-wrap--produce",
+    Dairy: "shop-bento-icon-wrap--dairy",
+    "Meat & Seafood": "shop-bento-icon-wrap--meat",
+    "Pantry & Dry Goods": "shop-bento-icon-wrap--pantry",
+    Frozen: "shop-bento-icon-wrap--frozen",
+    Bakery: "shop-bento-icon-wrap--bakery",
+    Other: "shop-bento-icon-wrap--other",
+  };
+  return `shop-bento-icon-wrap ${extra[cat]}`;
+}
+
+function parseSmartStored(raw: string): { data: RefineResponse; hidden: Set<number>; checked: Set<number> } | null {
+  try {
+    const parsed = JSON.parse(raw) as SmartStored;
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.purchase_items)) return null;
+    const { _ui, ...data } = parsed;
+    if (!Array.isArray(data.likely_pantry) || !Array.isArray(data.remove)) return null;
+    return {
+      data: data as RefineResponse,
+      hidden: new Set(_ui?.hidden ?? []),
+      checked: new Set(_ui?.checked ?? []),
+    };
+  } catch {
+    return null;
   }
-  return map;
 }
 
 function ShoppingListPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const weekParam = searchParams.get("week");
-  const { start, end, weekParam: currentWeek } = getWeekBounds(weekParam);
+  const weekBounds = useMemo(() => getWeekBounds(weekParam), [weekParam]);
+  const { start, end, weekParam: currentWeek } = weekBounds;
   const { prev, next } = getPrevNextWeek(currentWeek);
 
   const [items, setItems] = useState<ShoppingListItem[]>([]);
+  const [mealPlans, setMealPlans] = useState<{ date: string; recipe_ids: string[] }[]>([]);
+  const [recipeById, setRecipeById] = useState<Record<string, Recipe>>({});
+  const [planMealsExpanded, setPlanMealsExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [preferredStore, setPreferredStoreState] = useState<Store>("weee");
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [refinedData, setRefinedData] = useState<RefineResponse | null>(null);
   const [refining, setRefining] = useState(false);
   const [refineError, setRefineError] = useState<string | null>(null);
-  const [smartPantryCollapsed, setSmartPantryCollapsed] = useState(false);
   const [smartRemovedCollapsed, setSmartRemovedCollapsed] = useState(true);
+  const [smartHidden, setSmartHidden] = useState<Set<number>>(new Set());
+  const [smartChecked, setSmartChecked] = useState<Set<number>>(new Set());
+  const [menuOpenFor, setMenuOpenFor] = useState<number | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setPreferredStoreState(getPreferredStore());
   }, []);
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (menuOpenFor === null) return;
+      const el = menuRef.current;
+      if (el && !el.contains(e.target as Node)) setMenuOpenFor(null);
+    }
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  }, [menuOpenFor]);
 
   function setPreferredStore(store: Store) {
     setPreferredStoreState(store);
@@ -113,16 +174,61 @@ function ShoppingListPageContent() {
     }
   }
 
+  const persistSmart = useCallback(
+    (data: RefineResponse, hidden: Set<number>, checked: Set<number>) => {
+      const payload: SmartStored = {
+        ...data,
+        _ui: { hidden: [...hidden], checked: [...checked] },
+      };
+      sessionStorage.setItem(smartListStorageKey(start), JSON.stringify(payload));
+    },
+    [start]
+  );
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      setLoading(true);
+      setRefinedData(null);
+      setSmartHidden(new Set());
+      setSmartChecked(new Set());
+      setMenuOpenFor(null);
+      setPlanMealsExpanded(false);
+      setError(null);
       try {
-        const res = await apiFetch(`/shopping-list?start=${start}&end=${end}`);
-        if (!res.ok) throw new Error("Failed to load");
-        const data: ShoppingListItem[] = await res.json();
-        if (!cancelled) {
-          setItems(data);
-          setSelectedIds(new Set(data.map((_, i) => i)));
+        const [listRes, planRes, recipesRes] = await Promise.all([
+          apiFetch(`/shopping-list?start=${start}&end=${end}`),
+          apiFetch(`/meal-plan?start=${start}&end=${end}`),
+          apiFetch("/recipes"),
+        ]);
+        if (!listRes.ok) throw new Error("Failed to load");
+        const data: ShoppingListItem[] = await listRes.json();
+        if (cancelled) return;
+        setItems(data);
+        let plansPayload: { date: string; recipe_ids: string[] }[] = [];
+        if (planRes.ok) {
+          const pj = await planRes.json();
+          if (Array.isArray(pj)) plansPayload = pj;
+        }
+        setMealPlans(plansPayload);
+        let rmap: Record<string, Recipe> = {};
+        if (recipesRes.ok) {
+          const recs: Recipe[] = await recipesRes.json();
+          rmap = Object.fromEntries(recs.map((r) => [r.id, r]));
+        }
+        setRecipeById(rmap);
+        try {
+          const raw = sessionStorage.getItem(smartListStorageKey(start));
+          if (raw) {
+            const parsed = parseSmartStored(raw);
+            if (parsed) {
+              setRefinedData(parsed.data);
+              setSmartHidden(parsed.hidden);
+              setSmartChecked(parsed.checked);
+            }
+          }
+        } catch {
+          // ignore bad session data
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load");
@@ -136,85 +242,68 @@ function ShoppingListPageContent() {
     };
   }, [start, end]);
 
-  // Restore refined view from session (e.g. after returning from Store Preview)
   useEffect(() => {
-    if (items.length === 0) return;
-    try {
-      const raw = sessionStorage.getItem(SMART_SHOPPING_LIST_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as unknown;
-      if (!parsed || typeof parsed !== "object" || !("purchase_items" in parsed)) return;
-      const data = parsed as RefineResponse;
-      if (!Array.isArray(data.purchase_items) || !Array.isArray(data.likely_pantry) || !Array.isArray(data.remove)) return;
-      setRefinedData(data);
-    } catch {
-      // ignore invalid stored data
-    }
-  }, [items.length]);
-
-  const grouped = useMemo(() => groupByCategory(items), [items]);
+    if (!refinedData) return;
+    persistSmart(refinedData, smartHidden, smartChecked);
+  }, [refinedData, smartHidden, smartChecked, persistSmart]);
 
   function setWeek(week: string) {
     router.push(`/shopping-list?week=${week}`);
   }
 
-  function toggleSelected(index: number) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
+  function toggleSmartChecked(origIndex: number) {
+    setSmartChecked((prev) => {
+      const n = new Set(prev);
+      if (n.has(origIndex)) n.delete(origIndex);
+      else n.add(origIndex);
+      return n;
     });
   }
 
-  function selectAll() {
-    setSelectedIds(new Set(items.map((_, i) => i)));
+  function hideSmartItem(origIndex: number) {
+    setSmartHidden((prev) => new Set(prev).add(origIndex));
+    setMenuOpenFor(null);
   }
 
-  function deselectAll() {
-    setSelectedIds(new Set());
-  }
+  const visiblePurchaseItems = useMemo(() => {
+    if (!refinedData) return [];
+    return refinedData.purchase_items
+      .map((p, origIndex) => ({ ...p, origIndex }))
+      .filter(({ origIndex }) => !smartHidden.has(origIndex));
+  }, [refinedData, smartHidden]);
 
-  function toggleCategory(cat: string) {
-    setCollapsedCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
-      return next;
-    });
-  }
+  const purchaseByCategory = useMemo(() => {
+    const map = new Map<GroceryCategory, { item: PurchaseItem; origIndex: number }[]>();
+    for (const row of visiblePurchaseItems) {
+      const cat = normalizeGroceryCategory(row.category, row.name);
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat)!.push({ item: row, origIndex: row.origIndex });
+    }
+    return map;
+  }, [visiblePurchaseItems]);
+
+  const planRows = useMemo(
+    () => buildPlannedMealRows(mealPlans, recipeById, start),
+    [mealPlans, recipeById, start],
+  );
 
   function handleCopyList() {
-    if (refinedData) {
-      handleCopySmartList();
-      return;
-    }
-    const selected = items.filter((_, i) => selectedIds.has(i));
-    const text = selected
-      .map((item) => `${item.name} — ${item.total_quantity || ""}`.trim())
-      .join("\n");
-    navigator.clipboard.writeText(text).then(() => {
+    if (!refinedData) return;
+    const lines = visiblePurchaseItems
+      .filter((row) => !smartChecked.has(row.origIndex))
+      .map((p) => `${p.name} — ${p.suggested_purchase || ""}`.trim());
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
   }
 
-  function handleShopSelected() {
-    const selected = refinedData
-      ? refinedData.purchase_items
-      : items.filter((_, i) => selectedIds.has(i));
-    const query = selected
-      .map((i) => ("name" in i ? (i as { name: string }).name : (i as ShoppingListItem).name))
-      .filter(Boolean)
-      .join(" ");
-    if (query) {
-      window.open(storeSearchUrl(preferredStore, query), "_blank", "noopener,noreferrer");
-    }
-  }
-
   function handleGoToStorePreview() {
     if (!refinedData) return;
-    sessionStorage.setItem(STORE_PREVIEW_ITEMS_KEY, JSON.stringify(refinedData.purchase_items));
+    const toPreview = visiblePurchaseItems
+      .filter((row) => !smartChecked.has(row.origIndex))
+      .map(({ name, suggested_purchase, category }) => ({ name, suggested_purchase, category: category ?? "Other" }));
+    sessionStorage.setItem(STORE_PREVIEW_ITEMS_KEY, JSON.stringify(toPreview));
     router.push(`/store-preview?store=${preferredStore}`);
   }
 
@@ -231,7 +320,9 @@ function ShoppingListPageContent() {
       if (!res.ok) throw new Error("Refine failed");
       const data: RefineResponse = await res.json();
       setRefinedData(data);
-      sessionStorage.setItem(SMART_SHOPPING_LIST_KEY, JSON.stringify(data));
+      setSmartHidden(new Set());
+      setSmartChecked(new Set());
+      persistSmart(data, new Set(), new Set());
     } catch (e) {
       setRefineError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
@@ -240,276 +331,341 @@ function ShoppingListPageContent() {
   }
 
   function handleBackToOriginalList() {
-    sessionStorage.removeItem(SMART_SHOPPING_LIST_KEY);
+    sessionStorage.removeItem(smartListStorageKey(start));
     setRefinedData(null);
     setRefineError(null);
+    setSmartHidden(new Set());
+    setSmartChecked(new Set());
   }
 
-  function handleCopySmartList() {
-    if (!refinedData) return;
-    const lines = refinedData.purchase_items.map(
-      (p) => `${p.name} — ${p.suggested_purchase || ""}`.trim()
-    );
-    navigator.clipboard.writeText(lines.join("\n")).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }
+  if (loading) return <p className="shop-muted shop-page--wide">Loading…</p>;
+  if (error) return <p className="shop-error shop-page--wide">{error}</p>;
 
-  const selectedCount = refinedData ? refinedData.purchase_items.length : selectedIds.size;
-  const hasSelection = selectedCount > 0;
+  const smartItemCount = visiblePurchaseItems.filter((r) => !smartChecked.has(r.origIndex)).length;
+  const mealRowsVisible = planMealsExpanded ? planRows : planRows.slice(0, PREVIEW_MEAL_ROWS);
+  const moreMealsCount = Math.max(0, planRows.length - PREVIEW_MEAL_ROWS);
+  const weekRangeLabel = formatWeekRangeDisplay(start, end);
+  const hasPlannedMeals = planRows.length > 0;
+  const canPrepareSmart = items.length > 0 && !refining;
 
-  if (loading) return <p style={mutedStyle}>Loading…</p>;
-  if (error) return <p style={errorStyle}>{error}</p>;
-
-  return (
-    <div style={pageStyle}>
-      <h1 style={h1Style}>Shopping list</h1>
-
-      <div style={weekNavStyle}>
-        <button
-          type="button"
-          onClick={() => setWeek(prev)}
-          style={navButtonStyle}
-          aria-label="Previous week"
-        >
-          ← Prev
-        </button>
-        <span style={weekLabelStyle}>{formatWeekLabel(start, end)}</span>
-        <button
-          type="button"
-          onClick={() => setWeek(next)}
-          style={navButtonStyle}
-          aria-label="Next week"
-        >
-          Next →
-        </button>
-      </div>
-
-      <p style={mutedStyle}>
-        Mon {start} – Sun {end}. Assign recipes in the{" "}
-        <Link href={`/planner?week=${currentWeek}`} style={linkStyle}>
-          Planner
-        </Link>{" "}
-        to build your list.
-      </p>
-
-      <div style={storeSelectorWrap}>
-        <span style={storeSelectorLabel}>Preferred store</span>
-        <div style={storeSelectorStyle} role="group" aria-label="Preferred store">
-          {(["weee", "yami", "amazon"] as Store[]).map((store) => (
-            <button
-              key={store}
-              type="button"
-              onClick={() => setPreferredStore(store)}
-              style={{
-                ...storeOptionStyle,
-                ...(preferredStore === store ? storeOptionActiveStyle : {}),
-              }}
-            >
-              {STORE_LABELS[store]}
-            </button>
-          ))}
+  const weekNavSection = (
+    <section className="shop-confirm-week" aria-label="Week range">
+      <div className="shop-confirm-week__left">
+        <div className="shop-confirm-week__icon">
+          <span className="material-symbols-outlined">calendar_today</span>
+        </div>
+        <div>
+          <span className="shop-confirm-week__kicker">Current range</span>
+          <h2 className="shop-confirm-week__range font-headline">{weekRangeLabel}</h2>
         </div>
       </div>
+      <div className="shop-confirm-week__actions">
+        <button type="button" className="shop-confirm-week__nav" onClick={() => setWeek(prev)} aria-label="Previous week">
+          <span className="material-symbols-outlined">chevron_left</span>
+        </button>
+        <button type="button" className="shop-confirm-week__nav" onClick={() => setWeek(next)} aria-label="Next week">
+          <span className="material-symbols-outlined">chevron_right</span>
+        </button>
+        <Link href={`/planner?week=${currentWeek}`} className="shop-confirm-week__change font-headline">
+          Change week
+        </Link>
+      </div>
+    </section>
+  );
 
-      {items.length === 0 ? (
-        <div style={emptyStyle}>
-          <p>No ingredients yet.</p>
-          <p style={emptyHintStyle}>
-            Assign recipes to this week in the{" "}
-            <Link href={`/planner?week=${currentWeek}`} style={linkStyle}>
-              Planner
-            </Link>{" "}
-            to see your shopping list here.
-          </p>
+  const storeRow = (
+    <div className="shop-store-row" style={{ marginBottom: refinedData ? "1.75rem" : "2.5rem" }}>
+      <span className="shop-store-label">Preferred store</span>
+      <div className="shop-store-chips" role="group" aria-label="Preferred store">
+        {(["weee", "yami", "amazon"] as Store[]).map((store) => (
+          <button
+            key={store}
+            type="button"
+            className={`shop-store-chip font-headline${preferredStore === store ? " is-active" : ""}`}
+            onClick={() => setPreferredStore(store)}
+          >
+            {STORE_LABELS[store]}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="shop-page--wide" style={{ paddingTop: "var(--space-32)" }}>
+      {!refinedData && (
+        <header className="mb-10">
+          <h1 className="shop-confirm-title font-headline">Shopping List</h1>
+        </header>
+      )}
+
+      {weekNavSection}
+      {storeRow}
+
+      {!hasPlannedMeals && items.length === 0 ? (
+        <div className="shop-confirm-hero">
+          <div className="shop-confirm-hero__glow" aria-hidden />
+          <div className="shop-confirm-empty font-headline">
+            <p className="m-0 mb-2 font-bold text-lg" style={{ color: "var(--on-surface)" }}>
+              No meals planned for this week
+            </p>
+            <p className="m-0" style={{ maxWidth: "28rem", marginInline: "auto" }}>
+              Add recipes in the{" "}
+              <Link href={`/planner?week=${currentWeek}`} className="shop-link font-bold">
+                planner
+              </Link>{" "}
+              to build your list.
+            </p>
+          </div>
         </div>
       ) : (
         <>
           {refinedData ? (
             <>
-              <button
-                type="button"
-                onClick={handleBackToOriginalList}
-                style={selectLinkStyle}
-              >
-                ← Back to original list
-              </button>
-              <div style={smartSectionStyle}>
-                <h2 style={smartSectionTitleStyle}>Purchase items</h2>
-                <ul style={listStyle}>
-                  {refinedData.purchase_items.map((p, i) => (
-                    <li key={i} style={itemWrapStyle}>
-                      <div style={itemRowStyle}>
-                        <span style={nameStyle}>{p.name}</span>
-                        {p.suggested_purchase && (
-                          <span style={suggestedPurchaseStyle}>{p.suggested_purchase}</span>
-                        )}
+              <header className="shop-smart-hero">
+                <div className="shop-smart-hero__bg" aria-hidden />
+                <div className="shop-smart-hero__grad" aria-hidden />
+                <div className="shop-smart-hero__inner">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="shop-smart-meta-row">
+                      <span className="shop-smart-badge font-headline">Smart mode</span>
+                      <button type="button" className="shop-smart-back-prominent font-headline" onClick={handleBackToOriginalList}>
+                        <span className="material-symbols-outlined" style={{ fontSize: "1.125rem" }}>
+                          arrow_back
+                        </span>
+                        Back to original list
+                      </button>
+                    </div>
+                    <h1 className="shop-smart-hero__title font-headline">Smart shopping list</h1>
+                    <p className="shop-smart-hero__sub">
+                      {visiblePurchaseItems.length} line{visiblePurchaseItems.length === 1 ? "" : "s"} in store-style categories — including pantry
+                      under &quot;Pantry &amp; Dry Goods&quot;.
+                    </p>
+                  </div>
+                  <div className="shop-smart-stat">
+                    <p className="shop-smart-stat__num font-headline">{smartItemCount}</p>
+                    <p className="shop-smart-stat__lbl font-headline">TO BUY</p>
+                  </div>
+                </div>
+              </header>
+
+              <div className="shop-bento-grid">
+                {GROCERY_CATEGORY_ORDER.map((cat) => {
+                  const rows = purchaseByCategory.get(cat);
+                  if (!rows?.length) return null;
+                  const span = groceryCategoryBentoSpan(cat);
+                  return (
+                    <section key={cat} className={`shop-bento-card shop-bento-span-${span}`}>
+                      <div className="shop-bento-card__head">
+                        <div className="shop-bento-card__head-left">
+                          <div className={bentoIconWrapClass(cat)}>
+                            <span className="material-symbols-outlined" style={{ fontSize: "1.35rem" }}>
+                              {CATEGORY_MATERIAL_ICONS[cat]}
+                            </span>
+                          </div>
+                          <h2 className="shop-bento-card__title font-headline">{cat}</h2>
+                        </div>
+                        <span className="shop-bento-count font-headline">
+                          {rows.length} {rows.length === 1 ? "item" : "items"}
+                        </span>
                       </div>
-                    </li>
-                  ))}
-                </ul>
+                      <div>
+                        {rows.map(({ item, origIndex }) => {
+                          const isChecked = smartChecked.has(origIndex);
+                          return (
+                            <div key={origIndex} className="shop-bento-row">
+                              <label style={{ display: "flex", alignItems: "center", gap: "1rem", cursor: "pointer", flex: 1, minWidth: 0 }}>
+                                <input
+                                  type="checkbox"
+                                  className="shop-bento-row__check"
+                                  checked={isChecked}
+                                  onChange={() => toggleSmartChecked(origIndex)}
+                                  aria-label={`Have ${item.name}`}
+                                />
+                                <div className="shop-bento-row__text">
+                                  <p className={`shop-bento-row__name${isChecked ? " is-muted" : ""}`}>{item.name}</p>
+                                  {item.suggested_purchase ? (
+                                    <p className="shop-bento-row__sub">Suggested: {item.suggested_purchase}</p>
+                                  ) : null}
+                                </div>
+                              </label>
+                              <div className="shop-bento-row__menu" ref={menuOpenFor === origIndex ? menuRef : undefined}>
+                                <button
+                                  type="button"
+                                  className="shop-bento-menu-btn"
+                                  aria-label="More"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMenuOpenFor((m) => (m === origIndex ? null : origIndex));
+                                  }}
+                                >
+                                  <span className="material-symbols-outlined">more_vert</span>
+                                </button>
+                                {menuOpenFor === origIndex && (
+                                  <div className="shop-smart-dropdown font-headline">
+                                    <button type="button" onClick={() => hideSmartItem(origIndex)}>
+                                      Remove from list
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  );
+                })}
               </div>
-              {refinedData.likely_pantry.length > 0 && (
-                <div style={smartSectionMutedStyle}>
-                  <button
-                    type="button"
-                    onClick={() => setSmartPantryCollapsed((c) => !c)}
-                    style={categoryHeaderStyle}
-                    aria-expanded={!smartPantryCollapsed}
-                  >
-                    <span style={categoryChevronStyle}>{smartPantryCollapsed ? "▶" : "▼"}</span>
-                    <span style={categoryTitleStyle}>Likely pantry items</span>
-                    <span style={categoryCountStyle}>{refinedData.likely_pantry.length}</span>
-                  </button>
-                  {!smartPantryCollapsed && (
-                    <ul style={listStyle}>
-                      {refinedData.likely_pantry.map((p, i) => (
-                        <li key={i} style={itemWrapStyle}>
-                          <div style={itemRowStyle}>
-                            <span style={nameStyle}>{p.name}</span>
-                            {p.reason && (
-                              <span style={pantryReasonStyle}>{p.reason}</span>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-              {refinedData.remove.length > 0 && (
-                <div style={smartSectionMutedStyle}>
-                  <button
-                    type="button"
-                    onClick={() => setSmartRemovedCollapsed((c) => !c)}
-                    style={categoryHeaderStyle}
-                    aria-expanded={!smartRemovedCollapsed}
-                  >
-                    <span style={categoryChevronStyle}>{smartRemovedCollapsed ? "▶" : "▼"}</span>
-                    <span style={categoryTitleStyle}>Removed (not purchased)</span>
-                    <span style={categoryCountStyle}>{refinedData.remove.length}</span>
-                  </button>
-                  {!smartRemovedCollapsed && (
-                    <ul style={listStyle}>
-                      {refinedData.remove.map((name, i) => (
-                        <li key={i} style={itemWrapStyle}>
-                          <div style={itemRowStyle}>
-                            <span style={removedItemStyle}>{name}</span>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-              <div style={bottomActionsStickyWrap}>
-                <div style={bottomActionsStyle}>
-                  <button
-                    type="button"
-                    onClick={handleGoToStorePreview}
-                    style={primaryButtonStyle}
-                  >
-                    Shop purchase items on {STORE_LABELS[preferredStore]}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCopyList}
-                    style={secondaryButtonStyle}
-                  >
-                    {copied ? "Copied!" : "Copy list"}
-                  </button>
-                </div>
+
+              <div className="shop-smart-actions">
+                <button type="button" className="shop-smart-actions__secondary font-headline" onClick={handleCopyList}>
+                  <span className="material-symbols-outlined">content_copy</span>
+                  {copied ? "Copied!" : "Copy full list"}
+                </button>
+                <button type="button" className="shop-smart-actions__primary font-headline" onClick={handleGoToStorePreview}>
+                  <span className="material-symbols-outlined">store</span>
+                  Shop on {STORE_LABELS[preferredStore]}
+                </button>
+              </div>
+
+              <div className="shop-smart-below-bento">
+                {refinedData.remove.length > 0 && (
+                  <div className="shop-suggest-panel is-muted">
+                    <button
+                      type="button"
+                      className="font-headline"
+                      onClick={() => setSmartRemovedCollapsed((c) => !c)}
+                      aria-expanded={!smartRemovedCollapsed}
+                    >
+                      <div className="shop-suggest-panel__left">
+                        <span className="material-symbols-outlined">delete_sweep</span>
+                        <div>
+                          <h3>Removed items</h3>
+                          <p>{refinedData.remove.length} not purchased</p>
+                        </div>
+                      </div>
+                      <span className="material-symbols-outlined" style={{ transform: smartRemovedCollapsed ? undefined : "rotate(180deg)" }}>
+                        expand_more
+                      </span>
+                    </button>
+                    {!smartRemovedCollapsed && (
+                      <div style={{ padding: "0 1.5rem 1.25rem" }}>
+                        {refinedData.remove.map((name, i) => (
+                          <p key={i} className="shop-row-title is-muted m-0 py-2" style={{ borderBottom: "1px solid var(--surface-container)" }}>
+                            {name}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </>
           ) : (
             <>
-              <div style={selectActionsStyle}>
-                <button type="button" onClick={selectAll} style={selectLinkStyle}>
-                  Select all
-                </button>
-                <span style={selectDividerStyle}>·</span>
-                <button type="button" onClick={deselectAll} style={selectLinkStyle}>
-                  Deselect all
-                </button>
-                <span style={selectDividerStyle}>·</span>
-                <button
-                  type="button"
-                  onClick={handlePrepareSmartList}
-                  disabled={refining}
-                  style={selectLinkStyle}
-                >
-                  {refining ? "Preparing…" : "Prepare Smart Shopping List"}
-                </button>
-              </div>
-              {refineError && (
-                <p style={errorStyle}>{refineError}</p>
-              )}
-              <div style={categoryListStyle}>
-            {CATEGORY_ORDER.map((cat) => {
-              const group = grouped.get(cat) ?? [];
-              if (group.length === 0) return null;
-              const isCollapsed = collapsedCategories.has(cat);
-              return (
-                <div key={cat} style={categoryBlockStyle}>
-                  <button
-                    type="button"
-                    onClick={() => toggleCategory(cat)}
-                    style={categoryHeaderStyle}
-                    aria-expanded={!isCollapsed}
-                  >
-                    <span style={categoryChevronStyle}>{isCollapsed ? "▶" : "▼"}</span>
-                    <span style={categoryTitleStyle}>{cat}</span>
-                    <span style={categoryCountStyle}>{group.length}</span>
-                  </button>
-                  {!isCollapsed && (
-                    <ul style={listStyle}>
-                      {group.map(({ index, item }) => {
-                        const checked = selectedIds.has(index);
-                        return (
-                          <li key={index} style={itemWrapStyle}>
-                            <label style={itemRowStyle}>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleSelected(index)}
-                                style={checkboxStyle}
-                              />
-                              <span style={nameStyle}>{item.name}</span>
-                              {item.total_quantity && (
-                                <span style={qtyStyle}>{item.total_quantity}</span>
-                              )}
-                            </label>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
+              <section className="shop-confirm-hero">
+                <div className="shop-confirm-hero__glow" aria-hidden />
+                <div className="shop-confirm-hero__grid">
+                  <div className="shop-confirm-hero__left">
+                    <div className="shop-confirm-glance__head">
+                      <h3 className="shop-confirm-glance__title font-headline">Your week at a glance</h3>
+                      <span className="shop-confirm-glance__count font-headline">
+                        {planRows.length} {planRows.length === 1 ? "recipe" : "recipes"} total
+                      </span>
+                    </div>
+                    {!hasPlannedMeals ? (
+                      <p className="shop-muted m-0">No recipe slots filled for this range yet.</p>
+                    ) : (
+                      <div>
+                        {mealRowsVisible.map((row, idx) => (
+                          <div key={`${row.date}-${row.slot}-${row.recipeId}-${idx}`} className="shop-confirm-meal">
+                            <div>
+                              <p className="shop-confirm-meal__name font-headline">{row.title}</p>
+                              <div className="shop-confirm-meal__chips">
+                                <span className={chipClassForSlot(row.slot)}>{slotLabel(row.slot)}</span>
+                                <span className="shop-confirm-chip shop-confirm-chip--day">{row.dayShort}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {moreMealsCount > 0 && !planMealsExpanded ? (
+                          <button
+                            type="button"
+                            className="shop-confirm-expand font-headline"
+                            onClick={() => setPlanMealsExpanded(true)}
+                          >
+                            + {moreMealsCount} more {moreMealsCount === 1 ? "recipe" : "recipes"}
+                          </button>
+                        ) : null}
+                        {planMealsExpanded && moreMealsCount > 0 ? (
+                          <button
+                            type="button"
+                            className="shop-confirm-expand font-headline"
+                            onClick={() => setPlanMealsExpanded(false)}
+                          >
+                            Show less
+                          </button>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                  <div className="shop-confirm-hero__right">
+                    <h3 className="shop-confirm-aside__title font-headline">Is this the plan you want to shop for?</h3>
+                    <div className="shop-confirm-stats">
+                      <div className="shop-confirm-stat">
+                        <span className="material-symbols-outlined">restaurant_menu</span>
+                        <div>
+                          <p className="shop-confirm-stat__val">{planRows.length} recipes</p>
+                          <p className="shop-confirm-stat__sub">Planner confirmed</p>
+                        </div>
+                      </div>
+                      <div className="shop-confirm-stat">
+                        <span className="material-symbols-outlined">shopping_basket</span>
+                        <div>
+                          <p className="shop-confirm-stat__val">
+                            ~{items.length} {items.length === 1 ? "ingredient" : "ingredients"}
+                          </p>
+                          <p className="shop-confirm-stat__sub">Unrefined raw list</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="shop-confirm-quote">
+                      <p>
+                        We&apos;ll organize categories, merge duplicates, and suggest pantry staples once you generate the
+                        smart list.
+                      </p>
+                    </div>
+                    {refineError ? <p className="shop-error mb-4 m-0">{refineError}</p> : null}
+                    <div className="shop-confirm-cta-row">
+                      <button
+                        type="button"
+                        className="shop-confirm-primary font-headline"
+                        onClick={handlePrepareSmartList}
+                        disabled={!canPrepareSmart}
+                      >
+                        {refining ? "Preparing…" : "Prepare smart shopping list"}
+                      </button>
+                      <Link href={`/planner?week=${currentWeek}`} className="shop-confirm-back-planner font-headline">
+                        Back to planner
+                      </Link>
+                    </div>
+                    <div className="shop-confirm-hero-img-wrap">
+                      <img
+                        src={SHOP_CONFIRM_HERO_SRC}
+                        alt="Fresh groceries and produce on a kitchen counter"
+                        loading="lazy"
+                      />
+                    </div>
+                  </div>
                 </div>
-              );
-            })}
-              </div>
+              </section>
 
-              <div style={bottomActionsStickyWrap}>
-                <div style={bottomActionsStyle}>
-                  <button
-                    type="button"
-                    onClick={handleShopSelected}
-                    disabled={!hasSelection}
-                    style={primaryButtonStyle}
-                  >
-                    Shop selected items on {STORE_LABELS[preferredStore]}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCopyList}
-                    disabled={!hasSelection}
-                    style={secondaryButtonStyle}
-                  >
-                    {copied ? "Copied!" : "Copy list"}
-                  </button>
-                </div>
-              </div>
+              <section className="shop-confirm-footer-hint" aria-hidden="false">
+                <span className="material-symbols-outlined">auto_stories</span>
+                <p>Awaiting your confirmation</p>
+                <div className="shop-confirm-footer-hint__rule" />
+              </section>
             </>
           )}
         </>
@@ -521,303 +677,9 @@ function ShoppingListPageContent() {
 export default function ShoppingListPage() {
   return (
     <RequireAuth>
-      <div className="app-container">
-        <Suspense fallback={<p style={mutedStyle}>Loading…</p>}>
-          <ShoppingListPageContent />
-        </Suspense>
-      </div>
+      <Suspense fallback={<p className="shop-muted app-container">Loading…</p>}>
+        <ShoppingListPageContent />
+      </Suspense>
     </RequireAuth>
   );
 }
-
-const pageStyle: React.CSSProperties = {
-  minWidth: 0,
-  paddingBottom: "var(--space-24)",
-};
-
-const linkStyle: React.CSSProperties = {
-  color: "var(--accent)",
-};
-
-const h1Style: React.CSSProperties = {
-  fontSize: "var(--font-title)",
-  fontWeight: 600,
-  marginBottom: "var(--space-12)",
-};
-
-const bottomActionsStickyWrap: React.CSSProperties = {
-  position: "sticky",
-  bottom: 0,
-  left: 0,
-  right: 0,
-  marginLeft: "calc(-1 * var(--space-24))",
-  marginRight: "calc(-1 * var(--space-24))",
-  padding: "var(--space-12) var(--space-24)",
-  background: "rgba(15, 15, 14, 0.92)",
-  backdropFilter: "blur(8px)",
-  WebkitBackdropFilter: "blur(8px)",
-  borderTop: "1px solid var(--border)",
-  zIndex: 10,
-};
-
-const weekNavStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "var(--space-12)",
-  marginBottom: "var(--space-8)",
-};
-
-const navButtonStyle: React.CSSProperties = {
-  minHeight: 40,
-  minWidth: 44,
-  padding: "var(--space-8) var(--space-12)",
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-btn)",
-  color: "var(--text)",
-  fontSize: "0.9rem",
-  cursor: "pointer",
-};
-
-const weekLabelStyle: React.CSSProperties = {
-  fontSize: "var(--font-body)",
-  color: "var(--muted)",
-};
-
-const mutedStyle: React.CSSProperties = {
-  color: "var(--muted)",
-  fontSize: "var(--font-body)",
-  marginBottom: "var(--space-16)",
-};
-
-const storeSelectorWrap: React.CSSProperties = {
-  marginBottom: "var(--space-24)",
-};
-
-const storeSelectorLabel: React.CSSProperties = {
-  display: "block",
-  fontSize: "0.85rem",
-  color: "var(--muted)",
-  marginBottom: "var(--space-8)",
-};
-
-const storeSelectorStyle: React.CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: "var(--space-8)",
-};
-
-const storeOptionStyle: React.CSSProperties = {
-  minHeight: 40,
-  padding: "var(--space-8) var(--space-12)",
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-btn)",
-  color: "var(--muted)",
-  fontSize: "0.9rem",
-  cursor: "pointer",
-};
-
-const storeOptionActiveStyle: React.CSSProperties = {
-  background: "var(--accent)",
-  color: "var(--bg)",
-  borderColor: "var(--accent)",
-};
-
-const selectActionsStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "var(--space-12)",
-  marginBottom: "var(--space-16)",
-};
-
-const selectLinkStyle: React.CSSProperties = {
-  minHeight: 40,
-  padding: "0.4rem 0",
-  background: "none",
-  border: "none",
-  color: "var(--accent)",
-  fontSize: "0.9rem",
-  cursor: "pointer",
-};
-
-const selectDividerStyle: React.CSSProperties = {
-  color: "var(--muted)",
-  fontSize: "0.9rem",
-};
-
-const categoryListStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--space-12)",
-  marginBottom: "var(--space-32)",
-};
-
-const smartSectionStyle: React.CSSProperties = {
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-card)",
-  boxShadow: "var(--shadow-card)",
-  overflow: "hidden",
-  marginBottom: "var(--space-24)",
-};
-
-const smartSectionMutedStyle: React.CSSProperties = {
-  ...smartSectionStyle,
-  background: "var(--surface-elevated)",
-  boxShadow: "none",
-  marginTop: "var(--space-16)",
-};
-
-const smartSectionTitleStyle: React.CSSProperties = {
-  fontSize: "var(--font-section)",
-  fontWeight: 500,
-  margin: 0,
-  padding: "var(--space-12) var(--space-16)",
-  background: "var(--bg)",
-  borderBottom: "1px solid var(--border)",
-};
-
-const pantryReasonStyle: React.CSSProperties = {
-  color: "var(--muted)",
-  fontSize: "0.8rem",
-  flexShrink: 0,
-};
-
-const removedItemStyle: React.CSSProperties = {
-  color: "var(--muted)",
-  fontStyle: "italic",
-};
-
-const categoryBlockStyle: React.CSSProperties = {
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-card)",
-  boxShadow: "var(--shadow-card)",
-  overflow: "hidden",
-};
-
-const categoryHeaderStyle: React.CSSProperties = {
-  width: "100%",
-  minHeight: 44,
-  padding: "var(--space-12) var(--space-16)",
-  display: "flex",
-  alignItems: "center",
-  gap: "var(--space-12)",
-  background: "var(--bg)",
-  border: "none",
-  color: "var(--text)",
-  fontSize: "var(--font-section)",
-  fontWeight: 500,
-  cursor: "pointer",
-  textAlign: "left",
-};
-
-const categoryChevronStyle: React.CSSProperties = {
-  fontSize: "0.7rem",
-  color: "var(--muted)",
-};
-
-const categoryTitleStyle: React.CSSProperties = {
-  flex: 1,
-};
-
-const categoryCountStyle: React.CSSProperties = {
-  color: "var(--muted)",
-  fontSize: "0.85rem",
-  fontWeight: 400,
-};
-
-const listStyle: React.CSSProperties = {
-  listStyle: "none",
-  padding: 0,
-  margin: 0,
-};
-
-const itemWrapStyle: React.CSSProperties = {
-  borderTop: "1px solid var(--border)",
-};
-
-const itemRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "var(--space-12)",
-  padding: "var(--space-12) var(--space-16)",
-  minHeight: 48,
-  cursor: "pointer",
-};
-
-const checkboxStyle: React.CSSProperties = {
-  width: 22,
-  height: 22,
-  flexShrink: 0,
-  cursor: "pointer",
-};
-
-const nameStyle: React.CSSProperties = {
-  flex: "1 1 0",
-  minWidth: 0,
-  fontWeight: 500,
-  color: "var(--text-body)",
-};
-
-const qtyStyle: React.CSSProperties = {
-  color: "var(--muted)",
-  fontSize: "0.9rem",
-  flexShrink: 0,
-  marginLeft: "auto",
-};
-
-const suggestedPurchaseStyle: React.CSSProperties = {
-  ...qtyStyle,
-  fontWeight: 500,
-  color: "var(--text-body)",
-};
-
-const bottomActionsStyle: React.CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: "var(--space-12)",
-  maxWidth: 720,
-  margin: "0 auto",
-};
-
-const primaryButtonStyle: React.CSSProperties = {
-  minHeight: 44,
-  padding: "var(--space-12) var(--space-24)",
-  background: "var(--accent)",
-  color: "var(--bg)",
-  border: "none",
-  borderRadius: "var(--radius-btn)",
-  fontSize: "0.95rem",
-  fontWeight: 600,
-  cursor: "pointer",
-};
-
-const secondaryButtonStyle: React.CSSProperties = {
-  minHeight: 44,
-  padding: "var(--space-12) var(--space-24)",
-  background: "transparent",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-btn)",
-  color: "var(--text)",
-  fontSize: "0.95rem",
-  cursor: "pointer",
-};
-
-const emptyStyle: React.CSSProperties = {
-  padding: "var(--space-32)",
-  background: "var(--surface)",
-  borderRadius: "var(--radius-card)",
-  border: "1px dashed var(--border)",
-  color: "var(--muted)",
-};
-
-const emptyHintStyle: React.CSSProperties = {
-  marginTop: "0.5rem",
-  fontSize: "0.9rem",
-};
-
-const errorStyle: React.CSSProperties = {
-  color: "#e57373",
-};

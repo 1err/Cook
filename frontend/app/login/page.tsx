@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { AuthShell } from "../components/AuthShell";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,7 +27,11 @@ export default function LoginPage() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         const detail = data.detail;
-        setError(Array.isArray(detail) ? detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join(" ") || "Login failed" : (detail || "Login failed"));
+        setError(
+          Array.isArray(detail)
+            ? detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join(" ") || "Login failed"
+            : detail || "Login failed",
+        );
         return;
       }
       await refreshUser();
@@ -44,63 +49,58 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={pageStyle}>
-      <h1 style={h1Style}>Log in</h1>
-      <form onSubmit={handleSubmit} style={formStyle}>
-        <label style={labelStyle}>
-          Email
+    <AuthShell
+      title="Welcome back"
+      subtitle="Enter your email and password to open your library and planner."
+      footer={
+        <>
+          New here?{" "}
+          <Link href="/register" style={{ marginLeft: 4 }}>
+            Create an account
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.35rem" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <label className="font-headline" htmlFor="login-email" style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--on-surface)", marginLeft: 4 }}>
+            Email
+          </label>
           <input
+            id="login-email"
+            className="input-editorial"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
             autoComplete="email"
-            style={inputStyle}
+            placeholder="you@example.com"
           />
-        </label>
-        <label style={labelStyle}>
-          Password
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <label className="font-headline" htmlFor="login-password" style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--on-surface)", marginLeft: 4 }}>
+            Password
+          </label>
           <input
+            id="login-password"
+            className="input-editorial"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             autoComplete="current-password"
-            style={inputStyle}
+            placeholder="••••••••"
           />
-        </label>
-        {error && <p style={errorStyle}>{error}</p>}
-        <button type="submit" disabled={loading} style={buttonStyle}>
-          {loading ? "Logging in…" : "Log in"}
+        </div>
+        {error && (
+          <p style={{ margin: 0, color: "var(--error-muted)", fontSize: "0.9rem", fontWeight: 500 }}>
+            {error}
+          </p>
+        )}
+        <button type="submit" className="btn-primary" disabled={loading} style={{ width: "100%", marginTop: "0.25rem" }}>
+          {loading ? "Signing in…" : "Sign in"}
         </button>
       </form>
-      <p style={mutedStyle}>
-        No account? <Link href="/register" style={linkStyle}>Register</Link>
-      </p>
-    </div>
+    </AuthShell>
   );
 }
-
-const pageStyle: React.CSSProperties = { maxWidth: 400 };
-const h1Style: React.CSSProperties = { fontSize: "var(--font-title)", fontWeight: 600, marginBottom: "var(--space-24)" };
-const formStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--space-16)" };
-const labelStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--space-8)", fontSize: "0.9rem" };
-const inputStyle: React.CSSProperties = {
-  padding: "var(--space-12) var(--space-16)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-btn)",
-  fontSize: "1rem",
-};
-const buttonStyle: React.CSSProperties = {
-  padding: "var(--space-12) var(--space-24)",
-  background: "var(--accent)",
-  color: "var(--bg)",
-  border: "none",
-  borderRadius: "var(--radius-btn)",
-  fontWeight: 600,
-  cursor: "pointer",
-  marginTop: "var(--space-8)",
-};
-const errorStyle: React.CSSProperties = { color: "#e57373", margin: 0 };
-const mutedStyle: React.CSSProperties = { color: "var(--muted)", marginTop: "var(--space-24)" };
-const linkStyle: React.CSSProperties = { color: "var(--accent)", fontWeight: 500 };

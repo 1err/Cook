@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { AuthShell } from "../components/AuthShell";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -26,7 +27,11 @@ export default function RegisterPage() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         const detail = data.detail;
-        setError(Array.isArray(detail) ? detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join(" ") || "Registration failed" : (detail || "Registration failed"));
+        setError(
+          Array.isArray(detail)
+            ? detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join(" ") || "Registration failed"
+            : detail || "Registration failed",
+        );
         return;
       }
       await refreshUser();
@@ -44,64 +49,59 @@ export default function RegisterPage() {
   }
 
   return (
-    <div style={pageStyle}>
-      <h1 style={h1Style}>Register</h1>
-      <form onSubmit={handleSubmit} style={formStyle}>
-        <label style={labelStyle}>
-          Email
+    <AuthShell
+      title="Create your account"
+      subtitle="One account for your recipe library, meal planner, and shopping list."
+      footer={
+        <>
+          Already have an account?{" "}
+          <Link href="/login" style={{ marginLeft: 4 }}>
+            Sign in
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.35rem" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <label className="font-headline" htmlFor="register-email" style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--on-surface)", marginLeft: 4 }}>
+            Email
+          </label>
           <input
+            id="register-email"
+            className="input-editorial"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
             autoComplete="email"
-            style={inputStyle}
+            placeholder="you@example.com"
           />
-        </label>
-        <label style={labelStyle}>
-          Password
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <label className="font-headline" htmlFor="register-password" style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--on-surface)", marginLeft: 4 }}>
+            Password
+          </label>
           <input
+            id="register-password"
+            className="input-editorial"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={8}
             autoComplete="new-password"
-            style={inputStyle}
+            placeholder="At least 8 characters"
           />
-        </label>
-        {error && <p style={errorStyle}>{error}</p>}
-        <button type="submit" disabled={loading} style={buttonStyle}>
-          {loading ? "Registering…" : "Register"}
+        </div>
+        {error && (
+          <p style={{ margin: 0, color: "var(--error-muted)", fontSize: "0.9rem", fontWeight: 500 }}>
+            {error}
+          </p>
+        )}
+        <button type="submit" className="btn-primary" disabled={loading} style={{ width: "100%", marginTop: "0.25rem" }}>
+          {loading ? "Creating account…" : "Create account"}
         </button>
       </form>
-      <p style={mutedStyle}>
-        Already have an account? <Link href="/login" style={linkStyle}>Log in</Link>
-      </p>
-    </div>
+    </AuthShell>
   );
 }
-
-const pageStyle: React.CSSProperties = { maxWidth: 400 };
-const h1Style: React.CSSProperties = { fontSize: "var(--font-title)", fontWeight: 600, marginBottom: "var(--space-24)" };
-const formStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--space-16)" };
-const labelStyle: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "var(--space-8)", fontSize: "0.9rem" };
-const inputStyle: React.CSSProperties = {
-  padding: "var(--space-12) var(--space-16)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-btn)",
-  fontSize: "1rem",
-};
-const buttonStyle: React.CSSProperties = {
-  padding: "var(--space-12) var(--space-24)",
-  background: "var(--accent)",
-  color: "var(--bg)",
-  border: "none",
-  borderRadius: "var(--radius-btn)",
-  fontWeight: 600,
-  cursor: "pointer",
-  marginTop: "var(--space-8)",
-};
-const errorStyle: React.CSSProperties = { color: "#e57373", margin: 0 };
-const mutedStyle: React.CSSProperties = { color: "var(--muted)", marginTop: "var(--space-24)" };
-const linkStyle: React.CSSProperties = { color: "var(--accent)", fontWeight: 500 };

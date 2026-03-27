@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { RequireAuth } from "../components/RequireAuth";
 import {
-  type Store,
   STORE_LABELS,
   storeSearchUrl,
   getPreferredStore,
@@ -14,6 +13,26 @@ import {
   type StorePreviewItem,
   buildItemQuery,
 } from "../lib/store";
+
+function previewTags(category: string | undefined): { label: string; variant: "tertiary" | "secondary" | "muted" }[] {
+  const c = (category || "").trim();
+  if (!c || c === "Other") return [{ label: "In stock", variant: "tertiary" }];
+  if (c.includes("Pantry")) {
+    return [
+      { label: "In stock", variant: "tertiary" },
+      { label: "Pantry staple", variant: "secondary" },
+    ];
+  }
+  if (c === "Produce" || c === "Bakery") return [{ label: "Fresh", variant: "tertiary" }];
+  if (c === "Dairy" || c === "Frozen") return [{ label: "In stock", variant: "tertiary" }];
+  if (c === "Meat & Seafood") return [{ label: "Fresh", variant: "tertiary" }];
+  return [{ label: "In stock", variant: "tertiary" }];
+}
+
+function thumbInitial(name: string): string {
+  const t = name.trim();
+  return t ? t.charAt(0).toUpperCase() : "?";
+}
 
 function StorePreviewPageContent() {
   const router = useRouter();
@@ -46,7 +65,9 @@ function StorePreviewPageContent() {
           const suggested_purchase = typeof (x as { suggested_purchase?: unknown }).suggested_purchase === "string"
             ? (x as { suggested_purchase: string }).suggested_purchase
             : "";
-          list.push({ name, suggested_purchase });
+          const category =
+            typeof (x as { category?: unknown }).category === "string" ? (x as { category: string }).category : undefined;
+          list.push({ name, suggested_purchase, category });
         }
       }
       setItems(list);
@@ -81,60 +102,94 @@ function StorePreviewPageContent() {
     }
   }
 
-  if (!ready) return <p style={mutedStyle}>Loading…</p>;
+  if (!ready) return <p className="store-preview-muted">Loading…</p>;
 
   if (items.length === 0) {
     return (
-      <div style={pageStyle}>
-        <p style={mutedStyle}>No items to preview.</p>
-        <Link href="/shopping-list" style={linkStyle}>
-          ← Back to shopping list
+      <div className="store-preview-page">
+        <p className="store-preview-muted">No items to preview.</p>
+        <Link href="/shopping-list" className="store-preview-link">
+          Back to shopping list
         </Link>
       </div>
     );
   }
 
+  const storeLabel = STORE_LABELS[store];
+  const searchCta = `Search on ${storeLabel}`;
+
   return (
-    <div style={pageStyle}>
-      <div style={headerStyle}>
-        <button type="button" onClick={handleBack} style={backButtonStyle} aria-label="Back to shopping list">
-          ←
+    <div className="store-preview-page">
+      <header className="store-preview-header">
+        <button type="button" className="store-preview-back font-headline" onClick={handleBack}>
+          <span className="material-symbols-outlined">arrow_back</span>
+          <span>Back to Shopping List</span>
         </button>
-        <h1 style={h1Style}>Store preview</h1>
-      </div>
-      <div style={storeBadgeWrap}>
-        <span style={storeBadgeStyle}>{STORE_LABELS[store]}</span>
-      </div>
+        <div className="store-preview-header__row">
+          <div>
+            <h1 className="store-preview-title font-headline">Store Preview</h1>
+            <p className="store-preview-sub">Review and export your curated ingredient list.</p>
+          </div>
+          <div className="store-preview-store-pill">
+            <span className="store-preview-store-pill__name">{storeLabel}</span>
+            <span className="store-preview-store-pill__rule" aria-hidden />
+            <span className="store-preview-store-pill__badge font-headline">Selected store</span>
+          </div>
+        </div>
+      </header>
 
-      <p style={mutedStyle}>
-        Tap &quot;Search on {STORE_LABELS[store]}&quot; to open each item in a new tab.
-      </p>
-
-      <ul style={listStyle}>
-        {items.map((item, i) => (
-          <li key={i} style={cardStyle}>
-            <div style={cardBodyStyle}>
-              <span style={itemNameStyle}>{item.name}</span>
-              {item.suggested_purchase && (
-                <span style={suggestedStyle}>{item.suggested_purchase}</span>
-              )}
+      <section className="store-preview-list" aria-label="Items to shop">
+        {items.map((item, i) => {
+          const tags = previewTags(item.category);
+          return (
+            <div key={i} className="store-preview-card">
+              <div className="store-preview-card__main">
+                <div className="store-preview-card__thumb" aria-hidden>
+                  <span className="store-preview-card__thumb-letter font-headline">{thumbInitial(item.name)}</span>
+                </div>
+                <div className="store-preview-card__body">
+                  <h3 className="store-preview-card__name font-headline">{item.name}</h3>
+                  {item.suggested_purchase ? (
+                    <p className="store-preview-card__suggested">Suggested: {item.suggested_purchase}</p>
+                  ) : null}
+                  <div className="store-preview-card__tags">
+                    {tags.map((t) => (
+                      <span key={t.label} className={`store-preview-tag store-preview-tag--${t.variant} font-headline`}>
+                        {t.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="store-preview-search-btn font-headline"
+                onClick={() => openItemSearch(item)}
+              >
+                <span>{searchCta}</span>
+                <span className="material-symbols-outlined store-preview-search-btn__icon">open_in_new</span>
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => openItemSearch(item)}
-              style={searchButtonStyle}
-            >
-              Search on {STORE_LABELS[store]}
-            </button>
-          </li>
-        ))}
-      </ul>
+          );
+        })}
+      </section>
 
-      <div style={bottomStyle}>
-        <button type="button" onClick={openAll} style={openAllButtonStyle}>
-          Open all in {STORE_LABELS[store]}
-        </button>
-      </div>
+      <footer className="store-preview-footer">
+        <h2 className="store-preview-footer__title font-headline">Ready to purchase?</h2>
+        <p className="store-preview-footer__sub">
+          We&apos;ll open a search on {storeLabel} with your {items.length} item{items.length === 1 ? "" : "s"} so you can
+          check out quickly.
+        </p>
+        <div className="store-preview-footer__actions">
+          <button type="button" className="store-preview-footer__primary font-headline" onClick={openAll}>
+            <span className="material-symbols-outlined">shopping_basket</span>
+            <span>Open all in {storeLabel}</span>
+          </button>
+          <Link href="/shopping-list" className="store-preview-footer__secondary font-headline">
+            Back to Shopping List
+          </Link>
+        </div>
+      </footer>
     </div>
   );
 }
@@ -142,131 +197,9 @@ function StorePreviewPageContent() {
 export default function StorePreviewPage() {
   return (
     <RequireAuth>
-      <Suspense fallback={<p style={mutedStyle}>Loading…</p>}>
+      <Suspense fallback={<p className="store-preview-muted">Loading…</p>}>
         <StorePreviewPageContent />
       </Suspense>
     </RequireAuth>
   );
 }
-
-const pageStyle: React.CSSProperties = {
-  minWidth: 0,
-};
-
-const mutedStyle: React.CSSProperties = {
-  color: "var(--muted)",
-  fontSize: "var(--font-body)",
-  marginBottom: "var(--space-24)",
-};
-
-const linkStyle: React.CSSProperties = {
-  color: "var(--accent)",
-  fontWeight: 500,
-};
-
-const headerStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "var(--space-12)",
-  marginBottom: "var(--space-8)",
-};
-
-const storeBadgeWrap: React.CSSProperties = {
-  marginBottom: "var(--space-24)",
-};
-
-const storeBadgeStyle: React.CSSProperties = {
-  display: "inline-block",
-  padding: "var(--space-8) var(--space-16)",
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-btn)",
-  fontSize: "0.9rem",
-  fontWeight: 500,
-  color: "var(--muted)",
-};
-
-const backButtonStyle: React.CSSProperties = {
-  minWidth: 44,
-  minHeight: 44,
-  padding: 0,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-btn)",
-  color: "var(--text)",
-  fontSize: "1.25rem",
-  cursor: "pointer",
-};
-
-const h1Style: React.CSSProperties = {
-  fontSize: "var(--font-title)",
-  fontWeight: 600,
-  margin: 0,
-};
-
-const listStyle: React.CSSProperties = {
-  listStyle: "none",
-  padding: 0,
-  margin: "0 0 var(--space-32) 0",
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--space-16)",
-};
-
-const cardStyle: React.CSSProperties = {
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-card)",
-  padding: "var(--space-16) var(--space-24)",
-  boxShadow: "var(--shadow-card)",
-};
-
-const cardBodyStyle: React.CSSProperties = {
-  marginBottom: "var(--space-16)",
-};
-
-const itemNameStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: "1.1rem",
-  fontWeight: 600,
-  marginBottom: "0.25rem",
-};
-
-const suggestedStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: "0.9rem",
-  color: "var(--muted)",
-};
-
-const searchButtonStyle: React.CSSProperties = {
-  width: "100%",
-  minHeight: 44,
-  padding: "var(--space-12) var(--space-24)",
-  background: "var(--accent)",
-  color: "var(--bg)",
-  border: "none",
-  borderRadius: "var(--radius-btn)",
-  fontSize: "0.95rem",
-  fontWeight: 600,
-  cursor: "pointer",
-};
-
-const bottomStyle: React.CSSProperties = {
-  paddingTop: "var(--space-12)",
-};
-
-const openAllButtonStyle: React.CSSProperties = {
-  width: "100%",
-  minHeight: 44,
-  padding: "var(--space-12) var(--space-24)",
-  background: "var(--accent)",
-  color: "var(--bg)",
-  border: "none",
-  borderRadius: "var(--radius-btn)",
-  fontSize: "0.95rem",
-  fontWeight: 600,
-  cursor: "pointer",
-};

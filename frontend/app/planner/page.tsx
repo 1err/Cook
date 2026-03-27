@@ -1,29 +1,32 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
 import type { Recipe } from "../types";
-import { getWeekBounds, getPrevNextWeek, formatWeekLabel } from "../lib/week";
+import { getWeekBounds, getPrevNextWeek, formatWeekPlannerKicker } from "../lib/week";
 
-const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const COL_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const SLOTS = ["breakfast", "lunch", "dinner"] as const;
 type MealType = (typeof SLOTS)[number];
 
-/** Normalize recipe_ids to exactly 3 elements: [breakfast, lunch, dinner]. Use "" for empty. */
 function normalizeSlots(recipeIds: string[]): [string, string, string] {
   const [a = "", b = "", c = ""] = recipeIds;
   return [a, b, c];
 }
 
-function formatDayLabel(dateStr: string): string {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const date = new Date(y, m - 1, d);
-  const day = date.getDay();
-  const name = DAY_NAMES[day === 0 ? 6 : day - 1];
-  return `${name} ${m}/${d}`;
+function todayYmd(): string {
+  const n = new Date();
+  const y = n.getFullYear();
+  const m = String(n.getMonth() + 1).padStart(2, "0");
+  const d = String(n.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function dayOfMonth(dateStr: string): number {
+  return Number(dateStr.split("-")[2]);
 }
 
 function PlannerPageContent() {
@@ -32,25 +35,19 @@ function PlannerPageContent() {
   const weekParam = searchParams.get("week");
   const { start, end, dates, weekParam: currentWeek } = getWeekBounds(weekParam);
   const { prev, next } = getPrevNextWeek(currentWeek);
+  const today = todayYmd();
 
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [planByDate, setPlanByDate] = useState<Record<string, [string, string, string]>>({});
   const [loading, setLoading] = useState(true);
   const [draggingSlot, setDraggingSlot] = useState<{ date: string; slot: MealType } | null>(null);
+  const [sideSearch, setSideSearch] = useState("");
 
-  const fetchPlans = async () => {
-    const res = await apiFetch(`/meal-plan?start=${start}&end=${end}`);
-    if (!res.ok) return;
-    const plans: { date: string; recipe_ids: string[] }[] = await res.json();
-    const nextPlan: Record<string, [string, string, string]> = {};
-    plans.forEach((p) => {
-      nextPlan[p.date] = normalizeSlots(p.recipe_ids);
-    });
-    dates.forEach((d) => {
-      if (!nextPlan[d]) nextPlan[d] = ["", "", ""];
-    });
-    setPlanByDate(nextPlan);
-  };
+  const sidebarRecipes = useMemo(() => {
+    const q = sideSearch.trim().toLowerCase();
+    if (!q) return recipes;
+    return recipes.filter((r) => r.title.toLowerCase().includes(q));
+  }, [recipes, sideSearch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,18 +129,18 @@ function PlannerPageContent() {
     const recipeId = e.dataTransfer.getData("recipeId");
     if (!recipeId) return;
     const current = planByDate[date] ?? ["", "", ""];
-    const next: [string, string, string] = [...current];
-    next[slotIndex] = recipeId;
-    setPlanByDate((prev) => ({ ...prev, [date]: next }));
-    await putDay(date, next);
+    const nextSlots: [string, string, string] = [...current];
+    nextSlots[slotIndex] = recipeId;
+    setPlanByDate((prev) => ({ ...prev, [date]: nextSlots }));
+    await putDay(date, nextSlots);
   }
 
   async function removeMeal(date: string, slotIndex: number) {
     const current = planByDate[date] ?? ["", "", ""];
-    const next: [string, string, string] = [...current];
-    next[slotIndex] = "";
-    setPlanByDate((prev) => ({ ...prev, [date]: next }));
-    await putDay(date, next);
+    const nextSlots: [string, string, string] = [...current];
+    nextSlots[slotIndex] = "";
+    setPlanByDate((prev) => ({ ...prev, [date]: nextSlots }));
+    await putDay(date, nextSlots);
   }
 
   const recipeById: Record<string, Recipe> = {};
@@ -153,112 +150,216 @@ function PlannerPageContent() {
     router.push(`/planner?week=${week}`);
   }
 
-  if (loading) return <p style={mutedStyle}>Loading…</p>;
+  if (loading) return <p className="planner-muted app-wide">Loading…</p>;
 
   return (
-    <div style={pageStyle}>
-      <div style={headerRowStyle}>
-        <h1 style={h1Style}>Weekly Meal Planner</h1>
-        <div style={weekNavStyle}>
-          <button type="button" onClick={() => setWeek(prev)} style={navButtonStyle} aria-label="Previous week">
-            ← Prev
-          </button>
-          <span style={weekBadgeStyle}>{formatWeekLabel(start, end)}</span>
-          <button type="button" onClick={() => setWeek(next)} style={navButtonStyle} aria-label="Next week">
-            Next →
-          </button>
+    <div className="planner-editorial app-wide" style={{ padding: 0, maxWidth: "100%" }}>
+      <aside className="planner-editorial__sidebar">
+        <div className="p-6 pb-4 space-y-4">
+          <div>
+            <h2 className="font-headline m-0 mb-2" style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--on-surface)", letterSpacing: "-0.02em" }}>
+              Your saved recipes
+            </h2>
+            <p className="m-0 text-sm" style={{ color: "var(--on-surface-variant)" }}>
+              Drag and drop into your week.
+            </p>
+          </div>
+          <div className="planner-editorial__search">
+            <span className="material-symbols-outlined">search</span>
+            <input
+              type="search"
+              placeholder="Search library…"
+              value={sideSearch}
+              onChange={(e) => setSideSearch(e.target.value)}
+              aria-label="Search recipes for planner"
+            />
+          </div>
         </div>
-      </div>
-      <p style={mutedStyle}>
-        Drag recipes from the list into a meal slot. Click a planned meal to remove it.
-      </p>
+        <div className="planner-editorial__sidebar-scroll">
+          {sidebarRecipes.map((r) => (
+            <div
+              key={r.id}
+              draggable
+              onDragStart={(e) => handleDragStart(e, r.id)}
+              className="planner-drag-card"
+            >
+              <div className="planner-drag-card__thumb">
+                {r.thumbnail_url ? <img src={r.thumbnail_url} alt="" /> : null}
+              </div>
+              <div className="planner-drag-card__body">
+                <h4 className="planner-drag-card__title font-headline">{r.title}</h4>
+              </div>
+            </div>
+          ))}
+          {recipes.length === 0 && (
+            <p className="m-0" style={{ fontSize: "0.875rem", color: "var(--on-surface-variant)" }}>
+              <Link href="/import" className="font-bold">
+                Import recipes
+              </Link>{" "}
+              to plan your week.
+            </p>
+          )}
+        </div>
+        <div className="planner-editorial__sidebar-foot">
+          <Link href="/import" className="btn-primary font-headline w-full flex items-center justify-center gap-2" style={{ width: "100%", textDecoration: "none" }}>
+            <span className="material-symbols-outlined">add</span>
+            New recipe
+          </Link>
+        </div>
+      </aside>
 
-      <div style={twoColStyle}>
-        <aside style={leftPanelStyle}>
-          <h2 style={panelTitleStyle}>Recipes</h2>
-          <ul style={recipeListStyle}>
-            {recipes.map((r) => (
-              <li
+      <main className="planner-editorial__main">
+        <section className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div className="min-w-0">
+            <span
+              className="font-headline font-bold text-primary block mb-1 uppercase"
+              style={{ fontSize: "0.75rem", letterSpacing: "0.2em" }}
+            >
+              {formatWeekPlannerKicker(start, end)}
+            </span>
+            <h1
+              className="font-headline m-0 text-on-surface"
+              style={{
+                fontSize: "clamp(2.25rem, 4vw, 3rem)",
+                fontWeight: 800,
+                letterSpacing: "-0.03em",
+                lineHeight: 1.05,
+              }}
+            >
+              Weekly planner
+            </h1>
+            <p className="m-0 mt-2 text-sm max-w-xl" style={{ color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
+              Drag recipes from the sidebar into breakfast, lunch, and dinner.{" "}
+              <Link href={`/shopping-list?week=${currentWeek}`} className="font-bold" style={{ color: "var(--primary)" }}>
+                Shopping list
+              </Link>{" "}
+              uses this week&apos;s plan.
+            </p>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button
+              type="button"
+              className="transition-colors border-0 cursor-pointer"
+              style={{
+                padding: "0.5rem",
+                background: "var(--surface-container-low)",
+                borderRadius: "9999px",
+                color: "var(--on-surface-variant)",
+              }}
+              onClick={() => setWeek(prev)}
+              aria-label="Previous week"
+            >
+              <span className="material-symbols-outlined">chevron_left</span>
+            </button>
+            <button
+              type="button"
+              className="transition-colors border-0 cursor-pointer"
+              style={{
+                padding: "0.5rem",
+                background: "var(--surface-container-low)",
+                borderRadius: "9999px",
+                color: "var(--on-surface-variant)",
+              }}
+              onClick={() => setWeek(next)}
+              aria-label="Next week"
+            >
+              <span className="material-symbols-outlined">chevron_right</span>
+            </button>
+          </div>
+        </section>
+
+        <div className="planner-mobile-tray" aria-label="Recipes to drag">
+          <div className="planner-mobile-tray__inner">
+            {sidebarRecipes.map((r) => (
+              <div
                 key={r.id}
                 draggable
                 onDragStart={(e) => handleDragStart(e, r.id)}
-                style={draggableCardStyle}
+                className="planner-drag-card"
               >
-                <div style={miniThumbStyle}>
-                  {r.thumbnail_url ? (
-                    <img src={r.thumbnail_url} alt="" style={miniThumbImgStyle} />
-                  ) : (
-                    <div style={miniPlaceholderStyle} />
-                  )}
+                <div className="planner-drag-card__thumb">
+                  {r.thumbnail_url ? <img src={r.thumbnail_url} alt="" /> : null}
                 </div>
-                <span style={miniTitleStyle}>{r.title}</span>
-              </li>
-            ))}
-          </ul>
-          {recipes.length === 0 && (
-            <p style={mutedStyle}>
-              <Link href="/import" style={linkStyle}>Import recipes</Link> to add them here.
-            </p>
-          )}
-        </aside>
-
-        <div style={gridWrapStyle}>
-          <div style={gridTableStyle}>
-            <div style={gridCellStyle} />
-            {SLOTS.map((s) => (
-              <div key={s} style={gridCellStyle}>
-                <span style={slotLabelStyle}>{s}</span>
+                <div className="planner-drag-card__body">
+                  <h4 className="planner-drag-card__title font-headline">{r.title}</h4>
+                </div>
               </div>
             ))}
-            {dates.flatMap((date) => {
-              const row: React.ReactNode[] = [
-                <div key={`${date}-day`} style={gridCellStyle}>
-                  <strong style={dayLabelStyle}>{formatDayLabel(date)}</strong>
-                </div>,
-              ];
-              SLOTS.forEach((slot, slotIndex) => {
-                const recipeId = (planByDate[date] ?? ["", "", ""])[slotIndex];
-                const recipe = recipeId ? recipeById[recipeId] : null;
-                const isHighlight = draggingSlot?.date === date && draggingSlot?.slot === slot;
-                row.push(
-                  <div
-                    key={`${date}-${slotIndex}`}
-                    data-date={date}
-                    data-slot-index={String(slotIndex)}
-                    style={{
-                      ...gridCellStyle,
-                      ...slotCellStyle,
-                      ...(isHighlight ? slotCellHighlightStyle : {}),
-                    }}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                  >
-                    {recipe ? (
-                      <div
-                        style={plannedCardStyle}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeMeal(date, slotIndex);
-                        }}
-                        title="Click to remove"
-                      >
-                        {recipe.thumbnail_url && (
-                          <img src={recipe.thumbnail_url} alt="" style={plannedThumbStyle} />
-                        )}
-                        <span style={plannedTitleStyle}>{recipe.title}</span>
-                      </div>
-                    ) : (
-                      <span style={emptySlotStyle}>Drop here</span>
-                    )}
-                  </div>
-                );
-              });
-              return row;
-            })}
           </div>
         </div>
-      </div>
+
+        <div className="planner-editorial__grid">
+          {dates.map((date, dayIndex) => {
+            const isToday = date === today;
+            return (
+              <div key={date} className="flex flex-col gap-4 min-w-0">
+                <div className={`planner-editorial__day-head${isToday ? " is-today" : ""}`}>
+                  <p className="dow font-headline">{COL_SHORT[dayIndex]}</p>
+                  <p className="dom">{dayOfMonth(date)}</p>
+                </div>
+                <div className="planner-editorial__day-body">
+                  {SLOTS.map((slot, slotIndex) => {
+                    const recipeId = (planByDate[date] ?? ["", "", ""])[slotIndex];
+                    const recipe = recipeId ? recipeById[recipeId] : null;
+                    const isHighlight = draggingSlot?.date === date && draggingSlot?.slot === slot;
+                    return (
+                      <div key={slot} className="planner-slot-stack">
+                        <span className={`planner-slot-stack__label font-headline ${slot}`}>{slot}</span>
+                        {recipe ? (
+                          <div className="relative" style={{ flex: 1, minHeight: "9rem" }}>
+                            <button
+                              type="button"
+                              className="planner-meal-card w-full h-full"
+                              onClick={() => removeMeal(date, slotIndex)}
+                              title="Tap to remove"
+                            >
+                              {recipe.thumbnail_url ? (
+                                <img src={recipe.thumbnail_url} alt="" className="planner-meal-card__img" />
+                              ) : (
+                                <div
+                                  className="planner-meal-card__img"
+                                  style={{
+                                    background: "linear-gradient(145deg, var(--primary-fixed), var(--surface-container-high))",
+                                  }}
+                                />
+                              )}
+                              <div className="planner-meal-card__body">
+                                <p className="planner-meal-card__title font-headline">{recipe.title}</p>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              className="planner-meal-card__clear"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeMeal(date, slotIndex);
+                              }}
+                              aria-label="Remove meal"
+                            >
+                              <span className="material-symbols-outlined text-sm">close</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <div
+                            data-date={date}
+                            data-slot-index={String(slotIndex)}
+                            className={`planner-drop-target flex-1${isHighlight ? " is-drag-over" : ""}`}
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                          >
+                            <span className="material-symbols-outlined text-2xl opacity-40">add</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </main>
     </div>
   );
 }
@@ -266,212 +367,9 @@ function PlannerPageContent() {
 export default function PlannerPage() {
   return (
     <RequireAuth>
-      <div className="app-wide">
-        <Suspense fallback={<p style={mutedStyle}>Loading…</p>}>
-          <PlannerPageContent />
-        </Suspense>
-      </div>
+      <Suspense fallback={<p className="planner-muted app-wide">Loading…</p>}>
+        <PlannerPageContent />
+      </Suspense>
     </RequireAuth>
   );
 }
-
-const pageStyle: React.CSSProperties = { minWidth: 0 };
-
-const headerRowStyle: React.CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "var(--space-16)",
-  marginBottom: "var(--space-12)",
-};
-
-const h1Style: React.CSSProperties = {
-  fontSize: "var(--font-title)",
-  fontWeight: 600,
-  margin: 0,
-};
-
-const weekNavStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "var(--space-12)",
-};
-
-const navButtonStyle: React.CSSProperties = {
-  minHeight: 36,
-  padding: "var(--space-8) var(--space-12)",
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-btn)",
-  color: "var(--text)",
-  fontSize: "0.85rem",
-  cursor: "pointer",
-};
-
-const weekBadgeStyle: React.CSSProperties = {
-  padding: "var(--space-8) var(--space-16)",
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-btn)",
-  fontSize: "var(--font-section)",
-  fontWeight: 500,
-  color: "var(--text)",
-};
-
-const mutedStyle: React.CSSProperties = {
-  color: "var(--muted)",
-  fontSize: "var(--font-body)",
-  marginBottom: "var(--space-24)",
-};
-
-const twoColStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "200px 1fr",
-  gap: "var(--space-24)",
-  alignItems: "start",
-};
-
-const leftPanelStyle: React.CSSProperties = {
-  position: "sticky",
-  top: "var(--space-24)",
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-card)",
-  padding: "var(--space-16)",
-  boxShadow: "var(--shadow-card)",
-};
-
-const panelTitleStyle: React.CSSProperties = {
-  fontSize: "var(--font-section)",
-  fontWeight: 600,
-  marginBottom: "var(--space-12)",
-};
-
-const recipeListStyle: React.CSSProperties = {
-  listStyle: "none",
-  padding: 0,
-  margin: 0,
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--space-8)",
-};
-
-const draggableCardStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "var(--space-8)",
-  padding: "var(--space-8)",
-  background: "var(--bg)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-btn)",
-  cursor: "grab",
-};
-
-const miniThumbStyle: React.CSSProperties = {
-  width: 40,
-  height: 40,
-  borderRadius: 6,
-  overflow: "hidden",
-  flexShrink: 0,
-};
-
-const miniThumbImgStyle: React.CSSProperties = {
-  width: "100%",
-  height: "100%",
-  objectFit: "cover",
-};
-
-const miniPlaceholderStyle: React.CSSProperties = {
-  width: "100%",
-  height: "100%",
-  background: "var(--border)",
-};
-
-const miniTitleStyle: React.CSSProperties = {
-  fontSize: "0.9rem",
-  fontWeight: 500,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-const linkStyle: React.CSSProperties = { color: "var(--accent)" };
-
-const gridWrapStyle: React.CSSProperties = {
-  overflowX: "auto",
-  minWidth: 0,
-};
-
-/** 4 cols (day + breakfast + lunch + dinner), 8 rows (header + 7 days). Full width. */
-const gridTableStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "140px repeat(3, 1fr)",
-  gridTemplateRows: "auto repeat(7, minmax(80px, auto))",
-  width: "100%",
-  gap: 0,
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-card)",
-  overflow: "hidden",
-  background: "var(--border)",
-};
-
-const gridCellStyle: React.CSSProperties = {
-  background: "var(--surface)",
-  padding: "var(--space-12)",
-  border: "1px solid var(--border)",
-};
-
-const slotLabelStyle: React.CSSProperties = {
-  fontSize: "0.8rem",
-  fontWeight: 600,
-  textTransform: "capitalize",
-  color: "var(--muted)",
-};
-
-const dayLabelStyle: React.CSSProperties = {
-  fontSize: "0.9rem",
-};
-
-const slotCellStyle: React.CSSProperties = {
-  minHeight: 80,
-  transition: "background 0.15s ease",
-};
-
-const slotCellHighlightStyle: React.CSSProperties = {
-  background: "var(--surface-elevated)",
-  outline: "2px solid var(--accent)",
-  outlineOffset: -2,
-};
-
-const emptySlotStyle: React.CSSProperties = {
-  color: "var(--muted)",
-  fontSize: "0.85rem",
-};
-
-const plannedCardStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "var(--space-8)",
-  padding: "var(--space-8)",
-  background: "var(--bg)",
-  borderRadius: "var(--radius-btn)",
-  cursor: "pointer",
-  border: "1px solid transparent",
-};
-
-const plannedThumbStyle: React.CSSProperties = {
-  width: 36,
-  height: 36,
-  borderRadius: 6,
-  objectFit: "cover",
-  flexShrink: 0,
-};
-
-const plannedTitleStyle: React.CSSProperties = {
-  fontSize: "0.85rem",
-  fontWeight: 500,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
