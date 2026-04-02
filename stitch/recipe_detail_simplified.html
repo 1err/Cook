@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface": "#faf9f8",
+              "on-primary-fixed-variant": "#7c2e19",
+              "primary-fixed": "#ffdbd2",
+              "on-tertiary-fixed-variant": "#005144",
+              "on-error-container": "#93000a",
+              "tertiary": "#006b5b",
+              "on-surface-variant": "#55423e",
+              "on-secondary-container": "#5e617d",
+              "surface-container": "#eeeeed",
+              "primary-container": "#e07a5f",
+              "tertiary-fixed-dim": "#5edbc1",
+              "on-tertiary": "#ffffff",
+              "secondary-fixed-dim": "#c2c4e5",
+              "inverse-primary": "#ffb4a1",
+              "surface-container-low": "#f4f3f2",
+              "outline-variant": "#dbc1ba",
+              "surface-tint": "#9a442d",
+              "on-primary": "#ffffff",
+              "outline": "#88726d",
+              "error-container": "#ffdad6",
+              "primary": "#9a442d",
+              "on-secondary": "#ffffff",
+              "primary-fixed-dim": "#ffb4a1",
+              "on-tertiary-fixed": "#00201a",
+              "on-background": "#1a1c1c",
+              "tertiary-container": "#19a992",
+              "surface-variant": "#e3e2e1",
+              "surface-dim": "#dadad9",
+              "on-primary-container": "#5b1604",
+              "background": "#faf9f8",
+              "surface-container-lowest": "#ffffff",
+              "on-surface": "#1a1c1c",
+              "on-primary-fixed": "#3c0800",
+              "surface-bright": "#faf9f8",
+              "error": "#ba1a1a",
+              "surface-container-high": "#e9e8e7",
+              "inverse-on-surface": "#f1f0f0",
+              "secondary-fixed": "#dfe0ff",
+              "secondary-container": "#dcddff",
+              "on-tertiary-container": "#00362d",
+              "secondary": "#5a5c79",
+              "on-error": "#ffffff",
+              "inverse-surface": "#2f3130",
+              "surface-container-highest": "#e3e2e1",
+              "tertiary-fixed": "#7df7dd",
+              "on-secondary-fixed-variant": "#424560",
+              "on-secondary-fixed": "#161a32"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #faf9f8;
+        color: #1a1c1c;
+      }
+      .editorial-title {
+        font-family: 'Manrope', sans-serif;
+      }
+    </style>
+</head>
+<body class="bg-surface text-on-surface antialiased">
+<!-- Top Navigation Bar -->
+<header class="bg-[#faf9f8] dark:bg-[#1a1c1c] transition-colors duration-300 shadow-[0px_12px_32px_rgba(26,28,28,0.04)] top-0 sticky z-50">
+<nav class="flex justify-between items-center w-full px-6 py-4 max-w-screen-2xl mx-auto">
+<div class="flex items-center gap-8">
+<span class="text-2xl font-extrabold tracking-tighter text-[#1a1c1c] dark:text-[#faf9f8] editorial-title">The Culinary Editorial</span>
+<div class="hidden md:flex gap-6 items-center">
+<a class="font-['Manrope'] font-bold text-lg tracking-tight text-[#9a442d] dark:text-[#e07a5f] border-b-2 border-[#9a442d] pb-1" href="#">Recipes</a>
+<a class="font-['Manrope'] font-bold text-lg tracking-tight text-[#55423e] dark:text-[#dadad9] hover:text-[#9a442d] transition-all duration-200" href="#">Planner</a>
+<a class="font-['Manrope'] font-bold text-lg tracking-tight text-[#55423e] dark:text-[#dadad9] hover:text-[#9a442d] transition-all duration-200" href="#">Vault</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden sm:flex items-center bg-surface-container-high px-4 py-2 rounded-full">
+<span class="material-symbols-outlined text-on-surface-variant text-sm" data-icon="search">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-sm font-medium w-48 text-on-surface" placeholder="Search archives..." type="text"/>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer" data-icon="notifications">notifications</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer" data-icon="shopping_cart">shopping_cart</span>
+<img alt="User profile" class="w-8 h-8 rounded-full object-cover border border-outline-variant/20" data-alt="close-up portrait of a professional chef" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAy836V99diN410Ylcx24bJXi0YcHyMdCKCMjuYF0Vvdcigw-Ikazc4EVa0b412cw5ZekN1vVE1RRVuBgopXsYw1l1VFOXCklTxs0QETS9dWG5T2hsXD7dZ7sBhmndM6OwhydmPckkxo0rRWX2XyFXu5gDSlOfGwvsMk4SflXQhL89jvl_F4-UYjIx6YU5MtserJw-JMi6wKkfVhSyRA0L-h-5KIBg3nbdZALWub54YGQnjgMNZ7OKMPMFIj011H2hucj1KsZW_Fc5Z"/>
+</div>
+</nav>
+</header>
+<main class="max-w-screen-xl mx-auto px-6 py-12">
+<!-- Hero Section: Full Width Header Image -->
+<div class="w-full mb-12">
+<div class="rounded-2xl overflow-hidden aspect-[21/9] shadow-xl">
+<img class="w-full h-full object-cover" data-alt="high-angle shot of a rustic tomato tart on a marble table" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBCmH2kZHpymU9l07gOliui5PCPkCLcehCymw_L5FDw4-A_oe3IE4yaStCjQNXuvyQi6ihWvPFaUPS-YeN3xWLRIBwyxGBjeyb3Ij-ACKqhU6AYMC9PTydkuNZbbrch3W2N94WnvHgJLHcorGs1G-LcQMko6CeFtSUMk6r6kHcTrZ_7DIeSag20aSjCPICFcXtO_p0-dm4IA5gejB2yg73JmL9y2uriVhIvfwMFkOc1kTXUI7IngehkOEC8ffljuqcS3PYMUGu7Rj67"/>
+</div>
+</div>
+<!-- Recipe Header Content -->
+<div class="max-w-3xl mx-auto text-center mb-16">
+<div class="flex justify-center gap-3 mb-6">
+<span class="bg-tertiary-container/10 text-tertiary px-4 py-1.5 rounded-full text-xs font-bold tracking-widest uppercase">Mediterranean</span>
+<span class="bg-primary-container/10 text-primary px-4 py-1.5 rounded-full text-xs font-bold tracking-widest uppercase">30 Mins</span>
+</div>
+<h1 class="editorial-title text-4xl md:text-6xl font-extrabold text-on-surface leading-tight tracking-tighter mb-8">
+                Roasted <span class="text-primary italic font-serif">Heirloom</span> Tomato Tart
+            </h1>
+<p class="text-xl text-on-surface-variant leading-relaxed font-light mb-10">
+                A celebration of peak-summer produce. Flaky, butter-laced pastry topped with slow-roasted tomatoes, fresh thyme, and a hint of wild honey.
+            </p>
+<div class="grid grid-cols-3 gap-8 py-8 border-y border-outline-variant/10">
+<div>
+<p class="text-[10px] uppercase tracking-widest text-outline font-black mb-1">Complexity</p>
+<p class="font-headline font-bold text-on-surface text-lg">Intermediate</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-widest text-outline font-black mb-1">Servings</p>
+<p class="font-headline font-bold text-on-surface text-lg">4-6 People</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-widest text-outline font-black mb-1">Calories</p>
+<p class="font-headline font-bold text-on-surface text-lg">320 kcal</p>
+</div>
+</div>
+</div>
+<!-- Ingredients Section -->
+<div class="max-w-2xl mx-auto pb-24">
+<h2 class="editorial-title text-3xl font-extrabold text-on-surface tracking-tight mb-12 text-center">Ingredients</h2>
+<div class="space-y-6">
+<div class="flex items-baseline justify-between py-4 border-b border-outline-variant/10 group">
+<span class="font-headline font-bold text-on-surface text-lg group-hover:text-primary transition-colors">All-Purpose Flour</span>
+<span class="text-sm text-on-surface-variant font-medium">250g, chilled and sifted</span>
+</div>
+<div class="flex items-baseline justify-between py-4 border-b border-outline-variant/10 group">
+<span class="font-headline font-bold text-on-surface text-lg group-hover:text-primary transition-colors">Unsalted Grass-Fed Butter</span>
+<span class="text-sm text-on-surface-variant font-medium">150g, cut into 1cm cubes</span>
+</div>
+<div class="flex items-baseline justify-between py-4 border-b border-outline-variant/10 group">
+<span class="font-headline font-bold text-on-surface text-lg group-hover:text-primary transition-colors">Ice Water</span>
+<span class="text-sm text-on-surface-variant font-medium">60ml, as needed</span>
+</div>
+<div class="flex items-baseline justify-between py-4 border-b border-outline-variant/10 group">
+<span class="font-headline font-bold text-on-surface text-lg group-hover:text-primary transition-colors">Heirloom Tomatoes</span>
+<span class="text-sm text-on-surface-variant font-medium">500g, assorted colors, sliced thick</span>
+</div>
+<div class="flex items-baseline justify-between py-4 border-b border-outline-variant/10 group">
+<span class="font-headline font-bold text-on-surface text-lg group-hover:text-primary transition-colors">Garlic Confit</span>
+<span class="text-sm text-on-surface-variant font-medium">4 cloves, smashed into a paste</span>
+</div>
+<div class="flex items-baseline justify-between py-4 border-b border-outline-variant/10 group">
+<span class="font-headline font-bold text-on-surface text-lg group-hover:text-primary transition-colors">Fresh Thyme</span>
+<span class="text-sm text-on-surface-variant font-medium">3 sprigs, leaves stripped</span>
+</div>
+<div class="flex items-baseline justify-between py-4 border-b border-outline-variant/10 group">
+<span class="font-headline font-bold text-on-surface text-lg group-hover:text-primary transition-colors">Ricotta di Bufala</span>
+<span class="text-sm text-on-surface-variant font-medium">200g, drained</span>
+</div>
+<div class="flex items-baseline justify-between py-4 border-b border-outline-variant/10 group">
+<span class="font-headline font-bold text-on-surface text-lg group-hover:text-primary transition-colors">Wildflower Honey</span>
+<span class="text-sm text-on-surface-variant font-medium">1 tbsp, for drizzling</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Simple Minimal Footer -->
+<footer class="py-12 border-t border-outline-variant/10 bg-surface">
+<div class="max-w-screen-xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
+<span class="editorial-title text-xl font-black text-primary tracking-tighter">The Culinary Editorial</span>
+<div class="flex gap-8 text-xs font-bold text-outline tracking-widest uppercase">
+<span>© 2024 The Culinary Editorial</span>
+<a class="hover:text-primary transition-colors" href="#">Privacy</a>
+<a class="hover:text-primary transition-colors" href="#">Terms</a>
+</div>
+</div>
+</footer>
+</body></html>

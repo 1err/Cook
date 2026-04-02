@@ -1,0 +1,9 @@
+# Copy to docker-compose.rds.yml, fill DATABASE_URL (URL-encode special chars in password: % -> %25).
+# Run: docker compose -f docker-compose.yml -f docker-compose.rds.yml up -d
+# Omit the `postgres` service from the base file if you use this, or stop the local postgres container
+# to avoid port 5432 conflicts.
+services:
+  backend:
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://USER:PASSWORD@your-host.rds.amazonaws.com:5432/yourdb
+      - DATABASE_SSL=true

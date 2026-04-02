@@ -2,6 +2,8 @@
 
 Production-ready FastAPI app with async SQLAlchemy, Alembic migrations, and layered structure.
 
+For **end-to-end product flow**, Docker, and frontend integration, see the repo root **`CODEBASE_WALKTHROUGH.md`**.
+
 ## Setup
 
 ```bash
@@ -42,20 +44,13 @@ Or bring everything up (including postgres) with:
 docker compose --profile postgres up --build
 ```
 
-## Image Uploads
+## Image uploads
 
-Images are uploaded directly from the browser to AWS S3 using presigned URLs.
+**With S3** (`AWS_REGION` + `S3_BUCKET_NAME` set): presigned PUT from the browser, then save `file_url` on the recipe.
 
-**Flow:**
+**Without S3** (local dev default): `POST /recipes/upload-image` saves the file under `./uploads` (or `LOCAL_IMAGE_UPLOAD_DIR`), serves it at `/uploads/...`, returns `upload_url: ""` and a full `file_url`. The frontend skips the PUT when `upload_url` is empty.
 
-1. Browser → FastAPI (generate presigned URL)
-2. Browser → PUT image to S3
-3. Frontend saves returned `file_url` as `recipe.thumbnail_url`
-
-**Required env vars:**
-
-- `AWS_REGION`
-- `S3_BUCKET_NAME`
+See `CODEBASE_WALKTHROUGH.md` for Docker volume `./backend/uploads`.
 
 ## Structure
 

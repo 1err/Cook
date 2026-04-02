@@ -4,15 +4,16 @@ Recipe CRUD and import routes. Uses repo + extract service. All require auth.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from pydantic import BaseModel, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
+from app.core.config import settings
 from app.db.session import get_session
 from app.db import repo_recipes
 from app.db.models import UserModel
-from app.models import Recipe, IngredientItem
+from app.models import Recipe, IngredientItem, coerce_library_category
 from app.extract import _parse_youtube_video_id
 from app.services.extract_service import (
     get_transcript_from_video_link,
@@ -20,7 +21,10 @@ from app.services.extract_service import (
     get_ocr_text_from_video,
     extract_recipe_from_text,
 )
-from app.services.storage_service import generate_image_upload_url
+from app.services.storage_service import (
+    generate_image_upload_url,
+    save_recipe_image_local,
+)
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
 logger = logging.getLogger(__name__)
@@ -36,10 +40,11 @@ class UploadImageResponse(BaseModel):
 
 @router.post("/upload-image", response_model=UploadImageResponse)
 async def upload_recipe_image(
+    request: Request,
     file: UploadFile = File(...),
     current_user: UserModel = Depends(get_current_user),
 ):
-    """Return a presigned S3 URL for the client to upload an image; use file_url as recipe thumbnail_url."""
+    """Presigned S3 upload when configured; otherwise save to local disk and return file_url (upload_url empty)."""
     content_type = (file.content_type or "").strip().lower()
     if content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(400, "Invalid file type. Use JPEG, PNG, WebP, or GIF.")
@@ -50,25 +55,46 @@ async def upload_recipe_image(
     if size > MAX_FILE_SIZE:
         raise HTTPException(400, "File too large (max 10MB)")
 
-    try:
-        result = generate_image_upload_url(content_type)
-    except ValueError as e:
-        logger.warning("Image upload config error: %s", e)
-        raise HTTPException(503, str(e))
-    except Exception as e:
-        logger.exception("Image upload presign failed: %s", e)
-        raise HTTPException(503, "Image upload is temporarily unavailable.")
-    return UploadImageResponse(**result)
+    region = (settings.AWS_REGION or "").strip()
+    bucket = (settings.S3_BUCKET_NAME or "").strip()
+    if region and bucket:
+        try:
+            result = generate_image_upload_url(content_type)
+        except ValueError as e:
+            logger.warning("Image upload config error: %s", e)
+            raise HTTPException(503, str(e))
+        except Exception as e:
+            logger.exception("Image upload presign failed: %s", e)
+            raise HTTPException(503, "Image upload is temporarily unavailable.")
+        return UploadImageResponse(**result)
+
+    data = await file.read()
+    if len(data) > MAX_FILE_SIZE:
+        raise HTTPException(400, "File too large (max 10MB)")
+    rel = save_recipe_image_local(data, content_type)
+    base = str(request.base_url).rstrip("/")
+    return UploadImageResponse(upload_url="", file_url=f"{base}{rel}")
+
+
+class ImportLinkBody(BaseModel):
+    url: str = ""
+    notes: str = ""
 
 
 @router.post("/import/link")
 async def import_from_link(
-    url: str,
+    body: ImportLinkBody,
     session: AsyncSession = Depends(get_session),
     current_user: UserModel = Depends(get_current_user),
 ):
     """Import recipe from video link. Fetches YouTube captions when possible, then LLM extraction."""
-    transcript = get_transcript_from_video_link(url)
+    url = (body.url or "").strip()
+    if not url:
+        raise HTTPException(400, "url is required")
+    transcript = get_transcript_from_video_link(url) or ""
+    notes = (body.notes or "").strip()
+    if notes:
+        transcript = transcript + ("\n\n" if transcript else "") + f"Additional context:\n{notes}"
     ocr_text = get_ocr_text_from_video(url)
     recipe = await extract_recipe_from_text(transcript, ocr_text)
     if recipe.thumbnail_url is None:
@@ -98,6 +124,7 @@ async def import_from_upload(
 
 class TranscriptBody(BaseModel):
     transcript: str = ""
+    notes: str = ""
 
 
 @router.post("/import/transcript")
@@ -107,7 +134,11 @@ async def import_from_transcript(
     current_user: UserModel = Depends(get_current_user),
 ):
     """Import by pasted transcript only."""
-    recipe = await extract_recipe_from_text(body.transcript, "")
+    text = (body.transcript or "").strip()
+    notes = (body.notes or "").strip()
+    if notes:
+        text = text + ("\n\n" if text else "") + f"Additional context:\n{notes}"
+    recipe = await extract_recipe_from_text(text, "")
     await repo_recipes.save_recipe(session, recipe, current_user.id)
     return recipe
 
@@ -136,6 +167,12 @@ class RecipeUpdate(BaseModel):
     title: Optional[str] = None
     thumbnail_url: Optional[str] = None
     ingredients: Optional[list[IngredientItem]] = None
+    library_category: Optional[str] = None
+
+    @field_validator("library_category", mode="before")
+    @classmethod
+    def validate_library_category(cls, v: Optional[str]) -> Optional[str]:
+        return coerce_library_category(v)
 
 
 @router.patch("/{recipe_id}", response_model=Recipe)

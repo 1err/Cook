@@ -49,6 +49,8 @@ class RecipeModel(Base):
     thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     ingredients: Mapped[str] = mapped_column(Text, nullable=False)  # JSON array
     raw_extraction_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Optional slug for library filter chips: quick_dinner, vegetarian, etc.
+    library_category: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
 
 class MealPlanModel(Base):

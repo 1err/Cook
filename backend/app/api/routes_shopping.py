@@ -33,6 +33,7 @@ class LikelyPantryItem(BaseModel):
 class PurchaseItem(BaseModel):
     name: str
     suggested_purchase: str
+    category: str = "Other"
 
 
 class RefineResponse(BaseModel):
@@ -86,7 +87,11 @@ async def shopping_list_refine(
             for p in result["likely_pantry"]
         ],
         purchase_items=[
-            PurchaseItem(name=p["name"], suggested_purchase=p["suggested_purchase"])
+            PurchaseItem(
+                name=p["name"],
+                suggested_purchase=p["suggested_purchase"],
+                category=p.get("grocery_category") or p.get("category") or "Other",
+            )
             for p in result["purchase_items"]
         ],
     )

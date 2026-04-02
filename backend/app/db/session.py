@@ -20,9 +20,14 @@ async_session_maker: async_sessionmaker[AsyncSession] | None = None
 def init_engine() -> None:
     """Create async engine and session factory. Call once at app startup."""
     global _engine, async_session_maker
+    connect_args: dict = {}
+    if settings.DATABASE_SSL:
+        connect_args["ssl"] = True
+
     _engine = create_async_engine(
         settings.DATABASE_URL,
         echo=False,
+        connect_args=connect_args if connect_args else {},
     )
     async_session_maker = async_sessionmaker(
         _engine,

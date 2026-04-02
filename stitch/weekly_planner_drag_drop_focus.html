@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Planner | The Culinary Editorial</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface": "#faf9f8",
+              "on-primary-fixed-variant": "#7c2e19",
+              "primary-fixed": "#ffdbd2",
+              "on-tertiary-fixed-variant": "#005144",
+              "on-error-container": "#93000a",
+              "tertiary": "#006b5b",
+              "on-surface-variant": "#55423e",
+              "on-secondary-container": "#5e617d",
+              "surface-container": "#eeeeed",
+              "primary-container": "#e07a5f",
+              "tertiary-fixed-dim": "#5edbc1",
+              "on-tertiary": "#ffffff",
+              "secondary-fixed-dim": "#c2c4e5",
+              "inverse-primary": "#ffb4a1",
+              "surface-container-low": "#f4f3f2",
+              "outline-variant": "#dbc1ba",
+              "surface-tint": "#9a442d",
+              "on-primary": "#ffffff",
+              "outline": "#88726d",
+              "error-container": "#ffdad6",
+              "primary": "#9a442d",
+              "on-secondary": "#ffffff",
+              "primary-fixed-dim": "#ffb4a1",
+              "on-tertiary-fixed": "#00201a",
+              "on-background": "#1a1c1c",
+              "tertiary-container": "#19a992",
+              "surface-variant": "#e3e2e1",
+              "surface-dim": "#dadad9",
+              "on-primary-container": "#5b1604",
+              "background": "#faf9f8",
+              "surface-container-lowest": "#ffffff",
+              "on-surface": "#1a1c1c",
+              "on-primary-fixed": "#3c0800",
+              "surface-bright": "#faf9f8",
+              "error": "#ba1a1a",
+              "surface-container-high": "#e9e8e7",
+              "inverse-on-surface": "#f1f0f0",
+              "secondary-fixed": "#dfe0ff",
+              "secondary-container": "#dcddff",
+              "on-tertiary-container": "#00362d",
+              "secondary": "#5a5c79",
+              "on-error": "#ffffff",
+              "inverse-surface": "#2f3130",
+              "surface-container-highest": "#e3e2e1",
+              "tertiary-fixed": "#7df7dd",
+              "on-secondary-fixed-variant": "#424560",
+              "on-secondary-fixed": "#161a32"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3, .font-headline { font-family: 'Manrope', sans-serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .drop-target { border: 2px dashed rgba(224, 122, 95, 0.3); transition: all 0.2s ease; }
+        .drop-target:hover { border-color: #e07a5f; background-color: rgba(224, 122, 95, 0.05); }
+    </style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen">
+<!-- TopNavBar -->
+<header class="bg-[#faf9f8] dark:bg-[#1a1c1c] fixed w-full top-0 sticky z-50 transition-colors duration-300 shadow-[0px_12px_32px_rgba(26,28,28,0.04)]">
+<div class="flex justify-between items-center w-full px-6 py-4 max-w-[1920px] mx-auto">
+<div class="text-2xl font-extrabold tracking-tighter text-[#1a1c1c] dark:text-[#faf9f8]">
+            The Culinary Editorial
+        </div>
+<nav class="hidden md:flex items-center gap-8">
+<a class="font-headline font-bold text-lg tracking-tight text-[#55423e] dark:text-[#dadad9] hover:text-[#9a442d] transition-all duration-200" href="#">Recipes</a>
+<a class="font-headline font-bold text-lg tracking-tight text-[#9a442d] dark:text-[#e07a5f] border-b-2 border-[#9a442d] pb-1" href="#">Planner</a>
+<a class="font-headline font-bold text-lg tracking-tight text-[#55423e] dark:text-[#dadad9] hover:text-[#9a442d] transition-all duration-200" href="#">Groceries</a>
+<a class="font-headline font-bold text-lg tracking-tight text-[#55423e] dark:text-[#dadad9] hover:text-[#9a442d] transition-all duration-200" href="#">Vault</a>
+</nav>
+<div class="flex items-center gap-4">
+<button class="p-2 text-[#55423e] hover:text-[#9a442d] transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<div class="w-10 h-10 rounded-full overflow-hidden bg-surface-container-high border-2 border-primary-container">
+<img alt="User profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBAwaw8qBiRrGaCJjKDmiVu9dm66Av8yw73jDGMkmtvsJO6331IO0fjeoh1qx3CvBe8VXc0xebo4MinxT1pJDMSLN6gaSfJHONftVzPoBECOsna5MRrXXN6eU0won-o8_-7VjGQBcUARKWW5GLymFtDox5DY2t591JIOw4zAfQSjpFrP3rxVnDUDZD3IVuFi6qyaz9BeNEvVf0PaL8eLMSfLw6EPYQKQyrin6UuEQZNUufZlzvN91e_DFVOpCZQtasmacnnzZaXcNoS"/>
+</div>
+</div>
+</div>
+</header>
+<div class="flex h-[calc(100vh-72px)] overflow-hidden">
+<!-- Left Sidebar: Recipe Library Drawer -->
+<aside class="w-80 flex flex-col bg-surface-container-low border-r border-outline-variant/30 hidden lg:flex">
+<div class="p-6 space-y-4">
+<div class="flex items-center justify-between">
+<h2 class="font-headline font-extrabold text-xl text-on-surface">Your Recipes</h2>
+<button class="text-primary hover:bg-primary/5 p-1 rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="filter_list">filter_list</span>
+</button>
+</div>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-sm" data-icon="search">search</span>
+<input class="w-full pl-9 pr-4 py-2.5 bg-surface-container-lowest border border-outline-variant/50 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" placeholder="Search saved recipes..." type="text"/>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto px-6 pb-6 space-y-3 no-scrollbar">
+<!-- Draggable Recipe Card 1 -->
+<div class="group bg-surface-container-lowest p-2 rounded-xl border border-transparent hover:border-primary/30 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing">
+<div class="flex gap-3">
+<div class="w-16 h-16 rounded-lg overflow-hidden shrink-0">
+<img alt="Pasta" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBCYewnFBS6tbimT-d72mJfg42dfHrZdxQXO1g_tmNGsIPDsodNcDaTCbKRQmNG25uDBVXRg3mRLU89cMlDsKnwGElXBbMr7KeDKiO76N-33R9mtYUHFJtMSFXmn8RbLYbtDCcTrS2RKAF0f7WmCRGkjGYp7dAHwDORyShXAs0sAI2KoNzSAQ948uYwJxaYGKduNC_rn8OuxNukpHkhwmBmFqO6prY7Ng_9YSvsD1RPL0yJR3bFO-QNb3zvaeeCcxaX6qZID4X7zWaG"/>
+</div>
+<div class="flex flex-col justify-center min-w-0">
+<h4 class="text-sm font-bold text-on-surface truncate">Handmade Pappardelle</h4>
+<span class="text-[10px] text-tertiary font-bold flex items-center gap-1 mt-1">
+<span class="material-symbols-outlined text-[12px]" data-icon="timer">timer</span> 45m
+                        </span>
+</div>
+</div>
+</div>
+<!-- Draggable Recipe Card 2 -->
+<div class="group bg-surface-container-lowest p-2 rounded-xl border border-transparent hover:border-primary/30 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing">
+<div class="flex gap-3">
+<div class="w-16 h-16 rounded-lg overflow-hidden shrink-0">
+<img alt="Salmon" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA-ahc60TKaiFVMIz3EdoL8YnsgSImMd3UKu0yR9L9F65IAZYCDpxwXjG_wQ3rPuDr3vGc1iJNz-JILstiOpBWro3Er_g8_aUKrzO_dki9CBn8eCnAn9IA0poz5vNAyMBASi24SWh7dpr9rOlcJdMLUAew3U87Rr5ovvFuuiaZTJzD8QotSFJnQsyHx_TMWSdypqyxu6om7uqtGvGS7APEwLPdOb0cEN_9DurSlIdHpHeFUiUGPd6-oxbaPtPmdblMVXdXNCXFulvZN"/>
+</div>
+<div class="flex flex-col justify-center min-w-0">
+<h4 class="text-sm font-bold text-on-surface truncate">Miso-Glazed Salmon</h4>
+<span class="text-[10px] text-tertiary font-bold flex items-center gap-1 mt-1">
+<span class="material-symbols-outlined text-[12px]" data-icon="timer">timer</span> 25m
+                        </span>
+</div>
+</div>
+</div>
+<!-- Draggable Recipe Card 3 -->
+<div class="group bg-surface-container-lowest p-2 rounded-xl border border-transparent hover:border-primary/30 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing">
+<div class="flex gap-3">
+<div class="w-16 h-16 rounded-lg overflow-hidden shrink-0">
+<img alt="Salad" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCPHABYLhF6_XNpy9soMHn0tFvJC2atu73xhE9ZQ_FMlg6Npo1PpJzkFyvHsV_rv2pPswBAQX_9028AzTRdk583bXzpTa4Zb29HkmqHkWH6zO4ZcIWXE986YSqqfk80J6GV_50_LYVNz1nyi-YQ9z6vaeLuINEM2dcJReTSRGMYSC3rZoGBKiytyviTyY57A9w6Nh9gSXe04c_1PaO4FKknzRJhJHtpqed1MoiWWKQzQdwE_k8Bs0Dh-tPin015jAUOI0SSoHKnJ_eS"/>
+</div>
+<div class="flex flex-col justify-center min-w-0">
+<h4 class="text-sm font-bold text-on-surface truncate">Rainbow Harvest Bowl</h4>
+<span class="text-[10px] text-tertiary font-bold flex items-center gap-1 mt-1">
+<span class="material-symbols-outlined text-[12px]" data-icon="timer">timer</span> 15m
+                        </span>
+</div>
+</div>
+</div>
+<!-- Draggable Recipe Card 4 -->
+<div class="group bg-surface-container-lowest p-2 rounded-xl border border-transparent hover:border-primary/30 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing">
+<div class="flex gap-3">
+<div class="w-16 h-16 rounded-lg overflow-hidden shrink-0">
+<img alt="Toast" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBmzKC8OTJt4JWAiPPa6FE_T0FjSLWf6xsGHgWRDqh-WHHDeohy9Gf66HK5A3gY2BUVqKVpVQAXzBBHQsDUDGnfftnoFMl_n89TWs9CTwQcnn0oKJVKGTy0r6oGtcuvqsE5zXI22bpMfiRRx3WvEuHhIOc7zJoatih7e3eBIRlviITFWMyYWJVB18Hu3NJhzJ7ga8LJmBoJvziKbl7mYEJ1DCWurX35Z1a4lb9poWRHgPaQNAduKSLmAHQAWRDKd6NxgKwI8MadJM3Q"/>
+</div>
+<div class="flex flex-col justify-center min-w-0">
+<h4 class="text-sm font-bold text-on-surface truncate">Avocado Sourdough</h4>
+<span class="text-[10px] text-tertiary font-bold flex items-center gap-1 mt-1">
+<span class="material-symbols-outlined text-[12px]" data-icon="timer">timer</span> 12m
+                        </span>
+</div>
+</div>
+</div>
+<!-- Draggable Recipe Card 5 -->
+<div class="group bg-surface-container-lowest p-2 rounded-xl border border-transparent hover:border-primary/30 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing">
+<div class="flex gap-3">
+<div class="w-16 h-16 rounded-lg overflow-hidden shrink-0">
+<img alt="Steak" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCgmcGU1C7DOMFUHJKMX8L3-1rY3NMknCiBOpp2WBqszIGtWFF0Q-RxBfEAMe-BWRXlnLE06GBcw04t3CgZ_ucFpPtAzyIIVtzdPLNp6XQTXw9WT4iiF_D3cmaiRJJ2f4uinrQsgjNJ0yA9QSD8ZK3VZbfKU6NbAgJn1PDZPIa608GWNTdqUpR76BP05QFvg8nemfOMS7Sw14PPWuCQTl6HhmV3cVDsttH5BqmD93erMtQOQYLDUnm3iG6Xqrv7kCqDmrHW3RkFClBN"/>
+</div>
+<div class="flex flex-col justify-center min-w-0">
+<h4 class="text-sm font-bold text-on-surface truncate">Steak au Poivre</h4>
+<span class="text-[10px] text-tertiary font-bold flex items-center gap-1 mt-1">
+<span class="material-symbols-outlined text-[12px]" data-icon="timer">timer</span> 35m
+                        </span>
+</div>
+</div>
+</div>
+</div>
+<div class="p-6 mt-auto">
+<button class="w-full py-4 bg-gradient-to-br from-primary to-primary-container text-on-primary rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg hover:scale-[1.02] transition-transform">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+                New Recipe
+            </button>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 overflow-y-auto pt-8 pb-20 px-4 md:px-10 max-w-[1600px] mx-auto no-scrollbar">
+<!-- Planner Header -->
+<section class="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
+<div>
+<span class="inline-block px-3 py-1 bg-primary-container/10 text-primary font-bold text-xs rounded-full mb-3 tracking-widest uppercase">Weekly View</span>
+<h1 class="text-4xl md:text-5xl font-black text-on-surface tracking-tight mb-2">Your Culinary Roadmap</h1>
+<p class="text-on-surface-variant max-w-xl text-lg">Drag recipes from your library to map out your weekly meals.</p>
+</div>
+<div class="flex items-center gap-3">
+<button class="p-3 bg-surface-container-low rounded-full text-on-surface-variant hover:bg-surface-variant transition-colors shadow-sm">
+<span class="material-symbols-outlined" data-icon="chevron_left">chevron_left</span>
+</button>
+<div class="px-8 py-3 bg-surface-container-lowest text-on-surface font-headline font-extrabold rounded-full shadow-md border border-outline-variant/30">
+                    Oct 23 — Oct 29
+                </div>
+<button class="p-3 bg-surface-container-low rounded-full text-on-surface-variant hover:bg-surface-variant transition-colors shadow-sm">
+<span class="material-symbols-outlined" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+</section>
+<!-- Planner Grid (7 Columns) -->
+<div class="grid grid-cols-1 md:grid-cols-7 gap-4 min-h-[700px]">
+<!-- Column Loop for each day -->
+<script>
+                const days = [
+                    { name: 'Mon', date: 23 },
+                    { name: 'Tue', date: 24 },
+                    { name: 'Wed', date: 25 },
+                    { name: 'Thu', date: 26 },
+                    { name: 'Fri', date: 27 },
+                    { name: 'Sat', date: 28 },
+                    { name: 'Sun', date: 29 }
+                ];
+                
+                // Content simulation for visualization
+                const meals = {
+                    23: { breakfast: { title: 'Poached Egg & Avocado', img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBmzKC8OTJt4JWAiPPa6FE_T0FjSLWf6xsGHgWRDqh-WHHDeohy9Gf66HK5A3gY2BUVqKVpVQAXzBBHQsDUDGnfftnoFMl_n89TWs9CTwQcnn0oKJVKGTy0r6oGtcuvqsE5zXI22bpMfiRRx3WvEuHhIOc7zJoatih7e3eBIRlviITFWMyYWJVB18Hu3NJhzJ7ga8LJmBoJvziKbl7mYEJ1DCWurX35Z1a4lb9poWRHgPaQNAduKSLmAHQAWRDKd6NxgKwI8MadJM3Q' }, dinner: { title: 'Miso-Glazed Salmon', img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuA-ahc60TKaiFVMIz3EdoL8YnsgSImMd3UKu0yR9L9F65IAZYCDpxwXjG_wQ3rPuDr3vGc1iJNz-JILstiOpBWro3Er_g8_aUKrzO_dki9CBn8eCnAn9IA0poz5vNAyMBASi24SWh7dpr9rOlcJdMLUAew3U87Rr5ovvFuuiaZTJzD8QotSFJnQsyHx_TMWSdypqyxu6om7uqtGvGS7APEwLPdOb0cEN_9DurSlIdHpHeFUiUGPd6-oxbaPtPmdblMVXdXNCXFulvZN' } },
+                    27: { lunch: { title: 'Handmade Pappardelle', img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBCYewnFBS6tbimT-d72mJfg42dfHrZdxQXO1g_tmNGsIPDsodNcDaTCbKRQmNG25uDBVXRg3mRLU89cMlDsKnwGElXBbMr7KeDKiO76N-33R9mtYUHFJtMSFXmn8RbLYbtDCcTrS2RKAF0f7WmCRGkjGYp7dAHwDORyShXAs0sAI2KoNzSAQ948uYwJxaYGKduNC_rn8OuxNukpHkhwmBmFqO6prY7Ng_9YSvsD1RPL0yJR3bFO-QNb3zvaeeCcxaX6qZID4X7zWaG' } }
+                };
+            </script>
+<!-- Day Columns -->
+<!-- Monday 23 -->
+<div class="flex flex-col gap-4">
+<div class="text-center py-4 bg-surface-container-low rounded-2xl shadow-sm border border-outline-variant/20">
+<div class="text-xs font-black text-on-surface-variant/60 uppercase tracking-tighter">Mon</div>
+<div class="text-2xl font-black text-primary">23</div>
+</div>
+<div class="flex-1 flex flex-col gap-4 p-3 bg-surface-container-low/30 rounded-2xl border border-outline-variant/10">
+<!-- Breakfast -->
+<div class="space-y-1.5">
+<span class="text-[9px] font-extrabold uppercase tracking-widest text-primary-container ml-2">Breakfast</span>
+<div class="relative group h-36 bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm border border-outline-variant/20">
+<img alt="Avocado Toast" class="w-full h-[65%] object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBmzKC8OTJt4JWAiPPa6FE_T0FjSLWf6xsGHgWRDqh-WHHDeohy9Gf66HK5A3gY2BUVqKVpVQAXzBBHQsDUDGnfftnoFMl_n89TWs9CTwQcnn0oKJVKGTy0r6oGtcuvqsE5zXI22bpMfiRRx3WvEuHhIOc7zJoatih7e3eBIRlviITFWMyYWJVB18Hu3NJhzJ7ga8LJmBoJvziKbl7mYEJ1DCWurX35Z1a4lb9poWRHgPaQNAduKSLmAHQAWRDKd6NxgKwI8MadJM3Q"/>
+<div class="p-2">
+<h4 class="text-[11px] font-extrabold text-on-surface leading-tight line-clamp-2">Poached Egg &amp; Avocado</h4>
+</div>
+<button class="absolute top-1 right-1 p-1 bg-surface-container-lowest/80 backdrop-blur rounded-full text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-[14px]" data-icon="close">close</span>
+</button>
+</div>
+</div>
+<!-- Lunch (Drop Target) -->
+<div class="space-y-1.5 flex-1">
+<span class="text-[9px] font-extrabold uppercase tracking-widest text-on-surface-variant/40 ml-2">Lunch</span>
+<div class="h-32 rounded-xl drop-target flex flex-col items-center justify-center gap-2 text-on-surface-variant/30 cursor-pointer">
+<span class="material-symbols-outlined text-xl" data-icon="add_circle">add_circle</span>
+</div>
+</div>
+<!-- Dinner -->
+<div class="space-y-1.5">
+<span class="text-[9px] font-extrabold uppercase tracking-widest text-primary-container ml-2">Dinner</span>
+<div class="relative group h-36 bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm border border-outline-variant/20">
+<img alt="Salmon" class="w-full h-[65%] object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA-ahc60TKaiFVMIz3EdoL8YnsgSImMd3UKu0yR9L9F65IAZYCDpxwXjG_wQ3rPuDr3vGc1iJNz-JILstiOpBWro3Er_g8_aUKrzO_dki9CBn8eCnAn9IA0poz5vNAyMBASi24SWh7dpr9rOlcJdMLUAew3U87Rr5ovvFuuiaZTJzD8QotSFJnQsyHx_TMWSdypqyxu6om7uqtGvGS7APEwLPdOb0cEN_9DurSlIdHpHeFUiUGPd6-oxbaPtPmdblMVXdXNCXFulvZN"/>
+<div class="p-2">
+<h4 class="text-[11px] font-extrabold text-on-surface leading-tight line-clamp-2">Miso-Glazed Salmon</h4>
+</div>
+<button class="absolute top-1 right-1 p-1 bg-surface-container-lowest/80 backdrop-blur rounded-full text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-[14px]" data-icon="close">close</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Tuesday 24 (Empty with Drop Targets) -->
+<div class="flex flex-col gap-4">
+<div class="text-center py-4 bg-surface-container-low rounded-2xl shadow-sm border border-outline-variant/20">
+<div class="text-xs font-black text-on-surface-variant/60 uppercase tracking-tighter">Tue</div>
+<div class="text-2xl font-black text-on-surface">24</div>
+</div>
+<div class="flex-1 flex flex-col gap-4 p-3 bg-surface-container-low/30 rounded-2xl border border-outline-variant/10">
+<div class="space-y-1.5 flex-1 flex flex-col">
+<span class="text-[9px] font-extrabold uppercase tracking-widest text-on-surface-variant/40 ml-2">Breakfast</span>
+<div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20">
+<span class="material-symbols-outlined text-xl" data-icon="add">add</span>
+</div>
+</div>
+<div class="space-y-1.5 flex-1 flex flex-col">
+<span class="text-[9px] font-extrabold uppercase tracking-widest text-on-surface-variant/40 ml-2">Lunch</span>
+<div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20">
+<span class="material-symbols-outlined text-xl" data-icon="add">add</span>
+</div>
+</div>
+<div class="space-y-1.5 flex-1 flex flex-col">
+<span class="text-[9px] font-extrabold uppercase tracking-widest text-on-surface-variant/40 ml-2">Dinner</span>
+<div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20">
+<span class="material-symbols-outlined text-xl" data-icon="add">add</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Wed 25 -->
+<div class="flex flex-col gap-4">
+<div class="text-center py-4 bg-surface-container-low rounded-2xl shadow-sm border border-outline-variant/20">
+<div class="text-xs font-black text-on-surface-variant/60 uppercase tracking-tighter">Wed</div>
+<div class="text-2xl font-black text-on-surface">25</div>
+</div>
+<div class="flex-1 flex flex-col gap-4 p-3 bg-surface-container-low/30 rounded-2xl border border-outline-variant/10">
+<div class="space-y-1.5 flex-1 flex flex-col"><div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20"><span class="material-symbols-outlined text-xl" data-icon="add">add</span></div></div>
+<div class="space-y-1.5 flex-1 flex flex-col"><div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20"><span class="material-symbols-outlined text-xl" data-icon="add">add</span></div></div>
+<div class="space-y-1.5 flex-1 flex flex-col"><div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20"><span class="material-symbols-outlined text-xl" data-icon="add">add</span></div></div>
+</div>
+</div>
+<!-- Thu 26 -->
+<div class="flex flex-col gap-4">
+<div class="text-center py-4 bg-surface-container-low rounded-2xl shadow-sm border border-outline-variant/20">
+<div class="text-xs font-black text-on-surface-variant/60 uppercase tracking-tighter">Thu</div>
+<div class="text-2xl font-black text-on-surface">26</div>
+</div>
+<div class="flex-1 flex flex-col gap-4 p-3 bg-surface-container-low/30 rounded-2xl border border-outline-variant/10">
+<div class="space-y-1.5 flex-1 flex flex-col"><div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20"><span class="material-symbols-outlined text-xl" data-icon="add">add</span></div></div>
+<div class="space-y-1.5 flex-1 flex flex-col"><div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20"><span class="material-symbols-outlined text-xl" data-icon="add">add</span></div></div>
+<div class="space-y-1.5 flex-1 flex flex-col"><div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20"><span class="material-symbols-outlined text-xl" data-icon="add">add</span></div></div>
+</div>
+</div>
+<!-- Fri 27 -->
+<div class="flex flex-col gap-4">
+<div class="text-center py-4 bg-surface-container-low rounded-2xl shadow-sm border border-outline-variant/20">
+<div class="text-xs font-black text-on-surface-variant/60 uppercase tracking-tighter">Fri</div>
+<div class="text-2xl font-black text-on-surface">27</div>
+</div>
+<div class="flex-1 flex flex-col gap-4 p-3 bg-surface-container-low/30 rounded-2xl border border-outline-variant/10">
+<div class="space-y-1.5 flex-1 flex flex-col"><div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20"><span class="material-symbols-outlined text-xl" data-icon="add">add</span></div></div>
+<div class="space-y-1.5">
+<span class="text-[9px] font-extrabold uppercase tracking-widest text-primary-container ml-2">Lunch</span>
+<div class="relative group h-36 bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm border border-outline-variant/20">
+<img alt="Pasta" class="w-full h-[65%] object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBCYewnFBS6tbimT-d72mJfg42dfHrZdxQXO1g_tmNGsIPDsodNcDaTCbKRQmNG25uDBVXRg3mRLU89cMlDsKnwGElXBbMr7KeDKiO76N-33R9mtYUHFJtMSFXmn8RbLYbtDCcTrS2RKAF0f7WmCRGkjGYp7dAHwDORyShXAs0sAI2KoNzSAQ948uYwJxaYGKduNC_rn8OuxNukpHkhwmBmFqO6prY7Ng_9YSvsD1RPL0yJR3bFO-QNb3zvaeeCcxaX6qZID4X7zWaG"/>
+<div class="p-2">
+<h4 class="text-[11px] font-extrabold text-on-surface leading-tight line-clamp-2">Handmade Pappardelle</h4>
+</div>
+</div>
+</div>
+<div class="space-y-1.5 flex-1 flex flex-col"><div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20"><span class="material-symbols-outlined text-xl" data-icon="add">add</span></div></div>
+</div>
+</div>
+<!-- Sat 28 -->
+<div class="flex flex-col gap-4">
+<div class="text-center py-4 bg-surface-container-low rounded-2xl shadow-sm border border-outline-variant/20">
+<div class="text-xs font-black text-on-surface-variant/60 uppercase tracking-tighter">Sat</div>
+<div class="text-2xl font-black text-on-surface">28</div>
+</div>
+<div class="flex-1 flex flex-col gap-4 p-3 bg-surface-container-low/30 rounded-2xl border border-outline-variant/10">
+<div class="space-y-1.5 flex-1 flex flex-col"><div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20"><span class="material-symbols-outlined text-xl" data-icon="add">add</span></div></div>
+<div class="space-y-1.5 flex-1 flex flex-col"><div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20"><span class="material-symbols-outlined text-xl" data-icon="add">add</span></div></div>
+<div class="space-y-1.5 flex-1 flex flex-col"><div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20"><span class="material-symbols-outlined text-xl" data-icon="add">add</span></div></div>
+</div>
+</div>
+<!-- Sun 29 -->
+<div class="flex flex-col gap-4">
+<div class="text-center py-4 bg-surface-container-low rounded-2xl shadow-sm border border-outline-variant/20">
+<div class="text-xs font-black text-on-surface-variant/60 uppercase tracking-tighter">Sun</div>
+<div class="text-2xl font-black text-on-surface">29</div>
+</div>
+<div class="flex-1 flex flex-col gap-4 p-3 bg-surface-container-low/30 rounded-2xl border border-outline-variant/10">
+<div class="space-y-1.5 flex-1 flex flex-col"><div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20"><span class="material-symbols-outlined text-xl" data-icon="add">add</span></div></div>
+<div class="space-y-1.5 flex-1 flex flex-col"><div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20"><span class="material-symbols-outlined text-xl" data-icon="add">add</span></div></div>
+<div class="space-y-1.5 flex-1 flex flex-col"><div class="flex-1 min-h-[100px] rounded-xl drop-target flex flex-col items-center justify-center text-on-surface-variant/20"><span class="material-symbols-outlined text-xl" data-icon="add">add</span></div></div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- Sticky Bottom Nav (Mobile Only) -->
+<nav class="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-6 px-8 py-4 bg-surface-container-lowest/80 backdrop-blur-xl rounded-full shadow-2xl border border-white/20 z-50">
+<button class="text-[#9a442d]"><span class="material-symbols-outlined" data-icon="calendar_month" style="font-variation-settings: 'FILL' 1;">calendar_month</span></button>
+<button class="text-[#55423e]"><span class="material-symbols-outlined" data-icon="restaurant_menu">restaurant_menu</span></button>
+<button class="text-[#55423e]"><span class="material-symbols-outlined" data-icon="local_grocery_store">local_grocery_store</span></button>
+<button class="text-[#55423e]"><span class="material-symbols-outlined" data-icon="auto_stories">auto_stories</span></button>
+</nav>
+<!-- FAB: Quick Action -->
+<button class="fixed bottom-8 right-8 w-14 h-14 bg-primary text-on-primary rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-50">
+<span class="material-symbols-outlined text-2xl" data-icon="edit_calendar">edit_calendar</span>
+</button>
+</body></html>

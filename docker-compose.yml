@@ -1,23 +1,56 @@
+# Local dev: Postgres in Compose (RDS from a laptop often times out — security groups / private VPC).
+# For production or RDS from Docker, use a compose override, e.g.:
+#   docker compose -f docker-compose.yml -f docker-compose.rds.yml up -d
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cooking
+      POSTGRES_PASSWORD: cooking
+      POSTGRES_DB: cooking
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cooking -d cooking"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    command:
+      [
+        "sh",
+        "-c",
+        "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000",
+      ]
     environment:
-      - DATABASE_URL=postgresql+asyncpg://cooking:QAws10009750%@cooking-db.co944gii0fur.us-east-1.rds.amazonaws.com:5432/postgres
+      - DATABASE_URL=postgresql+asyncpg://cooking:cooking@postgres:5432/cooking
+      - DATABASE_SSL=false
       - CORS_ALLOW_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
     volumes:
       - backend_data:/app/data
       - ./backend/uploads:/app/uploads
     env_file:
       - backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # Pin or mirror if Docker Hub auth returns 502: e.g. NODE_IMAGE=node:20-alpine@sha256:...
+        NODE_IMAGE: ${NODE_IMAGE:-node:20-alpine}
     ports:
       - "3000:3000"
     environment:
@@ -27,3 +60,4 @@ services:
 
 volumes:
   backend_data:
+  postgres_data:

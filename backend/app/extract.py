@@ -106,18 +106,22 @@ def _build_extraction_prompt(transcript: str, ocr_text: str = "") -> str:
     return f"""You are extracting a cooking recipe from video content. Below is text from the video (speech transcript and/or on-screen ingredient lists).
 
 Extract:
-1) A short dish name (e.g. "Mapo Tofu", "Garlic Butter Shrimp")
-2) A list of ingredients. For each ingredient give: name, quantity (as free text, e.g. "2 cups", "to taste", "1 tbsp"), and optional notes.
+1) A short dish title. Use the same language as the source when it is clearly Chinese (e.g. 麻婆豆腐 or 麻婆豆腐 (Mapo Tofu)); do not force an English title if the source is Chinese.
+2) A list of ingredients. For each ingredient give: name, quantity (as free text), and optional notes.
 
-Output format: Be concise. If something is unclear, make a reasonable guess or omit it.
-Do not invent ingredients that are not suggested by the text.
+Language rules for ingredient names (critical):
+- If the text names an ingredient in Chinese, keep the name in Chinese in the "name" field. Do not translate Chinese ingredient names to English-only.
+- You may add English in parentheses for clarity, e.g. 牛腱肉 (beef shank), 八角 (star anise). Plain Chinese alone is fine.
+- Quantities and notes may stay as spoken/written (Chinese numerals/units OK).
+
+Do not invent ingredients that are not suggested by the text. If something is unclear, make a reasonable guess or omit it.
 
 --- TEXT FROM VIDEO ---
 {combined}
 --- END ---
 
 Respond with a JSON object only, no markdown:
-{{ "title": "Dish Name", "ingredients": [ {{ "name": "...", "quantity": "...", "notes": null or "..." }} ] }}"""
+{{ "title": "...", "ingredients": [ {{ "name": "...", "quantity": "...", "notes": null or "..." }} ] }}"""
 
 
 def parse_llm_recipe_response(raw: str) -> tuple[str, list[dict]]:

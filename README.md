@@ -62,18 +62,18 @@ App: http://localhost:3000.
 
 **API base (for desktop, phone, or deployed):** The frontend calls the backend using `NEXT_PUBLIC_API_BASE`. Copy `frontend/.env.local.example` to `frontend/.env.local` and set:
 
-- **Desktop (same machine):** `NEXT_PUBLIC_API_BASE=http://localhost:8000`
-- **Phone on same Wi‑Fi:** Use your computer’s local IP, e.g. `NEXT_PUBLIC_API_BASE=http://192.168.1.XX:8000`
-- **Deployed (same origin):** Leave empty or omit so the app uses relative URLs.
+- **Desktop (same machine):** Optional — if unset, the app defaults to `http://localhost:8000` (see `frontend/app/config.ts`).
+- **Phone on same Wi‑Fi:** Set `NEXT_PUBLIC_API_BASE=http://192.168.1.XX:8000` (your machine’s LAN IP).
+- **Docker Compose (browser on host):** Compose sets `NEXT_PUBLIC_API_BASE=http://localhost:8000` so the **browser** reaches the API on the host.
 
-If unset, the app uses same-origin requests (works when frontend and API are served from the same host).
+For a fuller architecture, API table, Docker notes, and UI design pointers, see **`CODEBASE_WALKTHROUGH.md`**.
 
 ## Flow
 
-1. **Import** (http://localhost:3000/import): Paste a video link or paste transcript text → backend extracts dish name + ingredients (stubbed or LLM) → recipe is saved.
-2. **Library** (http://localhost:3000/library): View all saved recipes and their ingredients.
-
-Meal planner and shopping list are not built yet (per MVP scope).
+1. **Import** (`/import`): Video link (YouTube) or pasted transcript → extraction (LLM if `OPENAI_API_KEY` is set) → recipe saved.
+2. **Library** (`/library`, `/library/[id]`): Browse, edit, delete, optional thumbnail upload (local disk or S3 — see `CODEBASE_WALKTHROUGH.md`).
+3. **Planner** (`/planner`): Weekly meal plan; drag recipes into breakfast / lunch / dinner; tied to `?week=` (Monday).
+4. **Shopping list** (`/shopping-list`): Confirms the week and planned meals, then **Prepare smart shopping list** (LLM refine on demand). Smart mode: categories, copy, store preview.
 
 ## YouTube Transcript Support
 

@@ -1,316 +1,292 @@
-# Cooking Repo Codebase Walkthrough
+# Cooking — Codebase reference & walkthrough
 
-This walkthrough reflects the current code in this repository and focuses on what is implemented, how data/auth flows work, and what is still incomplete.
+This document is the **authoritative overview** of the repo: how the product flows end-to-end, where logic lives, how the UI is structured, how Docker/dev env works, and what is still incomplete. It is maintained to match the current code.
+
+**Quick links:** [User journey](#end-to-end-user-journey) · [Backend](#backend) · [Frontend](#frontend) · [UI & design](#ui-and-design-language) · [Docker](#docker-and-local-compose) · [Environment](#environment-variables) · [Gaps](#known-gaps--debt)
+
+---
+
+## Repository layout
+
+| Path | Role |
+|------|------|
+| `backend/` | FastAPI app, async SQLAlchemy, Alembic, OpenAI refine/extract |
+| `frontend/` | Next.js 14 App Router, client-heavy pages |
+| `stitch/` | HTML design references (Stitch); not served by the app |
+| `docker-compose.yml` | Postgres + backend + frontend for containerized dev |
+| `docker-compose.rds.yml.example` | Example override for RDS-style DB |
+
+---
+
+## End-to-end user journey
+
+1. **Register / login**  
+   JWT is stored in an `HttpOnly` cookie (`access_token`). All authenticated API calls use `credentials: "include"` (`frontend/app/lib/api.ts`).
+
+2. **Import recipes** (`/import`)  
+   YouTube link or pasted transcript → backend extracts structured recipe (LLM if `OPENAI_API_KEY` is set, else stub). Optional `notes` on import. Saved per user.
+
+3. **Library** (`/library`, `/library/[id]`)  
+   List, edit, delete recipes. **Thumbnail:** upload via `POST /recipes/upload-image` — either **S3 presigned PUT** (when `AWS_REGION` + `S3_BUCKET_NAME` set) or **local disk** under `./uploads` served at `/uploads/...` (default for local dev).
+
+4. **Weekly planner** (`/planner?week=YYYY-MM-DD`)  
+   Monday-based week. Drag recipes from sidebar into breakfast / lunch / dinner slots. Persisted with `PUT /meal-plan/{date}` and `GET /meal-plan?start=&end=`.
+
+5. **Shopping list — confirmation** (`/shopping-list?week=...`)  
+   Loads in parallel: aggregated ingredients `GET /shopping-list`, planned meals `GET /meal-plan`, and `GET /recipes` for titles. **No long raw ingredient list** on this screen: **week range**, **week-at-a-glance** (meal chips), stats, **Prepare smart shopping list** (this is the **only** call that runs the refine LLM — saves tokens).
+
+6. **Shopping list — smart mode** (same route, after refine)  
+   SessionStorage key `smartShoppingList:{weekStart}` stores refined payload + UI state. Category **bento** cards; **Copy full list** / **Shop on {store}** / **Store preview**. **Back to original list** clears smart session for that week and returns to the confirmation UI.
+
+7. **Store preview** (`/store-preview?store=...`)  
+   Reads `cooking-store-preview-items` from `sessionStorage` (set from smart list). Opens search URLs for Weee / Yami / Amazon (`frontend/app/lib/store.ts`). No backend call.
+
+---
 
 ## High-level architecture
 
-- Monorepo with two main apps:
-  - `backend/`: FastAPI API, async SQLAlchemy, Alembic migrations
-  - `frontend/`: Next.js App Router client
-- Current deployment shape:
-  - Frontend on Vercel
-  - Backend on ECS/Fargate behind ALB
-  - PostgreSQL on RDS
-- Authentication model:
-  - JWT in `HttpOnly` cookie (`access_token`)
-  - Frontend always calls API with `credentials: "include"`
-- Image upload model:
-  - Browser requests presigned URL from backend
-  - Browser uploads file directly to S3
-  - Recipe stores only `thumbnail_url`
+```mermaid
+flowchart LR
+  subgraph client [Next.js browser]
+    P[Planner]
+    S[Shopping list]
+    L[Library / Import]
+  end
+  subgraph api [FastAPI]
+    A[Auth]
+    R[Recipes]
+    M[Meal plan]
+    Sh[Shopping aggregate + refine]
+  end
+  subgraph data [PostgreSQL]
+    DB[(DB)]
+  end
+  L --> R
+  P --> M
+  S --> Sh
+  S --> M
+  client --> A
+  R --> DB
+  M --> DB
+  Sh --> DB
+```
+
+- **Deployment (typical):** frontend on Vercel, API on ECS/Fargate behind ALB, Postgres on RDS — adjust `CORS_ALLOW_ORIGINS`, `COOKIE_*`, and `NEXT_PUBLIC_API_BASE` accordingly.
 
 ---
 
-## Backend walkthrough
+## Backend
 
-### Entry point and app wiring
+### Entrypoint (`backend/app/main.py`)
 
-- `backend/app/main.py`
-  - Loads env via `load_dotenv()`.
-  - Forces config validation by accessing `settings.DATABASE_URL` before DB setup.
-  - Initializes logging (`setup_logging()`) and DB engine in lifespan (`init_engine()`).
-  - Adds CORS middleware:
-    - `allow_origins` from `get_cors_origins_list()` or `['*']` fallback
-    - `allow_credentials=bool(origins)` (cookies only when explicit origins are configured)
-  - Includes routers:
-    - `/auth`
-    - `/recipes`
-    - `/meal-plan`
-    - `/shopping-list`
-  - Exposes `/health`.
+- `load_dotenv()` then validates `DATABASE_URL` via settings.
+- Lifespan: `init_engine()` for async SQLAlchemy.
+- CORS: explicit origins from `CORS_ALLOW_ORIGINS` when set; `allow_credentials=True` only when origins are explicit (required for cookies).
+- Routers: `auth`, `recipes`, `meal-plan`, `shopping-list` (prefixes as defined per router).
+- **Static uploads:** `GET /uploads/...` via `StaticFiles` on `get_local_upload_root()` (default process cwd + `uploads/`).
 
-### Config, security, logging
+### Configuration (`backend/app/core/config.py`)
 
-- `backend/app/core/config.py`
-  - `DATABASE_URL` is required and validated to be postgres + asyncpg.
-  - Cookie/auth-related settings:
-    - `AUTH_SECRET`
-    - `COOKIE_SECURE` (`Field(False, env="COOKIE_SECURE")`)
-    - `COOKIE_SAMESITE` (`Field("lax", env="COOKIE_SAMESITE")`)
-    - `COOKIE_SAMESITE` normalized to lowercase.
-  - CORS setting: `CORS_ALLOW_ORIGINS` comma-separated.
-  - OpenAI: `OPENAI_API_KEY` optional.
-  - S3 settings: `AWS_REGION`, `S3_BUCKET_NAME` with validator enforcing both-or-neither.
-  - `settings = get_settings()` singleton is used across app modules.
+- **Required:** `DATABASE_URL` — must be `postgresql+asyncpg://...`.
+- **Optional:** `DATABASE_SSL`, `AUTH_SECRET`, `CORS_ALLOW_ORIGINS`, `COOKIE_SECURE`, `COOKIE_SAMESITE`, `OPENAI_API_KEY`.
+- **S3:** `AWS_REGION` + `S3_BUCKET_NAME` — both set or both empty.
+- **Local uploads:** `LOCAL_IMAGE_UPLOAD_DIR` optional; else `./uploads` relative to **process cwd** (when running from `backend/`, that is `backend/uploads`).
 
-- `backend/app/core/security.py`
-  - Password hashing/verification via bcrypt.
-  - JWT create/decode with expiry (`7 days`).
-  - Requires strong `AUTH_SECRET`.
+### Auth (`backend/app/api/auth.py`)
 
-- `backend/app/core/logging.py`
-  - Centralized basic logging setup.
+- `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`.
+- Cookie: HttpOnly, path `/`, max-age 7 days; `secure` / `samesite` from settings.
+- `get_current_user`: JWT `sub` → user row; 401 if missing/invalid.
 
-### API layer
+### Recipes (`backend/app/api/routes_recipes.py`)
 
-#### Auth routes (`backend/app/api/auth.py`)
+- **Upload:** `POST /recipes/upload-image` (multipart). If S3 configured → presigned PUT + `file_url`. Else save bytes with `save_recipe_image_local` → `{ upload_url: "", file_url: "<origin>/uploads/recipes/..." }`.
+- **Import:** e.g. `POST /recipes/import/link` with JSON body `{ "url", "notes?" }`; transcript path accepts `notes?`.
+- **CRUD:** list, get, create, patch, delete — all scoped by `user_id`.
 
-- Endpoints:
-  - `POST /auth/register`
-  - `POST /auth/login`
-  - `POST /auth/logout`
-  - `GET /auth/me`
-- Cookie behavior in `_set_cookie(...)`:
-  - `httponly=True`
-  - `secure=settings.COOKIE_SECURE`
-  - `samesite=settings.COOKIE_SAMESITE`
-  - `path='/'`
-  - `max_age=7 days`
-- `get_current_user` reads cookie, decodes JWT `sub`, validates UUID, loads user, returns 401 on failure.
-- Note: `_set_cookie` currently has debug `print(...)` lines for cookie settings.
+### Meal plan (`backend/app/api/routes_mealplan.py`)
 
-#### Recipe routes (`backend/app/api/routes_recipes.py`)
+- `GET /meal-plan?start=&end=` — inclusive YYYY-MM-DD range.
+- `PUT /meal-plan/{date}` — body `recipe_ids: string[]` (three slots: breakfast, lunch, dinner order in frontend).
 
-- All routes require auth (`get_current_user`).
-- Image upload endpoint:
-  - `POST /recipes/upload-image`
-  - Validates content type (`jpeg/png/webp/gif`)
-  - Validates file size (`<= 10MB`) using file stream seek/tell
-  - Calls S3 presign service and returns:
-    - `upload_url`
-    - `file_url`
-- Import endpoints:
-  - `POST /recipes/import/link` (YouTube transcript + extraction)
-  - `POST /recipes/import/upload` (currently stubbed transcript/OCR path)
-  - `POST /recipes/import/transcript`
-- CRUD endpoints:
-  - `GET /recipes`
-  - `GET /recipes/{recipe_id}`
-  - `POST /recipes`
-  - `PATCH /recipes/{recipe_id}`
-  - `DELETE /recipes/{recipe_id}`
+### Shopping (`backend/app/api/routes_shopping.py`)
 
-#### Meal plan routes (`backend/app/api/routes_mealplan.py`)
+- `GET /shopping-list?start=&end=` — loads plans in range, resolves recipes, **aggregates** ingredients (`shopping_service.aggregate_ingredients`).
+- `POST /shopping-list/refine` — body `{ items: [{ name, quantity }] }` → `refine_shopping_list` in `app/refine.py`. Response shape still includes `likely_pantry` (always **empty**); staples are expected under **`purchase_items`** with `grocery_category` **`Pantry & Dry Goods`**.
 
-- `GET /meal-plan?start=&end=` returns range.
-- `PUT /meal-plan/{date}` writes `recipe_ids` for one date.
-- Auth-required and user-scoped.
+### Refinement / LLM (`backend/app/refine.py`)
 
-#### Shopping routes (`backend/app/api/routes_shopping.py`)
+- **Prompts to edit:** `_build_system_prompt()` and `_build_user_prompt()` at the top of the workflow logic.
+- **Model:** `gpt-4o-mini` via `AsyncOpenAI` when `OPENAI_API_KEY` is set; otherwise `_fallback_result` (no removal, all lines as `purchase_items`).
+- **Output:** strict JSON with `remove` and `purchase_items` (each item has `name`, `suggested_purchase`, `grocery_category`). Parser **discards** any legacy `likely_pantry` from the model.
 
-- `GET /shopping-list?start=&end=`:
-  - loads plans in range
-  - fetches referenced recipes
-  - aggregates ingredient quantities
-- `POST /shopping-list/refine`:
-  - sends aggregated items to refine service
-  - returns `remove`, `likely_pantry`, `purchase_items`
-- Auth-required.
+### Storage (`backend/app/services/storage_service.py`)
 
-### DB layer and data model
+- `get_local_upload_root()`, `save_recipe_image_local()`, `generate_image_upload_url()` (S3 presign when configured).
 
-- `backend/app/db/session.py`
-  - Async SQLAlchemy engine/sessionmaker.
-  - Request dependency handles commit/rollback/close.
+### Database
 
-- `backend/app/db/models.py`
-  - `users`
-  - `auth_identities` (provider + provider_user_id unique)
-  - `recipes` (includes `user_id`, `thumbnail_url`, ingredients JSON text)
-  - `meal_plan` (composite PK: `user_id`, `date`)
+- Models in `backend/app/db/models.py`; repositories `repo_recipes`, `repo_mealplan`, `repo_auth`.
+- Migrations: `backend/alembic/versions/*`.
 
-- Repositories:
-  - `repo_auth.py`: user + auth identity operations
-  - `repo_recipes.py`: recipe CRUD (scoped by `user_id`)
-  - `repo_mealplan.py`: date-range read + put/merge (scoped by `user_id`)
+### Other services
 
-### Services
-
-- `backend/app/services/storage_service.py`
-  - Builds S3 presigned PUT URL.
-  - Key format: `recipes/{uuid}{ext}` where ext comes from `mimetypes.guess_extension(content_type)`.
-  - Returns signed `upload_url` and public `file_url`.
-
-- `backend/app/services/extract_service.py`
-  - Thin wrapper around extraction functions in `app/extract.py`.
-
-- `backend/app/services/refine_service.py`
-  - Thin wrapper around `app/refine.py`.
-
-- `backend/app/services/shopping_service.py`
-  - Deterministic aggregation logic for ingredient quantities.
-
-- `backend/app/services/stores/`
-  - `base.py`: protocol/abstractions.
-  - `amazon.py`: stub implementation (returns empty list).
-
-### Extraction/refine internals
-
-- `backend/app/extract.py`
-  - Parses YouTube IDs.
-  - Uses `youtube-transcript-api` for transcript on link imports.
-  - `get_transcript_from_uploaded_file(...)` is stubbed.
-  - `get_ocr_text_from_video(...)` is stubbed.
-  - If `OPENAI_API_KEY` missing, falls back to stub extraction.
-
-- `backend/app/refine.py`
-  - LLM-powered shopping refinement when API key exists.
-  - Fallback mode returns reasonable defaults if LLM is unavailable.
-
-- `backend/app/models.py`
-  - Pydantic app models: recipe, ingredients, meal plan, shopping list items.
+- `extract_service.py` / `extract.py` — YouTube transcript + LLM extraction; stubs for upload/OCR paths.
+- `shopping_service.py` — deterministic merge of ingredient lines.
 
 ---
 
-## Frontend walkthrough
+## Frontend
 
-### Core config and API helper
+### API & auth
 
-- `frontend/app/config.ts`
-  - API base resolution:
-    - use `NEXT_PUBLIC_API_BASE` when set
-    - otherwise fallback to `http://localhost:8000`
-  - No more `window.location` hostname derivation.
+- **`frontend/app/config.ts`** — `getApiBase()`: `NEXT_PUBLIC_API_BASE` if set, else **`http://localhost:8000`** (local dev default).
+- **`frontend/app/lib/api.ts`** — `apiFetch` always `credentials: "include"`; 401 → redirect to `/login` (except on auth pages).
+- **`frontend/app/lib/auth.tsx`** — `AuthProvider`, `/auth/me`, logout.
 
-- `frontend/app/lib/api.ts`
-  - `apiFetch(path, options)` always calls `fetch(`${getApiBase()}${path}`, ...)`.
-  - Always includes `credentials: 'include'`.
-  - Handles FormData vs JSON `Content-Type`.
-  - Redirects to `/login` on 401 (except while already on auth pages).
+### Routing & guards
 
-### Auth state management
+- **`layout.tsx`** — `Header`, `AuthProvider`, Material Symbols link.
+- **`RequireAuth`** — wraps protected pages.
 
-- `frontend/app/lib/auth.tsx`
-  - `AuthProvider` calls `/auth/me` on mount.
-  - Exposes `user`, `loading`, `refreshUser`, `logout`.
-  - `logout` calls `/auth/logout`, clears local state, navigates to `/login`.
+### Pages (behavior summary)
 
-- `frontend/app/components/RequireAuth.tsx`
-  - Guards protected pages: redirects unauthenticated users to login.
+| Route | Purpose |
+|-------|---------|
+| `/` | Redirect by auth |
+| `/login`, `/register` | Auth forms |
+| `/library` | Recipe grid + category chips |
+| `/library/[id]` | Edit recipe, ingredients, library tag, image upload (conditional PUT to presigned URL) |
+| `/recipe/[id]` | Read-only detail |
+| `/import` | Link / transcript import |
+| `/planner?week=` | 7-day grid, drag-drop, sidebar search |
+| `/shopping-list?week=` | Confirmation UI → **Prepare smart** → smart bento + actions |
+| `/store-preview?store=` | Session-driven store search list |
 
-### Pages and user flows
+### Client-only state
 
-- `frontend/app/page.tsx`
-  - Root redirect based on auth state.
+| Key | Use |
+|-----|-----|
+| `smartShoppingList:{weekMonday}` | Refined JSON + `_ui.hidden` / `_ui.checked` |
+| `cooking-store-preview-items` | Items passed to store preview |
+| `cooking-preferred-store` | `weee` / `yami` / `amazon` |
 
-- `frontend/app/login/page.tsx`
-  - Submits to `/auth/login` via `apiFetch`.
-  - On success calls `refreshUser()` and goes to `/library`.
+### Shared libs
 
-- `frontend/app/register/page.tsx`
-  - Submits to `/auth/register` via `apiFetch`.
-  - On success calls `refreshUser()` and goes to `/library`.
+- **`lib/week.ts`** — `getWeekBounds`, `getPrevNextWeek`, `formatWeekRangeDisplay`, `formatWeekPlannerKicker`.
+- **`lib/store.ts`** — store URLs, labels, `buildItemQuery`, session keys.
+- **`lib/shoppingCategories.ts`** — `GROCERY_CATEGORY_ORDER`, `normalizeGroceryCategory`, Material icon names, **`groceryCategoryBentoSpan` → always `6`** (two cards per row on large grids).
+- **`lib/recipeCategories.ts`** — library filter slugs.
+- **`types.ts`** — `Recipe`, `IngredientItem`, etc.
 
-- `frontend/app/library/page.tsx`
-  - Lists recipes, delete support, navigation to detail/edit/import.
+### Components
 
-- `frontend/app/library/[id]/page.tsx`
-  - Recipe editing.
-  - S3 image upload flow implemented:
-    1. POST `/recipes/upload-image` with file FormData
-    2. `PUT` to returned `upload_url`
-    3. Save returned `file_url` in recipe `thumbnail_url` via PATCH
-
-- `frontend/app/recipe/[id]/page.tsx`
-  - Read-only recipe view.
-
-- `frontend/app/import/page.tsx`
-  - Import from video link or transcript.
-
-- `frontend/app/planner/page.tsx`
-  - Weekly planning UI; reads/writes meal plan API.
-
-- `frontend/app/shopping-list/page.tsx`
-  - Aggregated list by week + optional refine call.
-
-- `frontend/app/store-preview/page.tsx`
-  - Frontend-only store search preview based on sessionStorage data.
-
-### Shared UI and utils
-
-- Components:
-  - `Header.tsx`
-  - `NavAuth.tsx`
-  - `RecipeCard.tsx`
-- Utils:
-  - `lib/week.ts`
-  - `lib/store.ts`
-  - `types.ts`
+- **`Header.tsx`**, **`NavAuth.tsx`**, **`RecipeCard.tsx`**, **`AuthShell.tsx`**, **`RequireAuth.tsx`** — shell and recipe cards.
 
 ---
 
-## Infrastructure and deployment files
+## UI and design language
 
-- `backend/alembic/env.py` + `backend/alembic/versions/*`
-  - DB migration setup and migration history for schema/auth evolution.
+- **Global styles:** `frontend/app/globals.css` — CSS variables for the “editorial / Material” palette (e.g. `--primary`, `--surface-container-*`, `--tertiary`), typography (Inter + Manrope via `layout.tsx`), and large section blocks:
+  - Planner editorial layout
+  - Shopping confirmation hero (`shop-confirm-*`)
+  - Smart shopping hero + bento (`shop-smart-*`, `shop-bento-*`)
+  - Store preview (`store-preview-*`)
+  - Recipe / import accents
+- **Stitch references:** `stitch/*.html` — design targets; implementation uses CSS classes + Material Symbols, not Tailwind in production pages (except where inline utilities appear in TSX).
+- **Static images:** `frontend/public/` — e.g. `shopping-list-hero.jpg` for confirmation page hero (avoids fragile hotlinked URLs). **Docker:** `frontend/Dockerfile` copies `public/` into the standalone image.
 
-- `backend/Dockerfile`
-  - FastAPI container build.
+---
 
-- `frontend/Dockerfile`
-  - Next standalone build/runtime.
+## Docker and local Compose
 
-- `frontend/next.config.mjs`
-  - `output: 'standalone'`.
+### `docker-compose.yml`
 
-- `docker-compose.yml`
-  - Backend + frontend services for local containerized run.
-  - Still mounts `./backend/uploads` although image serving now uses S3 flow.
+| Service | Port | Notes |
+|---------|------|--------|
+| `postgres` | 5432 | User/password/db `cooking`; healthcheck before backend starts |
+| `backend` | 8000 | Runs `alembic upgrade head` then `uvicorn`; `DATABASE_URL` points at `postgres` service |
+| `frontend` | 3000 | `NEXT_PUBLIC_API_BASE=http://localhost:8000` so **browser** on host talks to API on host |
 
-- Env templates:
-  - `backend/.env.example`
-  - `frontend/.env.local.example`
+**Volumes**
+
+- `postgres_data` — database files
+- `backend_data` — optional app data mount at `/app/data`
+- **`./backend/uploads:/app/uploads`** — aligns with **default local upload root** inside container (`cwd` `/app` → `uploads` = `/app/uploads`). Recipe thumbnails when S3 is not configured persist here on the host.
+
+**Env:** Backend loads `backend/.env` via `env_file`; ensure `AUTH_SECRET`, and either leave S3 unset for local disk uploads or set both AWS vars.
+
+### Frontend container (`frontend/Dockerfile`)
+
+- Multi-stage: `npm ci` → `next build` with `output: 'standalone'`.
+- Runner copies: `.next/standalone`, `.next/static`, and **`public/`** (required for static assets).
+
+### Backend container (`backend/Dockerfile`)
+
+- `WORKDIR /app`, `PYTHONPATH=/app`; production CMD is uvicorn (Compose overrides with migrate + uvicorn).
+
+---
+
+## Environment variables (cheat sheet)
+
+### Backend (see `backend/.env.example`)
+
+- `DATABASE_URL` (required), `AUTH_SECRET`, `CORS_ALLOW_ORIGINS`, `OPENAI_API_KEY`, optional `AWS_*` / `LOCAL_IMAGE_UPLOAD_DIR`, cookie flags for prod cross-origin.
+
+### Frontend (see `frontend/.env.local.example`)
+
+- `NEXT_PUBLIC_API_BASE` — optional; if unset, client defaults to `http://localhost:8000` per `config.ts`. Set explicitly for phones, staging, or same-origin deploys.
+
+---
+
+## API quick reference
+
+| Method | Path | Auth | Notes |
+|--------|------|------|--------|
+| POST | `/auth/register` | No | Sets cookie |
+| POST | `/auth/login` | No | Sets cookie |
+| POST | `/auth/logout` | No | Clears cookie |
+| GET | `/auth/me` | Cookie | |
+| GET/POST/PATCH/DELETE | `/recipes`… | Yes | CRUD + import + upload-image |
+| GET | `/meal-plan` | Yes | `start`, `end` |
+| PUT | `/meal-plan/{date}` | Yes | `recipe_ids` |
+| GET | `/shopping-list` | Yes | `start`, `end` |
+| POST | `/shopping-list/refine` | Yes | Refine only; no DB |
+| GET | `/health` | No | |
+
+OpenAPI: `/docs` when the API is running.
 
 ---
 
 ## What is implemented end-to-end
 
-- Cookie-based auth with register/login/logout/me.
-- Multi-user scoping via `user_id` in recipes/meal plans.
-- Recipe CRUD.
-- S3 presigned image upload from browser.
-- Recipe import from links/transcript.
-- Meal planning API + frontend planner.
-- Shopping list aggregation + optional refine endpoint.
+- Cookie auth; user-scoped recipes and meal plans.
+- Planner with drag-drop and week URL param.
+- Shopping confirmation UI + **on-demand** smart refinement.
+- Smart list: categories, checkboxes, copy, preferred store, store preview handoff.
+- Local or S3 recipe images.
+- YouTube link import + transcript import; LLM extraction and refine when key present.
 
 ---
 
-## What is not done yet / known gaps
+## Known gaps / debt
 
-1. Uploaded video transcript extraction is still a stub.
-2. OCR extraction path is still a stub.
-3. Store integrations are not fully implemented (Amazon service is stubbed).
-4. `_set_cookie` has debug `print(...)` statements that should be replaced with logging or removed.
-5. `frontend/.env.local.example` comments mention old hostname behavior and are now outdated.
-6. `docker-compose.yml` still includes legacy uploads volume mount not used by current S3 workflow.
-
----
-
-## Risks and technical debt
-
-- Cross-site auth is sensitive to environment configuration:
-  - backend must set `COOKIE_SECURE=true`, `COOKIE_SAMESITE=none`
-  - CORS must include exact frontend origin(s)
-  - frontend must keep `credentials: 'include'`
-- Extraction/refine have fallback behavior that can hide degraded mode (no OpenAI key).
-- No backend store-search integration yet despite UI flows.
+1. **Video upload** transcript pipeline still stubbed; OCR path stubbed.
+2. **Store integrations:** preview opens retailer search URLs only; no cart API.
+3. **Header shopping link** does not append `?week=` — user lands on current week from shopping list defaults.
+4. **Stitch assets** in `stitch/` are documentation-only.
+5. Root **`README.md`** “Flow” is shorter; this file is the detailed reference.
 
 ---
 
-## Recommended next priorities (top 5)
+## Risks and operations notes
 
-1. Implement real uploaded-video transcript pipeline (e.g., Whisper) and wire `/recipes/import/upload` fully.
-2. Implement OCR extraction from frames or remove OCR branch until implemented.
-3. Remove debug cookie prints in `auth.py` and add structured logs.
-4. Update `frontend/.env.local.example` to match current `getApiBase()` behavior.
-5. Clean `docker-compose.yml` legacy uploads mount and align compose/docs with current architecture.
+- **Cross-origin auth:** production needs consistent `COOKIE_SECURE`, `COOKIE_SAMESITE`, and CORS origin matching the browser origin; frontend must keep `credentials: "include"`.
+- **No OpenAI key:** extraction and refine fall back to stub/simple behavior — UI still works but output is degraded.
+- **Refine tokens:** only consumed when user clicks **Prepare smart shopping list**, not when loading the page or restoring sessionStorage.
+
+---
+
+## Maintaining this document
+
+When you change **flows** (new route, new session key), **refine prompt** (`refine.py`), **Docker**, or **major UI blocks** (`globals.css` / page structure), update the relevant sections here so onboarding and debugging stay accurate.

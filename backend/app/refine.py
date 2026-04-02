@@ -1,6 +1,5 @@
 """
-Shopping list refinement via OpenAI: remove non-purchasables, flag pantry staples,
-suggest purchase-ready quantities. Stateless; no DB.
+Generate a structured grocery shopping list from aggregated ingredients using LLM.
 """
 import json
 import logging
@@ -10,60 +9,101 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-def _build_system_prompt(pantry_names: list[str]) -> str:
-    """Build system prompt. pantry_names is unused (stateless); kept for API compatibility."""
-    return """You are a grocery shopping assistant helping users in the United States.
-Given recipe ingredients, determine:
+GROCERY_CATEGORIES = (
+    "Produce",
+    "Dairy",
+    "Meat & Seafood",
+    "Pantry & Dry Goods",
+    "Frozen",
+    "Bakery",
+    "Other",
+)
 
-1) Which items should be removed because they are not purchased (e.g. water).
-2) Which items are common pantry staples that users often keep at home.
-   - Do NOT assume the user has them. Do NOT imply confirmed possession.
-   - This is only a suggestion to help the user decide what they might already have.
-3) For remaining items, suggest realistic purchase forms (e.g. 2 cups cabbage → 1 whole cabbage).
+
+def _normalize_grocery_category(raw: str | None) -> str:
+    """Map LLM output to allowed categories; unknown → Other."""
+    s = (raw or "").strip()
+    if not s:
+        return "Other"
+    for c in GROCERY_CATEGORIES:
+        if s.lower() == c.lower():
+            return c
+    return "Other"
+
+
+def _build_system_prompt() -> str:
+    return """You are generating a grocery shopping list for a week of cooking.
+These ingredients come from multiple recipes and have already been aggregated.
+
+Your task is to generate a clean, practical shopping list a real person would use.
+
+Rules:
+1) Do NOT remove any ingredients.
+2) Do NOT ignore pantry items (salt, oil, sugar, sauces, spices, etc.).
+3) Every input ingredient MUST appear in output purchase_items.
+4) Normalize ingredient names into clear grocery items.
+5) If an ingredient is Chinese:
+   - Keep it in Chinese
+   - Optionally include English in parentheses
+   - Example: 八角 (star anise), 牛腱肉 (beef shank)
+   - Do NOT translate away the Chinese
+6) Convert quantities into realistic purchase units.
+7) Assign EVERY item to exactly one grocery category from:
+   Produce, Dairy, Meat & Seafood, Pantry & Dry Goods, Frozen, Bakery, Other
+
+Category guidance examples:
+- Produce:
+  姜 (ginger), 蒜 (garlic), 洋葱 (onion), 青椒 (green pepper), 茄子 (eggplant)
+- Meat & Seafood:
+  牛腱肉 (beef shank), 鸡腿 (chicken drumstick), 五花肉 (pork belly), 虾 (shrimp)
+- Pantry & Dry Goods:
+  酱油 (soy sauce), 盐 (salt), 糖 (sugar), 花椒 (Sichuan peppercorn), 八角 (star anise), 干辣椒 (dried chili)
+- Dairy:
+  牛奶 (milk), 鸡蛋 (eggs), 黄油 (butter)
 
 Return STRICT JSON only.
+Do not include markdown.
+Do not include prose outside JSON.
 
 JSON format:
 {
-  "remove": [string],
-  "likely_pantry": [
-    { "name": string, "reason": string }
-  ],
   "purchase_items": [
-    { "name": string, "suggested_purchase": string }
+    { "name": string, "suggested_purchase": string, "grocery_category": string }
   ]
 }
 
-For "likely_pantry", the "reason" must be a general suggestion only. Good examples:
-- "Common pantry staple"
-- "Shelf-stable ingredient"
-- "Frequently stocked household item"
-- "Often kept on hand"
-Never use: "Already in user's pantry", "User has this", "Confirmed pantry item", or any phrase implying the user definitely has the item.
-
-Do not include explanations outside JSON.
-Do not include markdown."""
+"grocery_category" must be exactly one of:
+Produce, Dairy, Meat & Seafood, Pantry & Dry Goods, Frozen, Bakery, Other.
+"""
 
 
 def _build_user_prompt(items: list[dict[str, str]]) -> str:
-    """Pass aggregated items as JSON for the LLM."""
-    return json.dumps([{"name": (i.get("name") or "").strip(), "quantity": (i.get("quantity") or "").strip()} for i in items])
+    payload = [{"name": (i.get("name") or "").strip(), "quantity": (i.get("quantity") or "").strip()} for i in items]
+    return (
+        "This is a list of ingredients aggregated from multiple recipes for a weekly meal plan. "
+        "Generate a clean grocery shopping list.\n\n"
+        "Input ingredients JSON:\n"
+        f"{json.dumps(payload, ensure_ascii=False)}"
+    )
 
 
 def _fallback_result(items: list[dict[str, str]]) -> dict[str, Any]:
-    """When API key missing or parsing fails: treat all as purchase_items."""
-    return {
-        "remove": [],
-        "likely_pantry": [],
-        "purchase_items": [
-            {"name": (i.get("name") or "").strip(), "suggested_purchase": (i.get("quantity") or "").strip() or (i.get("name") or "").strip()}
-            for i in items
-        ],
-    }
+    out: list[dict[str, str]] = []
+    for i in items:
+        n = (i.get("name") or "").strip()
+        if not n:
+            continue
+        out.append(
+            {
+                "name": n,
+                "suggested_purchase": (i.get("quantity") or "").strip() or n,
+                "grocery_category": "Other",
+            }
+        )
+    return {"purchase_items": out}
 
 
 def _parse_llm_refine_response(raw: str, fallback_items: list[dict[str, str]]) -> dict[str, Any]:
-    """Parse LLM JSON; on failure return fallback (original list as purchase_items)."""
     text = (raw or "").strip()
     if text.startswith("```"):
         text = re.sub(r"^```\w*\n?", "", text)
@@ -73,45 +113,42 @@ def _parse_llm_refine_response(raw: str, fallback_items: list[dict[str, str]]) -
     except json.JSONDecodeError as e:
         logger.warning("Refine LLM response JSON parse failed: %s", e)
         return _fallback_result(fallback_items)
-    remove = data.get("remove")
-    if not isinstance(remove, list):
-        remove = []
-    remove = [str(x).strip() for x in remove if x]
-
-    likely_pantry = data.get("likely_pantry")
-    if not isinstance(likely_pantry, list):
-        likely_pantry = []
-    pantry_out = []
-    for x in likely_pantry:
-        if isinstance(x, dict) and x.get("name"):
-            pantry_out.append({"name": str(x.get("name", "")).strip(), "reason": str(x.get("reason", "")).strip()})
-
+    if not isinstance(data, dict):
+        return _fallback_result(fallback_items)
     purchase_items = data.get("purchase_items")
     if not isinstance(purchase_items, list):
-        purchase_items = []
-    purchase_out = []
+        return _fallback_result(fallback_items)
+    purchase_out: list[dict[str, str]] = []
     for x in purchase_items:
-        if isinstance(x, dict) and x.get("name"):
-            purchase_out.append({
-                "name": str(x.get("name", "")).strip(),
-                "suggested_purchase": str(x.get("suggested_purchase", "")).strip() or str(x.get("name", "")).strip(),
-            })
-
-    return {"remove": remove, "likely_pantry": pantry_out, "purchase_items": purchase_out}
+        if not isinstance(x, dict):
+            continue
+        nm = str(x.get("name", "")).strip()
+        if not nm:
+            continue
+        sp = str(x.get("suggested_purchase", "")).strip() or nm
+        gc = x.get("grocery_category")
+        purchase_out.append(
+            {
+                "name": nm,
+                "suggested_purchase": sp,
+                "grocery_category": _normalize_grocery_category(str(gc).strip() if gc is not None else None),
+            }
+        )
+    if not purchase_out:
+        return _fallback_result(fallback_items)
+    return {"purchase_items": purchase_out}
 
 
 async def refine_shopping_list(items: list[dict[str, str]], pantry_names: list[str] | None = None) -> dict[str, Any]:
-    """
-    Call OpenAI to refine the list. Returns { remove, likely_pantry, purchase_items }.
-    pantry_names: optional list of user's pantry staples to include in context; LLM decides contextually.
-    On missing API key or parse failure, returns fallback (all items as purchase_items).
-    """
+    """Return ``{ "purchase_items": [...] }`` from aggregated ingredients. ``pantry_names`` is unused (call-site compatibility)."""
+    _ = pantry_names
+
     if not items:
-        return {"remove": [], "likely_pantry": [], "purchase_items": []}
+        return {"purchase_items": []}
 
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        logger.info("OPENAI_API_KEY not set; returning fallback refine (no removal/pantry).")
+        logger.info("OPENAI_API_KEY not set; returning fallback refine.")
         return _fallback_result(items)
 
     try:
@@ -121,14 +158,12 @@ async def refine_shopping_list(items: list[dict[str, str]], pantry_names: list[s
         return _fallback_result(items)
 
     client = AsyncOpenAI(api_key=api_key)
-    user_content = _build_user_prompt(items)
-    system_prompt = _build_system_prompt(pantry_names or [])
     try:
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
+                {"role": "system", "content": _build_system_prompt()},
+                {"role": "user", "content": _build_user_prompt(items)},
             ],
         )
         raw = response.choices[0].message.content or "{}"

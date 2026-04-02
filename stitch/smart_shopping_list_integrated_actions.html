@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Smart Shopping List | The Culinary Editorial</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface": "#faf9f8",
+              "on-primary-fixed-variant": "#7c2e19",
+              "primary-fixed": "#ffdbd2",
+              "on-tertiary-fixed-variant": "#005144",
+              "on-error-container": "#93000a",
+              "tertiary": "#006b5b",
+              "on-surface-variant": "#55423e",
+              "on-secondary-container": "#5e617d",
+              "surface-container": "#eeeeed",
+              "primary-container": "#e07a5f",
+              "tertiary-fixed-dim": "#5edbc1",
+              "on-tertiary": "#ffffff",
+              "secondary-fixed-dim": "#c2c4e5",
+              "inverse-primary": "#ffb4a1",
+              "surface-container-low": "#f4f3f2",
+              "outline-variant": "#dbc1ba",
+              "surface-tint": "#9a442d",
+              "on-primary": "#ffffff",
+              "outline": "#88726d",
+              "error-container": "#ffdad6",
+              "primary": "#9a442d",
+              "on-secondary": "#ffffff",
+              "primary-fixed-dim": "#ffb4a1",
+              "on-tertiary-fixed": "#00201a",
+              "on-background": "#1a1c1c",
+              "tertiary-container": "#19a992",
+              "surface-variant": "#e3e2e1",
+              "surface-dim": "#dadad9",
+              "on-primary-container": "#5b1604",
+              "background": "#faf9f8",
+              "surface-container-lowest": "#ffffff",
+              "on-surface": "#1a1c1c",
+              "on-primary-fixed": "#3c0800",
+              "surface-bright": "#faf9f8",
+              "error": "#ba1a1a",
+              "surface-container-high": "#e9e8e7",
+              "inverse-on-surface": "#f1f0f0",
+              "secondary-fixed": "#dfe0ff",
+              "secondary-container": "#dcddff",
+              "on-tertiary-container": "#00362d",
+              "secondary": "#5a5c79",
+              "on-error": "#ffffff",
+              "inverse-surface": "#2f3130",
+              "surface-container-highest": "#e3e2e1",
+              "tertiary-fixed": "#7df7dd",
+              "on-secondary-fixed-variant": "#424560",
+              "on-secondary-fixed": "#161a32"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .bento-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.5rem;
+        }
+        @media (min-width: 1024px) {
+            .bento-grid {
+                grid-template-columns: repeat(12, 1fr);
+            }
+            .col-span-8 { grid-column: span 8; }
+            .col-span-4 { grid-column: span 4; }
+            .col-span-6 { grid-column: span 6; }
+        }
+    </style>
+</head>
+<body class="bg-surface font-body text-on-surface antialiased">
+<!-- Top Navigation Bar -->
+<nav class="bg-[#faf9f8] dark:bg-[#1a1c1c] docked full-width top-0 sticky z-50 transition-colors duration-300 shadow-[0px_12px_32px_rgba(26,28,28,0.04)]">
+<div class="flex justify-between items-center w-full px-6 py-4 max-w-screen-2xl mx-auto">
+<div class="flex items-center gap-8">
+<span class="text-2xl font-extrabold tracking-tighter text-[#1a1c1c] dark:text-[#faf9f8]">The Culinary Editorial</span>
+<div class="hidden md:flex gap-6 font-['Manrope'] font-bold text-lg tracking-tight">
+<a class="text-[#55423e] dark:text-[#dadad9] hover:text-[#9a442d] transition-all duration-200" href="#">Recipes</a>
+<a class="text-[#55423e] dark:text-[#dadad9] hover:text-[#9a442d] transition-all duration-200" href="#">Planner</a>
+<a class="text-[#9a442d] dark:text-[#e07a5f] border-b-2 border-[#9a442d] pb-1" href="#">Groceries</a>
+<a class="text-[#55423e] dark:text-[#dadad9] hover:text-[#9a442d] transition-all duration-200" href="#">Vault</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-[#55423e] hover:text-[#9a442d] transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="p-2 text-[#55423e] hover:text-[#9a442d] transition-colors relative">
+<span class="material-symbols-outlined" data-icon="shopping_cart">shopping_cart</span>
+<span class="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>
+</button>
+<div class="w-10 h-10 rounded-full overflow-hidden border-2 border-primary-container ml-2">
+<img class="w-full h-full object-cover" data-alt="close-up of a professional chef smiling in a bright modern kitchen setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC_xsqXPVEmBfKR5x9j6o3zRJoFH92IV7xdosKl3H3XGcs9UBcF-hOljIX1Zfok6MyLdK_DTSEGXoTPboMkeixhZL-ZHGrd4crtBBCQfXD57AKUO1F0zgXZSM7Zo6rJF_7Crc3qu-yKP4ABNcu0k6IPYW5znVycyDewxaVHrhMOS5KFvpCaaRpdeGndfZw-xoRsMYLspw8ofgwyQx1CTs0U9kPrHKqiVqe67BTUsVRQTSsZzgm8OMRVuUiyWGelnEMjgcgpBQwnGK2T"/>
+</div>
+</div>
+</div>
+</nav>
+<main class="max-w-screen-2xl mx-auto px-6 py-8 pb-32">
+<!-- Hero Section -->
+<header class="mb-12 relative rounded-3xl overflow-hidden min-h-[320px] flex items-end p-8 lg:p-12">
+<div class="absolute inset-0 z-0">
+<img class="w-full h-full object-cover" data-alt="top-down view of vibrant fresh vegetables arranged artistically on a light stone surface with natural sunlight shadows" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB9aEMxjQwYkKjmKjtRwOH_tN7lryh1S9w0TiWlHK6JrEfJRw0s_CasCM_nTPdgC1dGEyZP6fX5pu_5iZmKo8kZnQVwa83JSgeFRCDtQuyb7xnGo6CnR8iCKQm8RpiTba6iLnPbOFVZ_CgxBpBDcQRASvpLbXpVGcWX5kSxDgbg8TIPwqNnDJpvS-UgkZOVjr4RAZ1gr3voBYN_UjFu_CnXOzSET5CqrAOpJPv8FVzc4pAMc-SJostnNzqF3FmVLqcVNIkII1JncXxS"/>
+<div class="absolute inset-0 bg-gradient-to-t from-on-surface/80 via-on-surface/20 to-transparent"></div>
+</div>
+<div class="relative z-10 w-full flex flex-col md:flex-row md:items-end justify-between gap-6">
+<div>
+<a class="inline-flex items-center gap-2 text-white/70 hover:text-white transition-colors text-sm font-bold mb-4" href="#">
+<span class="material-symbols-outlined text-sm">arrow_back</span>
+                        Back to Original List
+                    </a>
+<div class="flex items-center gap-3 mb-2">
+<span class="bg-tertiary-container/90 backdrop-blur-md text-on-tertiary-container px-3 py-1 rounded-full text-xs font-bold tracking-widest uppercase">Smart Mode Active</span>
+</div>
+<h1 class="font-headline font-extrabold text-4xl md:text-6xl text-white tracking-tight">Smart Shopping List</h1>
+<p class="text-white/80 font-medium mt-2 max-w-xl">We've organized 24 items into optimized categories and filtered out likely pantry staples to save you time.</p>
+</div>
+<div class="bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-2xl flex flex-col items-center justify-center min-w-[140px]">
+<span class="text-white text-5xl font-black font-headline">24</span>
+<span class="text-white/70 text-sm font-bold tracking-tight">ITEMS TOTAL</span>
+</div>
+</div>
+</header>
+<!-- Bento Grid Layout -->
+<div class="bento-grid">
+<!-- Category: Produce (Large Bento) -->
+<section class="col-span-8 bg-surface-container-lowest rounded-3xl p-8 flex flex-col">
+<div class="flex items-center justify-between mb-8">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-3xl" data-icon="eco">eco</span>
+</div>
+<h2 class="font-headline font-bold text-2xl text-on-surface">Produce</h2>
+</div>
+<span class="bg-surface-container text-on-surface-variant px-4 py-1.5 rounded-full text-sm font-bold">8 Items</span>
+</div>
+<div class="space-y-2">
+<div class="group flex items-center justify-between p-4 rounded-2xl hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-4">
+<input class="w-6 h-6 rounded-lg border-outline-variant text-primary focus:ring-primary/20 transition-all cursor-pointer" type="checkbox"/>
+<div>
+<p class="font-semibold text-on-surface leading-none">Organic Tuscan Kale</p>
+<p class="text-xs text-on-surface-variant mt-1">Suggested: 2 Bunches</p>
+</div>
+</div>
+<button class="opacity-0 group-hover:opacity-100 p-2 text-on-surface-variant hover:text-error transition-all">
+<span class="material-symbols-outlined" data-icon="more_vert">more_vert</span>
+</button>
+</div>
+<div class="group flex items-center justify-between p-4 rounded-2xl hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-4">
+<input class="w-6 h-6 rounded-lg border-outline-variant text-primary focus:ring-primary/20 transition-all cursor-pointer" type="checkbox"/>
+<div>
+<p class="font-semibold text-on-surface leading-none">Heirloom Cherry Tomatoes</p>
+<p class="text-xs text-on-surface-variant mt-1">Suggested: 1 Pint</p>
+</div>
+</div>
+<button class="opacity-0 group-hover:opacity-100 p-2 text-on-surface-variant hover:text-error transition-all">
+<span class="material-symbols-outlined" data-icon="more_vert">more_vert</span>
+</button>
+</div>
+<div class="group flex items-center justify-between p-4 rounded-2xl hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-4">
+<input class="w-6 h-6 rounded-lg border-outline-variant text-primary focus:ring-primary/20 transition-all cursor-pointer" type="checkbox"/>
+<div>
+<p class="font-semibold text-on-surface leading-none">Shallots</p>
+<p class="text-xs text-on-surface-variant mt-1">Suggested: 4 Large</p>
+</div>
+</div>
+<button class="opacity-0 group-hover:opacity-100 p-2 text-on-surface-variant hover:text-error transition-all">
+<span class="material-symbols-outlined" data-icon="more_vert">more_vert</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Category: Dairy (Small Bento) -->
+<section class="col-span-4 bg-surface-container-lowest rounded-3xl p-8 flex flex-col">
+<div class="flex items-center justify-between mb-8">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-2xl bg-secondary-container/50 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-3xl" data-icon="egg_alt">egg_alt</span>
+</div>
+<h2 class="font-headline font-bold text-2xl text-on-surface">Dairy</h2>
+</div>
+<span class="bg-surface-container text-on-surface-variant px-4 py-1.5 rounded-full text-sm font-bold">3</span>
+</div>
+<div class="space-y-1">
+<div class="group flex items-center justify-between p-4 rounded-2xl hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-4">
+<input class="w-6 h-6 rounded-lg border-outline-variant text-primary focus:ring-primary/20 transition-all cursor-pointer" type="checkbox"/>
+<div>
+<p class="font-semibold text-on-surface leading-none">Heavy Cream</p>
+<p class="text-xs text-on-surface-variant mt-1">16 oz</p>
+</div>
+</div>
+</div>
+<div class="group flex items-center justify-between p-4 rounded-2xl hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-4">
+<input class="w-6 h-6 rounded-lg border-outline-variant text-primary focus:ring-primary/20 transition-all cursor-pointer" type="checkbox"/>
+<div>
+<p class="font-semibold text-on-surface leading-none">Unsalted Butter</p>
+<p class="text-xs text-on-surface-variant mt-1">2 Sticks</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Category: Pantry (Medium Bento) -->
+<section class="col-span-6 bg-surface-container-lowest rounded-3xl p-8 flex flex-col">
+<div class="flex items-center justify-between mb-8">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-2xl bg-tertiary/10 flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined text-3xl" data-icon="inventory_2">inventory_2</span>
+</div>
+<h2 class="font-headline font-bold text-2xl text-on-surface">Pantry</h2>
+</div>
+<span class="bg-surface-container text-on-surface-variant px-4 py-1.5 rounded-full text-sm font-bold">6 Items</span>
+</div>
+<div class="space-y-1">
+<div class="group flex items-center justify-between p-4 rounded-2xl hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-4">
+<input class="w-6 h-6 rounded-lg border-outline-variant text-primary focus:ring-primary/20 transition-all cursor-pointer" type="checkbox"/>
+<div>
+<p class="font-semibold text-on-surface leading-none">Arborio Rice</p>
+<p class="text-xs text-on-surface-variant mt-1">Suggested: 2lb Bag</p>
+</div>
+</div>
+</div>
+<div class="group flex items-center justify-between p-4 rounded-2xl hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-4">
+<input class="w-6 h-6 rounded-lg border-outline-variant text-primary focus:ring-primary/20 transition-all cursor-pointer" type="checkbox"/>
+<div>
+<p class="font-semibold text-on-surface leading-none">Vegetable Stock</p>
+<p class="text-xs text-on-surface-variant mt-1">Suggested: 2 Cartons (32oz)</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Category: Protein (Medium Bento) -->
+<section class="col-span-6 bg-surface-container-lowest rounded-3xl p-8 flex flex-col">
+<div class="flex items-center justify-between mb-8">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-2xl bg-primary-container/20 flex items-center justify-center text-on-primary-container">
+<span class="material-symbols-outlined text-3xl" data-icon="restaurant">restaurant</span>
+</div>
+<h2 class="font-headline font-bold text-2xl text-on-surface">Protein</h2>
+</div>
+<span class="bg-surface-container text-on-surface-variant px-4 py-1.5 rounded-full text-sm font-bold">2 Items</span>
+</div>
+<div class="space-y-1">
+<div class="group flex items-center justify-between p-4 rounded-2xl hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-4">
+<input class="w-6 h-6 rounded-lg border-outline-variant text-primary focus:ring-primary/20 transition-all cursor-pointer" type="checkbox"/>
+<div>
+<p class="font-semibold text-on-surface leading-none">Wild-Caught Salmon Fillets</p>
+<p class="text-xs text-on-surface-variant mt-1">Suggested: 1.5 lbs</p>
+</div>
+</div>
+</div>
+<div class="group flex items-center justify-between p-4 rounded-2xl hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-4">
+<input class="w-6 h-6 rounded-lg border-outline-variant text-primary focus:ring-primary/20 transition-all cursor-pointer" type="checkbox"/>
+<div>
+<p class="font-semibold text-on-surface leading-none">Prosciutto di Parma</p>
+<p class="text-xs text-on-surface-variant mt-1">Suggested: 4 oz (Thinly Sliced)</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Primary Action Area -->
+<div class="my-20 flex flex-col sm:flex-row gap-6">
+<button class="flex-1 bg-surface-container-highest text-on-surface px-8 py-6 rounded-2xl font-extrabold text-lg flex items-center justify-center gap-3 hover:bg-surface-variant transition-all border border-outline-variant/50 shadow-sm">
+<span class="material-symbols-outlined text-2xl">content_copy</span>
+                Copy Full List
+            </button>
+<button class="flex-1 bg-[#9a442d] text-white px-8 py-6 rounded-2xl font-extrabold text-lg flex items-center justify-center gap-3 hover:opacity-90 transition-all shadow-xl shadow-primary/20">
+<span class="material-symbols-outlined text-2xl">store</span>
+                Shop on Whole Foods
+            </button>
+</div>
+<!-- Suggestion Sections -->
+<div class="mt-12 space-y-4 max-w-4xl mx-auto">
+<div class="bg-surface-container-low rounded-2xl overflow-hidden">
+<button class="w-full flex items-center justify-between p-6 hover:bg-surface-container transition-colors group">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="inventory">inventory</span>
+<div class="text-left">
+<h3 class="font-headline font-bold text-on-surface">Likely Pantry Staples</h3>
+<p class="text-xs text-on-surface-variant">6 items hidden because you usually have them in stock</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="expand_more">expand_more</span>
+</button>
+</div>
+<div class="bg-surface-container-low rounded-2xl overflow-hidden opacity-60">
+<button class="w-full flex items-center justify-between p-6 hover:bg-surface-container transition-colors group">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="delete_sweep">delete_sweep</span>
+<div class="text-left">
+<h3 class="font-headline font-bold text-on-surface">Removed Items</h3>
+<p class="text-xs text-on-surface-variant">4 items you chose not to purchase</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="expand_more">expand_more</span>
+</button>
+</div>
+</div>
+</main>
+<!-- Side Navigation Bar (Hidden on Mobile) -->
+<aside class="hidden lg:flex flex-col fixed left-0 top-0 h-screen py-8 bg-[#faf9f8] dark:bg-[#1a1c1c] w-64 border-r-0 font-['Manrope'] font-semibold z-40 transform -translate-x-full transition-transform">
+<div class="px-6 mb-12">
+<span class="text-xl font-black text-[#9a442d]">Sous-Chef</span>
+<p class="text-xs opacity-70">Premium Edition</p>
+</div>
+<nav class="flex-1 space-y-2">
+<a class="flex items-center gap-4 px-6 py-4 text-[#55423e] dark:text-[#dadad9] opacity-70 hover:bg-[#f4f3f2] dark:hover:bg-[#2a2c2c] transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="restaurant_menu">restaurant_menu</span>
+                Recipes
+            </a>
+<a class="flex items-center gap-4 px-6 py-4 text-[#55423e] dark:text-[#dadad9] opacity-70 hover:bg-[#f4f3f2] dark:hover:bg-[#2a2c2c] transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="calendar_month">calendar_month</span>
+                Planner
+            </a>
+<a class="flex items-center gap-4 px-6 py-4 text-[#9a442d] dark:text-[#e07a5f] font-bold bg-[#ffffff] dark:bg-[#2a2c2c] rounded-r-full translate-x-1 transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="local_grocery_store">local_grocery_store</span>
+                Groceries
+            </a>
+<a class="flex items-center gap-4 px-6 py-4 text-[#55423e] dark:text-[#dadad9] opacity-70 hover:bg-[#f4f3f2] dark:hover:bg-[#2a2c2c] transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="auto_stories">auto_stories</span>
+                Vault
+            </a>
+</nav>
+<div class="px-6">
+<button class="w-full bg-primary text-white py-4 rounded-xl font-bold">Start Cooking</button>
+</div>
+</aside>
+</body></html>

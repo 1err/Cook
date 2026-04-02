@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Import Your Culinary Inspiration | The Culinary Editorial</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface": "#faf9f8",
+              "on-primary-fixed-variant": "#7c2e19",
+              "primary-fixed": "#ffdbd2",
+              "on-tertiary-fixed-variant": "#005144",
+              "on-error-container": "#93000a",
+              "tertiary": "#006b5b",
+              "on-surface-variant": "#55423e",
+              "on-secondary-container": "#5e617d",
+              "surface-container": "#eeeeed",
+              "primary-container": "#e07a5f",
+              "tertiary-fixed-dim": "#5edbc1",
+              "on-tertiary": "#ffffff",
+              "secondary-fixed-dim": "#c2c4e5",
+              "inverse-primary": "#ffb4a1",
+              "surface-container-low": "#f4f3f2",
+              "outline-variant": "#dbc1ba",
+              "surface-tint": "#9a442d",
+              "on-primary": "#ffffff",
+              "outline": "#88726d",
+              "error-container": "#ffdad6",
+              "primary": "#9a442d",
+              "on-secondary": "#ffffff",
+              "primary-fixed-dim": "#ffb4a1",
+              "on-tertiary-fixed": "#00201a",
+              "on-background": "#1a1c1c",
+              "tertiary-container": "#19a992",
+              "surface-variant": "#e3e2e1",
+              "surface-dim": "#dadad9",
+              "on-primary-container": "#5b1604",
+              "background": "#faf9f8",
+              "surface-container-lowest": "#ffffff",
+              "on-surface": "#1a1c1c",
+              "on-primary-fixed": "#3c0800",
+              "surface-bright": "#faf9f8",
+              "error": "#ba1a1a",
+              "surface-container-high": "#e9e8e7",
+              "inverse-on-surface": "#f1f0f0",
+              "secondary-fixed": "#dfe0ff",
+              "secondary-container": "#dcddff",
+              "on-tertiary-container": "#00362d",
+              "secondary": "#5a5c79",
+              "on-error": "#ffffff",
+              "inverse-surface": "#2f3130",
+              "surface-container-highest": "#e3e2e1",
+              "tertiary-fixed": "#7df7dd",
+              "on-secondary-fixed-variant": "#424560",
+              "on-secondary-fixed": "#161a32"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.5rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface selection:bg-primary-container selection:text-on-primary-container min-h-screen">
+<!-- Top Navigation Bar -->
+<header class="bg-[#faf9f8] dark:bg-[#1a1c1c] shadow-[0px_12px_32px_rgba(26,28,28,0.04)] sticky top-0 z-50">
+<div class="flex justify-between items-center w-full px-6 py-4 max-w-screen-2xl mx-auto">
+<div class="flex items-center gap-8">
+<span class="text-2xl font-extrabold tracking-tighter text-[#1a1c1c] dark:text-[#faf9f8] font-headline">The Culinary Editorial</span>
+<nav class="hidden md:flex items-center gap-6 font-headline font-bold text-lg tracking-tight">
+<a class="text-[#55423e] dark:text-[#dadad9] hover:text-[#9a442d] transition-all duration-200" href="#">Recipes</a>
+<a class="text-[#55423e] dark:text-[#dadad9] hover:text-[#9a442d] transition-all duration-200" href="#">Planner</a>
+<a class="text-[#55423e] dark:text-[#dadad9] hover:text-[#9a442d] transition-all duration-200" href="#">Groceries</a>
+<a class="text-[#55423e] dark:text-[#dadad9] hover:text-[#9a442d] transition-all duration-200" href="#">Vault</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden md:block relative">
+<input class="bg-[#e9e8e7] border-none rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-primary/20 w-64" placeholder="Search culinary archives..." type="text"/>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-2 text-[#55423e] hover:text-[#9a442d] transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="p-2 text-[#55423e] hover:text-[#9a442d] transition-colors">
+<span class="material-symbols-outlined">shopping_cart</span>
+</button>
+<div class="w-10 h-10 rounded-full overflow-hidden ml-2 border-2 border-surface-container">
+<img alt="User profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC1429RpROarNcO3R62gpu2IaJsyrYkbC1_QFjSBthugE4Nw0ZGRLb-gh3tdPAZlsuMshpuhRYAxdWlJ3iJIy7ORutQM5p7-6iw1Lho2pP3zW1jNB1cp-uYPuvmpvx4lK0_Xh_xQjiyRUKAya7C-Ri7yZzfQlPa2bYTqQX6iykRbl1vOGOx5l4R57BQ8DsBFPJuJwIVNq7Hzvpegy3_FHbWCSMYaKzDT58NaE-hvgkDFrrTWtG1A9_0QfDLF-uSPqkzNY2VqviaB4hP"/>
+</div>
+</div>
+</div>
+</div>
+</header>
+<main class="max-w-screen-xl mx-auto px-6 pt-16 pb-24">
+<div class="max-w-3xl mx-auto space-y-12">
+<!-- Header Section -->
+<div class="text-center space-y-4">
+<span class="inline-block px-4 py-1 rounded-full bg-tertiary-container/10 text-tertiary font-label text-sm font-semibold tracking-wide uppercase">New Import</span>
+<h1 class="text-5xl md:text-6xl font-headline font-extrabold text-on-surface tracking-tight leading-[1.1]">
+                    Import Your <br/><span class="text-primary italic">Culinary Inspiration</span>
+</h1>
+<p class="text-lg text-on-surface-variant font-body leading-relaxed max-w-xl mx-auto">
+                    Transform video tutorials or messy transcripts into beautifully structured, editorial-style recipes for your personal collection.
+                </p>
+</div>
+<!-- The Import Engine -->
+<div class="bg-surface-container-lowest rounded-xl shadow-[0px_12px_32px_rgba(26,28,28,0.04)] p-8 md:p-12 relative overflow-hidden border border-surface-container">
+<div class="relative z-10 space-y-8">
+<!-- Tab Navigation -->
+<div class="flex items-center gap-1 p-1 bg-surface-container-low rounded-xl w-fit mx-auto md:mx-0">
+<button class="px-6 py-2.5 rounded-lg text-sm font-headline font-bold transition-all bg-surface-container-lowest text-primary shadow-sm">
+                            Video Link
+                        </button>
+<button class="px-6 py-2.5 rounded-lg text-sm font-headline font-semibold transition-all text-on-surface-variant hover:bg-surface-container-high/50">
+                            Paste Transcript
+                        </button>
+</div>
+<!-- Input Area -->
+<div class="space-y-6">
+<div class="space-y-2">
+<label class="font-headline font-bold text-on-surface ml-1">YouTube or Instagram URL</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/50">link</span>
+<input class="w-full pl-12 pr-4 py-4 bg-surface-container-high border-none rounded-xl font-body text-on-surface focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant/40" placeholder="https://www.youtube.com/watch?v=..." type="text"/>
+</div>
+</div>
+<div class="space-y-2">
+<label class="font-headline font-bold text-on-surface ml-1">Additional Context (Optional)</label>
+<textarea class="w-full p-4 bg-surface-container-high border-none rounded-xl font-body text-on-surface focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant/40" placeholder="Any specific notes or parts of the video to focus on?" rows="4"></textarea>
+</div>
+</div>
+<!-- Actions -->
+<div class="pt-4 flex flex-col md:flex-row items-center gap-6">
+<button class="w-full md:w-auto px-10 py-4 bg-gradient-to-br from-primary to-primary-container text-on-primary font-headline font-bold rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all flex items-center justify-center gap-3 active:opacity-80 active:scale-95">
+                            Import Recipe
+                            <span class="w-5 h-5 border-2 border-on-primary/30 border-t-on-primary rounded-full animate-spin"></span>
+</button>
+<p class="text-sm text-on-surface-variant flex items-center gap-2">
+<span class="material-symbols-outlined text-tertiary text-sm">check_circle</span>
+                            Est. processing time: 15 seconds
+                        </p>
+</div>
+<!-- Recent Activity -->
+<div class="pt-8 border-t border-surface-container">
+<h4 class="font-headline font-bold text-on-surface-variant mb-4">Recent Imports</h4>
+<div class="space-y-3">
+<div class="flex items-center justify-between p-3 bg-surface-container-low/50 rounded-lg group cursor-pointer hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant/50">play_circle</span>
+</div>
+<div>
+<p class="text-sm font-bold text-on-surface">Artisan Sourdough 101</p>
+<p class="text-xs text-on-surface-variant">2 hours ago</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-tertiary transition-transform group-hover:translate-x-1">arrow_forward</span>
+</div>
+<div class="flex items-center justify-between p-3 bg-surface-container-low/50 rounded-lg group cursor-pointer hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant/50">description</span>
+</div>
+<div>
+<p class="text-sm font-bold text-on-surface">Grandma's Secret Lasagna</p>
+<p class="text-xs text-on-surface-variant">Yesterday</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-tertiary transition-transform group-hover:translate-x-1">arrow_forward</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Nav for Mobile -->
+<nav class="md:hidden fixed bottom-0 left-0 right-0 bg-surface-container-lowest border-t border-surface-container-high px-6 py-4 flex justify-between items-center z-50">
+<button class="flex flex-col items-center gap-1 text-on-surface-variant">
+<span class="material-symbols-outlined">home</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">Home</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-primary">
+<span class="material-symbols-outlined">add_circle</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">Import</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-on-surface-variant">
+<span class="material-symbols-outlined">book</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">Vault</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-on-surface-variant">
+<span class="material-symbols-outlined">settings</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">Settings</span>
+</button>
+</nav>
+</body></html>

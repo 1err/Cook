@@ -22,6 +22,7 @@ def _row_to_recipe(row: RecipeModel) -> Recipe:
         thumbnail_url=row.thumbnail_url,
         ingredients=[IngredientItem(**i) for i in ingredients_data],
         raw_extraction_text=row.raw_extraction_text,
+        library_category=row.library_category,
     )
 
 
@@ -37,6 +38,7 @@ async def save_recipe(session: AsyncSession, recipe: Recipe, user_id: uuid.UUID)
         thumbnail_url=recipe.thumbnail_url,
         ingredients=ingredients_json,
         raw_extraction_text=recipe.raw_extraction_text,
+        library_category=recipe.library_category,
     )
     await session.merge(model)
     await session.flush()

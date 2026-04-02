@@ -1,13 +1,37 @@
 """
 S3 presigned URL generation for direct browser uploads.
 Uses AWS_REGION and S3_BUCKET_NAME from app config (env).
+When S3 is not configured, saves files under the local upload root and returns a public file_url only.
 """
 import mimetypes
 import uuid
+from pathlib import Path
 
 import boto3
 
 from app.core.config import settings
+
+
+def get_local_upload_root() -> Path:
+    raw = (settings.LOCAL_IMAGE_UPLOAD_DIR or "").strip()
+    if raw:
+        p = Path(raw)
+        return p.resolve() if p.is_absolute() else (Path.cwd() / p).resolve()
+    return (Path.cwd() / "uploads").resolve()
+
+
+def save_recipe_image_local(content: bytes, content_type: str) -> str:
+    """
+    Write image bytes to local disk. Returns URL path segment starting with /uploads/...
+    """
+    root = get_local_upload_root()
+    recipes_dir = root / "recipes"
+    recipes_dir.mkdir(parents=True, exist_ok=True)
+    ext = mimetypes.guess_extension(content_type) or ".bin"
+    key = f"{uuid.uuid4().hex}{ext}"
+    path = recipes_dir / key
+    path.write_bytes(content)
+    return f"/uploads/recipes/{key}"
 
 
 def generate_image_upload_url(content_type: str) -> dict[str, str]:

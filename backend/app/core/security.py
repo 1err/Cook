@@ -52,5 +52,5 @@ def decode_access_token(token: str) -> dict[str, Any] | None:
         secret = _get_secret()
         payload = jwt.decode(token, secret, algorithms=[ALGORITHM])
         return payload
-    except jwt.PyJWTError:
+    except (jwt.PyJWTError, ValueError):
         return None
