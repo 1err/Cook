@@ -1,5 +1,5 @@
 """
-Store integration interface. Implementations (Amazon PA-API, Weee, Yami) can be
+Store integration interface. Implementations (Amazon PA-API, Weee) can be
 plugged in without rewriting callers.
 """
 from abc import ABC, abstractmethod
@@ -17,7 +17,7 @@ class StoreItem:
 
 
 class StoreSearchProtocol(Protocol):
-    """Protocol for store search. Implement per store (amazon, weee, yami)."""
+    """Protocol for store search. Implement per store (amazon, weee)."""
 
     def search(self, store: str, query: str) -> list[StoreItem]:
         """Return list of items for the given store and search query. May be async later."""

@@ -22,6 +22,7 @@ from app.api.auth import router as auth_router
 from app.api.routes_recipes import router as recipes_router
 from app.api.routes_mealplan import router as mealplan_router
 from app.api.routes_shopping import router as shopping_router
+from app.api.routes_store import router as store_router
 from app.services.storage_service import get_local_upload_root
 
 setup_logging()
@@ -48,6 +49,7 @@ app.include_router(auth_router)
 app.include_router(recipes_router)
 app.include_router(mealplan_router)
 app.include_router(shopping_router)
+app.include_router(store_router)
 
 _upload_root = get_local_upload_root()
 _upload_root.mkdir(parents=True, exist_ok=True)

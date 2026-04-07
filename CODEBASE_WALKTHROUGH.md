@@ -39,7 +39,7 @@ This document is the **authoritative overview** of the repo: how the product flo
    SessionStorage key `smartShoppingList:{weekStart}` stores refined payload + UI state. Category **bento** cards; **Copy full list** / **Shop on {store}** / **Store preview**. **Back to original list** clears smart session for that week and returns to the confirmation UI.
 
 7. **Store preview** (`/store-preview?store=...`)  
-   Reads `cooking-store-preview-items` from `sessionStorage` (set from smart list). Opens search URLs for Weee / Yami / Amazon (`frontend/app/lib/store.ts`). No backend call.
+   Legacy note: old manual store-preview flow has been removed. Smart shopping now loads live product results inline from supported stores.
 
 ---
 
@@ -169,7 +169,7 @@ flowchart LR
 |-----|-----|
 | `smartShoppingList:{weekMonday}` | Refined JSON + `_ui.hidden` / `_ui.checked` |
 | `cooking-store-preview-items` | Items passed to store preview |
-| `cooking-preferred-store` | `weee` / `yami` / `amazon` |
+| `cooking-preferred-store` | Removed |
 
 ### Shared libs
 
