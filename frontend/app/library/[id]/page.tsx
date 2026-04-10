@@ -6,18 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "../../lib/api";
 import { RequireAuth } from "../../components/RequireAuth";
 import {
-  LIBRARY_FILTER_CHIPS,
-  type LibraryCategorySlug,
+  CATEGORY_LABELS,
+  RECIPE_TAG_GROUPS,
+  type RecipeTagSlug,
 } from "../../lib/recipeCategories";
 import type { Recipe, IngredientItem } from "../../types";
-
-const CATEGORY_OPTIONS: { value: string; label: string }[] = [
-  { value: "", label: "No tag" },
-  ...LIBRARY_FILTER_CHIPS.filter((c) => c.id !== "all").map((c) => ({
-    value: c.id,
-    label: c.label,
-  })),
-];
 
 function RecipeEditContent() {
   const params = useParams();
@@ -26,12 +19,14 @@ function RecipeEditContent() {
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [title, setTitle] = useState("");
   const [thumbnailUrl, setThumbnailUrl] = useState("");
-  const [libraryCategory, setLibraryCategory] = useState<string>("");
+  const [libraryTags, setLibraryTags] = useState<RecipeTagSlug[]>([]);
   const [ingredients, setIngredients] = useState<IngredientItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [catalogSaving, setCatalogSaving] = useState(false);
+  const [canManageCatalog, setCanManageCatalog] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -43,11 +38,12 @@ function RecipeEditContent() {
         const res = await apiFetch(`/recipes/${id}`);
         if (!res.ok) throw new Error("Recipe not found");
         const data: Recipe = await res.json();
+        const nextTags = (data.library_tags ?? (data.library_category ? [data.library_category] : [])) as RecipeTagSlug[];
         if (!cancelled) {
           setRecipe(data);
           setTitle(data.title);
           setThumbnailUrl(data.thumbnail_url ?? "");
-          setLibraryCategory(data.library_category ?? "");
+          setLibraryTags(nextTags);
           setIngredients(data.ingredients?.length ? [...data.ingredients] : []);
         }
       } catch (e) {
@@ -61,6 +57,24 @@ function RecipeEditContent() {
       cancelled = true;
     };
   }, [id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCatalogStatus() {
+      try {
+        const res = await apiFetch("/recipes/catalog/editor-status");
+        if (!res.ok) return;
+        const data = (await res.json()) as { can_manage?: boolean };
+        if (!cancelled) setCanManageCatalog(Boolean(data.can_manage));
+      } catch {
+        if (!cancelled) setCanManageCatalog(false);
+      }
+    }
+    loadCatalogStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function updateIngredient(index: number, field: keyof IngredientItem, value: string | null) {
     setIngredients((prev) => {
@@ -77,6 +91,10 @@ function RecipeEditContent() {
 
   function addIngredient() {
     setIngredients((prev) => [...prev, { name: "", quantity: "", notes: null }]);
+  }
+
+  function toggleTag(tag: RecipeTagSlug) {
+    setLibraryTags((prev) => (prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]));
   }
 
   async function handleImageFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -118,12 +136,8 @@ function RecipeEditContent() {
         title: title.trim() || recipe?.title,
         thumbnail_url: thumbnailUrl.trim() || null,
         ingredients: ingredients.filter((i) => i.name.trim() !== ""),
+        library_tags: libraryTags,
       };
-      if (libraryCategory) {
-        payload.library_category = libraryCategory as LibraryCategorySlug;
-      } else {
-        payload.library_category = null;
-      }
       const res = await apiFetch(`/recipes/${id}`, {
         method: "PATCH",
         body: JSON.stringify(payload),
@@ -153,6 +167,28 @@ function RecipeEditContent() {
     }
   }
 
+  async function handleCatalogToggle() {
+    if (!id || !recipe) return;
+    setCatalogSaving(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/recipes/${id}/catalog`, {
+        method: "POST",
+        body: JSON.stringify({ is_public: !recipe.is_public_catalog }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Could not update public library");
+      }
+      const updated: Recipe = await res.json();
+      setRecipe(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update public library");
+    } finally {
+      setCatalogSaving(false);
+    }
+  }
+
   if (loading) return <p style={mutedStyle}>Loading…</p>;
   if (error && !recipe) return <p style={errorStyle}>{error}</p>;
   if (!recipe) return null;
@@ -167,7 +203,7 @@ function RecipeEditContent() {
           <h1 className="font-headline" style={pageTitle}>
             {title.trim() || "Untitled"}
           </h1>
-          <p style={pageSub}>Update the cover, tag, and ingredients—changes save to your library.</p>
+          <p style={pageSub}>Update the cover, tags, and ingredients. Changes save to your library.</p>
         </div>
         <div style={headerActions}>
           <button type="button" className="font-headline" style={discardStyle} onClick={() => router.push("/library")}>
@@ -276,22 +312,61 @@ function RecipeEditContent() {
 
           <div style={metaCard}>
             <label className="font-headline" style={labelUpper}>
-              Library tag
+              Recipe tags
             </label>
-            <p style={hint}>Used for filters on the library grid (optional).</p>
-            <select
-              value={libraryCategory}
-              onChange={(e) => setLibraryCategory(e.target.value)}
-              className="input-editorial"
-              style={{ minHeight: 48, fontSize: "0.9rem", cursor: "pointer" }}
-            >
-              {CATEGORY_OPTIONS.map((o) => (
-                <option key={o.value || "none"} value={o.value}>
-                  {o.label}
-                </option>
+            <p style={hint}>Add a few tags to help people find this recipe.</p>
+            <div className="recipe-tag-picker">
+              {RECIPE_TAG_GROUPS.map((group) => (
+                <div key={group.id} className="recipe-tag-group">
+                  <p className="recipe-tag-group__title font-headline">{group.label}</p>
+                  <div className="recipe-tag-group__chips">
+                    {group.tags.map((tag) => {
+                      const active = libraryTags.includes(tag.id);
+                      return (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          className={`library-chip ${active ? "library-chip--active" : "library-chip--idle"}`}
+                          onClick={() => toggleTag(tag.id)}
+                        >
+                          {tag.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               ))}
-            </select>
+            </div>
+            {libraryTags.length > 0 ? (
+              <p style={{ ...hint, marginTop: "0.85rem", marginBottom: 0 }}>
+                Selected: {libraryTags.map((tag) => CATEGORY_LABELS[tag]).join(", ")}
+              </p>
+            ) : null}
           </div>
+
+          {canManageCatalog ? (
+            <div style={metaCard}>
+              <label className="font-headline" style={labelUpper}>
+                Public library
+              </label>
+              <p style={hint}>
+                Publish this recipe to the shared catalog so new users can copy it into their own library.
+              </p>
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ width: "100%", justifyContent: "center" }}
+                onClick={handleCatalogToggle}
+                disabled={catalogSaving}
+              >
+                {catalogSaving
+                  ? "Saving…"
+                  : recipe.is_public_catalog
+                    ? "Remove from public library"
+                    : "Add to public library"}
+              </button>
+            </div>
+          ) : null}
 
           {recipe.source_url && (
             <p style={{ fontSize: "0.85rem", color: "var(--on-surface-variant)", margin: 0 }}>

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from typing import Any, Literal
 from urllib.parse import quote_plus, urljoin
 
@@ -18,6 +19,8 @@ StoreName = Literal["weee", "amazon"]
 MAX_RESULTS = 3
 PLAYWRIGHT_TIMEOUT_MS = 15000
 SUPPORTED_STORES: tuple[StoreName, ...] = ("weee", "amazon")
+CACHE_TTL_SECONDS = 86400
+CACHE: dict[tuple[StoreName, str], dict[str, Any]] = {}
 
 STORE_BASE_URLS: dict[StoreName, str] = {
     "weee": "https://www.sayweee.com",
@@ -206,9 +209,15 @@ def _store_extract_script(store: StoreName) -> str:
 async def _fetch_store_products(query: str, store: StoreName) -> list[dict[str, str]]:
     original_query = _normalize_space(query)
     cleaned_query = _clean_search_query(query) or original_query
+    cleaned_query = cleaned_query.lower().strip() or original_query
     logger.info("%s store lookup query=%r cleaned_query=%r", store, original_query, cleaned_query)
     if not cleaned_query:
         return []
+    cache_key = (store, cleaned_query)
+    cached = CACHE.get(cache_key)
+    now = time.time()
+    if cached and now - float(cached["timestamp"]) < CACHE_TTL_SECONDS:
+        return cached["data"]
 
     try:
         from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -265,6 +274,8 @@ async def _fetch_store_products(query: str, store: StoreName) -> list[dict[str, 
         logger.exception("%s scraping failed for query=%r: %s", store, cleaned_query, exc)
         return []
 
+    if products:
+        CACHE[cache_key] = {"data": products, "timestamp": now}
     return products
 
 

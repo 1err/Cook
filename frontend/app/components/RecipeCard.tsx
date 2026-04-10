@@ -5,7 +5,6 @@ import type { Recipe } from "../types";
 import {
   CATEGORY_LABELS,
   categoryBadgeStyle,
-  type LibraryCategorySlug,
 } from "../lib/recipeCategories";
 
 function ingredientPreview(recipe: Recipe, maxLength = 72): string {
@@ -16,7 +15,9 @@ function ingredientPreview(recipe: Recipe, maxLength = 72): string {
 
 export function RecipeCard({ recipe, isHighlighted }: { recipe: Recipe; isHighlighted: boolean }) {
   const preview = ingredientPreview(recipe);
-  const cat = recipe.library_category as LibraryCategorySlug | null | undefined;
+  const tags = recipe.library_tags ?? (recipe.library_category ? [recipe.library_category] : []);
+  const featuredTags = tags.slice(0, 2);
+  const badgeTag = featuredTags[0];
 
   return (
     <li
@@ -28,7 +29,12 @@ export function RecipeCard({ recipe, isHighlighted }: { recipe: Recipe; isHighli
       <Link href={`/recipe/${recipe.id}`} className="recipe-card-stitch__link">
         <div className="recipe-card-stitch__media">
           {recipe.thumbnail_url ? (
-            <img src={recipe.thumbnail_url} alt="" className="recipe-card-stitch__img" />
+            <>
+              <img src={recipe.thumbnail_url} alt="" className="recipe-card-stitch__img recipe-card-stitch__img--bg" />
+              <div className="recipe-card-stitch__img-frame">
+                <img src={recipe.thumbnail_url} alt="" className="recipe-card-stitch__img recipe-card-stitch__img--full" />
+              </div>
+            </>
           ) : (
             <div className="recipe-card-stitch__placeholder recipeCardPlaceholder">
               <span className="font-headline recipe-card-stitch__placeholder-text">Recipe</span>
@@ -44,9 +50,9 @@ export function RecipeCard({ recipe, isHighlighted }: { recipe: Recipe; isHighli
               />
             </svg>
           </span>
-          {cat && CATEGORY_LABELS[cat] && (
-            <span className="recipe-card-stitch__badge font-headline" style={categoryBadgeStyle(cat)}>
-              {CATEGORY_LABELS[cat]}
+          {badgeTag && CATEGORY_LABELS[badgeTag] && (
+            <span className="recipe-card-stitch__badge font-headline" style={categoryBadgeStyle(badgeTag)}>
+              {CATEGORY_LABELS[badgeTag]}
             </span>
           )}
         </div>
@@ -56,6 +62,15 @@ export function RecipeCard({ recipe, isHighlighted }: { recipe: Recipe; isHighli
             <p className="recipe-card-stitch__sub" title={preview}>
               {preview}
             </p>
+            {featuredTags.length > 0 ? (
+              <div className="recipe-card-stitch__tag-row">
+                {featuredTags.map((tag) => (
+                  <span key={tag} className="recipe-card-stitch__tag-mini font-headline">
+                    {CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
       </Link>

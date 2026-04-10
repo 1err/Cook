@@ -8,11 +8,13 @@ const HERO_IMAGE =
 export function AuthShell({
   title,
   subtitle,
+  eyebrow,
   children,
   footer,
 }: {
   title: string;
   subtitle: string;
+  eyebrow: string;
   children: ReactNode;
   footer: ReactNode;
 }) {
@@ -69,7 +71,7 @@ export function AuthShell({
               marginBottom: "1.25rem",
             }}
           >
-            Sign in with email
+            {eyebrow}
           </p>
 
           {children}

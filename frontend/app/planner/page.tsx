@@ -5,17 +5,22 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
+import { TagFilterPopover } from "../components/TagFilterPopover";
 import type { Recipe } from "../types";
 import { getWeekBounds, getPrevNextWeek, formatWeekPlannerKicker } from "../lib/week";
+import { CATEGORY_LABELS, type LibraryFilterId } from "../lib/recipeCategories";
+import {
+  MEAL_PLAN_SLOTS,
+  type MealPlanDay,
+  type MealPlanSlots,
+  type MealType,
+  buildMealPlanFingerprint,
+  emptyMealPlanSlots,
+  normalizeMealPlanSlots,
+  plannerFingerprintStorageKey,
+} from "../lib/mealPlan";
 
 const COL_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const SLOTS = ["breakfast", "lunch", "dinner"] as const;
-type MealType = (typeof SLOTS)[number];
-
-function normalizeSlots(recipeIds: string[]): [string, string, string] {
-  const [a = "", b = "", c = ""] = recipeIds;
-  return [a, b, c];
-}
 
 function todayYmd(): string {
   const n = new Date();
@@ -38,16 +43,24 @@ function PlannerPageContent() {
   const today = todayYmd();
 
   const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [planByDate, setPlanByDate] = useState<Record<string, [string, string, string]>>({});
+  const [planByDate, setPlanByDate] = useState<Record<string, MealPlanSlots>>({});
   const [loading, setLoading] = useState(true);
   const [draggingSlot, setDraggingSlot] = useState<{ date: string; slot: MealType } | null>(null);
   const [sideSearch, setSideSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<LibraryFilterId>("all");
+  const [slotPicker, setSlotPicker] = useState<{ date: string; slot: MealType } | null>(null);
 
   const sidebarRecipes = useMemo(() => {
     const q = sideSearch.trim().toLowerCase();
-    if (!q) return recipes;
-    return recipes.filter((r) => r.title.toLowerCase().includes(q));
-  }, [recipes, sideSearch]);
+    return [...recipes]
+      .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
+      .filter((r) => {
+        const tags = r.library_tags ?? (r.library_category ? [r.library_category] : []);
+        if (categoryFilter !== "all" && !tags.includes(categoryFilter)) return false;
+        if (q && !r.title.toLowerCase().includes(q)) return false;
+        return true;
+      });
+  }, [recipes, sideSearch, categoryFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,13 +74,13 @@ function PlannerPageContent() {
         const recs: Recipe[] = await recipesRes.json();
         if (!cancelled) setRecipes(recs);
         if (plansRes.ok) {
-          const plans: { date: string; recipe_ids: string[] }[] = await plansRes.json();
-          const nextPlan: Record<string, [string, string, string]> = {};
+          const plans: MealPlanDay[] = await plansRes.json();
+          const nextPlan: Record<string, MealPlanSlots> = {};
           plans.forEach((p) => {
-            nextPlan[p.date] = normalizeSlots(p.recipe_ids);
+            nextPlan[p.date] = normalizeMealPlanSlots(p);
           });
           dates.forEach((d) => {
-            if (!nextPlan[d]) nextPlan[d] = ["", "", ""];
+            if (!nextPlan[d]) nextPlan[d] = emptyMealPlanSlots();
           });
           if (!cancelled) setPlanByDate(nextPlan);
         }
@@ -83,17 +96,31 @@ function PlannerPageContent() {
     };
   }, [start, end, dates.join(",")]);
 
-  async function putDay(date: string, slots: [string, string, string]) {
+  useEffect(() => {
+    if (loading) return;
+    const snapshot = dates.map((date) => ({
+      date,
+      ...(planByDate[date] ?? emptyMealPlanSlots()),
+    }));
+    try {
+      localStorage.setItem(plannerFingerprintStorageKey(start), buildMealPlanFingerprint(snapshot));
+    } catch {
+      // ignore storage failures
+    }
+  }, [dates, loading, planByDate, start]);
+
+  async function putDay(date: string, slots: MealPlanSlots) {
     const res = await apiFetch(`/meal-plan/${date}`, {
       method: "PUT",
-      body: JSON.stringify({ recipe_ids: slots }),
+      body: JSON.stringify(slots),
     });
-    if (!res.ok) return;
-    const updated: { date: string; recipe_ids: string[] } = await res.json();
+    if (!res.ok) return false;
+    const updated: MealPlanDay = await res.json();
     setPlanByDate((prev) => ({
       ...prev,
-      [date]: normalizeSlots(updated.recipe_ids),
+      [date]: normalizeMealPlanSlots(updated),
     }));
+    return true;
   }
 
   function handleDragStart(e: React.DragEvent, recipeId: string) {
@@ -108,7 +135,7 @@ function PlannerPageContent() {
     const date = e.currentTarget.dataset.date;
     const slotIndex = e.currentTarget.dataset.slotIndex;
     if (date !== undefined && slotIndex !== undefined) {
-      setDraggingSlot({ date, slot: SLOTS[Number(slotIndex)] });
+      setDraggingSlot({ date, slot: MEAL_PLAN_SLOTS[Number(slotIndex)] });
     }
   }
 
@@ -126,19 +153,33 @@ function PlannerPageContent() {
     if (date === undefined || slotIndexRaw === undefined) return;
     const slotIndex = Number(slotIndexRaw);
     if (Number.isNaN(slotIndex) || slotIndex < 0 || slotIndex > 2) return;
+    const slot = MEAL_PLAN_SLOTS[slotIndex];
     const recipeId = e.dataTransfer.getData("recipeId");
     if (!recipeId) return;
-    const current = planByDate[date] ?? ["", "", ""];
-    const nextSlots: [string, string, string] = [...current];
-    nextSlots[slotIndex] = recipeId;
+    await addRecipeToSlot(date, slot, recipeId);
+  }
+
+  async function addRecipeToSlot(date: string, slot: MealType, recipeId: string) {
+    const current = planByDate[date] ?? emptyMealPlanSlots();
+    const nextSlots: MealPlanSlots = {
+      breakfast: [...current.breakfast],
+      lunch: [...current.lunch],
+      dinner: [...current.dinner],
+    };
+    if (nextSlots[slot].includes(recipeId)) return;
+    nextSlots[slot] = [...nextSlots[slot], recipeId];
     setPlanByDate((prev) => ({ ...prev, [date]: nextSlots }));
     await putDay(date, nextSlots);
   }
 
-  async function removeMeal(date: string, slotIndex: number) {
-    const current = planByDate[date] ?? ["", "", ""];
-    const nextSlots: [string, string, string] = [...current];
-    nextSlots[slotIndex] = "";
+  async function removeMeal(date: string, slot: MealType, recipeId: string) {
+    const current = planByDate[date] ?? emptyMealPlanSlots();
+    const nextSlots: MealPlanSlots = {
+      breakfast: [...current.breakfast],
+      lunch: [...current.lunch],
+      dinner: [...current.dinner],
+    };
+    nextSlots[slot] = nextSlots[slot].filter((id) => id !== recipeId);
     setPlanByDate((prev) => ({ ...prev, [date]: nextSlots }));
     await putDay(date, nextSlots);
   }
@@ -150,7 +191,101 @@ function PlannerPageContent() {
     router.push(`/planner?week=${week}`);
   }
 
+  function openRecipe(recipeId: string) {
+    router.push(`/recipe/${recipeId}`);
+  }
+
+  async function handlePickerSelect(recipeId: string) {
+    if (!slotPicker) return;
+    await addRecipeToSlot(slotPicker.date, slotPicker.slot, recipeId);
+    setSlotPicker(null);
+  }
+
+  const slotPickerDayLabel = useMemo(() => {
+    if (!slotPicker) return "";
+    const index = dates.indexOf(slotPicker.date);
+    const short = index >= 0 ? COL_SHORT[index] : slotPicker.date;
+    return `${short} ${dayOfMonth(slotPicker.date)}`;
+  }, [dates, slotPicker]);
+
   if (loading) return <p className="planner-muted app-wide">Loading…</p>;
+
+  const recipeSourceControls = (
+    <>
+      <div className="planner-editorial__search">
+        <span className="material-symbols-outlined">search</span>
+        <input
+          type="search"
+          placeholder="Search library…"
+          value={sideSearch}
+          onChange={(e) => setSideSearch(e.target.value)}
+          aria-label="Search recipes for planner"
+        />
+      </div>
+      <div className="planner-filter-bar">
+        <TagFilterPopover
+          value={categoryFilter}
+          onChange={setCategoryFilter}
+          ariaLabel="Filter planner recipes by tag"
+        />
+        {categoryFilter !== "all" ? (
+          <button
+            type="button"
+            className="planner-filter-reset font-headline"
+            onClick={() => setCategoryFilter("all")}
+          >
+            Clear filter
+          </button>
+        ) : null}
+      </div>
+      <p className="planner-sort-note">Sorted A-Z</p>
+    </>
+  );
+
+  const recipeSourceList = sidebarRecipes.length > 0 ? (
+    sidebarRecipes.map((r) => (
+      <div key={r.id} className="planner-source-card">
+        <div
+          draggable
+          onDragStart={(e) => handleDragStart(e, r.id)}
+          className="planner-drag-card"
+        >
+          <div className="planner-drag-card__thumb">
+            {r.thumbnail_url ? <img src={r.thumbnail_url} alt="" /> : null}
+          </div>
+          <div className="planner-drag-card__body">
+            <h4 className="planner-drag-card__title font-headline">{r.title}</h4>
+            {(r.library_tags?.length || r.library_category) ? (
+              <p className="planner-drag-card__meta">
+                {(r.library_tags ?? (r.library_category ? [r.library_category] : []))
+                  .slice(0, 2)
+                  .map((tag) => CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " "))
+                  .join(" • ")}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        {slotPicker ? (
+          <button type="button" className="planner-source-card__add font-headline" onClick={() => handlePickerSelect(r.id)}>
+            Add
+          </button>
+        ) : null}
+      </div>
+    ))
+  ) : (
+    <p className="planner-source-empty">
+      {recipes.length === 0 ? (
+        <>
+          <Link href="/import" className="font-bold">
+            Import recipes
+          </Link>{" "}
+          to plan your week.
+        </>
+      ) : (
+        "No recipes match the current search or filter."
+      )}
+    </p>
+  );
 
   return (
     <div className="planner-editorial app-wide" style={{ padding: 0, maxWidth: "100%" }}>
@@ -161,45 +296,12 @@ function PlannerPageContent() {
               Your saved recipes
             </h2>
             <p className="m-0 text-sm" style={{ color: "var(--on-surface-variant)" }}>
-              Drag and drop into your week.
+              Drag and drop into your week, or click the plus icon in any slot to choose a recipe. Tap a meal card to open it.
             </p>
           </div>
-          <div className="planner-editorial__search">
-            <span className="material-symbols-outlined">search</span>
-            <input
-              type="search"
-              placeholder="Search library…"
-              value={sideSearch}
-              onChange={(e) => setSideSearch(e.target.value)}
-              aria-label="Search recipes for planner"
-            />
-          </div>
+          {recipeSourceControls}
         </div>
-        <div className="planner-editorial__sidebar-scroll">
-          {sidebarRecipes.map((r) => (
-            <div
-              key={r.id}
-              draggable
-              onDragStart={(e) => handleDragStart(e, r.id)}
-              className="planner-drag-card"
-            >
-              <div className="planner-drag-card__thumb">
-                {r.thumbnail_url ? <img src={r.thumbnail_url} alt="" /> : null}
-              </div>
-              <div className="planner-drag-card__body">
-                <h4 className="planner-drag-card__title font-headline">{r.title}</h4>
-              </div>
-            </div>
-          ))}
-          {recipes.length === 0 && (
-            <p className="m-0" style={{ fontSize: "0.875rem", color: "var(--on-surface-variant)" }}>
-              <Link href="/import" className="font-bold">
-                Import recipes
-              </Link>{" "}
-              to plan your week.
-            </p>
-          )}
-        </div>
+        <div className="planner-editorial__sidebar-scroll">{recipeSourceList}</div>
         <div className="planner-editorial__sidebar-foot">
           <Link href="/import" className="btn-primary font-headline w-full flex items-center justify-center gap-2" style={{ width: "100%", textDecoration: "none" }}>
             <span className="material-symbols-outlined">add</span>
@@ -268,24 +370,9 @@ function PlannerPageContent() {
           </div>
         </section>
 
-        <div className="planner-mobile-tray" aria-label="Recipes to drag">
-          <div className="planner-mobile-tray__inner">
-            {sidebarRecipes.map((r) => (
-              <div
-                key={r.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, r.id)}
-                className="planner-drag-card"
-              >
-                <div className="planner-drag-card__thumb">
-                  {r.thumbnail_url ? <img src={r.thumbnail_url} alt="" /> : null}
-                </div>
-                <div className="planner-drag-card__body">
-                  <h4 className="planner-drag-card__title font-headline">{r.title}</h4>
-                </div>
-              </div>
-            ))}
-          </div>
+        <div className="planner-mobile-guide">
+          <p className="planner-mobile-guide__title font-headline">Phone-friendly planning</p>
+          <p className="planner-mobile-guide__text">Tap any meal slot to choose from your saved recipes. Desktop drag-and-drop stays the same.</p>
         </div>
 
         <div className="planner-editorial__grid">
@@ -298,59 +385,98 @@ function PlannerPageContent() {
                   <p className="dom">{dayOfMonth(date)}</p>
                 </div>
                 <div className="planner-editorial__day-body">
-                  {SLOTS.map((slot, slotIndex) => {
-                    const recipeId = (planByDate[date] ?? ["", "", ""])[slotIndex];
-                    const recipe = recipeId ? recipeById[recipeId] : null;
+                  {MEAL_PLAN_SLOTS.map((slot, slotIndex) => {
+                    const recipeIds = (planByDate[date] ?? emptyMealPlanSlots())[slot];
                     const isHighlight = draggingSlot?.date === date && draggingSlot?.slot === slot;
                     return (
                       <div key={slot} className="planner-slot-stack">
                         <span className={`planner-slot-stack__label font-headline ${slot}`}>{slot}</span>
-                        {recipe ? (
-                          <div className="relative" style={{ flex: 1, minHeight: "9rem" }}>
-                            <button
-                              type="button"
-                              className="planner-meal-card w-full h-full"
-                              onClick={() => removeMeal(date, slotIndex)}
-                              title="Tap to remove"
-                            >
-                              {recipe.thumbnail_url ? (
-                                <img src={recipe.thumbnail_url} alt="" className="planner-meal-card__img" />
-                              ) : (
-                                <div
-                                  className="planner-meal-card__img"
-                                  style={{
-                                    background: "linear-gradient(145deg, var(--primary-fixed), var(--surface-container-high))",
-                                  }}
-                                />
-                              )}
-                              <div className="planner-meal-card__body">
-                                <p className="planner-meal-card__title font-headline">{recipe.title}</p>
-                              </div>
-                            </button>
-                            <button
-                              type="button"
-                              className="planner-meal-card__clear"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removeMeal(date, slotIndex);
-                              }}
-                              aria-label="Remove meal"
-                            >
-                              <span className="material-symbols-outlined text-sm">close</span>
-                            </button>
-                          </div>
-                        ) : (
-                          <div
-                            data-date={date}
-                            data-slot-index={String(slotIndex)}
-                            className={`planner-drop-target flex-1${isHighlight ? " is-drag-over" : ""}`}
-                            onDragOver={handleDragOver}
-                            onDragLeave={handleDragLeave}
-                            onDrop={handleDrop}
-                          >
-                            <span className="material-symbols-outlined text-2xl opacity-40">add</span>
-                          </div>
-                        )}
+                        <div
+                          data-date={date}
+                          data-slot-index={String(slotIndex)}
+                          className={`planner-drop-target flex-1${isHighlight ? " is-drag-over" : ""}${recipeIds.length ? " planner-drop-target--filled" : ""}`}
+                          onDragOver={handleDragOver}
+                          onDragLeave={handleDragLeave}
+                          onDrop={handleDrop}
+                        >
+                          {recipeIds.length ? (
+                            <div className="planner-slot-recipes">
+                              {recipeIds.map((recipeId) => {
+                                const recipe = recipeById[recipeId];
+                                if (!recipe) return null;
+                                return (
+                                  <div key={recipeId} className="planner-slot-recipe">
+                                    <button
+                                      type="button"
+                                      className="planner-meal-card w-full h-full"
+                                      onClick={() => openRecipe(recipeId)}
+                                      aria-label={`Open ${recipe.title}`}
+                                    >
+                                      {recipe.thumbnail_url ? (
+                                        <img src={recipe.thumbnail_url} alt="" className="planner-meal-card__img" />
+                                      ) : (
+                                        <div
+                                          className="planner-meal-card__img"
+                                          style={{
+                                            background: "linear-gradient(145deg, var(--primary-fixed), var(--surface-container-high))",
+                                          }}
+                                        />
+                                      )}
+                                      <div className="planner-meal-card__body">
+                                        <p className="planner-meal-card__title font-headline">{recipe.title}</p>
+                                      </div>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="planner-meal-card__clear"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        removeMeal(date, slot, recipeId);
+                                      }}
+                                      aria-label="Remove meal"
+                                    >
+                                      <span className="material-symbols-outlined text-sm">close</span>
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                              <span className="planner-drop-target__hint">Drop another recipe</span>
+                              <button
+                                type="button"
+                                className="planner-slot-action planner-slot-action--mobile font-headline"
+                                onClick={() => setSlotPicker({ date, slot })}
+                              >
+                                Add another recipe
+                              </button>
+                              <button
+                                type="button"
+                                className="planner-slot-action planner-slot-action--desktop-icon"
+                                onClick={() => setSlotPicker({ date, slot })}
+                                aria-label={`Choose another recipe for ${slot} on ${date}`}
+                              >
+                                <span className="material-symbols-outlined">add</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="planner-slot-plus"
+                                onClick={() => setSlotPicker({ date, slot })}
+                                aria-label={`Choose a recipe for ${slot} on ${date}`}
+                              >
+                                <span className="material-symbols-outlined text-2xl opacity-40">add</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="planner-slot-action planner-slot-action--mobile font-headline"
+                                onClick={() => setSlotPicker({ date, slot })}
+                              >
+                                Choose recipe
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -359,6 +485,37 @@ function PlannerPageContent() {
             );
           })}
         </div>
+
+        {slotPicker ? (
+          <div className="planner-mobile-picker" role="dialog" aria-modal="true" aria-label="Choose recipe for meal slot">
+            <button
+              type="button"
+              className="planner-mobile-picker__backdrop"
+              aria-label="Close recipe picker"
+              onClick={() => setSlotPicker(null)}
+            />
+            <div className="planner-mobile-picker__sheet">
+              <div className="planner-mobile-picker__head">
+                <div>
+                  <p className="planner-mobile-picker__kicker font-headline">{slotPickerDayLabel}</p>
+                  <h2 className="planner-mobile-picker__title font-headline">
+                    Add to {slotPicker.slot}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  className="planner-mobile-picker__close"
+                  onClick={() => setSlotPicker(null)}
+                  aria-label="Close recipe picker"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+              <div className="planner-mobile-picker__controls">{recipeSourceControls}</div>
+              <div className="planner-mobile-picker__list">{recipeSourceList}</div>
+            </div>
+          </div>
+        ) : null}
       </main>
     </div>
   );

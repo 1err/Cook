@@ -20,7 +20,8 @@ export async function apiFetch(
   if (res.status === 401 && typeof window !== "undefined") {
     const pathname = window.location.pathname;
     if (pathname !== "/login" && pathname !== "/register") {
-      window.location.href = "/login";
+      const redirect = `${window.location.pathname}${window.location.search || ""}`;
+      window.location.href = `/login?redirect=${encodeURIComponent(redirect)}`;
     }
   }
 

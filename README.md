@@ -70,10 +70,10 @@ For a fuller architecture, API table, Docker notes, and UI design pointers, see 
 
 ## Flow
 
-1. **Import** (`/import`): Video link (YouTube) or pasted transcript → extraction (LLM if `OPENAI_API_KEY` is set) → recipe saved.
-2. **Library** (`/library`, `/library/[id]`): Browse, edit, delete, optional thumbnail upload (local disk or S3 — see `CODEBASE_WALKTHROUGH.md`).
-3. **Planner** (`/planner`): Weekly meal plan; drag recipes into breakfast / lunch / dinner; tied to `?week=` (Monday).
-4. **Shopping list** (`/shopping-list`): Confirms the week and planned meals, then **Prepare smart shopping list** (LLM refine on demand). Smart mode: categories, copy, store preview.
+1. **Import** (`/import`): Video link (YouTube) or pasted transcript, with optional title + tag overrides at import time → extraction (LLM if `OPENAI_API_KEY` is set) → recipe saved.
+2. **Library** (`/library`, `/library/[id]`): Browse, edit, delete, optional thumbnail upload (local disk or S3), and copy curated recipes from the shared public library.
+3. **Planner** (`/planner`): Weekly meal plan; desktop drag recipes into breakfast / lunch / dinner, while phones use slot-based pickers; tied to `?week=` (Monday).
+4. **Shopping list** (`/shopping-list`): Confirms the week and planned meals, then **Prepare smart shopping list** (LLM refine on demand). Smart mode keeps its generated snapshot until the user refreshes, and warns when the planner changed later.
 
 ## YouTube Transcript Support
 
@@ -83,7 +83,7 @@ YouTube links are supported **without** Google Cloud or OAuth. The backend uses 
 - **Limitations:** Only YouTube is supported (TikTok/RedNote are not). Captions must exist and be available; some videos have captions disabled or region-locked. No authentication, so private or age-restricted videos will not work.
 - **Env:** Create a `backend/.env` file (see `.env.example`). Set `OPENAI_API_KEY=sk-...` for real recipe extraction; without it, the app still runs and uses stub extraction.
 - **Testing:** Paste a public YouTube cooking video URL (e.g. `https://www.youtube.com/watch?v=...`) on the Import page and click “Import recipe”. Check the backend terminal for log lines: “Fetching transcript for video_id=…”, “Transcript fetched successfully…”, or “Captions disabled / Video unavailable” if something fails.
-- **When captions are unavailable:** The backend returns an empty transcript; the extraction step still runs (LLM gets placeholder text or stub recipe), so the flow does not break—you just get a generic or stub recipe. You can always use “Paste transcript” to paste captions manually.
+- **When captions are unavailable:** The app now stops with a clear error and suggests using “Paste transcript” instead.
 
 ## TODOs (integrations)
 

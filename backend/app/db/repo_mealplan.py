@@ -7,7 +7,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import MealPlan
+from app.models import MealPlan, normalize_meal_plan_slots
 from app.db.models import MealPlanModel
 
 
@@ -24,20 +24,26 @@ async def get_meal_plans_in_range(
         .order_by(MealPlanModel.date)
     )
     rows = result.scalars().all()
-    return [
-        MealPlan(
-            id=row.date,
-            date=row.date,
-            recipe_ids=json.loads(row.recipe_ids or "[]"),
+    out: list[MealPlan] = []
+    for row in rows:
+        slots = normalize_meal_plan_slots(json.loads(row.recipe_ids or "[]"))
+        out.append(
+            MealPlan(
+                id=row.date,
+                date=row.date,
+                breakfast=slots["breakfast"],
+                lunch=slots["lunch"],
+                dinner=slots["dinner"],
+            )
         )
-        for row in rows
-    ]
+    return out
 
 
 async def put_meal_plan(
-    session: AsyncSession, date: str, recipe_ids: list[str], user_id: uuid.UUID
+    session: AsyncSession, date: str, slots: dict[str, list[str]], user_id: uuid.UUID
 ) -> MealPlan:
-    model = MealPlanModel(date=date, user_id=user_id, recipe_ids=json.dumps(recipe_ids))
+    normalized = normalize_meal_plan_slots(slots)
+    model = MealPlanModel(date=date, user_id=user_id, recipe_ids=json.dumps(normalized))
     await session.merge(model)
     await session.flush()
-    return MealPlan(id=date, date=date, recipe_ids=recipe_ids)
+    return MealPlan(id=date, date=date, **normalized)

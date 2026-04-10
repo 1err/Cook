@@ -8,6 +8,8 @@ from typing import List
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_PUBLIC_LIBRARY_EDITOR_EMAILS = ["jerryxiang24@gmail.com"]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -68,6 +70,10 @@ class Settings(BaseSettings):
     # Local dev / no-S3: directory for recipe images (relative to process cwd, e.g. backend/ when using uvicorn).
     LOCAL_IMAGE_UPLOAD_DIR: str = ""
 
+    # Optional: restrict who can publish recipes into the shared public catalog.
+    # Leave empty in local dev to allow the current app user to curate the catalog.
+    PUBLIC_LIBRARY_EDITOR_EMAILS: str = ""
+
     @model_validator(mode="after")
     def validate_s3_config(self) -> "Settings":
         """If either S3 var is set, both must be set (required for upload endpoint)."""
@@ -91,6 +97,18 @@ def get_cors_origins_list() -> List[str]:
     if not raw:
         return []
     return [o.strip() for o in raw.split(",") if o.strip()]
+
+
+def get_public_library_editor_emails() -> List[str]:
+    raw = get_settings().PUBLIC_LIBRARY_EDITOR_EMAILS.strip()
+    if raw:
+        return [email.strip().lower() for email in raw.split(",") if email.strip()]
+
+    # Local Docker / local Postgres should stay permissive for testing unless explicitly locked down.
+    db_url = (get_settings().DATABASE_URL or "").lower()
+    if "@127.0.0.1:" in db_url or "@localhost:" in db_url or "@postgres:" in db_url:
+        return []
+    return DEFAULT_PUBLIC_LIBRARY_EDITOR_EMAILS
 
 
 settings = get_settings()

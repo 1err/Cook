@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../lib/auth";
 import { NavAuth } from "./NavAuth";
@@ -8,8 +9,14 @@ import { NavAuth } from "./NavAuth";
 export function Header() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const hideHeader = pathname === "/login" || pathname === "/register";
 
-  if (pathname === "/login" || pathname === "/register") {
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
+  if (hideHeader) {
     return null;
   }
 
@@ -38,22 +45,33 @@ export function Header() {
               Cooking
             </span>
           </Link>
-          {user && (
-            <nav className="app-header__nav" aria-label="Main">
-              <Link href="/library" className={`headerNavLink${isActive("/library") ? " is-active" : ""}`}>
-                Library
-              </Link>
-              <Link href="/planner" className={`headerNavLink${isActive("/planner") ? " is-active" : ""}`}>
-                Planner
-              </Link>
-              <Link href="/shopping-list" className={`headerNavLink${isActive("/shopping-list") ? " is-active" : ""}`}>
-                Shopping list
-              </Link>
-              <Link href="/import" className={`headerNavLink${isActive("/import") ? " is-active" : ""}`}>
-                Import
-              </Link>
-            </nav>
-          )}
+          {user ? (
+            <>
+              <button
+                type="button"
+                className="app-header__menu-button"
+                aria-expanded={mobileMenuOpen}
+                aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+                onClick={() => setMobileMenuOpen((open) => !open)}
+              >
+                <span className="material-symbols-outlined">{mobileMenuOpen ? "close" : "menu"}</span>
+              </button>
+              <nav className={`app-header__nav${mobileMenuOpen ? " is-open" : ""}`} aria-label="Main">
+                <Link href="/library" className={`headerNavLink${isActive("/library") ? " is-active" : ""}`}>
+                  Library
+                </Link>
+                <Link href="/planner" className={`headerNavLink${isActive("/planner") ? " is-active" : ""}`}>
+                  Planner
+                </Link>
+                <Link href="/shopping-list" className={`headerNavLink${isActive("/shopping-list") ? " is-active" : ""}`}>
+                  Shopping list
+                </Link>
+                <Link href="/import" className={`headerNavLink${isActive("/import") ? " is-active" : ""}`}>
+                  Import
+                </Link>
+              </nav>
+            </>
+          ) : null}
         </div>
         <NavAuth />
       </div>

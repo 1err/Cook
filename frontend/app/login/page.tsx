@@ -35,7 +35,10 @@ export default function LoginPage() {
         return;
       }
       await refreshUser();
-      router.push("/library");
+      const params = new URLSearchParams(window.location.search);
+      const rawRedirect = params.get("redirect") || "/library";
+      const redirectTarget = rawRedirect.startsWith("/") ? rawRedirect : "/library";
+      router.push(redirectTarget);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
       if (message === "Failed to fetch") {
@@ -52,6 +55,7 @@ export default function LoginPage() {
     <AuthShell
       title="Welcome back"
       subtitle="Enter your email and password to open your library and planner."
+      eyebrow="Sign in with email"
       footer={
         <>
           New here?{" "}

@@ -8,6 +8,11 @@ import { RequireAuth } from "../components/RequireAuth";
 import { getWeekBounds, getPrevNextWeek, formatWeekRangeDisplay } from "../lib/week";
 import type { Recipe } from "../types";
 import {
+  type MealPlanDay,
+  buildMealPlanFingerprint,
+  plannerFingerprintStorageKey,
+} from "../lib/mealPlan";
+import {
   GROCERY_CATEGORY_ORDER,
   CATEGORY_MATERIAL_ICONS,
   groceryCategoryBentoSpan,
@@ -31,7 +36,7 @@ const PREVIEW_MEAL_ROWS = 4;
 const SHOP_CONFIRM_HERO_SRC = "/shopping-list-hero.jpg";
 
 function buildPlannedMealRows(
-  plans: { date: string; recipe_ids: string[] }[],
+  plans: MealPlanDay[],
   recipes: Record<string, Recipe | undefined>,
   weekMondayYmd: string,
 ): { recipeId: string; title: string; slot: PlanSlot; dayShort: string; date: string }[] {
@@ -40,18 +45,18 @@ function buildPlannedMealRows(
   const rows: { recipeId: string; title: string; slot: PlanSlot; dayShort: string; date: string }[] = [];
   for (const p of plans) {
     const dayShort = dowByDate.get(p.date) ?? "";
-    const ids = p.recipe_ids ?? [];
-    for (let i = 0; i < 3; i++) {
-      const rid = ids[i];
-      if (!rid?.trim()) continue;
-      const rec = recipes[rid];
-      rows.push({
-        recipeId: rid,
-        title: rec?.title ?? "Recipe",
-        slot: SLOT_ORDER[i],
-        dayShort,
-        date: p.date,
-      });
+    for (const slot of SLOT_ORDER) {
+      for (const rid of p[slot] ?? []) {
+        if (!rid?.trim()) continue;
+        const rec = recipes[rid];
+        rows.push({
+          recipeId: rid,
+          title: rec?.title ?? "Recipe",
+          slot,
+          dayShort,
+          date: p.date,
+        });
+      }
     }
   }
   rows.sort((a, b) => {
@@ -104,6 +109,7 @@ const PRODUCT_STORE_LABELS: Record<ProductStore, string> = {
 
 interface SmartStored extends RefineResponse {
   _ui?: { hidden: number[]; checked: number[] };
+  _plannerFingerprint?: string;
 }
 
 function bentoIconWrapClass(cat: GroceryCategory): string {
@@ -119,16 +125,19 @@ function bentoIconWrapClass(cat: GroceryCategory): string {
   return `shop-bento-icon-wrap ${extra[cat]}`;
 }
 
-function parseSmartStored(raw: string): { data: RefineResponse; hidden: Set<number>; checked: Set<number> } | null {
+function parseSmartStored(
+  raw: string
+): { data: RefineResponse; hidden: Set<number>; checked: Set<number>; plannerFingerprint: string | null } | null {
   try {
     const parsed = JSON.parse(raw) as SmartStored;
     if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.purchase_items)) return null;
-    const { _ui, ...data } = parsed;
+    const { _ui, _plannerFingerprint, ...data } = parsed;
     if (!Array.isArray(data.likely_pantry) || !Array.isArray(data.remove)) return null;
     return {
       data: data as RefineResponse,
       hidden: new Set(_ui?.hidden ?? []),
       checked: new Set(_ui?.checked ?? []),
+      plannerFingerprint: typeof _plannerFingerprint === "string" ? _plannerFingerprint : null,
     };
   } catch {
     return null;
@@ -144,7 +153,7 @@ function ShoppingListPageContent() {
   const { prev, next } = getPrevNextWeek(currentWeek);
 
   const [items, setItems] = useState<ShoppingListItem[]>([]);
-  const [mealPlans, setMealPlans] = useState<{ date: string; recipe_ids: string[] }[]>([]);
+  const [mealPlans, setMealPlans] = useState<MealPlanDay[]>([]);
   const [recipeById, setRecipeById] = useState<Record<string, Recipe>>({});
   const [planMealsExpanded, setPlanMealsExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -153,6 +162,8 @@ function ShoppingListPageContent() {
   const [productStore, setProductStore] = useState<ProductStore>("weee");
   const [bulkLoadingProducts, setBulkLoadingProducts] = useState(false);
   const [refinedData, setRefinedData] = useState<RefineResponse | null>(null);
+  const [savedPlannerFingerprint, setSavedPlannerFingerprint] = useState<string | null>(null);
+  const [smartListStale, setSmartListStale] = useState(false);
   const [refining, setRefining] = useState(false);
   const [refineError, setRefineError] = useState<string | null>(null);
   const [smartRemovedCollapsed, setSmartRemovedCollapsed] = useState(true);
@@ -190,21 +201,26 @@ function ShoppingListPageContent() {
   }, [productStore]);
 
   const persistSmart = useCallback(
-    (data: RefineResponse, hidden: Set<number>, checked: Set<number>) => {
+    (data: RefineResponse, hidden: Set<number>, checked: Set<number>, plannerFingerprint: string) => {
       const payload: SmartStored = {
         ...data,
         _ui: { hidden: [...hidden], checked: [...checked] },
+        _plannerFingerprint: plannerFingerprint,
       };
       sessionStorage.setItem(smartListStorageKey(start), JSON.stringify(payload));
     },
     [start]
   );
 
+  const currentPlannerFingerprint = useMemo(() => buildMealPlanFingerprint(mealPlans), [mealPlans]);
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
       setRefinedData(null);
+      setSavedPlannerFingerprint(null);
+      setSmartListStale(false);
       setSmartHidden(new Set());
       setSmartChecked(new Set());
       setMenuOpenFor(null);
@@ -221,12 +237,13 @@ function ShoppingListPageContent() {
         const data: ShoppingListItem[] = await listRes.json();
         if (cancelled) return;
         setItems(data);
-        let plansPayload: { date: string; recipe_ids: string[] }[] = [];
+        let plansPayload: MealPlanDay[] = [];
         if (planRes.ok) {
           const pj = await planRes.json();
           if (Array.isArray(pj)) plansPayload = pj;
         }
         setMealPlans(plansPayload);
+        const latestFingerprint = buildMealPlanFingerprint(plansPayload);
         let rmap: Record<string, Recipe> = {};
         if (recipesRes.ok) {
           const recs: Recipe[] = await recipesRes.json();
@@ -241,6 +258,10 @@ function ShoppingListPageContent() {
               setRefinedData(parsed.data);
               setSmartHidden(parsed.hidden);
               setSmartChecked(parsed.checked);
+              setSavedPlannerFingerprint(parsed.plannerFingerprint);
+              setSmartListStale(
+                Boolean(parsed.plannerFingerprint && parsed.plannerFingerprint !== latestFingerprint)
+              );
             }
           }
         } catch {
@@ -260,8 +281,35 @@ function ShoppingListPageContent() {
 
   useEffect(() => {
     if (!refinedData) return;
-    persistSmart(refinedData, smartHidden, smartChecked);
-  }, [refinedData, smartHidden, smartChecked, persistSmart]);
+    persistSmart(
+      refinedData,
+      smartHidden,
+      smartChecked,
+      savedPlannerFingerprint ?? currentPlannerFingerprint
+    );
+  }, [currentPlannerFingerprint, persistSmart, refinedData, savedPlannerFingerprint, smartChecked, smartHidden]);
+
+  useEffect(() => {
+    if (!refinedData || !savedPlannerFingerprint) return;
+    function syncSmartStaleState() {
+      try {
+        const latest = localStorage.getItem(plannerFingerprintStorageKey(start)) ?? currentPlannerFingerprint;
+        setSmartListStale(latest !== savedPlannerFingerprint);
+      } catch {
+        setSmartListStale(currentPlannerFingerprint !== savedPlannerFingerprint);
+      }
+    }
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") syncSmartStaleState();
+    }
+    syncSmartStaleState();
+    window.addEventListener("focus", syncSmartStaleState);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", syncSmartStaleState);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [currentPlannerFingerprint, refinedData, savedPlannerFingerprint, start]);
 
   function setWeek(week: string) {
     router.push(`/shopping-list?week=${week}`);
@@ -318,19 +366,35 @@ function ShoppingListPageContent() {
     setRefineError(null);
     setRefining(true);
     try {
+      const [latestListRes, latestPlanRes] = await Promise.all([
+        apiFetch(`/shopping-list?start=${start}&end=${end}`),
+        apiFetch(`/meal-plan?start=${start}&end=${end}`),
+      ]);
+      if (!latestListRes.ok) throw new Error("Could not refresh your current planner list");
+      const latestItems: ShoppingListItem[] = await latestListRes.json();
+      let latestPlans: MealPlanDay[] = [];
+      if (latestPlanRes.ok) {
+        const payload = await latestPlanRes.json();
+        if (Array.isArray(payload)) latestPlans = payload;
+      }
+      setItems(latestItems);
+      setMealPlans(latestPlans);
+      const latestPlannerFingerprint = buildMealPlanFingerprint(latestPlans);
       const res = await apiFetch("/shopping-list/refine", {
         method: "POST",
         body: JSON.stringify({
-          items: items.map((i) => ({ name: i.name, quantity: i.total_quantity })),
+          items: latestItems.map((i) => ({ name: i.name, quantity: i.total_quantity })),
         }),
       });
       if (!res.ok) throw new Error("Refine failed");
       const data: RefineResponse = await res.json();
       setRefinedData(data);
+      setSavedPlannerFingerprint(latestPlannerFingerprint);
+      setSmartListStale(false);
       setSmartHidden(new Set());
       setSmartChecked(new Set());
       resetProductResults();
-      persistSmart(data, new Set(), new Set());
+      persistSmart(data, new Set(), new Set(), latestPlannerFingerprint);
     } catch (e) {
       setRefineError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
@@ -341,6 +405,8 @@ function ShoppingListPageContent() {
   function handleBackToOriginalList() {
     sessionStorage.removeItem(smartListStorageKey(start));
     setRefinedData(null);
+    setSavedPlannerFingerprint(null);
+    setSmartListStale(false);
     setRefineError(null);
     setSmartHidden(new Set());
     setSmartChecked(new Set());
@@ -504,8 +570,7 @@ function ShoppingListPageContent() {
                     </div>
                     <h1 className="shop-smart-hero__title font-headline">Smart shopping list</h1>
                     <p className="shop-smart-hero__sub">
-                      {visiblePurchaseItems.length} line{visiblePurchaseItems.length === 1 ? "" : "s"} in store-style categories — including pantry
-                      under &quot;Pantry &amp; Dry Goods&quot;.
+                      {visiblePurchaseItems.length} item{visiblePurchaseItems.length === 1 ? "" : "s"} organized by category, including pantry staples.
                     </p>
                     <div className="shop-product-store">
                       <span className="shop-product-store__label">Product source</span>
@@ -529,6 +594,22 @@ function ShoppingListPageContent() {
                   </div>
                 </div>
               </header>
+
+              {smartListStale ? (
+                <div className="shop-smart-stale">
+                  <p className="shop-smart-stale__copy">
+                    Your planner changed after this smart shopping list was generated. Refresh to bring it in sync with the latest meals.
+                  </p>
+                  <button
+                    type="button"
+                    className="shop-smart-stale__action font-headline"
+                    onClick={handlePrepareSmartList}
+                    disabled={refining}
+                  >
+                    {refining ? "Refreshing…" : "Refresh smart list"}
+                  </button>
+                </div>
+              ) : null}
 
               <div className="shop-bento-grid">
                 {GROCERY_CATEGORY_ORDER.map((cat) => {
@@ -719,10 +800,15 @@ function ShoppingListPageContent() {
                       <p className="shop-muted m-0">No recipe slots filled for this range yet.</p>
                     ) : (
                       <div>
+                        <p className="shop-confirm-glance__hint">
+                          Review the planned recipes below before generating your smart list.
+                        </p>
                         {mealRowsVisible.map((row, idx) => (
                           <div key={`${row.date}-${row.slot}-${row.recipeId}-${idx}`} className="shop-confirm-meal">
                             <div>
-                              <p className="shop-confirm-meal__name font-headline">{row.title}</p>
+                              <Link href={`/recipe/${row.recipeId}`} className="shop-confirm-meal__name shop-confirm-meal__link font-headline">
+                                {row.title}
+                              </Link>
                               <div className="shop-confirm-meal__chips">
                                 <span className={chipClassForSlot(row.slot)}>{slotLabel(row.slot)}</span>
                                 <span className="shop-confirm-chip shop-confirm-chip--day">{row.dayShort}</span>

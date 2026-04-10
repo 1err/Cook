@@ -49,8 +49,11 @@ class RecipeModel(Base):
     thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     ingredients: Mapped[str] = mapped_column(Text, nullable=False)  # JSON array
     raw_extraction_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    library_tags: Mapped[str] = mapped_column(Text, nullable=False, server_default="[]")  # JSON array
     # Optional slug for library filter chips: quick_dinner, vegetarian, etc.
     library_category: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    is_public_catalog: Mapped[bool] = mapped_column(sa.Boolean(), nullable=False, server_default=sa.false())
+    catalog_source_recipe_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class MealPlanModel(Base):
@@ -60,4 +63,4 @@ class MealPlanModel(Base):
         UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     date: Mapped[str] = mapped_column(String(10), primary_key=True)  # YYYY-MM-DD
-    recipe_ids: Mapped[str] = mapped_column(Text, nullable=False)  # JSON array
+    recipe_ids: Mapped[str] = mapped_column(Text, nullable=False)  # JSON object; legacy rows may be JSON array

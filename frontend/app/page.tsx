@@ -20,7 +20,7 @@ export default function Home() {
   if (loading) {
     return (
       <div style={{ padding: "var(--space-32)", color: "var(--muted)", textAlign: "center" }}>
-        Loading…
+        Opening your workspace…
       </div>
     );
   }

@@ -59,6 +59,8 @@ export function NavAuth() {
         onClick={() => setDropdownOpen((o) => !o)}
         aria-expanded={dropdownOpen}
         aria-haspopup="true"
+        aria-label={`Account menu for ${user.email}`}
+        title={user.email}
         className="font-headline"
         style={{
           width: 40,
@@ -94,6 +96,20 @@ export function NavAuth() {
             boxSizing: "border-box",
           }}
         >
+          <p
+            className="font-headline"
+            style={{
+              margin: "0 0 var(--space-8)",
+              padding: "0 var(--space-12)",
+              fontSize: "0.72rem",
+              fontWeight: 800,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: "var(--on-surface-variant)",
+            }}
+          >
+            Account
+          </p>
           <div
             style={{
               padding: "var(--space-12) var(--space-12)",

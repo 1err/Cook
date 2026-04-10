@@ -16,15 +16,18 @@ export function getWeekBounds(weekMondayParam?: string | null): {
     return `${y}-${m}-${dt}`;
   };
 
+  const normalizeToMonday = (date: Date) => {
+    const day = date.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + diff);
+  };
+
   let monday: Date;
   if (weekMondayParam && /^\d{4}-\d{2}-\d{2}$/.test(weekMondayParam)) {
     const [y, m, d] = weekMondayParam.split("-").map(Number);
-    monday = new Date(y, m - 1, d);
+    monday = normalizeToMonday(new Date(y, m - 1, d));
   } else {
-    const now = new Date();
-    const day = now.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
+    monday = normalizeToMonday(new Date());
   }
 
   const dates: string[] = [];

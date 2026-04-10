@@ -6,10 +6,19 @@ LLM combines both to produce dish name + ingredient list.
 import logging
 import os
 import re
+from dataclasses import dataclass
 from typing import Optional
 from app.models import Recipe, IngredientItem
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class TranscriptFetchResult:
+    transcript: str
+    status: str
+    message: str | None = None
+    video_id: str | None = None
 
 
 def _parse_youtube_video_id(url: str) -> Optional[str]:
@@ -32,15 +41,19 @@ def _parse_youtube_video_id(url: str) -> Optional[str]:
     return None
 
 
-def get_transcript_from_video_link(url: str) -> str:
+def fetch_transcript_from_video_link(url: str) -> TranscriptFetchResult:
     """
     Fetch captions for YouTube URLs using youtube-transcript-api (no Google Cloud).
-    Prefers English or Chinese. Returns empty string on failure so extraction pipeline still runs.
+    Prefers English or Chinese. Returns a structured result so callers can decide whether to continue.
     """
     video_id = _parse_youtube_video_id(url)
     if not video_id:
         logger.info("Transcript fetch skipped: not a YouTube URL or could not parse video ID")
-        return ""
+        return TranscriptFetchResult(
+            transcript="",
+            status="unsupported_url",
+            message="Only YouTube links are supported right now. Paste a transcript for other platforms.",
+        )
 
     logger.info("Fetching transcript for video_id=%s", video_id)
     try:
@@ -54,7 +67,12 @@ def get_transcript_from_video_link(url: str) -> str:
         logger.warning(
             "youtube-transcript-api not installed; run: pip install youtube-transcript-api"
         )
-        return ""
+        return TranscriptFetchResult(
+            transcript="",
+            status="dependency_missing",
+            message="YouTube transcript support is not available on the server right now.",
+            video_id=video_id,
+        )
 
     try:
         # youtube-transcript-api 1.x: instance .fetch(video_id, languages=...)
@@ -70,19 +88,48 @@ def get_transcript_from_video_link(url: str) -> str:
             getattr(fetched, "language_code", "?"),
             len(combined),
         )
-        return combined
+        return TranscriptFetchResult(
+            transcript=combined,
+            status="ok",
+            video_id=video_id,
+        )
     except TranscriptsDisabled:
         logger.warning("Captions disabled for video_id=%s", video_id)
-        return ""
+        return TranscriptFetchResult(
+            transcript="",
+            status="captions_disabled",
+            message="This YouTube video has captions disabled. Paste a transcript instead.",
+            video_id=video_id,
+        )
     except VideoUnavailable:
         logger.warning("Video unavailable for video_id=%s", video_id)
-        return ""
+        return TranscriptFetchResult(
+            transcript="",
+            status="video_unavailable",
+            message="This YouTube video is unavailable or private. Try another link or paste a transcript.",
+            video_id=video_id,
+        )
     except NoTranscriptFound:
         logger.warning("No transcript found for video_id=%s", video_id)
-        return ""
+        return TranscriptFetchResult(
+            transcript="",
+            status="no_transcript",
+            message="No usable transcript was found for this YouTube video. Paste a transcript instead.",
+            video_id=video_id,
+        )
     except Exception as e:
         logger.exception("Transcript fetch failed for video_id=%s: %s", video_id, e)
-        return ""
+        return TranscriptFetchResult(
+            transcript="",
+            status="fetch_failed",
+            message="We could not fetch captions from YouTube for this video right now. Please try again or paste a transcript.",
+            video_id=video_id,
+        )
+
+
+def get_transcript_from_video_link(url: str) -> str:
+    """Compatibility wrapper for older call sites."""
+    return fetch_transcript_from_video_link(url).transcript
 
 
 # TODO: Replace with real transcript from uploaded file (e.g. Whisper)

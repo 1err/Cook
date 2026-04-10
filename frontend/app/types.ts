@@ -4,7 +4,7 @@ export interface IngredientItem {
   notes?: string | null;
 }
 
-import type { LibraryCategorySlug } from "./lib/recipeCategories";
+import type { RecipeTagSlug } from "./lib/recipeCategories";
 
 export interface Recipe {
   id: string;
@@ -13,6 +13,12 @@ export interface Recipe {
   thumbnail_url?: string | null;
   ingredients: IngredientItem[];
   raw_extraction_text?: string | null;
-  /** Optional library filter chip (set on edit). */
-  library_category?: LibraryCategorySlug | null;
+  /** Multi-tag metadata used for library/planner filtering. */
+  library_tags?: RecipeTagSlug[];
+  /** Legacy single-tag field kept for older rows/compatibility. */
+  library_category?: RecipeTagSlug | null;
+  /** True when this recipe is visible in the shared public catalog. */
+  is_public_catalog?: boolean;
+  /** Source public recipe id when this row was copied from the shared catalog. */
+  catalog_source_recipe_id?: string | null;
 }

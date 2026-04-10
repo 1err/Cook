@@ -2,20 +2,23 @@
 Meal plan routes. Uses repo only. All require auth.
 """
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
 from app.db.session import get_session
 from app.db import repo_mealplan
 from app.db.models import UserModel
-from app.models import MealPlan
+from app.models import MealPlan, normalize_meal_plan_slots
 
 router = APIRouter(prefix="/meal-plan", tags=["meal-plan"])
 
 
 class MealPlanPutBody(BaseModel):
-    recipe_ids: list[str]
+    recipe_ids: list[str] | None = None
+    breakfast: list[str] = Field(default_factory=list)
+    lunch: list[str] = Field(default_factory=list)
+    dinner: list[str] = Field(default_factory=list)
 
 
 @router.get("", response_model=list[MealPlan])
@@ -37,4 +40,5 @@ async def meal_plan_put(
     current_user: UserModel = Depends(get_current_user),
 ):
     """Create or update meal plan for the given date (YYYY-MM-DD)."""
-    return await repo_mealplan.put_meal_plan(session, date, body.recipe_ids, current_user.id)
+    slots = normalize_meal_plan_slots(body.model_dump(exclude_none=True))
+    return await repo_mealplan.put_meal_plan(session, date, slots, current_user.id)

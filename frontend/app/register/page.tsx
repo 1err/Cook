@@ -35,7 +35,10 @@ export default function RegisterPage() {
         return;
       }
       await refreshUser();
-      router.push("/library");
+      const params = new URLSearchParams(window.location.search);
+      const rawRedirect = params.get("redirect") || "/library";
+      const redirectTarget = rawRedirect.startsWith("/") ? rawRedirect : "/library";
+      router.push(redirectTarget);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
       if (message === "Failed to fetch") {
@@ -52,6 +55,7 @@ export default function RegisterPage() {
     <AuthShell
       title="Create your account"
       subtitle="One account for your recipe library, meal planner, and shopping list."
+      eyebrow="Create account with email"
       footer={
         <>
           Already have an account?{" "}

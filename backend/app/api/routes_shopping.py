@@ -57,12 +57,12 @@ async def shopping_list(
     plans = await repo_mealplan.get_meal_plans_in_range(session, start, end, current_user.id)
     recipe_cache: dict[str, Recipe | None] = {}
     for p in plans:
-        for rid in p.recipe_ids:
+        for rid in p.all_recipe_ids():
             if rid not in recipe_cache:
                 recipe_cache[rid] = await repo_recipes.get_recipe(session, rid, current_user.id)
     all_ingredients: list[tuple[str, str]] = []
     for p in plans:
-        for rid in p.recipe_ids:
+        for rid in p.all_recipe_ids():
             r = recipe_cache.get(rid)
             if r:
                 for i in r.ingredients:

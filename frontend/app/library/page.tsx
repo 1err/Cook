@@ -6,24 +6,39 @@ import { useSearchParams } from "next/navigation";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
 import { RecipeCard } from "../components/RecipeCard";
-import { LIBRARY_FILTER_CHIPS, type LibraryFilterId } from "../lib/recipeCategories";
+import { CATEGORY_LABELS, type LibraryFilterId } from "../lib/recipeCategories";
+import { TagFilterPopover } from "../components/TagFilterPopover";
 import type { Recipe } from "../types";
+
+function ingredientPreview(recipe: Recipe, maxLength = 72): string {
+  const parts = recipe.ingredients.slice(0, 4).map((i) => i.name).filter(Boolean);
+  const text = parts.join(", ") || "Ready to add";
+  return text.length > maxLength ? text.slice(0, maxLength).trim() + "…" : text;
+}
 
 function LibraryPageContent() {
   const searchParams = useSearchParams();
   const highlightId = searchParams.get("highlight");
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [publicRecipes, setPublicRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<LibraryFilterId>("all");
   const [search, setSearch] = useState("");
+  const [view, setView] = useState<"mine" | "public">("mine");
+  const [copyingId, setCopyingId] = useState<string | null>(null);
 
   const fetchRecipes = async () => {
     try {
-      const res = await apiFetch("/recipes");
-      if (!res.ok) throw new Error("Failed to load recipes");
-      const data = await res.json();
+      const [mineRes, publicRes] = await Promise.all([
+        apiFetch("/recipes"),
+        apiFetch("/recipes/catalog"),
+      ]);
+      if (!mineRes.ok) throw new Error("Failed to load recipes");
+      const data = await mineRes.json();
+      const publicData = publicRes.ok ? await publicRes.json() : [];
       setRecipes(data);
+      setPublicRecipes(Array.isArray(publicData) ? publicData : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -35,21 +50,90 @@ function LibraryPageContent() {
     fetchRecipes();
   }, []);
 
-  const filtered = useMemo(() => {
+  const filteredMine = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return recipes.filter((r) => {
-      if (filter !== "all" && r.library_category !== filter) return false;
-      if (q && !r.title.toLowerCase().includes(q)) return false;
-      return true;
-    });
+    return [...recipes]
+      .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
+      .filter((r) => {
+        const tags = r.library_tags ?? (r.library_category ? [r.library_category] : []);
+        if (filter !== "all" && !tags.includes(filter)) return false;
+        if (q && !r.title.toLowerCase().includes(q)) return false;
+        return true;
+      });
   }, [recipes, filter, search]);
 
+  const filteredPublic = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return [...publicRecipes]
+      .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
+      .filter((r) => {
+        const tags = r.library_tags ?? (r.library_category ? [r.library_category] : []);
+        if (filter !== "all" && !tags.includes(filter)) return false;
+        if (q && !r.title.toLowerCase().includes(q)) return false;
+        return true;
+      });
+  }, [publicRecipes, filter, search]);
+
+  const savedPublicIds = useMemo(() => {
+    const ids = new Set<string>();
+    recipes.forEach((recipe) => {
+      ids.add(recipe.id);
+      if (recipe.catalog_source_recipe_id) ids.add(recipe.catalog_source_recipe_id);
+    });
+    return ids;
+  }, [recipes]);
+
+  async function handleCopyPublicRecipe(recipeId: string) {
+    setCopyingId(recipeId);
+    setError(null);
+    try {
+      const res = await apiFetch(`/recipes/catalog/${recipeId}/copy`, { method: "POST" });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Could not add recipe");
+      }
+      const recipe: Recipe = await res.json();
+      setRecipes((prev) => (prev.some((row) => row.id === recipe.id) ? prev : [...prev, recipe]));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not add recipe");
+    } finally {
+      setCopyingId(null);
+    }
+  }
+
   if (loading) return <p style={mutedStyle}>Loading…</p>;
-  if (error) return <p style={errorStyle}>{error}</p>;
+  if (error && recipes.length === 0 && publicRecipes.length === 0) return <p style={errorStyle}>{error}</p>;
+
+  const activeList = view === "mine" ? filteredMine : filteredPublic;
 
   return (
     <>
       <h1 className="library-page-title font-headline">Recipe library</h1>
+
+      <div className="library-chip-row" role="tablist" aria-label="Library views" style={{ marginBottom: "1rem" }}>
+        <button
+          type="button"
+          className={`library-chip ${view === "mine" ? "library-chip--active" : "library-chip--idle"}`}
+          onClick={() => setView("mine")}
+        >
+          My library
+        </button>
+        <button
+          type="button"
+          className={`library-chip ${view === "public" ? "library-chip--active" : "library-chip--idle"}`}
+          onClick={() => setView("public")}
+        >
+          Public library
+        </button>
+      </div>
+
+      <p style={{ ...mutedStyle, marginTop: 0, marginBottom: "1.25rem", maxWidth: "42rem", lineHeight: 1.5 }}>
+        {view === "mine"
+          ? "Your private recipe collection for planning and shopping."
+          : "Curated recipes that signed-in users can copy straight into their own library."}
+      </p>
+
+      {error ? <p style={{ ...errorStyle, marginTop: 0 }}>{error}</p> : null}
 
       <div className="library-search-wrap">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -66,40 +150,101 @@ function LibraryPageContent() {
         />
       </div>
 
-      <div className="library-chip-row" role="toolbar" aria-label="Filter by category">
-        {LIBRARY_FILTER_CHIPS.map((chip) => (
+      <div className="library-filter-bar">
+        <TagFilterPopover
+          value={filter}
+          onChange={setFilter}
+          ariaLabel="Filter recipes by tag"
+        />
+        {filter !== "all" ? (
           <button
-            key={chip.id}
             type="button"
-            className={`library-chip ${filter === chip.id ? "library-chip--active" : "library-chip--idle"}`}
-            onClick={() => setFilter(chip.id)}
+            className="library-filter-reset font-headline"
+            onClick={() => setFilter("all")}
           >
-            {chip.label}
+            Clear filter
           </button>
-        ))}
+        ) : null}
       </div>
 
-      {filtered.length === 0 ? (
+      {activeList.length === 0 ? (
         <div style={emptyStyle}>
           <p style={{ margin: 0, fontWeight: 700, color: "var(--on-surface)", fontSize: "1.05rem" }}>
-            {recipes.length === 0 ? "Your shelf is ready" : "No matches"}
+            {view === "mine" ? (recipes.length === 0 ? "Your shelf is ready" : "No matches") : publicRecipes.length === 0 ? "Public shelf is empty" : "No matches"}
           </p>
           <p style={{ margin: "0.5rem 0 0", fontSize: "0.9rem", lineHeight: 1.5 }}>
-            {recipes.length === 0
-              ? "Import a recipe from a link or transcript to see it here."
-              : "Try another filter or search term."}
+            {view === "mine"
+              ? recipes.length === 0
+                ? "Import a recipe from a link or transcript to see it here."
+                : "Try another filter or search term."
+              : publicRecipes.length === 0
+                ? "Once curated recipes are published, they will appear here for every signed-in user."
+                : "Try another filter or search term."}
           </p>
-          {recipes.length === 0 && (
+          {view === "mine" && recipes.length === 0 && (
             <Link href="/import" style={linkStyle}>
               Import a recipe →
             </Link>
           )}
         </div>
-      ) : (
+      ) : view === "mine" ? (
         <ul className="libraryGrid">
-          {filtered.map((r) => (
+          {filteredMine.map((r) => (
             <RecipeCard key={r.id} recipe={r} isHighlighted={highlightId === r.id} />
           ))}
+        </ul>
+      ) : (
+        <ul className="libraryGrid">
+          {filteredPublic.map((recipe) => {
+            const alreadyAdded = savedPublicIds.has(recipe.id);
+            const preview = ingredientPreview(recipe);
+            return (
+              <li key={recipe.id} className="recipe-card-stitch">
+                <div className="recipe-card-stitch__media">
+                  {recipe.thumbnail_url ? (
+                    <>
+                      <img src={recipe.thumbnail_url} alt="" className="recipe-card-stitch__img recipe-card-stitch__img--bg" />
+                      <div className="recipe-card-stitch__img-frame">
+                        <img src={recipe.thumbnail_url} alt="" className="recipe-card-stitch__img recipe-card-stitch__img--full" />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="recipe-card-stitch__placeholder recipeCardPlaceholder">
+                      <span className="font-headline recipe-card-stitch__placeholder-text">Recipe</span>
+                    </div>
+                  )}
+                </div>
+                <div className="recipe-card-stitch__meta" style={{ paddingTop: 0 }}>
+                  <div className="recipe-card-stitch__meta-left" style={{ width: "100%" }}>
+                    <h2 className="font-headline recipe-card-stitch__title">{recipe.title}</h2>
+                    <p className="recipe-card-stitch__sub" title={preview}>
+                      {preview}
+                    </p>
+                    {(recipe.library_tags?.length || recipe.library_category) ? (
+                      <div className="recipe-card-stitch__tag-row">
+                        {(recipe.library_tags ?? (recipe.library_category ? [recipe.library_category] : []))
+                          .slice(0, 3)
+                          .map((tag) => (
+                            <span key={tag} className="recipe-card-stitch__tag-mini font-headline">
+                              {CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}
+                            </span>
+                          ))}
+                      </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      style={{ marginTop: "0.9rem", width: "100%", justifyContent: "center" }}
+                      onClick={() => handleCopyPublicRecipe(recipe.id)}
+                      disabled={alreadyAdded || copyingId === recipe.id}
+                    >
+                      {alreadyAdded ? "In your library" : copyingId === recipe.id ? "Adding…" : "Add to my library"}
+                    </button>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
 

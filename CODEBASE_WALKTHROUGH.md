@@ -24,19 +24,19 @@ This document is the **authoritative overview** of the repo: how the product flo
    JWT is stored in an `HttpOnly` cookie (`access_token`). All authenticated API calls use `credentials: "include"` (`frontend/app/lib/api.ts`).
 
 2. **Import recipes** (`/import`)  
-   YouTube link or pasted transcript → backend extracts structured recipe (LLM if `OPENAI_API_KEY` is set, else stub). Optional `notes` on import. Saved per user.
+   YouTube link or pasted transcript → backend extracts structured recipe (LLM if `OPENAI_API_KEY` is set, else stub). Optional `title`, `library_category`, and `notes` can be provided up front. Saved per user.
 
-3. **Library** (`/library`, `/library/[id]`)  
-   List, edit, delete recipes. **Thumbnail:** upload via `POST /recipes/upload-image` — either **S3 presigned PUT** (when `AWS_REGION` + `S3_BUCKET_NAME` set) or **local disk** under `./uploads` served at `/uploads/...` (default for local dev).
+3. **Library + public catalog** (`/library`, `/library/[id]`)  
+   Users browse their private library, while a second tab exposes a **public recipe catalog**. Clicking **Add to my library** copies a curated public recipe into the current user’s own library. Catalog editors can publish/unpublish their own recipes from the edit screen.
 
 4. **Weekly planner** (`/planner?week=YYYY-MM-DD`)  
-   Monday-based week. Drag recipes from sidebar into breakfast / lunch / dinner slots. Persisted with `PUT /meal-plan/{date}` and `GET /meal-plan?start=&end=`.
+   Monday-based week. Desktop keeps drag-and-drop from the sidebar; phones use slot-based recipe pickers with the same search + tag filters. Persisted with `PUT /meal-plan/{date}` and `GET /meal-plan?start=&end=`.
 
 5. **Shopping list — confirmation** (`/shopping-list?week=...`)  
    Loads in parallel: aggregated ingredients `GET /shopping-list`, planned meals `GET /meal-plan`, and `GET /recipes` for titles. **No long raw ingredient list** on this screen: **week range**, **week-at-a-glance** (meal chips), stats, **Prepare smart shopping list** (this is the **only** call that runs the refine LLM — saves tokens).
 
 6. **Shopping list — smart mode** (same route, after refine)  
-   SessionStorage key `smartShoppingList:{weekStart}` stores refined payload + UI state. Category **bento** cards; **Copy full list** / **Shop on {store}** / **Store preview**. **Back to original list** clears smart session for that week and returns to the confirmation UI.
+   SessionStorage key `smartShoppingList:{weekStart}` stores refined payload + UI state. Category **bento** cards; **Copy full list** / **Shop on {store}** / **Store preview**. **Back to original list** clears smart session for that week and returns to the confirmation UI. The page also stores a planner fingerprint so it can warn when the underlying planner changed later and offer a manual refresh.
 
 7. **Store preview** (`/store-preview?store=...`)  
    Legacy note: old manual store-preview flow has been removed. Smart shopping now loads live product results inline from supported stores.
@@ -101,7 +101,8 @@ flowchart LR
 ### Recipes (`backend/app/api/routes_recipes.py`)
 
 - **Upload:** `POST /recipes/upload-image` (multipart). If S3 configured → presigned PUT + `file_url`. Else save bytes with `save_recipe_image_local` → `{ upload_url: "", file_url: "<origin>/uploads/recipes/..." }`.
-- **Import:** e.g. `POST /recipes/import/link` with JSON body `{ "url", "notes?" }`; transcript path accepts `notes?`.
+- **Import:** e.g. `POST /recipes/import/link` with JSON body `{ "url", "title?", "library_category?", "notes?" }`; transcript path accepts the same optional metadata fields.
+- **Public catalog:** `GET /recipes/catalog`, `POST /recipes/catalog/{recipe_id}/copy`, `GET /recipes/catalog/editor-status`, and `POST /recipes/{recipe_id}/catalog` for catalog editors.
 - **CRUD:** list, get, create, patch, delete — all scoped by `user_id`.
 
 ### Meal plan (`backend/app/api/routes_mealplan.py`)
@@ -131,7 +132,7 @@ flowchart LR
 
 ### Other services
 
-- `extract_service.py` / `extract.py` — YouTube transcript + LLM extraction; stubs for upload/OCR paths.
+- `extract_service.py` / `extract.py` — YouTube transcript + LLM extraction; stubs for upload/OCR paths. Link import now returns clearer errors for unsupported URLs and transcript/caption failures instead of silently creating a placeholder import.
 - `shopping_service.py` — deterministic merge of ingredient lines.
 
 ---
@@ -231,7 +232,7 @@ flowchart LR
 
 ### Backend (see `backend/.env.example`)
 
-- `DATABASE_URL` (required), `AUTH_SECRET`, `CORS_ALLOW_ORIGINS`, `OPENAI_API_KEY`, optional `AWS_*` / `LOCAL_IMAGE_UPLOAD_DIR`, cookie flags for prod cross-origin.
+- `DATABASE_URL` (required), `AUTH_SECRET`, `CORS_ALLOW_ORIGINS`, `OPENAI_API_KEY`, optional `AWS_*` / `LOCAL_IMAGE_UPLOAD_DIR`, cookie flags for prod cross-origin, optional `PUBLIC_LIBRARY_EDITOR_EMAILS` for catalog curation.
 
 ### Frontend (see `frontend/.env.local.example`)
 
@@ -261,11 +262,12 @@ OpenAPI: `/docs` when the API is running.
 ## What is implemented end-to-end
 
 - Cookie auth; user-scoped recipes and meal plans.
-- Planner with drag-drop and week URL param.
+- Planner with drag-drop on desktop, touch-friendly slot picking on phone, and week URL param.
 - Shopping confirmation UI + **on-demand** smart refinement.
-- Smart list: categories, checkboxes, copy, preferred store, store preview handoff.
+- Smart list: categories, checkboxes, copy, preferred store, store preview handoff, and stale-state warning when the planner changed after generation.
+- Public recipe catalog with copy-into-my-library flow.
 - Local or S3 recipe images.
-- YouTube link import + transcript import; LLM extraction and refine when key present.
+- YouTube link import + transcript import, with import-time title/tag overrides and clearer YouTube failure messages; LLM extraction and refine when key present.
 
 ---
 
@@ -273,7 +275,7 @@ OpenAPI: `/docs` when the API is running.
 
 1. **Video upload** transcript pipeline still stubbed; OCR path stubbed.
 2. **Store integrations:** preview opens retailer search URLs only; no cart API.
-3. **Header shopping link** does not append `?week=` — user lands on current week from shopping list defaults.
+3. **Public catalog curation:** admin/editor control is intentionally lightweight and email-gated by env when configured.
 4. **Stitch assets** in `stitch/` are documentation-only.
 5. Root **`README.md`** “Flow” is shorter; this file is the detailed reference.
 

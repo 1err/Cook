@@ -7,7 +7,6 @@ import { apiFetch } from "../../lib/api";
 import { RequireAuth } from "../../components/RequireAuth";
 import {
   CATEGORY_LABELS,
-  type LibraryCategorySlug,
 } from "../../lib/recipeCategories";
 import type { Recipe, IngredientItem } from "../../types";
 
@@ -94,7 +93,7 @@ function RecipeDetailContent() {
   if (!recipe) return null;
 
   const ingredientRows = recipe.ingredients.filter((i) => (i.name || "").trim().length > 0);
-  const cat = recipe.library_category as LibraryCategorySlug | null | undefined;
+  const tags = recipe.library_tags ?? (recipe.library_category ? [recipe.library_category] : []);
   const { lead, accent } = splitTitleAccent(recipe.title);
 
   return (
@@ -159,9 +158,11 @@ function RecipeDetailContent() {
 
       <div className="recipe-editorial__center">
         <div className="recipe-editorial__pills">
-          {cat && CATEGORY_LABELS[cat] && (
-            <span className="recipe-editorial__pill recipe-editorial__pill--tertiary font-headline">{CATEGORY_LABELS[cat]}</span>
-          )}
+          {tags.map((tag) => (
+            <span key={tag} className="recipe-editorial__pill recipe-editorial__pill--tertiary font-headline">
+              {CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}
+            </span>
+          ))}
           <span className="recipe-editorial__pill recipe-editorial__pill--primary font-headline">
             {ingredientRows.length} ingredients
           </span>
@@ -190,8 +191,8 @@ function RecipeDetailContent() {
         )}
         <div className="recipe-editorial__stats">
           <div>
-            <p className="recipe-editorial__stats-label font-headline">Collection</p>
-            <p className="recipe-editorial__stats-value">{cat && CATEGORY_LABELS[cat] ? CATEGORY_LABELS[cat] : "Recipe"}</p>
+            <p className="recipe-editorial__stats-label font-headline">Tags</p>
+            <p className="recipe-editorial__stats-value">{tags.length ? tags.slice(0, 2).map((tag) => CATEGORY_LABELS[tag]).join(", ") : "Recipe"}</p>
           </div>
           <div>
             <p className="recipe-editorial__stats-label font-headline">Ingredients</p>
@@ -199,7 +200,7 @@ function RecipeDetailContent() {
           </div>
           <div>
             <p className="recipe-editorial__stats-label font-headline">Source</p>
-            <p className="recipe-editorial__stats-value">{recipe.source_url ? "Video link" : "Library"}</p>
+            <p className="recipe-editorial__stats-value">{recipe.source_url ? "Imported" : "Library"}</p>
           </div>
         </div>
       </div>
@@ -223,7 +224,7 @@ function RecipeDetailContent() {
           Edit recipe
         </Link>
         <Link
-          href="/planner"
+          href={`/planner`}
           className="font-headline"
           style={{
             padding: "0.55rem 1.15rem",
