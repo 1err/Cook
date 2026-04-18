@@ -45,6 +45,26 @@ export function buildMealPlanFingerprint(plans: MealPlanDay[]): string {
   return JSON.stringify(normalized);
 }
 
+/** Canonical fingerprint for a calendar week: one entry per day in `weekDates`, empty slots when no plan row exists. */
+export function buildWeekMealPlanFingerprint(weekDates: string[], plans: MealPlanDay[]): string {
+  const byDate = new Map<string, MealPlanSlots>();
+  for (const p of plans) {
+    byDate.set(p.date, normalizeMealPlanSlots(p));
+  }
+  const normalized = [...weekDates]
+    .map((date) => {
+      const slots = byDate.get(date) ?? emptyMealPlanSlots();
+      return {
+        date,
+        breakfast: normalizeIds(slots.breakfast),
+        lunch: normalizeIds(slots.lunch),
+        dinner: normalizeIds(slots.dinner),
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+  return JSON.stringify(normalized);
+}
+
 export function plannerFingerprintStorageKey(weekStart: string): string {
   return `plannerWeekFingerprint:${weekStart}`;
 }

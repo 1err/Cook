@@ -5,8 +5,10 @@ Returns a small list of live product results from supported stores.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
+from app.db.session import get_session
 from app.db.models import UserModel
 from app.services.store_scraper import SUPPORTED_STORES, fetch_store_products
 
@@ -24,6 +26,7 @@ class StoreProduct(BaseModel):
 async def store_products(
     query: str = Query(..., min_length=1),
     store: str = Query(default="weee"),
+    session: AsyncSession = Depends(get_session),
     current_user: UserModel = Depends(get_current_user),
 ):
     """Return a few live store products for an ingredient query."""
@@ -34,4 +37,4 @@ async def store_products(
         allowed = ", ".join(SUPPORTED_STORES)
         raise HTTPException(400, f"Unsupported store. Use one of: {allowed}.")
 
-    return await fetch_store_products(query, normalized_store)
+    return await fetch_store_products(query, normalized_store, session=session)

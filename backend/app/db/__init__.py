@@ -4,7 +4,7 @@ from app.db.session import (
     init_engine,
 )
 from app.db.models import Base
-from app.db import repo_recipes, repo_mealplan, repo_auth
+from app.db import repo_recipes, repo_mealplan, repo_auth, repo_store_cache
 
 __all__ = [
     "Base",
@@ -14,4 +14,5 @@ __all__ = [
     "repo_recipes",
     "repo_mealplan",
     "repo_auth",
+    "repo_store_cache",
 ]

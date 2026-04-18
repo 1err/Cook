@@ -6,7 +6,7 @@ from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy import String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -64,3 +64,19 @@ class MealPlanModel(Base):
     )
     date: Mapped[str] = mapped_column(String(10), primary_key=True)  # YYYY-MM-DD
     recipe_ids: Mapped[str] = mapped_column(Text, nullable=False)  # JSON object; legacy rows may be JSON array
+
+
+class CachedStoreProductModel(Base):
+    __tablename__ = "cached_store_products"
+
+    query: Mapped[str] = mapped_column(Text, primary_key=True)
+    store: Mapped[str] = mapped_column(String(32), primary_key=True)
+    language: Mapped[str] = mapped_column(String(8), primary_key=True)
+    cache_version: Mapped[str] = mapped_column(String(16), primary_key=True)
+    data: Mapped[list[dict[str, str]]] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+        onupdate=sa.func.now(),
+    )

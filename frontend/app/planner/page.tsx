@@ -14,7 +14,7 @@ import {
   type MealPlanDay,
   type MealPlanSlots,
   type MealType,
-  buildMealPlanFingerprint,
+  buildWeekMealPlanFingerprint,
   emptyMealPlanSlots,
   normalizeMealPlanSlots,
   plannerFingerprintStorageKey,
@@ -98,12 +98,15 @@ function PlannerPageContent() {
 
   useEffect(() => {
     if (loading) return;
-    const snapshot = dates.map((date) => ({
+    const plansForFingerprint: MealPlanDay[] = dates.map((date) => ({
       date,
       ...(planByDate[date] ?? emptyMealPlanSlots()),
     }));
     try {
-      localStorage.setItem(plannerFingerprintStorageKey(start), buildMealPlanFingerprint(snapshot));
+      localStorage.setItem(
+        plannerFingerprintStorageKey(start),
+        buildWeekMealPlanFingerprint(dates, plansForFingerprint)
+      );
     } catch {
       // ignore storage failures
     }
@@ -288,9 +291,9 @@ function PlannerPageContent() {
   );
 
   return (
-    <div className="planner-editorial app-wide" style={{ padding: 0, maxWidth: "100%" }}>
+    <div className="planner-editorial app-wide" style={{ maxWidth: "100%" }}>
       <aside className="planner-editorial__sidebar">
-        <div className="p-6 pb-4 space-y-4">
+        <div className="planner-editorial__sidebar-head space-y-4">
           <div>
             <h2 className="font-headline m-0 mb-2" style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--on-surface)", letterSpacing: "-0.02em" }}>
               Your saved recipes
@@ -458,23 +461,19 @@ function PlannerPageContent() {
                               </button>
                             </div>
                           ) : (
-                            <>
-                              <button
-                                type="button"
-                                className="planner-slot-plus"
-                                onClick={() => setSlotPicker({ date, slot })}
-                                aria-label={`Choose a recipe for ${slot} on ${date}`}
-                              >
+                            <button
+                              type="button"
+                              className="planner-slot-empty-trigger"
+                              onClick={() => setSlotPicker({ date, slot })}
+                              aria-label={`Choose a recipe for ${slot} on ${date}`}
+                            >
+                              <span className="planner-slot-plus" aria-hidden="true">
                                 <span className="material-symbols-outlined text-2xl opacity-40">add</span>
-                              </button>
-                              <button
-                                type="button"
-                                className="planner-slot-action planner-slot-action--mobile font-headline"
-                                onClick={() => setSlotPicker({ date, slot })}
-                              >
+                              </span>
+                              <span className="planner-slot-empty-trigger__label planner-slot-action--mobile font-headline">
                                 Choose recipe
-                              </button>
-                            </>
+                              </span>
+                            </button>
                           )}
                         </div>
                       </div>

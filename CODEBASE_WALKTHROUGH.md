@@ -10,9 +10,10 @@ This document is the **authoritative overview** of the repo: how the product flo
 
 | Path | Role |
 |------|------|
-| `backend/` | FastAPI app, async SQLAlchemy, Alembic, OpenAI refine/extract |
+| `backend/` | FastAPI app, async SQLAlchemy, Alembic, OpenAI refine/extract, store cache warmer |
 | `frontend/` | Next.js 14 App Router, client-heavy pages |
 | `stitch/` | HTML design references (Stitch); not served by the app |
+| `scripts/` | Manual cache warming / cache cleanup utilities |
 | `docker-compose.yml` | Postgres + backend + frontend for containerized dev |
 | `docker-compose.rds.yml.example` | Example override for RDS-style DB |
 
@@ -36,10 +37,10 @@ This document is the **authoritative overview** of the repo: how the product flo
    Loads in parallel: aggregated ingredients `GET /shopping-list`, planned meals `GET /meal-plan`, and `GET /recipes` for titles. **No long raw ingredient list** on this screen: **week range**, **week-at-a-glance** (meal chips), stats, **Prepare smart shopping list** (this is the **only** call that runs the refine LLM — saves tokens).
 
 6. **Shopping list — smart mode** (same route, after refine)  
-   SessionStorage key `smartShoppingList:{weekStart}` stores refined payload + UI state. Category **bento** cards; **Copy full list** / **Shop on {store}** / **Store preview**. **Back to original list** clears smart session for that week and returns to the confirmation UI. The page also stores a planner fingerprint so it can warn when the underlying planner changed later and offer a manual refresh.
+   SessionStorage key `smartShoppingList:{weekStart}` stores refined payload + UI state. Category **bento** cards now split checked items into an **Already have** section at the bottom of each category, while unchecked items stay at the top as **to buy**. Users can copy the list, bulk-load store products inline, switch between Weee/Amazon, and the page warns if the planner changed after generation.
 
-7. **Store preview** (`/store-preview?store=...`)  
-   Legacy note: old manual store-preview flow has been removed. Smart shopping now loads live product results inline from supported stores.
+7. **Store cache warming + admin preview** (`backend` scheduler, `/preview`)  
+   The backend warms a configured set of common store queries on startup and every 24 hours, using DB-backed persistent cache plus in-memory cache. Admins can inspect cached rows, see which rows are part of the configured warm set vs extra ad hoc cached rows, and manually refresh cache entries from the Preview page.
 
 ---
 
@@ -57,6 +58,7 @@ flowchart LR
     R[Recipes]
     M[Meal plan]
     Sh[Shopping aggregate + refine]
+    St[Store products + admin preview]
   end
   subgraph data [PostgreSQL]
     DB[(DB)]
@@ -69,6 +71,7 @@ flowchart LR
   R --> DB
   M --> DB
   Sh --> DB
+  St --> DB
 ```
 
 - **Deployment (typical):** frontend on Vercel, API on ECS/Fargate behind ALB, Postgres on RDS — adjust `CORS_ALLOW_ORIGINS`, `COOKIE_*`, and `NEXT_PUBLIC_API_BASE` accordingly.
@@ -81,8 +84,9 @@ flowchart LR
 
 - `load_dotenv()` then validates `DATABASE_URL` via settings.
 - Lifespan: `init_engine()` for async SQLAlchemy.
+- Starts/stops the in-process cache warmer scheduler after DB init.
 - CORS: explicit origins from `CORS_ALLOW_ORIGINS` when set; `allow_credentials=True` only when origins are explicit (required for cookies).
-- Routers: `auth`, `recipes`, `meal-plan`, `shopping-list` (prefixes as defined per router).
+- Routers: `auth`, `recipes`, `meal-plan`, `shopping-list`, `store`, `admin` (prefixes as defined per router).
 - **Static uploads:** `GET /uploads/...` via `StaticFiles` on `get_local_upload_root()` (default process cwd + `uploads/`).
 
 ### Configuration (`backend/app/core/config.py`)
@@ -115,6 +119,20 @@ flowchart LR
 - `GET /shopping-list?start=&end=` — loads plans in range, resolves recipes, **aggregates** ingredients (`shopping_service.aggregate_ingredients`).
 - `POST /shopping-list/refine` — body `{ items: [{ name, quantity }] }` → `refine_shopping_list` in `app/refine.py`. Response shape still includes `likely_pantry` (always **empty**); staples are expected under **`purchase_items`** with `grocery_category` **`Pantry & Dry Goods`**.
 
+### Store products (`backend/app/api/routes_store.py`)
+
+- `GET /store-products?query=&store=` — normalized query lookup for supported stores (`weee`, `amazon`).
+- Read path: in-memory L1 cache → Postgres-backed L2 cache → live scrape if stale/missing.
+- Store query normalization defensively strips banned modifiers like `新鲜` / `切块` before caching/scraping.
+
+### Admin cache preview (`backend/app/api/admin.py`)
+
+- Admin is currently email-gated via `app/core/admin.py`.
+- `GET /admin/cache-preview` — paginated cache preview with warm-set classification, stale-only filter, TTL metadata, and separate warm vs extra cached counts.
+- `GET /admin/cache-refresh-status` — current background refresh status/progress.
+- `POST /admin/cache-refresh` — trigger global refresh (default stale-only).
+- `POST /admin/cache-refresh-one` — force-refresh one query/store row.
+
 ### Refinement / LLM (`backend/app/refine.py`)
 
 - **Prompts to edit:** `_build_system_prompt()` and `_build_user_prompt()` at the top of the workflow logic.
@@ -127,13 +145,16 @@ flowchart LR
 
 ### Database
 
-- Models in `backend/app/db/models.py`; repositories `repo_recipes`, `repo_mealplan`, `repo_auth`.
+- Models in `backend/app/db/models.py`; repositories `repo_recipes`, `repo_mealplan`, `repo_auth`, `repo_store_cache`.
+- `CachedStoreProductModel` stores persistent store lookup cache keyed by `(query, store, language, cache_version)`.
 - Migrations: `backend/alembic/versions/*`.
 
 ### Other services
 
 - `extract_service.py` / `extract.py` — YouTube transcript + LLM extraction; stubs for upload/OCR paths. Link import now returns clearer errors for unsupported URLs and transcript/caption failures instead of silently creating a placeholder import.
 - `shopping_service.py` — deterministic merge of ingredient lines.
+- `services/store_scraper.py` — live scraping + PDP enrichment, cache read/write orchestration, and query normalization.
+- `jobs/cache_warmer.py` / `jobs/cache_warmer_queries.py` — scheduled startup/daily stale-only warming and shared configured query catalog.
 
 ---
 
@@ -160,23 +181,22 @@ flowchart LR
 | `/library/[id]` | Edit recipe, ingredients, library tag, image upload (conditional PUT to presigned URL) |
 | `/recipe/[id]` | Read-only detail |
 | `/import` | Link / transcript import |
-| `/planner?week=` | 7-day grid, drag-drop, sidebar search |
-| `/shopping-list?week=` | Confirmation UI → **Prepare smart** → smart bento + actions |
-| `/store-preview?store=` | Session-driven store search list |
+| `/planner?week=` | 7-day grid, drag-drop, sidebar search, full-box click to add into empty slots |
+| `/shopping-list?week=` | Confirmation UI → **Prepare smart** → smart bento + inline store picks |
+| `/preview` | Admin-only cache preview / refresh dashboard |
 
 ### Client-only state
 
 | Key | Use |
 |-----|-----|
 | `smartShoppingList:{weekMonday}` | Refined JSON + `_ui.hidden` / `_ui.checked` |
-| `cooking-store-preview-items` | Items passed to store preview |
-| `cooking-preferred-store` | Removed |
+| `plannerWeekFingerprint:{weekMonday}` | Used to mark smart shopping list stale after planner edits |
 
 ### Shared libs
 
 - **`lib/week.ts`** — `getWeekBounds`, `getPrevNextWeek`, `formatWeekRangeDisplay`, `formatWeekPlannerKicker`.
-- **`lib/store.ts`** — store URLs, labels, `buildItemQuery`, session keys.
-- **`lib/shoppingCategories.ts`** — `GROCERY_CATEGORY_ORDER`, `normalizeGroceryCategory`, Material icon names, **`groceryCategoryBentoSpan` → always `6`** (two cards per row on large grids).
+- **`lib/shoppingCategories.ts`** — `GROCERY_CATEGORY_ORDER`, `normalizeGroceryCategory`, Material icon names.
+- **`lib/admin.ts`** — frontend admin email helper for Preview visibility.
 - **`lib/recipeCategories.ts`** — library filter slugs.
 - **`types.ts`** — `Recipe`, `IngredientItem`, etc.
 
@@ -188,11 +208,11 @@ flowchart LR
 
 ## UI and design language
 
-- **Global styles:** `frontend/app/globals.css` — CSS variables for the “editorial / Material” palette (e.g. `--primary`, `--surface-container-*`, `--tertiary`), typography (Inter + Manrope via `layout.tsx`), and large section blocks:
+- **Global styles:** `frontend/app/globals.css` — CSS variables for the “editorial / Material” palette (e.g. `--primary`, `--surface-container-*`, `--tertiary`), system-font based typography, and large section blocks:
   - Planner editorial layout
   - Shopping confirmation hero (`shop-confirm-*`)
   - Smart shopping hero + bento (`shop-smart-*`, `shop-bento-*`)
-  - Store preview (`store-preview-*`)
+  - Admin preview (`/preview`)
   - Recipe / import accents
 - **Stitch references:** `stitch/*.html` — design targets; implementation uses CSS classes + Material Symbols, not Tailwind in production pages (except where inline utilities appear in TSX).
 - **Static images:** `frontend/public/` — e.g. `shopping-list-hero.jpg` for confirmation page hero (avoids fragile hotlinked URLs). **Docker:** `frontend/Dockerfile` copies `public/` into the standalone image.
@@ -253,6 +273,11 @@ flowchart LR
 | PUT | `/meal-plan/{date}` | Yes | `recipe_ids` |
 | GET | `/shopping-list` | Yes | `start`, `end` |
 | POST | `/shopping-list/refine` | Yes | Refine only; no DB |
+| GET | `/store-products` | Yes | Cached store lookup / scrape fallback |
+| GET | `/admin/cache-preview` | Yes (admin) | Cache preview + metadata |
+| GET | `/admin/cache-refresh-status` | Yes (admin) | Background refresh progress |
+| POST | `/admin/cache-refresh` | Yes (admin) | Trigger global refresh |
+| POST | `/admin/cache-refresh-one` | Yes (admin) | Refresh one query/store |
 | GET | `/health` | No | |
 
 OpenAPI: `/docs` when the API is running.
@@ -262,9 +287,10 @@ OpenAPI: `/docs` when the API is running.
 ## What is implemented end-to-end
 
 - Cookie auth; user-scoped recipes and meal plans.
-- Planner with drag-drop on desktop, touch-friendly slot picking on phone, and week URL param.
+- Planner with drag-drop on desktop, touch-friendly slot picking on phone, week URL param, and full-box click on empty add slots.
 - Shopping confirmation UI + **on-demand** smart refinement.
-- Smart list: categories, checkboxes, copy, preferred store, store preview handoff, and stale-state warning when the planner changed after generation.
+- Smart list: categories, clearer checked/owned state, inline store picks, copy, bulk product loading, and stale-state warning when the planner changed after generation.
+- Store lookup caching: in-memory + Postgres persistent cache, daily/startup warmer, manual refresh, admin preview.
 - Public recipe catalog with copy-into-my-library flow.
 - Local or S3 recipe images.
 - YouTube link import + transcript import, with import-time title/tag overrides and clearer YouTube failure messages; LLM extraction and refine when key present.
@@ -274,7 +300,7 @@ OpenAPI: `/docs` when the API is running.
 ## Known gaps / debt
 
 1. **Video upload** transcript pipeline still stubbed; OCR path stubbed.
-2. **Store integrations:** preview opens retailer search URLs only; no cart API.
+2. **Store integrations:** inline product previews exist, but there is still no true cart/checkout API.
 3. **Public catalog curation:** admin/editor control is intentionally lightweight and email-gated by env when configured.
 4. **Stitch assets** in `stitch/` are documentation-only.
 5. Root **`README.md`** “Flow” is shorter; this file is the detailed reference.

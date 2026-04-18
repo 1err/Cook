@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../lib/auth";
+import { isAdminUser } from "../lib/admin";
 import { NavAuth } from "./NavAuth";
 
 export function Header() {
@@ -25,6 +26,7 @@ export function Header() {
 
   const isLogoActive = pathname === "/" || pathname === "/import";
   const logoHref = user ? "/library" : "/login";
+  const showPreview = isAdminUser(user);
 
   return (
     <header className="app-header">
@@ -69,6 +71,11 @@ export function Header() {
                 <Link href="/import" className={`headerNavLink${isActive("/import") ? " is-active" : ""}`}>
                   Import
                 </Link>
+                {showPreview ? (
+                  <Link href="/preview" className={`headerNavLink${isActive("/preview") ? " is-active" : ""}`}>
+                    Preview
+                  </Link>
+                ) : null}
               </nav>
             </>
           ) : null}
