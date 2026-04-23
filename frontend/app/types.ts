@@ -1,6 +1,7 @@
 export interface IngredientItem {
   name: string;
   quantity: string;
+  metric_quantity?: string | null;
   notes?: string | null;
 }
 

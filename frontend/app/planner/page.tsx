@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
+import { useT } from "../lib/i18n";
 import { TagFilterPopover } from "../components/TagFilterPopover";
 import type { Recipe } from "../types";
 import { getWeekBounds, getPrevNextWeek, formatWeekPlannerKicker } from "../lib/week";
@@ -36,6 +37,7 @@ function dayOfMonth(dateStr: string): number {
 
 function PlannerPageContent() {
   const router = useRouter();
+  const t = useT();
   const searchParams = useSearchParams();
   const weekParam = searchParams.get("week");
   const { start, end, dates, weekParam: currentWeek } = getWeekBounds(weekParam);
@@ -211,7 +213,7 @@ function PlannerPageContent() {
     return `${short} ${dayOfMonth(slotPicker.date)}`;
   }, [dates, slotPicker]);
 
-  if (loading) return <p className="planner-muted app-wide">Loading…</p>;
+  if (loading) return <p className="planner-muted app-wide">{t("common.loading")}</p>;
 
   const recipeSourceControls = (
     <>
@@ -219,17 +221,17 @@ function PlannerPageContent() {
         <span className="material-symbols-outlined">search</span>
         <input
           type="search"
-          placeholder="Search library…"
+          placeholder={t("planner.searchLibrary")}
           value={sideSearch}
           onChange={(e) => setSideSearch(e.target.value)}
-          aria-label="Search recipes for planner"
+          aria-label={t("planner.searchAria")}
         />
       </div>
       <div className="planner-filter-bar">
         <TagFilterPopover
           value={categoryFilter}
           onChange={setCategoryFilter}
-          ariaLabel="Filter planner recipes by tag"
+          ariaLabel={t("planner.filterAria")}
         />
         {categoryFilter !== "all" ? (
           <button
@@ -237,11 +239,11 @@ function PlannerPageContent() {
             className="planner-filter-reset font-headline"
             onClick={() => setCategoryFilter("all")}
           >
-            Clear filter
+            {t("planner.clearFilter")}
           </button>
         ) : null}
       </div>
-      <p className="planner-sort-note">Sorted A-Z</p>
+      <p className="planner-sort-note">{t("planner.sortedAZ")}</p>
     </>
   );
 
@@ -270,7 +272,7 @@ function PlannerPageContent() {
         </div>
         {slotPicker ? (
           <button type="button" className="planner-source-card__add font-headline" onClick={() => handlePickerSelect(r.id)}>
-            Add
+            {t("common.add")}
           </button>
         ) : null}
       </div>
@@ -280,12 +282,12 @@ function PlannerPageContent() {
       {recipes.length === 0 ? (
         <>
           <Link href="/import" className="font-bold">
-            Import recipes
+                {t("planner.importRecipes")}
           </Link>{" "}
-          to plan your week.
+              {t("planner.planYourWeek")}
         </>
       ) : (
-        "No recipes match the current search or filter."
+            t("planner.noRecipesMatch")
       )}
     </p>
   );
@@ -296,10 +298,10 @@ function PlannerPageContent() {
         <div className="planner-editorial__sidebar-head space-y-4">
           <div>
             <h2 className="font-headline m-0 mb-2" style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--on-surface)", letterSpacing: "-0.02em" }}>
-              Your saved recipes
+              {t("planner.savedRecipes")}
             </h2>
             <p className="m-0 text-sm" style={{ color: "var(--on-surface-variant)" }}>
-              Drag and drop into your week, or click the plus icon in any slot to choose a recipe. Tap a meal card to open it.
+              {t("planner.savedRecipesDesc")}
             </p>
           </div>
           {recipeSourceControls}
@@ -308,7 +310,7 @@ function PlannerPageContent() {
         <div className="planner-editorial__sidebar-foot">
           <Link href="/import" className="btn-primary font-headline w-full flex items-center justify-center gap-2" style={{ width: "100%", textDecoration: "none" }}>
             <span className="material-symbols-outlined">add</span>
-            New recipe
+            {t("planner.newRecipe")}
           </Link>
         </div>
       </aside>
@@ -331,14 +333,14 @@ function PlannerPageContent() {
                 lineHeight: 1.05,
               }}
             >
-              Weekly planner
+              {t("planner.title")}
             </h1>
             <p className="m-0 mt-2 text-sm max-w-xl" style={{ color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
               Drag recipes from the sidebar into breakfast, lunch, and dinner.{" "}
               <Link href={`/shopping-list?week=${currentWeek}`} className="font-bold" style={{ color: "var(--primary)" }}>
-                Shopping list
+                {t("nav.shoppingList")}
               </Link>{" "}
-              uses this week&apos;s plan.
+              {t("planner.shoppingListUsesPlan")}
             </p>
           </div>
           <div className="flex gap-2 shrink-0">
@@ -352,7 +354,7 @@ function PlannerPageContent() {
                 color: "var(--on-surface-variant)",
               }}
               onClick={() => setWeek(prev)}
-              aria-label="Previous week"
+              aria-label={t("common.previous")}
             >
               <span className="material-symbols-outlined">chevron_left</span>
             </button>
@@ -366,7 +368,7 @@ function PlannerPageContent() {
                 color: "var(--on-surface-variant)",
               }}
               onClick={() => setWeek(next)}
-              aria-label="Next week"
+              aria-label={t("common.next")}
             >
               <span className="material-symbols-outlined">chevron_right</span>
             </button>
@@ -374,8 +376,8 @@ function PlannerPageContent() {
         </section>
 
         <div className="planner-mobile-guide">
-          <p className="planner-mobile-guide__title font-headline">Phone-friendly planning</p>
-          <p className="planner-mobile-guide__text">Tap any meal slot to choose from your saved recipes. Desktop drag-and-drop stays the same.</p>
+          <p className="planner-mobile-guide__title font-headline">{t("planner.phoneFriendlyTitle")}</p>
+          <p className="planner-mobile-guide__text">{t("planner.phoneFriendlyDesc")}</p>
         </div>
 
         <div className="planner-editorial__grid">
@@ -436,20 +438,20 @@ function PlannerPageContent() {
                                         e.stopPropagation();
                                         removeMeal(date, slot, recipeId);
                                       }}
-                                      aria-label="Remove meal"
+                                      aria-label={t("planner.removeMeal")}
                                     >
                                       <span className="material-symbols-outlined text-sm">close</span>
                                     </button>
                                   </div>
                                 );
                               })}
-                              <span className="planner-drop-target__hint">Drop another recipe</span>
+                              <span className="planner-drop-target__hint">{t("planner.dropAnotherRecipe")}</span>
                               <button
                                 type="button"
                                 className="planner-slot-action planner-slot-action--mobile font-headline"
                                 onClick={() => setSlotPicker({ date, slot })}
                               >
-                                Add another recipe
+                                {t("planner.addAnotherRecipe")}
                               </button>
                               <button
                                 type="button"
@@ -471,7 +473,7 @@ function PlannerPageContent() {
                                 <span className="material-symbols-outlined text-2xl opacity-40">add</span>
                               </span>
                               <span className="planner-slot-empty-trigger__label planner-slot-action--mobile font-headline">
-                                Choose recipe
+                                {t("planner.chooseRecipe")}
                               </span>
                             </button>
                           )}
@@ -486,11 +488,11 @@ function PlannerPageContent() {
         </div>
 
         {slotPicker ? (
-          <div className="planner-mobile-picker" role="dialog" aria-modal="true" aria-label="Choose recipe for meal slot">
+          <div className="planner-mobile-picker" role="dialog" aria-modal="true" aria-label={t("planner.chooseRecipeForMealSlot")}>
             <button
               type="button"
               className="planner-mobile-picker__backdrop"
-              aria-label="Close recipe picker"
+              aria-label={t("planner.closeRecipePicker")}
               onClick={() => setSlotPicker(null)}
             />
             <div className="planner-mobile-picker__sheet">
@@ -498,14 +500,14 @@ function PlannerPageContent() {
                 <div>
                   <p className="planner-mobile-picker__kicker font-headline">{slotPickerDayLabel}</p>
                   <h2 className="planner-mobile-picker__title font-headline">
-                    Add to {slotPicker.slot}
+                    {t("planner.addToSlot", { slot: slotPicker.slot })}
                   </h2>
                 </div>
                 <button
                   type="button"
                   className="planner-mobile-picker__close"
                   onClick={() => setSlotPicker(null)}
-                  aria-label="Close recipe picker"
+                  aria-label={t("planner.closeRecipePicker")}
                 >
                   <span className="material-symbols-outlined">close</span>
                 </button>
@@ -523,7 +525,7 @@ function PlannerPageContent() {
 export default function PlannerPage() {
   return (
     <RequireAuth>
-      <Suspense fallback={<p className="planner-muted app-wide">Loading…</p>}>
+      <Suspense fallback={<p className="planner-muted app-wide">Loading...</p>}>
         <PlannerPageContent />
       </Suspense>
     </RequireAuth>

@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
+import { useT } from "../lib/i18n";
 import { CATEGORY_LABELS, RECIPE_TAG_GROUPS, categoryBadgeStyle, type RecipeTagSlug } from "../lib/recipeCategories";
 import type { IngredientItem, Recipe } from "../types";
 
@@ -27,13 +28,14 @@ async function readErrorMessage(res: Response, fallback: string): Promise<string
 
 export default function ImportPage() {
   const router = useRouter();
+  const t = useT();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [url, setUrl] = useState("");
   const [transcript, setTranscript] = useState("");
   const [notes, setNotes] = useState("");
   const [title, setTitle] = useState("");
   const [libraryTags, setLibraryTags] = useState<RecipeTagSlug[]>([]);
-  const [mode, setMode] = useState<"link" | "transcript">("link");
+  const [mode, setMode] = useState<"link" | "transcript">("transcript");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -79,7 +81,7 @@ export default function ImportPage() {
       if (!prev) return prev;
       return {
         ...prev,
-        ingredients: [...prev.ingredients, { name: "", quantity: "", notes: "" }],
+        ingredients: [...prev.ingredients, { name: "", quantity: "", metric_quantity: "", notes: "" }],
       };
     });
   }
@@ -94,7 +96,7 @@ export default function ImportPage() {
       form.append("file", file);
       const res = await apiFetch("/recipes/upload-image", { method: "POST", body: form });
       if (!res.ok) {
-        throw new Error(await readErrorMessage(res, "Upload failed"));
+        throw new Error(await readErrorMessage(res, t("common.upload")));
       }
       const { upload_url, file_url } = (await res.json()) as { upload_url: string; file_url: string };
       if (upload_url) {
@@ -106,7 +108,7 @@ export default function ImportPage() {
       }
       setDraftRecipe((prev) => (prev ? { ...prev, thumbnail_url: file_url } : prev));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
+      setError(e instanceof Error ? e.message : t("common.upload"));
     } finally {
       setUploadingImage(false);
       event.target.value = "";
@@ -137,12 +139,12 @@ export default function ImportPage() {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        throw new Error(await readErrorMessage(res, "Import failed"));
+        throw new Error(await readErrorMessage(res, t("import.importRecipe")));
       }
       const recipe: Recipe = await res.json();
       setDraftRecipe(recipe);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
+      setError(e instanceof Error ? e.message : t("import.importRecipe"));
     } finally {
       setLoading(false);
     }
@@ -161,12 +163,12 @@ export default function ImportPage() {
         }),
       });
       if (!res.ok) {
-        throw new Error(await readErrorMessage(res, "Save failed"));
+        throw new Error(await readErrorMessage(res, t("common.save")));
       }
       const saved: Recipe = await res.json();
       router.push(`/library?highlight=${saved.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
+      setError(e instanceof Error ? e.message : t("common.save"));
     } finally {
       setSaving(false);
     }
@@ -184,24 +186,22 @@ export default function ImportPage() {
     <RequireAuth>
       <div className="import-editorial">
         <div className="import-editorial__header">
-          <span className="import-editorial__kicker font-headline">{draftRecipe ? "Review recipe" : "Import recipe"}</span>
+          <span className="import-editorial__kicker font-headline">{draftRecipe ? t("import.reviewRecipe") : t("import.importRecipe")}</span>
           <h1 className="import-editorial__title font-headline">
             {draftRecipe ? (
               <>
-                Review and <br />
-                <span>save your recipe</span>
+                {t("import.reviewAndSave")}
               </>
             ) : (
               <>
-                Add a recipe <br />
-                <span>to your library</span>
+                {t("import.addToLibrary")}
               </>
             )}
           </h1>
           <p className="import-editorial__sub">
             {draftRecipe
-              ? "Check the title, ingredients, units, and tags before saving."
-              : "Import from a YouTube link or paste a transcript, then review the result before saving."}
+              ? t("import.reviewSub")
+              : t("import.importSub")}
           </p>
         </div>
 
@@ -211,13 +211,13 @@ export default function ImportPage() {
               <div className="import-engine__meta-grid">
                 <div>
                   <label className="import-engine__label" htmlFor="import-title">
-                    Title (optional)
+                    {t("import.titleOptional")}
                   </label>
                   <input
                     id="import-title"
                     className="import-engine__input import-engine__input--plain"
                     type="text"
-                    placeholder="Optional recipe title"
+                    placeholder={t("import.optionalRecipeTitle")}
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     disabled={loading}
@@ -225,7 +225,7 @@ export default function ImportPage() {
                 </div>
                 <div style={{ gridColumn: "1 / -1" }}>
                   <label className="import-engine__label">
-                    Recipe tags (optional)
+                    {t("import.recipeTagsOptional")}
                   </label>
                   <div className="recipe-tag-picker recipe-tag-picker--compact">
                     {RECIPE_TAG_GROUPS.map((group) => (
@@ -252,7 +252,7 @@ export default function ImportPage() {
                   </div>
                   {libraryTags.length > 0 ? (
                     <p className="import-engine__hint" style={{ marginTop: "0.65rem" }}>
-                      Tags: {libraryTags.map((tag) => CATEGORY_LABELS[tag]).join(", ")}
+                      {t("import.tagsList", { tags: libraryTags.map((tag) => CATEGORY_LABELS[tag]).join(", ") })}
                     </p>
                   ) : null}
                 </div>
@@ -261,17 +261,17 @@ export default function ImportPage() {
               <div className="import-engine__tabs">
                 <button
                   type="button"
-                  className={`import-engine__tab font-headline${mode === "link" ? " is-active" : ""}`}
-                  onClick={() => setMode("link")}
-                >
-                  Video link
-                </button>
-                <button
-                  type="button"
                   className={`import-engine__tab font-headline${mode === "transcript" ? " is-active" : ""}`}
                   onClick={() => setMode("transcript")}
                 >
-                  Paste transcript
+                  {t("import.pasteTranscript")}
+                </button>
+                <button
+                  type="button"
+                  className={`import-engine__tab font-headline${mode === "link" ? " is-active" : ""}`}
+                  onClick={() => setMode("link")}
+                >
+                  {t("import.videoLink")}
                 </button>
               </div>
 
@@ -279,7 +279,7 @@ export default function ImportPage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
                   <div>
                     <label className="import-engine__label" htmlFor="import-url">
-                      Video URL
+                      {t("import.videoUrl")}
                     </label>
                     <div className="import-engine__field-wrap">
                       <span className="material-symbols-outlined">link</span>
@@ -294,17 +294,17 @@ export default function ImportPage() {
                       />
                     </div>
                     <p className="import-engine__hint" style={{ marginTop: "0.5rem" }}>
-                      Link import currently supports YouTube. For other sources, paste the transcript instead.
+                      {t("import.linkHint")}
                     </p>
                   </div>
                   <div>
                     <label className="import-engine__label" htmlFor="import-notes-link">
-                      Extra details (optional)
+                      {t("import.extraDetails")}
                     </label>
                     <textarea
                       id="import-notes-link"
                       className="import-engine__textarea"
-                      placeholder="Add servings, dietary goals, or anything important to keep in mind."
+                      placeholder={t("import.extraDetailsPlaceholder")}
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                       disabled={loading}
@@ -316,12 +316,12 @@ export default function ImportPage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
                   <div>
                     <label className="import-engine__label" htmlFor="import-transcript">
-                      Transcript or ingredient list
+                      {t("import.transcriptOrIngredients")}
                     </label>
                     <textarea
                       id="import-transcript"
                       className="import-engine__textarea"
-                      placeholder="Paste the transcript or ingredient list here."
+                      placeholder={t("import.transcriptPlaceholder")}
                       value={transcript}
                       onChange={(e) => setTranscript(e.target.value)}
                       disabled={loading}
@@ -330,12 +330,12 @@ export default function ImportPage() {
                   </div>
                   <div>
                     <label className="import-engine__label" htmlFor="import-notes-tx">
-                      Extra details (optional)
+                      {t("import.extraDetails")}
                     </label>
                     <textarea
                       id="import-notes-tx"
                       className="import-engine__textarea"
-                      placeholder="Add servings, dietary goals, or anything important to keep in mind."
+                      placeholder={t("import.extraDetailsPlaceholder")}
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                       disabled={loading}
@@ -360,14 +360,14 @@ export default function ImportPage() {
                 >
                   {loading ? (
                     <>
-                      Parsing…
+                      {t("import.parsing")}
                       <span className="material-symbols-outlined ms-fill import-spin" style={{ fontSize: "1.25rem" }}>
                         progress_activity
                       </span>
                     </>
                   ) : (
                     <>
-                      Preview recipe
+                      {t("import.previewRecipe")}
                       <span className="material-symbols-outlined" style={{ fontSize: "1.25rem" }}>
                         visibility
                       </span>
@@ -378,7 +378,7 @@ export default function ImportPage() {
                   <span className="material-symbols-outlined" style={{ fontSize: "1rem", color: "var(--tertiary)" }}>
                     check_circle
                   </span>
-                  You can review and edit everything before saving.
+                  {t("import.reviewBeforeSaving")}
                 </p>
               </div>
             </>
@@ -407,9 +407,9 @@ export default function ImportPage() {
                   </div>
                   <div className="recipe-card-stitch__meta">
                     <div className="recipe-card-stitch__meta-left">
-                      <h2 className="font-headline recipe-card-stitch__title">{draftRecipe.title || "Untitled recipe"}</h2>
+                      <h2 className="font-headline recipe-card-stitch__title">{draftRecipe.title || t("import.untitledRecipe")}</h2>
                       <p className="recipe-card-stitch__sub" title={previewText}>
-                        {previewText || "Review the imported ingredients and save when ready."}
+                        {previewText || t("import.reviewIngredientsReady")}
                       </p>
                       {draftTags.length > 0 ? (
                         <div className="recipe-card-stitch__tag-row">
@@ -429,7 +429,7 @@ export default function ImportPage() {
                 <section className="import-review-section">
                   <div className="import-review-section__head">
                     <label className="import-engine__label" style={{ marginBottom: 0 }}>
-                      Cover image
+                      {t("recipe.coverImage")}
                     </label>
                     <button
                       type="button"
@@ -437,7 +437,7 @@ export default function ImportPage() {
                       onClick={() => fileInputRef.current?.click()}
                       disabled={uploadingImage}
                     >
-                      {uploadingImage ? "Uploading…" : "Upload image"}
+                      {uploadingImage ? t("recipe.uploading") : t("import.uploadImage")}
                     </button>
                   </div>
                   <input
@@ -450,7 +450,7 @@ export default function ImportPage() {
                   <input
                     className="import-engine__input import-engine__input--plain"
                     type="url"
-                    placeholder="Or paste an image URL"
+                    placeholder={t("import.orPasteImageUrl")}
                     value={draftRecipe.thumbnail_url ?? ""}
                     onChange={(e) => setDraftRecipe((prev) => (prev ? { ...prev, thumbnail_url: e.target.value } : prev))}
                     disabled={uploadingImage || saving}
@@ -459,7 +459,7 @@ export default function ImportPage() {
 
                 <section className="import-review-section">
                   <label className="import-engine__label" htmlFor="draft-title">
-                    Recipe title
+                    {t("recipe.recipeTitle")}
                   </label>
                   <input
                     id="draft-title"
@@ -474,26 +474,35 @@ export default function ImportPage() {
                 <section className="import-review-section">
                   <div className="import-review-section__head">
                     <label className="import-engine__label" style={{ marginBottom: 0 }}>
-                      Ingredients
+                      {t("common.ingredients")}
                     </label>
                     <button type="button" className="import-review-add font-headline" onClick={addDraftIngredient}>
-                      + Add
+                      + {t("common.add")}
                     </button>
                   </div>
                   <div className="import-review-ingredients">
                     {draftRecipe.ingredients.map((ingredient, index) => (
                       <div key={`${draftRecipe.id}-${index}`} className="import-review-ingredient-row">
+                        <div style={draftQtyStackStyle}>
+                          <input
+                            className="import-engine__input import-engine__input--plain"
+                            type="text"
+                            placeholder={t("recipe.qty")}
+                            value={ingredient.quantity}
+                            onChange={(e) => updateDraftIngredient(index, "quantity", e.target.value)}
+                          />
+                          <input
+                            className="import-engine__input import-engine__input--plain"
+                            type="text"
+                            placeholder={t("recipe.metricQty")}
+                            value={ingredient.metric_quantity ?? ""}
+                            onChange={(e) => updateDraftIngredient(index, "metric_quantity", e.target.value)}
+                          />
+                        </div>
                         <input
                           className="import-engine__input import-engine__input--plain"
                           type="text"
-                          placeholder="Qty"
-                          value={ingredient.quantity}
-                          onChange={(e) => updateDraftIngredient(index, "quantity", e.target.value)}
-                        />
-                        <input
-                          className="import-engine__input import-engine__input--plain"
-                          type="text"
-                          placeholder="Ingredient"
+                          placeholder={t("recipe.ingredient")}
                           value={ingredient.name}
                           onChange={(e) => updateDraftIngredient(index, "name", e.target.value)}
                         />
@@ -501,7 +510,7 @@ export default function ImportPage() {
                           type="button"
                           className="import-review-remove"
                           onClick={() => removeDraftIngredient(index)}
-                          aria-label="Remove ingredient"
+                          aria-label={t("recipe.removeIngredient")}
                         >
                           <span className="material-symbols-outlined">close</span>
                         </button>
@@ -512,7 +521,7 @@ export default function ImportPage() {
 
                 <section className="import-review-section">
                   <label className="import-engine__label">
-                    Tags
+                    {t("common.tags")}
                   </label>
                   <div className="recipe-tag-picker recipe-tag-picker--compact">
                     {RECIPE_TAG_GROUPS.map((group) => (
@@ -553,14 +562,14 @@ export default function ImportPage() {
                   >
                     {saving ? (
                       <>
-                        Saving…
+                        {t("common.saving")}
                         <span className="material-symbols-outlined ms-fill import-spin" style={{ fontSize: "1.25rem" }}>
                           progress_activity
                         </span>
                       </>
                     ) : (
                       <>
-                        Save recipe
+                        {t("import.saveRecipe")}
                         <span className="material-symbols-outlined" style={{ fontSize: "1.25rem" }}>
                           check
                         </span>
@@ -573,7 +582,7 @@ export default function ImportPage() {
                     onClick={() => setDraftRecipe(null)}
                     disabled={saving}
                   >
-                    Back to import
+                    {t("import.backToImport")}
                   </button>
                 </div>
               </div>
@@ -584,3 +593,10 @@ export default function ImportPage() {
     </RequireAuth>
   );
 }
+
+const draftQtyStackStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.4rem",
+  minWidth: 132,
+};

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "./lib/auth";
 import { Header } from "./components/Header";
+import { I18nProvider, LanguageToggle } from "./lib/i18n";
 
 export const metadata: Metadata = {
   title: "Cooking — Recipe library & planner",
@@ -22,10 +23,13 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <AuthProvider>
-          <Header />
-          <main>{children}</main>
-        </AuthProvider>
+        <I18nProvider>
+          <AuthProvider>
+            <LanguageToggle />
+            <Header />
+            <main>{children}</main>
+          </AuthProvider>
+        </I18nProvider>
       </body>
     </html>
   );

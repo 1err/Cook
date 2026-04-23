@@ -1,6 +1,8 @@
 /**
  * Grocery sections for smart shopping list (matches backend refine + Stitch-style cards).
  */
+import type { Language } from "./i18n";
+
 export const GROCERY_CATEGORY_ORDER = [
   "Produce",
   "Dairy",
@@ -12,6 +14,16 @@ export const GROCERY_CATEGORY_ORDER = [
 ] as const;
 
 export type GroceryCategory = (typeof GROCERY_CATEGORY_ORDER)[number];
+
+export const CATEGORY_TRANSLATIONS: Record<GroceryCategory, Record<Language, string>> = {
+  Produce: { en: "Produce", zh: "蔬菜水果" },
+  Dairy: { en: "Dairy", zh: "乳制品" },
+  "Meat & Seafood": { en: "Meat & Seafood", zh: "肉类海鲜" },
+  "Pantry & Dry Goods": { en: "Pantry & Dry Goods", zh: "粮油干货" },
+  Frozen: { en: "Frozen", zh: "冷冻食品" },
+  Bakery: { en: "Bakery", zh: "烘焙面包" },
+  Other: { en: "Other", zh: "其他" },
+};
 
 const KEYWORDS: Record<string, string[]> = {
   Produce: [
@@ -122,6 +134,15 @@ export function normalizeGroceryCategory(raw: string | undefined | null, name: s
   const partial = GROCERY_CATEGORY_ORDER.find((c) => s.toLowerCase().includes(c.toLowerCase()) || c.toLowerCase().includes(s.toLowerCase()));
   if (partial) return partial;
   return guessGroceryCategory(name);
+}
+
+export function getDisplayCategory(
+  raw: string | undefined | null,
+  name: string,
+  language: Language
+): string {
+  const normalized = normalizeGroceryCategory(raw, name);
+  return CATEGORY_TRANSLATIONS[normalized]?.[language] || CATEGORY_TRANSLATIONS.Other[language];
 }
 
 export const CATEGORY_ICONS: Record<GroceryCategory, string> = {

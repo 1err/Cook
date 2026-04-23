@@ -5,14 +5,15 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
+import { useT } from "../lib/i18n";
 import { RecipeCard } from "../components/RecipeCard";
 import { CATEGORY_LABELS, type LibraryFilterId } from "../lib/recipeCategories";
 import { TagFilterPopover } from "../components/TagFilterPopover";
 import type { Recipe } from "../types";
 
-function ingredientPreview(recipe: Recipe, maxLength = 72): string {
+function ingredientPreview(recipe: Recipe, fallback: string, maxLength = 72): string {
   const parts = recipe.ingredients.slice(0, 4).map((i) => i.name).filter(Boolean);
-  const text = parts.join(", ") || "Ready to add";
+  const text = parts.join(", ") || fallback;
   return text.length > maxLength ? text.slice(0, maxLength).trim() + "…" : text;
 }
 
@@ -27,6 +28,7 @@ function LibraryPageContent() {
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"mine" | "public">("mine");
   const [copyingId, setCopyingId] = useState<string | null>(null);
+  const t = useT();
 
   const fetchRecipes = async () => {
     try {
@@ -101,36 +103,36 @@ function LibraryPageContent() {
     }
   }
 
-  if (loading) return <p style={mutedStyle}>Loading…</p>;
+  if (loading) return <p style={mutedStyle}>{t("common.loading")}</p>;
   if (error && recipes.length === 0 && publicRecipes.length === 0) return <p style={errorStyle}>{error}</p>;
 
   const activeList = view === "mine" ? filteredMine : filteredPublic;
 
   return (
     <>
-      <h1 className="library-page-title font-headline">Recipe library</h1>
+      <h1 className="library-page-title font-headline">{t("library.title")}</h1>
 
-      <div className="library-chip-row" role="tablist" aria-label="Library views" style={{ marginBottom: "1rem" }}>
+      <div className="library-chip-row" role="tablist" aria-label={t("library.views")} style={{ marginBottom: "1rem" }}>
         <button
           type="button"
           className={`library-chip ${view === "mine" ? "library-chip--active" : "library-chip--idle"}`}
           onClick={() => setView("mine")}
         >
-          My library
+          {t("library.myLibrary")}
         </button>
         <button
           type="button"
           className={`library-chip ${view === "public" ? "library-chip--active" : "library-chip--idle"}`}
           onClick={() => setView("public")}
         >
-          Public library
+          {t("library.publicLibrary")}
         </button>
       </div>
 
       <p style={{ ...mutedStyle, marginTop: 0, marginBottom: "1.25rem", maxWidth: "42rem", lineHeight: 1.5 }}>
         {view === "mine"
-          ? "Your private recipe collection for planning and shopping."
-          : "Curated recipes that signed-in users can copy straight into their own library."}
+          ? t("library.myLibraryDesc")
+          : t("library.publicLibraryDesc")}
       </p>
 
       {error ? <p style={{ ...errorStyle, marginTop: 0 }}>{error}</p> : null}
@@ -143,10 +145,10 @@ function LibraryPageContent() {
         <input
           type="search"
           className="library-search-input"
-          placeholder="Search recipes…"
+          placeholder={t("library.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          aria-label="Search recipes"
+          aria-label={t("library.searchAria")}
         />
       </div>
 
@@ -154,7 +156,7 @@ function LibraryPageContent() {
         <TagFilterPopover
           value={filter}
           onChange={setFilter}
-          ariaLabel="Filter recipes by tag"
+          ariaLabel={t("library.filterAria")}
         />
         {filter !== "all" ? (
           <button
@@ -162,7 +164,7 @@ function LibraryPageContent() {
             className="library-filter-reset font-headline"
             onClick={() => setFilter("all")}
           >
-            Clear filter
+            {t("library.clearFilter")}
           </button>
         ) : null}
       </div>
@@ -170,20 +172,24 @@ function LibraryPageContent() {
       {activeList.length === 0 ? (
         <div style={emptyStyle}>
           <p style={{ margin: 0, fontWeight: 700, color: "var(--on-surface)", fontSize: "1.05rem" }}>
-            {view === "mine" ? (recipes.length === 0 ? "Your shelf is ready" : "No matches") : publicRecipes.length === 0 ? "Public shelf is empty" : "No matches"}
+            {view === "mine"
+              ? (recipes.length === 0 ? t("library.yourShelfReady") : t("common.noMatches"))
+              : publicRecipes.length === 0
+                ? t("library.publicShelfEmpty")
+                : t("common.noMatches")}
           </p>
           <p style={{ margin: "0.5rem 0 0", fontSize: "0.9rem", lineHeight: 1.5 }}>
             {view === "mine"
               ? recipes.length === 0
-                ? "Import a recipe from a link or transcript to see it here."
-                : "Try another filter or search term."
+                ? t("library.importRecipePrompt")
+                : t("library.tryAnotherFilter")
               : publicRecipes.length === 0
-                ? "Once curated recipes are published, they will appear here for every signed-in user."
-                : "Try another filter or search term."}
+                ? t("library.publicShelfEmptyDesc")
+                : t("library.tryAnotherFilter")}
           </p>
           {view === "mine" && recipes.length === 0 && (
             <Link href="/import" style={linkStyle}>
-              Import a recipe →
+              {t("library.importRecipe")} →
             </Link>
           )}
         </div>
@@ -197,7 +203,7 @@ function LibraryPageContent() {
         <ul className="libraryGrid">
           {filteredPublic.map((recipe) => {
             const alreadyAdded = savedPublicIds.has(recipe.id);
-            const preview = ingredientPreview(recipe);
+            const preview = ingredientPreview(recipe, t("library.readyToAdd"));
             return (
               <li key={recipe.id} className="recipe-card-stitch">
                 <div className="recipe-card-stitch__media">
@@ -238,7 +244,11 @@ function LibraryPageContent() {
                       onClick={() => handleCopyPublicRecipe(recipe.id)}
                       disabled={alreadyAdded || copyingId === recipe.id}
                     >
-                      {alreadyAdded ? "In your library" : copyingId === recipe.id ? "Adding…" : "Add to my library"}
+                      {alreadyAdded
+                        ? t("library.inYourLibrary")
+                        : copyingId === recipe.id
+                          ? t("library.adding")
+                          : t("library.addToMyLibrary")}
                     </button>
                   </div>
                 </div>
@@ -248,9 +258,9 @@ function LibraryPageContent() {
         </ul>
       )}
 
-      <Link href="/import" className="library-fab" aria-label="Import recipe">
+      <Link href="/import" className="library-fab" aria-label={t("library.importRecipe")}>
         <span style={{ fontSize: "1.35rem", lineHeight: 1 }}>+</span>
-        <span className="library-fab__text">Import recipe</span>
+        <span className="library-fab__text">{t("library.importRecipe")}</span>
       </Link>
     </>
   );
@@ -260,7 +270,7 @@ export default function LibraryPage() {
   return (
     <RequireAuth>
       <div className="app-container app-container--fab" style={{ position: "relative" }}>
-        <Suspense fallback={<p style={mutedStyle}>Loading…</p>}>
+        <Suspense fallback={<p style={mutedStyle}>Loading...</p>}>
           <LibraryPageContent />
         </Suspense>
       </div>

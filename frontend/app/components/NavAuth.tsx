@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../lib/auth";
+import { useT } from "../lib/i18n";
 
 export function NavAuth() {
   const { user, loading, logout } = useAuth();
+  const t = useT();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -22,14 +24,14 @@ export function NavAuth() {
   }, [dropdownOpen]);
 
   if (loading) {
-    return <span style={{ color: "var(--on-surface-variant)", fontSize: "0.9rem" }}>…</span>;
+    return <span style={{ color: "var(--on-surface-variant)", fontSize: "0.9rem" }}>...</span>;
   }
 
   if (!user) {
     return (
       <div style={{ display: "flex", gap: "var(--space-16)", alignItems: "center" }}>
         <Link href="/login" className="font-headline" style={{ color: "var(--on-surface-variant)", fontSize: "0.9rem", fontWeight: 700 }}>
-          Sign in
+          {t("nav.signIn")}
         </Link>
         <Link
           href="/register"
@@ -44,7 +46,7 @@ export function NavAuth() {
             boxShadow: "0 0 0 1px color-mix(in srgb, var(--outline-variant) 20%, transparent)",
           }}
         >
-          Register
+          {t("nav.register")}
         </Link>
       </div>
     );
@@ -108,7 +110,7 @@ export function NavAuth() {
               color: "var(--on-surface-variant)",
             }}
           >
-            Account
+            {t("nav.account")}
           </p>
           <div
             style={{
@@ -145,7 +147,7 @@ export function NavAuth() {
               borderRadius: "var(--radius-md)",
             }}
           >
-            Log out
+            {t("nav.logOut")}
           </button>
         </div>
       )}

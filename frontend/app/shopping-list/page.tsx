@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
+import { useI18n, useT } from "../lib/i18n";
 import { getWeekBounds, getPrevNextWeek, formatWeekRangeDisplay } from "../lib/week";
 import type { Recipe } from "../types";
 import {
@@ -15,14 +16,20 @@ import {
 import {
   GROCERY_CATEGORY_ORDER,
   CATEGORY_MATERIAL_ICONS,
+  getDisplayCategory,
   normalizeGroceryCategory,
   type GroceryCategory,
 } from "../lib/shoppingCategories";
 
 const SMART_SHOPPING_LIST_PREFIX = "smartShoppingList";
+const SMART_SHOPPING_PRODUCTS_PREFIX = "smartShoppingProducts";
 
 function smartListStorageKey(weekStart: string) {
   return `${SMART_SHOPPING_LIST_PREFIX}:${weekStart}`;
+}
+
+function smartProductsStorageKey(weekStart: string, store: ProductStore) {
+  return `${SMART_SHOPPING_PRODUCTS_PREFIX}:${weekStart}:${store}`;
 }
 
 const SLOT_ORDER = ["breakfast", "lunch", "dinner"] as const;
@@ -133,6 +140,12 @@ interface SmartStored extends RefineResponse {
   _plannerFingerprint?: string;
 }
 
+interface SmartProductsStored {
+  open: Record<string, boolean>;
+  products: Record<string, StoreProductResult[]>;
+  errors: Record<string, string | null>;
+}
+
 function bentoIconWrapClass(cat: GroceryCategory): string {
   const extra: Record<GroceryCategory, string> = {
     Produce: "shop-bento-icon-wrap--produce",
@@ -165,8 +178,46 @@ function parseSmartStored(
   }
 }
 
+function parseSmartProductsStored(raw: string): SmartProductsStored | null {
+  try {
+    const parsed = JSON.parse(raw) as SmartProductsStored;
+    if (!parsed || typeof parsed !== "object") return null;
+    if (!parsed.open || typeof parsed.open !== "object") return null;
+    if (!parsed.products || typeof parsed.products !== "object") return null;
+    if (!parsed.errors || typeof parsed.errors !== "object") return null;
+    return {
+      open: Object.fromEntries(
+        Object.entries(parsed.open).filter(([, value]) => typeof value === "boolean")
+      ),
+      products: Object.fromEntries(
+        Object.entries(parsed.products).filter(([, value]) =>
+          Array.isArray(value) &&
+          value.every(
+            (row) =>
+              row &&
+              typeof row === "object" &&
+              typeof row.name === "string" &&
+              typeof row.price === "string" &&
+              typeof row.image === "string" &&
+              typeof row.url === "string"
+          )
+        )
+      ) as Record<string, StoreProductResult[]>,
+      errors: Object.fromEntries(
+        Object.entries(parsed.errors).filter(
+          ([, value]) => value === null || typeof value === "string"
+        )
+      ) as Record<string, string | null>,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function ShoppingListPageContent() {
   const router = useRouter();
+  const { language } = useI18n();
+  const t = useT();
   const searchParams = useSearchParams();
   const weekParam = searchParams.get("week");
   const weekBounds = useMemo(() => getWeekBounds(weekParam), [weekParam]);
@@ -209,7 +260,7 @@ function ShoppingListPageContent() {
     return () => document.removeEventListener("click", onDocClick);
   }, [menuOpenFor]);
 
-  function resetProductResults() {
+  function clearProductResults() {
     setOpenProductsByIngredient({});
     setProductsByIngredient({});
     setProductLoadingByIngredient({});
@@ -220,7 +271,7 @@ function ShoppingListPageContent() {
 
   useEffect(() => {
     productStoreRef.current = productStore;
-    resetProductResults();
+    clearProductResults();
   }, [productStore]);
 
   const persistSmart = useCallback(
@@ -234,6 +285,12 @@ function ShoppingListPageContent() {
     },
     [start]
   );
+
+  const clearStoredProductResults = useCallback(() => {
+    for (const store of ["weee", "amazon"] as const) {
+      sessionStorage.removeItem(smartProductsStorageKey(start, store));
+    }
+  }, [start]);
 
   const currentPlannerFingerprint = useMemo(
     () => buildWeekMealPlanFingerprint(weekDates, mealPlans),
@@ -250,7 +307,7 @@ function ShoppingListPageContent() {
       setSmartHidden(new Set());
       setSmartChecked(new Set());
       setMenuOpenFor(null);
-      resetProductResults();
+      clearProductResults();
       setPlanMealsExpanded(false);
       setError(null);
       try {
@@ -314,6 +371,43 @@ function ShoppingListPageContent() {
       savedPlannerFingerprint ?? currentPlannerFingerprint
     );
   }, [currentPlannerFingerprint, persistSmart, refinedData, savedPlannerFingerprint, smartChecked, smartHidden]);
+
+  useEffect(() => {
+    if (!refinedData) {
+      clearProductResults();
+      return;
+    }
+    try {
+      const raw = sessionStorage.getItem(smartProductsStorageKey(start, productStore));
+      if (!raw) {
+        clearProductResults();
+        return;
+      }
+      const parsed = parseSmartProductsStored(raw);
+      if (!parsed) {
+        clearProductResults();
+        return;
+      }
+      setOpenProductsByIngredient(parsed.open);
+      setProductsByIngredient(parsed.products);
+      setProductErrorByIngredient(parsed.errors);
+      setProductLoadingByIngredient({});
+      setBulkLoadingProducts(false);
+      setBulkLoadProgress(null);
+    } catch {
+      clearProductResults();
+    }
+  }, [productStore, refinedData, start]);
+
+  useEffect(() => {
+    if (!refinedData) return;
+    const payload: SmartProductsStored = {
+      open: openProductsByIngredient,
+      products: productsByIngredient,
+      errors: productErrorByIngredient,
+    };
+    sessionStorage.setItem(smartProductsStorageKey(start, productStore), JSON.stringify(payload));
+  }, [openProductsByIngredient, productErrorByIngredient, productsByIngredient, productStore, refinedData, start]);
 
   useEffect(() => {
     if (!refinedData || !savedPlannerFingerprint) return;
@@ -419,7 +513,8 @@ function ShoppingListPageContent() {
       setSmartListStale(false);
       setSmartHidden(new Set());
       setSmartChecked(new Set());
-      resetProductResults();
+      clearStoredProductResults();
+      clearProductResults();
       persistSmart(data, new Set(), new Set(), latestPlannerFingerprint);
     } catch (e) {
       setRefineError(e instanceof Error ? e.message : "Something went wrong");
@@ -430,23 +525,35 @@ function ShoppingListPageContent() {
 
   function handleBackToOriginalList() {
     sessionStorage.removeItem(smartListStorageKey(start));
+    clearStoredProductResults();
     setRefinedData(null);
     setSavedPlannerFingerprint(null);
     setSmartListStale(false);
     setRefineError(null);
     setSmartHidden(new Set());
     setSmartChecked(new Set());
-    resetProductResults();
+    clearProductResults();
   }
 
-  async function ensureProductsLoaded(ingredientName: string, store: ProductStore, openPanel = true) {
+  async function ensureProductsLoaded(
+    ingredientName: string,
+    store: ProductStore,
+    openPanel = true,
+    forceRetry = false
+  ) {
     const key = ingredientName.trim();
     if (!key) return;
 
     if (openPanel) {
       setOpenProductsByIngredient((prev) => ({ ...prev, [key]: true }));
     }
-    if ((productsByIngredient[key] !== undefined && !productErrorByIngredient[key]) || productLoadingByIngredient[key]) return;
+    if (
+      !forceRetry &&
+      ((productsByIngredient[key] !== undefined && !productErrorByIngredient[key]) ||
+        productLoadingByIngredient[key])
+    ) {
+      return;
+    }
 
     setProductLoadingByIngredient((prev) => ({ ...prev, [key]: true }));
     setProductErrorByIngredient((prev) => ({ ...prev, [key]: null }));
@@ -493,6 +600,10 @@ function ShoppingListPageContent() {
     await ensureProductsLoaded(key, productStore);
   }
 
+  async function handleRetryProducts(ingredientName: string) {
+    await ensureProductsLoaded(ingredientName, productStore, true, true);
+  }
+
   async function handleLoadAllProducts() {
     const names = GROCERY_CATEGORY_ORDER.flatMap((cat) =>
       (purchaseByCategory.get(cat) ?? [])
@@ -523,7 +634,7 @@ function ShoppingListPageContent() {
     }
   }
 
-  if (loading) return <p className="shop-muted shop-page--wide">Loading…</p>;
+  if (loading) return <p className="shop-muted shop-page--wide">{t("common.loading")}</p>;
   if (error) return <p className="shop-error shop-page--wide">{error}</p>;
 
   const smartItemCount = visiblePurchaseItems.filter((r) => !smartChecked.has(r.origIndex)).length;
@@ -540,19 +651,19 @@ function ShoppingListPageContent() {
           <span className="material-symbols-outlined">calendar_today</span>
         </div>
         <div>
-          <span className="shop-confirm-week__kicker">Current range</span>
+          <span className="shop-confirm-week__kicker">{t("shopping.currentRange")}</span>
           <h2 className="shop-confirm-week__range font-headline">{weekRangeLabel}</h2>
         </div>
       </div>
       <div className="shop-confirm-week__actions">
-        <button type="button" className="shop-confirm-week__nav" onClick={() => setWeek(prev)} aria-label="Previous week">
+        <button type="button" className="shop-confirm-week__nav" onClick={() => setWeek(prev)} aria-label={t("common.previous")}>
           <span className="material-symbols-outlined">chevron_left</span>
         </button>
-        <button type="button" className="shop-confirm-week__nav" onClick={() => setWeek(next)} aria-label="Next week">
+        <button type="button" className="shop-confirm-week__nav" onClick={() => setWeek(next)} aria-label={t("common.next")}>
           <span className="material-symbols-outlined">chevron_right</span>
         </button>
         <Link href={`/planner?week=${currentWeek}`} className="shop-confirm-week__change font-headline">
-          Change week
+          {t("shopping.changeWeek")}
         </Link>
       </div>
     </section>
@@ -562,7 +673,7 @@ function ShoppingListPageContent() {
     <div className="shop-page--wide" style={{ paddingTop: "var(--space-32)" }}>
       {!refinedData && (
         <header className="mb-10">
-          <h1 className="shop-confirm-title font-headline">Shopping List</h1>
+          <h1 className="shop-confirm-title font-headline">{t("shopping.title")}</h1>
         </header>
       )}
 
@@ -573,14 +684,14 @@ function ShoppingListPageContent() {
           <div className="shop-confirm-hero__glow" aria-hidden />
           <div className="shop-confirm-empty font-headline">
             <p className="m-0 mb-2 font-bold text-lg" style={{ color: "var(--on-surface)" }}>
-              No meals planned for this week
+              {t("shopping.noMealsPlanned")}
             </p>
             <p className="m-0" style={{ maxWidth: "28rem", marginInline: "auto" }}>
-              Add recipes in the{" "}
+              {t("shopping.addRecipesPrefix")}{" "}
               <Link href={`/planner?week=${currentWeek}`} className="shop-link font-bold">
-                planner
+                {t("nav.planner").toLowerCase()}
               </Link>{" "}
-              to build your list.
+              {t("shopping.addRecipesSuffix")}
             </p>
           </div>
         </div>
@@ -594,21 +705,21 @@ function ShoppingListPageContent() {
                 <div className="shop-smart-hero__inner">
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="shop-smart-meta-row">
-                      <span className="shop-smart-badge font-headline">Smart mode</span>
+                      <span className="shop-smart-badge font-headline">{t("shopping.smartMode")}</span>
                       <button type="button" className="shop-smart-back-prominent font-headline" onClick={handleBackToOriginalList}>
                         <span className="material-symbols-outlined" style={{ fontSize: "1.125rem" }}>
                           arrow_back
                         </span>
-                        Back to original list
+                        {t("shopping.backToOriginalList")}
                       </button>
                     </div>
-                    <h1 className="shop-smart-hero__title font-headline">Smart shopping list</h1>
+                    <h1 className="shop-smart-hero__title font-headline">{t("shopping.smartTitle")}</h1>
                     <p className="shop-smart-hero__sub">
-                      {visiblePurchaseItems.length} item{visiblePurchaseItems.length === 1 ? "" : "s"} organized by category, including pantry staples.
+                      {t("shopping.smartSummary", { count: visiblePurchaseItems.length })}
                     </p>
                     <div className="shop-product-store">
-                      <span className="shop-product-store__label">Product source</span>
-                      <div className="shop-product-store__chips" role="group" aria-label="Product source">
+                      <span className="shop-product-store__label">{t("shopping.productSource")}</span>
+                      <div className="shop-product-store__chips" role="group" aria-label={t("shopping.productSource")}>
                         {(["weee", "amazon"] as ProductStore[]).map((store) => (
                           <button
                             key={store}
@@ -624,7 +735,7 @@ function ShoppingListPageContent() {
                   </div>
                   <div className="shop-smart-stat">
                     <p className="shop-smart-stat__num font-headline">{smartItemCount}</p>
-                    <p className="shop-smart-stat__lbl font-headline">TO BUY</p>
+                    <p className="shop-smart-stat__lbl font-headline">{t("shopping.toBuy")}</p>
                   </div>
                 </div>
               </header>
@@ -632,7 +743,7 @@ function ShoppingListPageContent() {
               {smartListStale ? (
                 <div className="shop-smart-stale">
                   <p className="shop-smart-stale__copy">
-                    Your planner changed after this smart shopping list was generated. Refresh to bring it in sync with the latest meals.
+                    {t("shopping.plannerChanged")}
                   </p>
                   <button
                     type="button"
@@ -640,7 +751,7 @@ function ShoppingListPageContent() {
                     onClick={handlePrepareSmartList}
                     disabled={refining}
                   >
-                    {refining ? "Refreshing…" : "Refresh smart list"}
+                    {refining ? t("shopping.refreshing") : t("shopping.refreshSmartList")}
                   </button>
                 </div>
               ) : null}
@@ -661,10 +772,13 @@ function ShoppingListPageContent() {
                                 {CATEGORY_MATERIAL_ICONS[cat]}
                               </span>
                             </div>
-                            <h2 className="shop-bento-card__title font-headline">{cat}</h2>
+                            <h2 className="shop-bento-card__title font-headline">
+                              {getDisplayCategory(cat, cat, language)}
+                            </h2>
                           </div>
                           <span className="shop-bento-count font-headline">
-                            {uncheckedRows.length} to buy{checkedRows.length ? ` • ${checkedRows.length} have` : ""}
+                            {t("shopping.toBuyCount", { count: uncheckedRows.length })}
+                            {checkedRows.length ? ` • ${t("shopping.haveCount", { count: checkedRows.length })}` : ""}
                           </span>
                         </div>
                         <div>
@@ -682,12 +796,12 @@ function ShoppingListPageContent() {
                                       className="shop-bento-row__check"
                                       checked={false}
                                       onChange={() => toggleSmartChecked(origIndex)}
-                                      aria-label={`Mark ${item.name} as already have`}
+                                      aria-label={t("shopping.markAlreadyHave", { name: item.name })}
                                     />
                                     <div className="shop-bento-row__text">
                                       <p className="shop-bento-row__name">{item.name}</p>
                                       {item.suggested_purchase ? (
-                                        <p className="shop-bento-row__sub">Suggested: {item.suggested_purchase}</p>
+                                        <p className="shop-bento-row__sub">{t("shopping.suggested", { value: item.suggested_purchase })}</p>
                                       ) : null}
                                     </div>
                                   </label>
@@ -695,7 +809,7 @@ function ShoppingListPageContent() {
                                     <button
                                       type="button"
                                       className="shop-bento-menu-btn"
-                                      aria-label="More"
+                                      aria-label={t("shopping.more")}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setMenuOpenFor((m) => (m === origIndex ? null : origIndex));
@@ -706,7 +820,7 @@ function ShoppingListPageContent() {
                                     {menuOpenFor === origIndex && (
                                       <div className="shop-smart-dropdown font-headline">
                                         <button type="button" onClick={() => hideSmartItem(origIndex)}>
-                                          Remove from list
+                                          {t("shopping.removeFromList")}
                                         </button>
                                       </div>
                                     )}
@@ -720,17 +834,29 @@ function ShoppingListPageContent() {
                                     onClick={() => handleToggleProducts(item.name)}
                                     disabled={loadingProducts}
                                   >
-                                    {productsOpen ? "Hide products" : "View products"}
+                                    {productsOpen ? t("shopping.hideProducts") : t("shopping.viewProducts")}
                                   </button>
 
                                   {productsOpen ? (
                                     <div className="shop-bento-products__panel">
                                       {loadingProducts ? (
-                                        <p className="shop-bento-products__status">Loading products…</p>
+                                        <p className="shop-bento-products__status">{t("shopping.loadingProducts")}</p>
                                       ) : productError ? (
-                                        <p className="shop-bento-products__status">{productError}</p>
+                                        <div className="shop-bento-products__status">
+                                          <p style={{ margin: 0 }}>{productError}</p>
+                                          <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
+                                            {t("shopping.retryProducts")}
+                                          </button>
+                                        </div>
                                       ) : products.length === 0 ? (
-                                        <p className="shop-bento-products__status">No products found on {PRODUCT_STORE_LABELS[productStore]}</p>
+                                        <div className="shop-bento-products__status">
+                                          <p style={{ margin: 0 }}>
+                                            {t("shopping.noProductsFound", { store: PRODUCT_STORE_LABELS[productStore] })}
+                                          </p>
+                                          <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
+                                            {t("shopping.retryProducts")}
+                                          </button>
+                                        </div>
                                       ) : (
                                         products.map((product) => (
                                           <div key={product.url} className="shop-bento-product-card">
@@ -743,14 +869,14 @@ function ShoppingListPageContent() {
                                             )}
                                             <div className="shop-bento-product-card__body">
                                               <p className="shop-bento-product-card__name">{product.name}</p>
-                                              <p className="shop-bento-product-card__price">{product.price || "See listing"}</p>
+                                              <p className="shop-bento-product-card__price">{product.price || t("shopping.seeListing")}</p>
                                               <a
                                                 className="shop-bento-product-card__link font-headline"
                                                 href={product.url}
                                                 target="_blank"
                                                 rel="noreferrer"
                                               >
-                                                View on {PRODUCT_STORE_LABELS[productStore]}
+                                                {t("shopping.viewOnStore", { store: PRODUCT_STORE_LABELS[productStore] })}
                                               </a>
                                             </div>
                                           </div>
@@ -765,7 +891,7 @@ function ShoppingListPageContent() {
 
                           {checkedRows.length ? (
                             <div className="shop-bento-checked-group">
-                              <p className="shop-bento-checked-group__label font-headline">Already have</p>
+                              <p className="shop-bento-checked-group__label font-headline">{t("shopping.alreadyHave")}</p>
                               {checkedRows.map(({ item, origIndex }) => {
                                 const productsOpen = !!openProductsByIngredient[item.name];
                                 const loadingProducts = !!productLoadingByIngredient[item.name];
@@ -780,13 +906,13 @@ function ShoppingListPageContent() {
                                           className="shop-bento-row__check"
                                           checked
                                           onChange={() => toggleSmartChecked(origIndex)}
-                                          aria-label={`Mark ${item.name} as still need to buy`}
+                                          aria-label={t("shopping.markStillNeedToBuy", { name: item.name })}
                                         />
                                         <div className="shop-bento-row__text is-checked">
-                                          <span className="shop-bento-row__state font-headline">Already have</span>
+                                          <span className="shop-bento-row__state font-headline">{t("shopping.alreadyHave")}</span>
                                           <p className="shop-bento-row__name is-muted">{item.name}</p>
                                           {item.suggested_purchase ? (
-                                            <p className="shop-bento-row__sub">Suggested: {item.suggested_purchase}</p>
+                                            <p className="shop-bento-row__sub">{t("shopping.suggested", { value: item.suggested_purchase })}</p>
                                           ) : null}
                                         </div>
                                       </label>
@@ -794,7 +920,7 @@ function ShoppingListPageContent() {
                                         <button
                                           type="button"
                                           className="shop-bento-menu-btn"
-                                          aria-label="More"
+                                          aria-label={t("shopping.more")}
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             setMenuOpenFor((m) => (m === origIndex ? null : origIndex));
@@ -805,7 +931,7 @@ function ShoppingListPageContent() {
                                         {menuOpenFor === origIndex && (
                                           <div className="shop-smart-dropdown font-headline">
                                             <button type="button" onClick={() => hideSmartItem(origIndex)}>
-                                              Remove from list
+                                              {t("shopping.removeFromList")}
                                             </button>
                                           </div>
                                         )}
@@ -819,17 +945,29 @@ function ShoppingListPageContent() {
                                         onClick={() => handleToggleProducts(item.name)}
                                         disabled={loadingProducts}
                                       >
-                                        {productsOpen ? "Hide products" : "View products"}
+                                        {productsOpen ? t("shopping.hideProducts") : t("shopping.viewProducts")}
                                       </button>
 
                                       {productsOpen ? (
                                         <div className="shop-bento-products__panel">
                                           {loadingProducts ? (
-                                            <p className="shop-bento-products__status">Loading products…</p>
+                                            <p className="shop-bento-products__status">{t("shopping.loadingProducts")}</p>
                                           ) : productError ? (
-                                            <p className="shop-bento-products__status">{productError}</p>
+                                            <div className="shop-bento-products__status">
+                                              <p style={{ margin: 0 }}>{productError}</p>
+                                              <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
+                                                {t("shopping.retryProducts")}
+                                              </button>
+                                            </div>
                                           ) : products.length === 0 ? (
-                                            <p className="shop-bento-products__status">No products found on {PRODUCT_STORE_LABELS[productStore]}</p>
+                                            <div className="shop-bento-products__status">
+                                              <p style={{ margin: 0 }}>
+                                                {t("shopping.noProductsFound", { store: PRODUCT_STORE_LABELS[productStore] })}
+                                              </p>
+                                              <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
+                                                {t("shopping.retryProducts")}
+                                              </button>
+                                            </div>
                                           ) : (
                                             products.map((product) => (
                                               <div key={product.url} className="shop-bento-product-card">
@@ -842,14 +980,14 @@ function ShoppingListPageContent() {
                                                 )}
                                                 <div className="shop-bento-product-card__body">
                                                   <p className="shop-bento-product-card__name">{product.name}</p>
-                                                  <p className="shop-bento-product-card__price">{product.price || "See listing"}</p>
+                                                  <p className="shop-bento-product-card__price">{product.price || t("shopping.seeListing")}</p>
                                                   <a
                                                     className="shop-bento-product-card__link font-headline"
                                                     href={product.url}
                                                     target="_blank"
                                                     rel="noreferrer"
                                                   >
-                                                    View on {PRODUCT_STORE_LABELS[productStore]}
+                                                    {t("shopping.viewOnStore", { store: PRODUCT_STORE_LABELS[productStore] })}
                                                   </a>
                                                 </div>
                                               </div>
@@ -884,10 +1022,13 @@ function ShoppingListPageContent() {
                               {CATEGORY_MATERIAL_ICONS[cat]}
                             </span>
                           </div>
-                          <h2 className="shop-bento-card__title font-headline">{cat}</h2>
+                          <h2 className="shop-bento-card__title font-headline">
+                            {getDisplayCategory(cat, cat, language)}
+                          </h2>
                         </div>
                         <span className="shop-bento-count font-headline">
-                          {uncheckedRows.length} to buy{checkedRows.length ? ` • ${checkedRows.length} have` : ""}
+                            {t("shopping.toBuyCount", { count: uncheckedRows.length })}
+                            {checkedRows.length ? ` • ${t("shopping.haveCount", { count: checkedRows.length })}` : ""}
                         </span>
                       </div>
                       <div>
@@ -905,12 +1046,12 @@ function ShoppingListPageContent() {
                                     className="shop-bento-row__check"
                                     checked={false}
                                     onChange={() => toggleSmartChecked(origIndex)}
-                                    aria-label={`Mark ${item.name} as already have`}
+                                    aria-label={t("shopping.markAlreadyHave", { name: item.name })}
                                   />
                                   <div className="shop-bento-row__text">
                                     <p className="shop-bento-row__name">{item.name}</p>
                                     {item.suggested_purchase ? (
-                                      <p className="shop-bento-row__sub">Suggested: {item.suggested_purchase}</p>
+                                        <p className="shop-bento-row__sub">{t("shopping.suggested", { value: item.suggested_purchase })}</p>
                                     ) : null}
                                   </div>
                                 </label>
@@ -918,7 +1059,7 @@ function ShoppingListPageContent() {
                                   <button
                                     type="button"
                                     className="shop-bento-menu-btn"
-                                    aria-label="More"
+                                    aria-label={t("shopping.more")}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setMenuOpenFor((m) => (m === origIndex ? null : origIndex));
@@ -929,7 +1070,7 @@ function ShoppingListPageContent() {
                                   {menuOpenFor === origIndex && (
                                     <div className="shop-smart-dropdown font-headline">
                                       <button type="button" onClick={() => hideSmartItem(origIndex)}>
-                                        Remove from list
+                                        {t("shopping.removeFromList")}
                                       </button>
                                     </div>
                                   )}
@@ -943,17 +1084,29 @@ function ShoppingListPageContent() {
                                   onClick={() => handleToggleProducts(item.name)}
                                   disabled={loadingProducts}
                                 >
-                                  {productsOpen ? "Hide products" : "View products"}
+                                  {productsOpen ? t("shopping.hideProducts") : t("shopping.viewProducts")}
                                 </button>
 
                                 {productsOpen ? (
                                   <div className="shop-bento-products__panel">
                                     {loadingProducts ? (
-                                      <p className="shop-bento-products__status">Loading products…</p>
+                                      <p className="shop-bento-products__status">{t("shopping.loadingProducts")}</p>
                                     ) : productError ? (
-                                      <p className="shop-bento-products__status">{productError}</p>
+                                      <div className="shop-bento-products__status">
+                                        <p style={{ margin: 0 }}>{productError}</p>
+                                        <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
+                                          {t("shopping.retryProducts")}
+                                        </button>
+                                      </div>
                                     ) : products.length === 0 ? (
-                                      <p className="shop-bento-products__status">No products found on {PRODUCT_STORE_LABELS[productStore]}</p>
+                                      <div className="shop-bento-products__status">
+                                        <p style={{ margin: 0 }}>
+                                          {t("shopping.noProductsFound", { store: PRODUCT_STORE_LABELS[productStore] })}
+                                        </p>
+                                        <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
+                                          {t("shopping.retryProducts")}
+                                        </button>
+                                      </div>
                                     ) : (
                                       products.map((product) => (
                                         <div key={product.url} className="shop-bento-product-card">
@@ -966,14 +1119,14 @@ function ShoppingListPageContent() {
                                           )}
                                           <div className="shop-bento-product-card__body">
                                             <p className="shop-bento-product-card__name">{product.name}</p>
-                                            <p className="shop-bento-product-card__price">{product.price || "See listing"}</p>
+                                            <p className="shop-bento-product-card__price">{product.price || t("shopping.seeListing")}</p>
                                             <a
                                               className="shop-bento-product-card__link font-headline"
                                               href={product.url}
                                               target="_blank"
                                               rel="noreferrer"
                                             >
-                                              View on {PRODUCT_STORE_LABELS[productStore]}
+                                              {t("shopping.viewOnStore", { store: PRODUCT_STORE_LABELS[productStore] })}
                                             </a>
                                           </div>
                                         </div>
@@ -988,7 +1141,7 @@ function ShoppingListPageContent() {
 
                         {checkedRows.length ? (
                           <div className="shop-bento-checked-group">
-                            <p className="shop-bento-checked-group__label font-headline">Already have</p>
+                            <p className="shop-bento-checked-group__label font-headline">{t("shopping.alreadyHave")}</p>
                             {checkedRows.map(({ item, origIndex }) => {
                               const productsOpen = !!openProductsByIngredient[item.name];
                               const loadingProducts = !!productLoadingByIngredient[item.name];
@@ -1003,13 +1156,13 @@ function ShoppingListPageContent() {
                                         className="shop-bento-row__check"
                                         checked
                                         onChange={() => toggleSmartChecked(origIndex)}
-                                        aria-label={`Mark ${item.name} as still need to buy`}
+                                        aria-label={t("shopping.markStillNeedToBuy", { name: item.name })}
                                       />
                                       <div className="shop-bento-row__text is-checked">
-                                        <span className="shop-bento-row__state font-headline">Already have</span>
+                                        <span className="shop-bento-row__state font-headline">{t("shopping.alreadyHave")}</span>
                                         <p className="shop-bento-row__name is-muted">{item.name}</p>
                                         {item.suggested_purchase ? (
-                                          <p className="shop-bento-row__sub">Suggested: {item.suggested_purchase}</p>
+                                          <p className="shop-bento-row__sub">{t("shopping.suggested", { value: item.suggested_purchase })}</p>
                                         ) : null}
                                       </div>
                                     </label>
@@ -1017,7 +1170,7 @@ function ShoppingListPageContent() {
                                       <button
                                         type="button"
                                         className="shop-bento-menu-btn"
-                                        aria-label="More"
+                                        aria-label={t("shopping.more")}
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           setMenuOpenFor((m) => (m === origIndex ? null : origIndex));
@@ -1028,7 +1181,7 @@ function ShoppingListPageContent() {
                                       {menuOpenFor === origIndex && (
                                         <div className="shop-smart-dropdown font-headline">
                                           <button type="button" onClick={() => hideSmartItem(origIndex)}>
-                                            Remove from list
+                                            {t("shopping.removeFromList")}
                                           </button>
                                         </div>
                                       )}
@@ -1042,17 +1195,29 @@ function ShoppingListPageContent() {
                                       onClick={() => handleToggleProducts(item.name)}
                                       disabled={loadingProducts}
                                     >
-                                      {productsOpen ? "Hide products" : "View products"}
+                                      {productsOpen ? t("shopping.hideProducts") : t("shopping.viewProducts")}
                                     </button>
 
                                     {productsOpen ? (
                                       <div className="shop-bento-products__panel">
                                         {loadingProducts ? (
-                                          <p className="shop-bento-products__status">Loading products…</p>
+                                          <p className="shop-bento-products__status">{t("shopping.loadingProducts")}</p>
                                         ) : productError ? (
-                                          <p className="shop-bento-products__status">{productError}</p>
+                                          <div className="shop-bento-products__status">
+                                            <p style={{ margin: 0 }}>{productError}</p>
+                                            <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
+                                              {t("shopping.retryProducts")}
+                                            </button>
+                                          </div>
                                         ) : products.length === 0 ? (
-                                          <p className="shop-bento-products__status">No products found on {PRODUCT_STORE_LABELS[productStore]}</p>
+                                          <div className="shop-bento-products__status">
+                                            <p style={{ margin: 0 }}>
+                                              {t("shopping.noProductsFound", { store: PRODUCT_STORE_LABELS[productStore] })}
+                                            </p>
+                                            <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
+                                              {t("shopping.retryProducts")}
+                                            </button>
+                                          </div>
                                         ) : (
                                           products.map((product) => (
                                             <div key={product.url} className="shop-bento-product-card">
@@ -1065,14 +1230,14 @@ function ShoppingListPageContent() {
                                               )}
                                               <div className="shop-bento-product-card__body">
                                                 <p className="shop-bento-product-card__name">{product.name}</p>
-                                                <p className="shop-bento-product-card__price">{product.price || "See listing"}</p>
+                                                <p className="shop-bento-product-card__price">{product.price || t("shopping.seeListing")}</p>
                                                 <a
                                                   className="shop-bento-product-card__link font-headline"
                                                   href={product.url}
                                                   target="_blank"
                                                   rel="noreferrer"
                                                 >
-                                                  View on {PRODUCT_STORE_LABELS[productStore]}
+                                                  {t("shopping.viewOnStore", { store: PRODUCT_STORE_LABELS[productStore] })}
                                                 </a>
                                               </div>
                                             </div>
@@ -1278,7 +1443,7 @@ function ShoppingListPageContent() {
 export default function ShoppingListPage() {
   return (
     <RequireAuth>
-      <Suspense fallback={<p className="shop-muted app-container">Loading…</p>}>
+      <Suspense fallback={<p className="shop-muted app-container">Loading...</p>}>
         <ShoppingListPageContent />
       </Suspense>
     </RequireAuth>

@@ -12,6 +12,15 @@ from app.models import Recipe, IngredientItem
 
 logger = logging.getLogger(__name__)
 
+_METRIC_SEGMENT_RE = re.compile(
+    r"(?P<metric>(?:\d+(?:\.\d+)?|[一二两三四五六七八九十半]+(?:/\d+)?)\s*(?:g|kg|ml|l|克|千克|公斤|毫升|升))$",
+    re.IGNORECASE,
+)
+_NON_METRIC_UNIT_RE = re.compile(
+    r"(杯|个|块|勺|汤匙|茶匙|片|瓣|把|根|条|袋|盒|罐|颗|clove|cup|cups|tbsp|tsp|piece|pieces|slice|slices)",
+    re.IGNORECASE,
+)
+
 
 @dataclass(slots=True)
 class TranscriptFetchResult:
@@ -171,6 +180,20 @@ Respond with a JSON object only, no markdown:
 {{ "title": "...", "ingredients": [ {{ "name": "...", "quantity": "...", "notes": null or "..." }} ] }}"""
 
 
+def _split_dual_quantity(quantity: str) -> tuple[str, str | None]:
+    raw = (quantity or "").strip()
+    if not raw:
+        return "", None
+    metric_match = _METRIC_SEGMENT_RE.search(raw)
+    if not metric_match:
+        return raw, None
+    metric = metric_match.group("metric").strip()
+    primary = raw[: metric_match.start()].strip()
+    if not primary or not _NON_METRIC_UNIT_RE.search(primary):
+        return raw, None
+    return primary, metric
+
+
 def parse_llm_recipe_response(raw: str) -> tuple[str, list[dict]]:
     """Parse LLM JSON response into title and list of ingredient dicts."""
     import json
@@ -185,9 +208,11 @@ def parse_llm_recipe_response(raw: str) -> tuple[str, list[dict]]:
     items = []
     for i in ingredients:
         if isinstance(i, dict):
+            quantity, metric_quantity = _split_dual_quantity(i.get("quantity") or "")
             items.append({
                 "name": i.get("name") or "",
-                "quantity": i.get("quantity") or "",
+                "quantity": quantity,
+                "metric_quantity": metric_quantity,
                 "notes": i.get("notes"),
             })
         else:

@@ -87,6 +87,7 @@ def coerce_library_tags(v: object) -> list[str]:
 class IngredientItem(BaseModel):
     name: str
     quantity: str  # free text, e.g. "2 cups", "to taste"
+    metric_quantity: Optional[str] = None
     notes: Optional[str] = None
 
 

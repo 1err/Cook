@@ -6,10 +6,12 @@ import Link from "next/link";
 import { apiFetch } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { AuthShell } from "../components/AuthShell";
+import { useT } from "../lib/i18n";
 
 export default function RegisterPage() {
   const router = useRouter();
   const { refreshUser } = useAuth();
+  const t = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -29,8 +31,8 @@ export default function RegisterPage() {
         const detail = data.detail;
         setError(
           Array.isArray(detail)
-            ? detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join(" ") || "Registration failed"
-            : detail || "Registration failed",
+            ? detail.map((d: { msg?: string }) => d.msg).filter(Boolean).join(" ") || t("auth.registrationFailed")
+            : detail || t("auth.registrationFailed"),
         );
         return;
       }
@@ -40,9 +42,9 @@ export default function RegisterPage() {
       const redirectTarget = rawRedirect.startsWith("/") ? rawRedirect : "/library";
       router.push(redirectTarget);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Something went wrong";
+      const message = err instanceof Error ? err.message : t("auth.registrationFailed");
       if (message === "Failed to fetch") {
-        setError("Cannot reach the server. Is the backend running on port 8000? (e.g. uvicorn or docker compose)");
+        setError(t("auth.cannotReachServer"));
       } else {
         setError(message);
       }
@@ -53,14 +55,14 @@ export default function RegisterPage() {
 
   return (
     <AuthShell
-      title="Create your account"
-      subtitle="One account for your recipe library, meal planner, and shopping list."
-      eyebrow="Create account with email"
+      title={t("auth.registerTitle")}
+      subtitle={t("auth.registerSubtitle")}
+      eyebrow={t("auth.registerEyebrow")}
       footer={
         <>
-          Already have an account?{" "}
+          {t("auth.alreadyHaveAccount")}{" "}
           <Link href="/login" style={{ marginLeft: 4 }}>
-            Sign in
+            {t("nav.signIn")}
           </Link>
         </>
       }
@@ -68,7 +70,7 @@ export default function RegisterPage() {
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.35rem" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <label className="font-headline" htmlFor="register-email" style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--on-surface)", marginLeft: 4 }}>
-            Email
+            {t("common.email")}
           </label>
           <input
             id="register-email"
@@ -83,7 +85,7 @@ export default function RegisterPage() {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <label className="font-headline" htmlFor="register-password" style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--on-surface)", marginLeft: 4 }}>
-            Password
+            {t("common.password")}
           </label>
           <input
             id="register-password"
@@ -94,7 +96,7 @@ export default function RegisterPage() {
             required
             minLength={8}
             autoComplete="new-password"
-            placeholder="At least 8 characters"
+            placeholder={t("auth.passwordPlaceholder")}
           />
         </div>
         {error && (
@@ -103,7 +105,7 @@ export default function RegisterPage() {
           </p>
         )}
         <button type="submit" className="btn-primary" disabled={loading} style={{ width: "100%", marginTop: "0.25rem" }}>
-          {loading ? "Creating account…" : "Create account"}
+          {loading ? t("auth.creatingAccount") : t("auth.createAccountCta")}
         </button>
       </form>
     </AuthShell>

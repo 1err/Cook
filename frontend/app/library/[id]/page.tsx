@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "../../lib/api";
 import { RequireAuth } from "../../components/RequireAuth";
+import { useT } from "../../lib/i18n";
 import {
   CATEGORY_LABELS,
   RECIPE_TAG_GROUPS,
@@ -29,6 +30,7 @@ function RecipeEditContent() {
   const [canManageCatalog, setCanManageCatalog] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const t = useT();
 
   useEffect(() => {
     if (!id) return;
@@ -90,7 +92,7 @@ function RecipeEditContent() {
   }
 
   function addIngredient() {
-    setIngredients((prev) => [...prev, { name: "", quantity: "", notes: null }]);
+    setIngredients((prev) => [...prev, { name: "", quantity: "", metric_quantity: "", notes: null }]);
   }
 
   function toggleTag(tag: RecipeTagSlug) {
@@ -189,7 +191,7 @@ function RecipeEditContent() {
     }
   }
 
-  if (loading) return <p style={mutedStyle}>Loading…</p>;
+  if (loading) return <p style={mutedStyle}>{t("common.loading")}</p>;
   if (error && !recipe) return <p style={errorStyle}>{error}</p>;
   if (!recipe) return null;
 
@@ -198,19 +200,19 @@ function RecipeEditContent() {
       <header style={pageHeader}>
         <div>
           <span className="font-headline" style={kicker}>
-            Edit recipe
+            {t("recipe.editRecipeTitle")}
           </span>
           <h1 className="font-headline" style={pageTitle}>
-            {title.trim() || "Untitled"}
+            {title.trim() || t("import.untitledRecipe")}
           </h1>
-          <p style={pageSub}>Update the cover, tags, and ingredients. Changes save to your library.</p>
+          <p style={pageSub}>{t("recipe.updateRecipeSub")}</p>
         </div>
         <div style={headerActions}>
           <button type="button" className="font-headline" style={discardStyle} onClick={() => router.push("/library")}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button type="button" className="btn-primary" onClick={handleSave} disabled={saving} style={{ minHeight: 48 }}>
-            {saving ? "Saving…" : "Save"}
+            {saving ? t("common.saving") : t("common.save")}
           </button>
         </div>
       </header>
@@ -221,7 +223,7 @@ function RecipeEditContent() {
         <div className="editor-grid__main">
           <section style={section}>
             <label className="font-headline" style={labelUpper}>
-              Recipe title
+              {t("recipe.recipeTitle")}
             </label>
             <input
               type="text"
@@ -235,32 +237,42 @@ function RecipeEditContent() {
           <section style={section}>
             <div style={sectionHead}>
               <label className="font-headline" style={labelUpper}>
-                Ingredients
+                {t("common.ingredients")}
               </label>
               <button type="button" className="font-headline" style={addIngStyle} onClick={addIngredient}>
-                + Add
+                + {t("common.add")}
               </button>
             </div>
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "0.65rem" }}>
               {ingredients.map((item, idx) => (
                 <li key={idx} style={ingRow}>
-                  <input
-                    type="text"
-                    value={item.quantity}
-                    onChange={(e) => updateIngredient(idx, "quantity", e.target.value)}
-                    placeholder="Qty"
-                    className="input-editorial"
-                    style={{ flex: "0 0 88px", minHeight: 46, padding: "0 0.85rem", fontSize: "0.875rem" }}
-                  />
+                  <div style={ingQtyStack}>
+                    <input
+                      type="text"
+                      value={item.quantity}
+                      onChange={(e) => updateIngredient(idx, "quantity", e.target.value)}
+                      placeholder={t("recipe.qty")}
+                      className="input-editorial"
+                      style={qtyInputStyle}
+                    />
+                    <input
+                      type="text"
+                      value={item.metric_quantity ?? ""}
+                      onChange={(e) => updateIngredient(idx, "metric_quantity", e.target.value)}
+                      placeholder={t("recipe.metricQty")}
+                      className="input-editorial"
+                      style={qtyInputStyle}
+                    />
+                  </div>
                   <input
                     type="text"
                     value={item.name}
                     onChange={(e) => updateIngredient(idx, "name", e.target.value)}
-                    placeholder="Ingredient"
+                    placeholder={t("recipe.ingredient")}
                     className="input-editorial"
                     style={{ flex: "1 1 120px", minHeight: 46, fontSize: "0.875rem" }}
                   />
-                  <button type="button" style={removeIngBtn} onClick={() => removeIngredient(idx)} aria-label="Remove">
+                  <button type="button" style={removeIngBtn} onClick={() => removeIngredient(idx)} aria-label={t("recipe.removeIngredient")}>
                     ×
                   </button>
                 </li>
@@ -290,9 +302,9 @@ function RecipeEditContent() {
                   📷
                 </span>
               </div>
-              <p style={{ margin: "0 0 0.35rem", fontWeight: 700, fontSize: "0.95rem" }}>Cover image</p>
+              <p style={{ margin: "0 0 0.35rem", fontWeight: 700, fontSize: "0.95rem" }}>{t("recipe.coverImage")}</p>
               <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--on-surface-variant)" }}>
-                {uploadingImage ? "Uploading…" : "Tap to upload or paste a URL below"}
+                {uploadingImage ? t("recipe.uploading") : t("recipe.tapToUpload")}
               </p>
             </button>
             <input
@@ -312,7 +324,7 @@ function RecipeEditContent() {
 
           <div style={metaCard}>
             <label className="font-headline" style={labelUpper}>
-              Recipe tags
+              {t("common.tags")}
             </label>
             <p style={hint}>Add a few tags to help people find this recipe.</p>
             <div className="recipe-tag-picker">
@@ -339,7 +351,7 @@ function RecipeEditContent() {
             </div>
             {libraryTags.length > 0 ? (
               <p style={{ ...hint, marginTop: "0.85rem", marginBottom: 0 }}>
-                Selected: {libraryTags.map((tag) => CATEGORY_LABELS[tag]).join(", ")}
+                {t("recipe.selectedTags", { tags: libraryTags.map((tag) => CATEGORY_LABELS[tag]).join(", ") })}
               </p>
             ) : null}
           </div>
@@ -347,10 +359,10 @@ function RecipeEditContent() {
           {canManageCatalog ? (
             <div style={metaCard}>
               <label className="font-headline" style={labelUpper}>
-                Public library
+                {t("recipe.publicLibrary")}
               </label>
               <p style={hint}>
-                Publish this recipe to the shared catalog so new users can copy it into their own library.
+                {t("recipe.publicLibraryDesc")}
               </p>
               <button
                 type="button"
@@ -360,10 +372,10 @@ function RecipeEditContent() {
                 disabled={catalogSaving}
               >
                 {catalogSaving
-                  ? "Saving…"
+                  ? t("common.saving")
                   : recipe.is_public_catalog
-                    ? "Remove from public library"
-                    : "Add to public library"}
+                    ? t("recipe.removeFromPublicLibrary")
+                    : t("recipe.addToPublicLibrary")}
               </button>
             </div>
           ) : null}
@@ -371,7 +383,7 @@ function RecipeEditContent() {
           {recipe.source_url && (
             <p style={{ fontSize: "0.85rem", color: "var(--on-surface-variant)", margin: 0 }}>
               <a href={recipe.source_url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600 }}>
-                Open source link
+                {t("recipe.openSourceLink")}
               </a>
             </p>
           )}
@@ -383,7 +395,7 @@ function RecipeEditContent() {
             onClick={handleDelete}
             disabled={deleting}
           >
-            {deleting ? "Deleting…" : "Delete recipe"}
+            {deleting ? t("recipe.deleting") : t("recipe.deleteRecipe")}
           </button>
         </aside>
       </div>
@@ -488,6 +500,19 @@ const ingRow: React.CSSProperties = {
   display: "flex",
   gap: "0.5rem",
   alignItems: "center",
+};
+
+const ingQtyStack: React.CSSProperties = {
+  flex: "0 0 132px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.4rem",
+};
+
+const qtyInputStyle: React.CSSProperties = {
+  minHeight: 42,
+  padding: "0 0.85rem",
+  fontSize: "0.875rem",
 };
 
 const removeIngBtn: React.CSSProperties = {

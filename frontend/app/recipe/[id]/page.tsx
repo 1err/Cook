@@ -5,17 +5,12 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "../../lib/api";
 import { RequireAuth } from "../../components/RequireAuth";
+import { formatIngredientQuantity } from "../../lib/ingredients";
+import { useT } from "../../lib/i18n";
 import {
   CATEGORY_LABELS,
 } from "../../lib/recipeCategories";
-import type { Recipe, IngredientItem } from "../../types";
-
-function ingredientQtyLine(i: IngredientItem): string {
-  const parts: string[] = [];
-  if (i.quantity?.trim()) parts.push(i.quantity.trim());
-  if (i.notes?.trim()) parts.push(i.notes.trim());
-  return parts.join(", ");
-}
+import type { Recipe } from "../../types";
 
 function splitTitleAccent(title: string): { lead: string; accent: string } {
   const t = title.trim();
@@ -32,6 +27,7 @@ function RecipeDetailContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const t = useT();
 
   useEffect(() => {
     if (!id) return;
@@ -39,11 +35,11 @@ function RecipeDetailContent() {
     async function load() {
       try {
         const res = await apiFetch(`/recipes/${id}`);
-        if (!res.ok) throw new Error("Recipe not found");
+        if (!res.ok) throw new Error(t("recipe.recipe"));
         const data: Recipe = await res.json();
         if (!cancelled) setRecipe(data);
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load");
+        if (!cancelled) setError(e instanceof Error ? e.message : t("common.loading"));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -56,14 +52,14 @@ function RecipeDetailContent() {
 
   async function handleDelete() {
     if (!id || !recipe) return;
-    if (!confirm(`Delete “${recipe.title}”? This cannot be undone.`)) return;
+    if (!confirm(t("recipe.deleteConfirm", { title: recipe.title }))) return;
     setDeleting(true);
     try {
       const res = await apiFetch(`/recipes/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete");
+      if (!res.ok) throw new Error(t("recipe.deleteRecipe"));
       router.push("/library");
     } catch {
-      setError("Could not delete recipe.");
+      setError(t("recipe.deleteRecipe"));
     } finally {
       setDeleting(false);
     }
@@ -79,7 +75,7 @@ function RecipeDetailContent() {
   if (loading) {
     return (
       <p style={{ color: "var(--muted)", padding: "var(--space-24)" }} className="recipe-editorial">
-        Loading…
+        {t("common.loading")}
       </p>
     );
   }
@@ -109,11 +105,11 @@ function RecipeDetailContent() {
         }}
       >
         <Link href="/library" className="font-headline recipe-detail-back">
-          ← Library
+          ← {t("nav.library")}
         </Link>
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           <Link href={`/library/${id}`} className="btn-primary" style={{ padding: "0.55rem 1.15rem", minHeight: 44, fontSize: "0.9rem" }}>
-            Edit
+            {t("common.edit")}
           </Link>
           <button
             type="button"
@@ -132,7 +128,7 @@ function RecipeDetailContent() {
             onClick={handleDelete}
             disabled={deleting}
           >
-            {deleting ? "Deleting…" : "Delete"}
+            {deleting ? t("recipe.deleting") : t("common.delete")}
           </button>
         </div>
       </div>
@@ -164,7 +160,7 @@ function RecipeDetailContent() {
             </span>
           ))}
           <span className="recipe-editorial__pill recipe-editorial__pill--primary font-headline">
-            {ingredientRows.length} ingredients
+            {t("recipe.ingredientsCount", { count: ingredientRows.length })}
           </span>
         </div>
         <h1 className="recipe-editorial__title font-headline">
@@ -191,29 +187,29 @@ function RecipeDetailContent() {
         )}
         <div className="recipe-editorial__stats">
           <div>
-            <p className="recipe-editorial__stats-label font-headline">Tags</p>
-            <p className="recipe-editorial__stats-value">{tags.length ? tags.slice(0, 2).map((tag) => CATEGORY_LABELS[tag]).join(", ") : "Recipe"}</p>
+            <p className="recipe-editorial__stats-label font-headline">{t("recipe.tags")}</p>
+            <p className="recipe-editorial__stats-value">{tags.length ? tags.slice(0, 2).map((tag) => CATEGORY_LABELS[tag]).join(", ") : t("recipe.recipe")}</p>
           </div>
           <div>
-            <p className="recipe-editorial__stats-label font-headline">Ingredients</p>
+            <p className="recipe-editorial__stats-label font-headline">{t("common.ingredients")}</p>
             <p className="recipe-editorial__stats-value">{ingredientRows.length}</p>
           </div>
           <div>
-            <p className="recipe-editorial__stats-label font-headline">Source</p>
-            <p className="recipe-editorial__stats-value">{recipe.source_url ? "Imported" : "Library"}</p>
+            <p className="recipe-editorial__stats-label font-headline">{t("common.source")}</p>
+            <p className="recipe-editorial__stats-value">{recipe.source_url ? t("common.imported") : t("common.library")}</p>
           </div>
         </div>
       </div>
 
       <div className="recipe-editorial-ingredients">
-        <h2 className="font-headline">Ingredients</h2>
+        <h2 className="font-headline">{t("common.ingredients")}</h2>
         {ingredientRows.length === 0 ? (
-          <p style={{ color: "var(--muted)", textAlign: "center" }}>No ingredients listed.</p>
+          <p style={{ color: "var(--muted)", textAlign: "center" }}>{t("recipe.noIngredients")}</p>
         ) : (
           ingredientRows.map((ing, idx) => (
             <div key={idx} className="recipe-editorial-ing-row">
               <p className="recipe-editorial-ing-name font-headline">{ing.name?.trim()}</p>
-              <p className="recipe-editorial-ing-qty">{ingredientQtyLine(ing) || "—"}</p>
+              <p className="recipe-editorial-ing-qty">{formatIngredientQuantity(ing) || "—"}</p>
             </div>
           ))
         )}
@@ -221,7 +217,7 @@ function RecipeDetailContent() {
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", justifyContent: "center" }}>
         <Link href={`/library/${id}`} className="btn-primary" style={{ textDecoration: "none", display: "inline-flex" }}>
-          Edit recipe
+          {t("recipe.editRecipe")}
         </Link>
         <Link
           href={`/planner`}
@@ -241,14 +237,14 @@ function RecipeDetailContent() {
             border: "1px solid color-mix(in srgb, var(--outline-variant) 35%, transparent)",
           }}
         >
-          Meal planner
+          {t("recipe.mealPlanner")}
         </Link>
       </div>
 
       {recipe.source_url && (
         <p style={{ margin: "2.5rem 0 0", textAlign: "center", fontSize: "0.9rem" }}>
           <a href={recipe.source_url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 700 }}>
-            Original video →
+            {t("recipe.originalVideo")} →
           </a>
         </p>
       )}

@@ -5,11 +5,13 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../lib/auth";
 import { isAdminUser } from "../lib/admin";
+import { useT } from "../lib/i18n";
 import { NavAuth } from "./NavAuth";
 
 export function Header() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const t = useT();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const hideHeader = pathname === "/login" || pathname === "/register";
 
@@ -32,7 +34,7 @@ export function Header() {
     <header className="app-header">
       <div className="app-header__inner">
         <div className="app-header__left">
-          <Link href={logoHref} className="app-header__brand" aria-label="Home">
+          <Link href={logoHref} className="app-header__brand" aria-label={t("nav.home")}>
             <span className="app-header__mark" aria-hidden>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path
@@ -44,7 +46,7 @@ export function Header() {
               </svg>
             </span>
             <span className={`font-headline app-header__logo-text${isLogoActive ? " is-active" : ""}`}>
-              Cooking
+              {t("nav.appName")}
             </span>
           </Link>
           {user ? (
@@ -53,27 +55,27 @@ export function Header() {
                 type="button"
                 className="app-header__menu-button"
                 aria-expanded={mobileMenuOpen}
-                aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+                aria-label={mobileMenuOpen ? t("nav.closeMenu") : t("nav.openMenu")}
                 onClick={() => setMobileMenuOpen((open) => !open)}
               >
                 <span className="material-symbols-outlined">{mobileMenuOpen ? "close" : "menu"}</span>
               </button>
               <nav className={`app-header__nav${mobileMenuOpen ? " is-open" : ""}`} aria-label="Main">
                 <Link href="/library" className={`headerNavLink${isActive("/library") ? " is-active" : ""}`}>
-                  Library
+                  {t("nav.library")}
                 </Link>
                 <Link href="/planner" className={`headerNavLink${isActive("/planner") ? " is-active" : ""}`}>
-                  Planner
+                  {t("nav.planner")}
                 </Link>
                 <Link href="/shopping-list" className={`headerNavLink${isActive("/shopping-list") ? " is-active" : ""}`}>
-                  Shopping list
+                  {t("nav.shoppingList")}
                 </Link>
                 <Link href="/import" className={`headerNavLink${isActive("/import") ? " is-active" : ""}`}>
-                  Import
+                  {t("nav.import")}
                 </Link>
                 {showPreview ? (
                   <Link href="/preview" className={`headerNavLink${isActive("/preview") ? " is-active" : ""}`}>
-                    Preview
+                    {t("nav.preview")}
                   </Link>
                 ) : null}
               </nav>
