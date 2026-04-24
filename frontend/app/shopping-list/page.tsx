@@ -38,7 +38,7 @@ const DOW_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const PREVIEW_MEAL_ROWS = 4;
 
-const BULK_LOAD_CONCURRENCY = 4;
+const BULK_LOAD_CONCURRENCY = 3;
 const SHOPPING_PRIMARY_CATEGORIES: GroceryCategory[] = ["Pantry & Dry Goods"];
 const SHOPPING_SECONDARY_CATEGORIES = GROCERY_CATEGORY_ORDER.filter(
   (cat) => !SHOPPING_PRIMARY_CATEGORIES.includes(cat)
@@ -73,13 +73,16 @@ function buildPlannedMealRows(
   const rows: { recipeId: string; title: string; slot: PlanSlot; dayShort: string; date: string }[] = [];
   for (const p of plans) {
     const dayShort = dowByDate.get(p.date) ?? "";
+    if (!dayShort) continue;
     for (const slot of SLOT_ORDER) {
       for (const rid of p[slot] ?? []) {
         if (!rid?.trim()) continue;
         const rec = recipes[rid];
+        const title = rec?.title?.trim();
+        if (!title) continue;
         rows.push({
           recipeId: rid,
-          title: rec?.title ?? "Recipe",
+          title,
           slot,
           dayShort,
           date: p.date,
@@ -235,6 +238,7 @@ function ShoppingListPageContent() {
   const [bulkLoadingProducts, setBulkLoadingProducts] = useState(false);
   const [bulkLoadProgress, setBulkLoadProgress] = useState<{ current: number; total: number } | null>(null);
   const [refinedData, setRefinedData] = useState<RefineResponse | null>(null);
+  const [smartWeekStart, setSmartWeekStart] = useState<string | null>(null);
   const [savedPlannerFingerprint, setSavedPlannerFingerprint] = useState<string | null>(null);
   const [smartListStale, setSmartListStale] = useState(false);
   const [refining, setRefining] = useState(false);
@@ -296,12 +300,18 @@ function ShoppingListPageContent() {
     () => buildWeekMealPlanFingerprint(weekDates, mealPlans),
     [weekDates, mealPlans]
   );
+  const activeRefinedData = smartWeekStart === start ? refinedData : null;
+  const activeSavedPlannerFingerprint = smartWeekStart === start ? savedPlannerFingerprint : null;
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
+      setItems([]);
+      setMealPlans([]);
+      setRecipeById({});
       setRefinedData(null);
+      setSmartWeekStart(null);
       setSavedPlannerFingerprint(null);
       setSmartListStale(false);
       setSmartHidden(new Set());
@@ -339,6 +349,7 @@ function ShoppingListPageContent() {
             const parsed = parseSmartStored(raw);
             if (parsed) {
               setRefinedData(parsed.data);
+              setSmartWeekStart(start);
               setSmartHidden(parsed.hidden);
               setSmartChecked(parsed.checked);
               setSavedPlannerFingerprint(parsed.plannerFingerprint);
@@ -363,17 +374,17 @@ function ShoppingListPageContent() {
   }, [start, end, weekDates]);
 
   useEffect(() => {
-    if (!refinedData) return;
+    if (!activeRefinedData) return;
     persistSmart(
-      refinedData,
+      activeRefinedData,
       smartHidden,
       smartChecked,
-      savedPlannerFingerprint ?? currentPlannerFingerprint
+      activeSavedPlannerFingerprint ?? currentPlannerFingerprint
     );
-  }, [currentPlannerFingerprint, persistSmart, refinedData, savedPlannerFingerprint, smartChecked, smartHidden]);
+  }, [activeRefinedData, activeSavedPlannerFingerprint, currentPlannerFingerprint, persistSmart, smartChecked, smartHidden]);
 
   useEffect(() => {
-    if (!refinedData) {
+    if (!activeRefinedData) {
       clearProductResults();
       return;
     }
@@ -397,26 +408,26 @@ function ShoppingListPageContent() {
     } catch {
       clearProductResults();
     }
-  }, [productStore, refinedData, start]);
+  }, [activeRefinedData, productStore, start]);
 
   useEffect(() => {
-    if (!refinedData) return;
+    if (!activeRefinedData) return;
     const payload: SmartProductsStored = {
       open: openProductsByIngredient,
       products: productsByIngredient,
       errors: productErrorByIngredient,
     };
     sessionStorage.setItem(smartProductsStorageKey(start, productStore), JSON.stringify(payload));
-  }, [openProductsByIngredient, productErrorByIngredient, productsByIngredient, productStore, refinedData, start]);
+  }, [activeRefinedData, openProductsByIngredient, productErrorByIngredient, productsByIngredient, productStore, start]);
 
   useEffect(() => {
-    if (!refinedData || !savedPlannerFingerprint) return;
+    if (!activeRefinedData || !activeSavedPlannerFingerprint) return;
     function syncSmartStaleState() {
       try {
         const latest = localStorage.getItem(plannerFingerprintStorageKey(start)) ?? currentPlannerFingerprint;
-        setSmartListStale(latest !== savedPlannerFingerprint);
+        setSmartListStale(latest !== activeSavedPlannerFingerprint);
       } catch {
-        setSmartListStale(currentPlannerFingerprint !== savedPlannerFingerprint);
+        setSmartListStale(currentPlannerFingerprint !== activeSavedPlannerFingerprint);
       }
     }
     function handleVisibilityChange() {
@@ -429,7 +440,7 @@ function ShoppingListPageContent() {
       window.removeEventListener("focus", syncSmartStaleState);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [currentPlannerFingerprint, refinedData, savedPlannerFingerprint, start]);
+  }, [activeRefinedData, activeSavedPlannerFingerprint, currentPlannerFingerprint, start]);
 
   function setWeek(week: string) {
     router.push(`/shopping-list?week=${week}`);
@@ -450,11 +461,11 @@ function ShoppingListPageContent() {
   }
 
   const visiblePurchaseItems = useMemo(() => {
-    if (!refinedData) return [];
-    return refinedData.purchase_items
+    if (!activeRefinedData) return [];
+    return activeRefinedData.purchase_items
       .map((p, origIndex) => ({ ...p, origIndex }))
       .filter(({ origIndex }) => !smartHidden.has(origIndex));
-  }, [refinedData, smartHidden]);
+  }, [activeRefinedData, smartHidden]);
 
   const purchaseByCategory = useMemo(() => {
     const map = new Map<GroceryCategory, { item: PurchaseItem; origIndex: number }[]>();
@@ -472,7 +483,7 @@ function ShoppingListPageContent() {
   );
 
   function handleCopyList() {
-    if (!refinedData) return;
+    if (!activeRefinedData) return;
     const lines = visiblePurchaseItems
       .filter((row) => !smartChecked.has(row.origIndex))
       .map((p) => `${p.name} — ${p.suggested_purchase || ""}`.trim());
@@ -509,6 +520,7 @@ function ShoppingListPageContent() {
       if (!res.ok) throw new Error("Refine failed");
       const data: RefineResponse = await res.json();
       setRefinedData(data);
+      setSmartWeekStart(start);
       setSavedPlannerFingerprint(latestPlannerFingerprint);
       setSmartListStale(false);
       setSmartHidden(new Set());
@@ -527,6 +539,7 @@ function ShoppingListPageContent() {
     sessionStorage.removeItem(smartListStorageKey(start));
     clearStoredProductResults();
     setRefinedData(null);
+    setSmartWeekStart(null);
     setSavedPlannerFingerprint(null);
     setSmartListStale(false);
     setRefineError(null);
@@ -671,7 +684,7 @@ function ShoppingListPageContent() {
 
   return (
     <div className="shop-page--wide" style={{ paddingTop: "var(--space-32)" }}>
-      {!refinedData && (
+      {!activeRefinedData && (
         <header className="mb-10">
           <h1 className="shop-confirm-title font-headline">{t("shopping.title")}</h1>
         </header>
@@ -697,7 +710,7 @@ function ShoppingListPageContent() {
         </div>
       ) : (
         <>
-          {refinedData ? (
+          {activeRefinedData ? (
             <>
               <header className="shop-smart-hero">
                 <div className="shop-smart-hero__bg" aria-hidden />
@@ -1291,7 +1304,7 @@ function ShoppingListPageContent() {
               </div>
 
               <div className="shop-smart-below-bento">
-                {refinedData.remove.length > 0 && (
+                {activeRefinedData.remove.length > 0 && (
                   <div className="shop-suggest-panel is-muted">
                     <button
                       type="button"
@@ -1303,7 +1316,7 @@ function ShoppingListPageContent() {
                         <span className="material-symbols-outlined">delete_sweep</span>
                         <div>
                           <h3>Removed items</h3>
-                          <p>{refinedData.remove.length} not purchased</p>
+                          <p>{activeRefinedData.remove.length} not purchased</p>
                         </div>
                       </div>
                       <span className="material-symbols-outlined" style={{ transform: smartRemovedCollapsed ? undefined : "rotate(180deg)" }}>
@@ -1312,7 +1325,7 @@ function ShoppingListPageContent() {
                     </button>
                     {!smartRemovedCollapsed && (
                       <div style={{ padding: "0 1.5rem 1.25rem" }}>
-                        {refinedData.remove.map((name, i) => (
+                        {activeRefinedData.remove.map((name, i) => (
                           <p key={i} className="shop-row-title is-muted m-0 py-2" style={{ borderBottom: "1px solid var(--surface-container)" }}>
                             {name}
                           </p>

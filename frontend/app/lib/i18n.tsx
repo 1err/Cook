@@ -79,21 +79,7 @@ export function LanguageToggle() {
   const { language, setLanguage, t } = useI18n();
 
   return (
-    <div
-      aria-label={t("language.label")}
-      style={{
-        position: "fixed",
-        top: 12,
-        right: 12,
-        zIndex: 80,
-        display: "inline-flex",
-        borderRadius: 999,
-        background: "color-mix(in srgb, var(--surface-container-lowest) 92%, white)",
-        boxShadow: "var(--kitchen-glow)",
-        padding: 4,
-        gap: 4,
-      }}
-    >
+    <div aria-label={t("language.label")} className="language-toggle">
       {(["en", "zh"] as const).map((option) => {
         const active = language === option;
         return (
@@ -101,19 +87,8 @@ export function LanguageToggle() {
             key={option}
             type="button"
             onClick={() => setLanguage(option)}
-            className="font-headline"
+            className={`font-headline language-toggle__button${active ? " is-active" : ""}`}
             aria-pressed={active}
-            style={{
-              border: "none",
-              borderRadius: 999,
-              padding: "0.4rem 0.7rem",
-              minWidth: 52,
-              cursor: "pointer",
-              fontSize: "0.78rem",
-              fontWeight: 800,
-              background: active ? "var(--primary)" : "transparent",
-              color: active ? "#fff" : "var(--on-surface-variant)",
-            }}
           >
             {t(`language.${option}`)}
           </button>

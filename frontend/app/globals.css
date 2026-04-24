@@ -248,6 +248,36 @@ button:disabled {
   padding-bottom: calc(var(--space-32) + 72px);
 }
 
+.language-toggle {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 80;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-container-lowest) 92%, white);
+  box-shadow: var(--kitchen-glow);
+}
+
+.language-toggle__button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.4rem 0.7rem;
+  min-width: 52px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 800;
+  background: transparent;
+  color: var(--on-surface-variant);
+}
+
+.language-toggle__button.is-active {
+  background: var(--primary);
+  color: #fff;
+}
+
 @media (max-width: 639px) {
   .app-container,
   .app-wide,
@@ -266,26 +296,29 @@ button:disabled {
   list-style: none;
   padding: 0;
   margin: 0;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 2rem;
+  columns: 1;
+  column-gap: 1.5rem;
 }
 
 @media (min-width: 560px) {
   .libraryGrid {
-    grid-template-columns: repeat(2, 1fr);
+    columns: 2;
   }
 }
 
 @media (min-width: 1024px) {
   .libraryGrid {
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    columns: 3;
   }
 }
 
 /* Stitch-style recipe cards: 4/5 frame, super-rounded */
 .recipe-card-stitch {
   list-style: none;
+  break-inside: avoid;
+  display: inline-block;
+  width: 100%;
+  margin-bottom: 2rem;
 }
 
 .recipe-card-stitch__link {
@@ -296,11 +329,11 @@ button:disabled {
 
 .recipe-card-stitch__media {
   position: relative;
-  aspect-ratio: 4 / 5;
   border-radius: 2rem;
   overflow: hidden;
   background: var(--surface-container);
   margin-bottom: 1rem;
+  min-height: 11rem;
 }
 
 .recipe-card-stitch__img {
@@ -310,35 +343,26 @@ button:disabled {
 }
 
 .recipe-card-stitch__img--bg {
-  position: absolute;
-  inset: 0;
-  object-fit: cover;
-  filter: blur(18px);
-  transform: scale(1.12);
-  opacity: 0.4;
+  display: none;
 }
 
 .recipe-card-stitch__img-frame {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.9rem;
-  background:
-    linear-gradient(to top, rgba(255, 255, 255, 0.16), transparent 45%),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.08), transparent 35%);
+  position: relative;
+  display: block;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.06), transparent 22%);
 }
 
 .recipe-card-stitch__img--full {
   position: relative;
-  object-fit: contain;
-  filter: drop-shadow(0 14px 24px rgba(26, 28, 28, 0.18));
+  display: block;
+  height: auto;
+  max-height: 28rem;
+  object-fit: cover;
 }
 
 .recipe-card-stitch__link:hover .recipe-card-stitch__img--full,
 .recipe-card-stitch:hover .recipe-card-stitch__img--full {
-  transform: scale(1.03);
+  transform: scale(1.02);
 }
 
 .recipe-card-stitch__placeholder {
@@ -591,9 +615,14 @@ button:disabled {
   cursor: pointer;
 }
 
+.tag-filter-popover__option.is-multi {
+  border: 1px solid transparent;
+}
+
 .tag-filter-popover__option.is-active {
   background: var(--primary);
   color: var(--on-primary);
+  border-color: color-mix(in srgb, var(--primary) 35%, transparent);
 }
 
 .recipe-tag-picker {
@@ -2071,6 +2100,11 @@ button:disabled {
     padding-top: 0.5rem;
   }
 
+  .language-toggle {
+    top: calc(env(safe-area-inset-top, 0px) + 4.65rem);
+    right: 1rem;
+  }
+
   .headerNavLink {
     display: block;
     padding: 0.7rem 0.85rem;
@@ -2200,6 +2234,7 @@ button:disabled {
 
 .planner-editorial__search {
   position: relative;
+  margin-bottom: 0.35rem;
 }
 
 .planner-editorial__search .material-symbols-outlined {
@@ -2232,6 +2267,17 @@ button:disabled {
   color: var(--on-surface-variant);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.planner-editorial__sidebar-head .planner-filter-bar {
+  gap: 0.9rem;
+  margin-top: 0.35rem;
+  margin-bottom: 1.35rem;
+}
+
+.planner-editorial__sidebar-head .tag-filter-popover__trigger,
+.planner-editorial__sidebar-head .planner-editorial__search input {
+  min-height: 2.8rem;
 }
 
 .planner-source-card {

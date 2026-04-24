@@ -67,6 +67,10 @@ function PlannerPageContent() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      setLoading(true);
+      setPlanByDate({});
+      setSlotPicker(null);
+      setDraggingSlot(null);
       try {
         const [plansRes, recipesRes] = await Promise.all([
           apiFetch(`/meal-plan?start=${start}&end=${end}`),

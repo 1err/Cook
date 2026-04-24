@@ -34,6 +34,7 @@ CACHE_TTL_SECONDS = 86400
 CACHE_VERSION = "v6"
 SCRAPE_CONCURRENCY = 4
 WEEE_PDP_CONCURRENCY = 3
+WEEE_MAX_ATTEMPTS = 2
 CACHE: dict[tuple[StoreName, str, str, str], dict[str, Any]] = {}
 _scrape_semaphore = asyncio.Semaphore(SCRAPE_CONCURRENCY)
 
@@ -285,6 +286,19 @@ async def _weee_fetch_search_items_with_retry(page: Any, script: str) -> list[An
     return raw_items if isinstance(raw_items, list) else []
 
 
+async def _wait_for_weee_results(page: Any, query: str, *, attempt: int) -> None:
+    """Give Weee time to hydrate before treating an empty eval as a real miss."""
+    try:
+        await page.wait_for_load_state("networkidle", timeout=7000 if attempt == 0 else 9000)
+    except Exception:
+        pass
+    try:
+        await page.wait_for_selector(STORE_WAIT_SELECTORS["weee"], timeout=14000 if attempt == 0 else 17000)
+    except Exception:
+        logger.info("weee product selector wait timed out for query=%r on attempt=%s", query, attempt + 1)
+    await page.wait_for_timeout(900 if attempt == 0 else 1500)
+
+
 async def _enrich_weee_products_from_detail_pages(
     context: Any, base_url: str, products: list[dict[str, str]]
 ) -> None:
@@ -493,63 +507,80 @@ async def _fetch_store_products(
         search_url = STORE_SEARCH_URLS[store].format(query=quote_plus(cleaned_query))
     weee_prefer_zh = store == "weee" and weee_lang == "zh"
     products: list[dict[str, str]] = []
-    try:
-        async with _scrape_semaphore:
-            browser = await _ensure_shared_browser()
-            context_kwargs: dict[str, Any] = {
-                "locale": "zh-CN" if weee_prefer_zh else "en-US",
-                "user_agent": (
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-                ),
-            }
-            if weee_prefer_zh:
-                context_kwargs["extra_http_headers"] = {"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"}
-            context = await browser.new_context(**context_kwargs)
-            try:
-                page = await context.new_page()
-
-                await page.goto(search_url, wait_until="domcontentloaded", timeout=PLAYWRIGHT_TIMEOUT_MS)
+    attempts = WEEE_MAX_ATTEMPTS if store == "weee" else 1
+    last_exception: Exception | None = None
+    for attempt in range(attempts):
+        products = []
+        try:
+            async with _scrape_semaphore:
+                browser = await _ensure_shared_browser()
+                context_kwargs: dict[str, Any] = {
+                    "locale": "zh-CN" if weee_prefer_zh else "en-US",
+                    "user_agent": (
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                    ),
+                }
+                if weee_prefer_zh:
+                    context_kwargs["extra_http_headers"] = {"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"}
+                context = await browser.new_context(**context_kwargs)
                 try:
-                    await page.wait_for_selector(STORE_WAIT_SELECTORS[store], timeout=12000)
-                except PlaywrightTimeoutError:
-                    logger.info(
-                        "%s product selector wait timed out for query=%r — continuing with eval",
-                        store,
-                        cleaned_query,
-                    )
-                await page.wait_for_timeout(450)
+                    page = await context.new_page()
+                    await page.goto(search_url, wait_until="domcontentloaded", timeout=PLAYWRIGHT_TIMEOUT_MS)
+                    if store == "weee":
+                        await _wait_for_weee_results(page, cleaned_query, attempt=attempt)
+                    else:
+                        try:
+                            await page.wait_for_selector(STORE_WAIT_SELECTORS[store], timeout=12000)
+                        except PlaywrightTimeoutError:
+                            logger.info(
+                                "%s product selector wait timed out for query=%r — continuing with eval",
+                                store,
+                                cleaned_query,
+                            )
+                        await page.wait_for_timeout(450)
 
-                extract_script = _store_extract_script(store)
-                if store == "weee":
-                    raw_items = await _weee_fetch_search_items_with_retry(page, extract_script)
-                else:
-                    ri = await page.evaluate(extract_script)
-                    raw_items = ri if isinstance(ri, list) else []
+                    extract_script = _store_extract_script(store)
+                    if store == "weee":
+                        raw_items = await _weee_fetch_search_items_with_retry(page, extract_script)
+                    else:
+                        ri = await page.evaluate(extract_script)
+                        raw_items = ri if isinstance(ri, list) else []
 
-                seen_urls: set[str] = set()
-                for item in raw_items:
-                    if not isinstance(item, dict):
-                        continue
-                    product = _normalize_product(item, store, weee_prefer_zh=weee_prefer_zh)
-                    if not product:
-                        continue
-                    if product["url"] in seen_urls:
-                        continue
-                    seen_urls.add(product["url"])
-                    products.append(product)
-                    if len(products) >= MAX_RESULTS:
-                        break
+                    seen_urls: set[str] = set()
+                    for item in raw_items:
+                        if not isinstance(item, dict):
+                            continue
+                        product = _normalize_product(item, store, weee_prefer_zh=weee_prefer_zh)
+                        if not product:
+                            continue
+                        if product["url"] in seen_urls:
+                            continue
+                        seen_urls.add(product["url"])
+                        products.append(product)
+                        if len(products) >= MAX_RESULTS:
+                            break
 
-                if store == "weee" and products:
-                    await _enrich_weee_products_from_detail_pages(context, STORE_BASE_URLS["weee"], products)
-                elif products:
-                    await _fill_missing_images_from_product_pages(context, store, products)
-            finally:
-                await context.close()
-    except Exception as exc:
-        logger.exception("%s scraping failed for query=%r: %s", store, cleaned_query, exc)
-        return []
+                    if store == "weee" and products:
+                        await _enrich_weee_products_from_detail_pages(context, STORE_BASE_URLS["weee"], products)
+                    elif products:
+                        await _fill_missing_images_from_product_pages(context, store, products)
+                finally:
+                    await context.close()
+        except Exception as exc:
+            last_exception = exc
+            if attempt + 1 < attempts:
+                logger.info("%s scrape attempt %s failed for query=%r; retrying once: %s", store, attempt + 1, cleaned_query, exc)
+                continue
+            logger.exception("%s scraping failed for query=%r: %s", store, cleaned_query, exc)
+            return []
+
+        if products or attempt + 1 >= attempts:
+            break
+        logger.info("%s scrape returned no products for query=%r on attempt=%s; retrying once", store, cleaned_query, attempt + 1)
+
+    if not products and last_exception is not None:
+        logger.info("%s returning empty products after retries for query=%r", store, cleaned_query)
 
     if products:
         _memory_cache_set(cache_key, products)

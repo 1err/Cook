@@ -9,6 +9,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+_LATIN_RE = re.compile(r"[A-Za-z]")
+
 GROCERY_CATEGORIES = (
     "Produce",
     "Dairy",
@@ -42,11 +45,11 @@ Rules:
 2) Do NOT ignore pantry items (salt, oil, sugar, sauces, spices, etc.).
 3) Every input ingredient MUST appear in output purchase_items.
 4) Normalize ingredient names into clear grocery items.
-5) If an ingredient is Chinese:
-   - Keep it in Chinese
-   - Optionally include English in parentheses
-   - Example: 八角 (star anise), 牛腱肉 (beef shank)
-   - Do NOT translate away the Chinese
+5) Preserve the input ingredient language:
+   - If the input ingredient name is Chinese, output a Chinese-only name.
+   - If the input ingredient name is English, output an English-only name.
+   - Never mix Chinese and English in the same item name.
+   - Never add translations in parentheses.
 6) Convert quantities into realistic purchase units.
 7) Assign EVERY item to exactly one grocery category from:
    Produce, Dairy, Meat & Seafood, Pantry & Dry Goods, Frozen, Bakery, Other
@@ -103,7 +106,60 @@ def _fallback_result(items: list[dict[str, str]]) -> dict[str, Any]:
     return {"purchase_items": out}
 
 
+def _contains_cjk(text: str) -> bool:
+    return bool(_CJK_RE.search(text or ""))
+
+
+def _contains_latin(text: str) -> bool:
+    return bool(_LATIN_RE.search(text or ""))
+
+
+def _normalize_name_for_match(name: str) -> str:
+    normalized = (name or "").strip().lower()
+    normalized = re.sub(r"\([^)]*\)", " ", normalized)
+    normalized = re.sub(r"（[^）]*）", " ", normalized)
+    normalized = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", normalized)
+    return normalized
+
+
+def _strip_mixed_language_name(name: str) -> str:
+    value = (name or "").strip()
+    if not value:
+        return ""
+    has_cjk = _contains_cjk(value)
+    has_latin = _contains_latin(value)
+    if has_cjk and has_latin:
+        value = re.sub(r"\s*[\(（][^()（）]*[A-Za-z][^()（）]*[\)）]\s*", " ", value)
+        value = re.sub(r"\s*[\-–—:/,]\s*[A-Za-z][A-Za-z\s'&-]*$", "", value)
+    elif has_latin and not has_cjk:
+        value = re.sub(r"\s*[\(（][^()（）]*[\u4e00-\u9fff][^()（）]*[\)）]\s*", " ", value)
+        value = re.sub(r"\s*[\-–—:/,]\s*[\u4e00-\u9fff][\u4e00-\u9fff\s]*$", "", value)
+    return re.sub(r"\s+", " ", value).strip(" -–—:/,")
+
+
+def _build_input_language_map(items: list[dict[str, str]]) -> dict[str, str]:
+    language_by_name: dict[str, str] = {}
+    for item in items:
+        raw_name = str(item.get("name") or "").strip()
+        if not raw_name:
+            continue
+        language_by_name[_normalize_name_for_match(raw_name)] = "zh" if _contains_cjk(raw_name) else "en"
+    return language_by_name
+
+
+def _normalize_purchase_item_name(name: str, language_by_name: dict[str, str]) -> str:
+    stripped = _strip_mixed_language_name(name)
+    normalized_key = _normalize_name_for_match(stripped)
+    preferred_language = language_by_name.get(normalized_key)
+    if preferred_language == "zh" and _contains_cjk(stripped):
+        stripped = re.sub(r"\s*[\(（][^()（）]*[A-Za-z][^()（）]*[\)）]\s*", " ", stripped)
+    elif preferred_language == "en" and _contains_latin(stripped):
+        stripped = re.sub(r"\s*[\(（][^()（）]*[\u4e00-\u9fff][^()（）]*[\)）]\s*", " ", stripped)
+    return re.sub(r"\s+", " ", stripped).strip(" -–—:/,")
+
+
 def _parse_llm_refine_response(raw: str, fallback_items: list[dict[str, str]]) -> dict[str, Any]:
+    language_by_name = _build_input_language_map(fallback_items)
     text = (raw or "").strip()
     if text.startswith("```"):
         text = re.sub(r"^```\w*\n?", "", text)
@@ -122,7 +178,7 @@ def _parse_llm_refine_response(raw: str, fallback_items: list[dict[str, str]]) -
     for x in purchase_items:
         if not isinstance(x, dict):
             continue
-        nm = str(x.get("name", "")).strip()
+        nm = _normalize_purchase_item_name(str(x.get("name", "")).strip(), language_by_name)
         if not nm:
             continue
         sp = str(x.get("suggested_purchase", "")).strip() or nm

@@ -5,17 +5,34 @@ import {
   CATEGORY_LABELS,
   RECIPE_TAG_GROUPS,
   type LibraryFilterId,
+  type RecipeTagSlug,
 } from "../lib/recipeCategories";
 
 type TagFilterPopoverProps = {
-  value: LibraryFilterId;
-  onChange: (value: LibraryFilterId) => void;
+  value?: LibraryFilterId;
+  onChange?: (value: LibraryFilterId) => void;
+  values?: RecipeTagSlug[];
+  onToggleValue?: (value: RecipeTagSlug) => void;
+  onClear?: () => void;
   ariaLabel: string;
+  triggerLabel?: string;
+  allOptionLabel?: string;
 };
 
-export function TagFilterPopover({ value, onChange, ariaLabel }: TagFilterPopoverProps) {
+export function TagFilterPopover({
+  value,
+  onChange,
+  values,
+  onToggleValue,
+  onClear,
+  ariaLabel,
+  triggerLabel,
+  allOptionLabel = "All tags",
+}: TagFilterPopoverProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const isMultiSelect = Array.isArray(values);
+  const selectedValues = values ?? [];
 
   useEffect(() => {
     function onDocumentClick(event: MouseEvent) {
@@ -28,7 +45,17 @@ export function TagFilterPopover({ value, onChange, ariaLabel }: TagFilterPopove
     return () => document.removeEventListener("click", onDocumentClick);
   }, [open]);
 
-  const currentLabel = value === "all" ? "All tags" : CATEGORY_LABELS[value];
+  const currentLabel =
+    triggerLabel ??
+    (isMultiSelect
+      ? selectedValues.length === 0
+        ? allOptionLabel
+        : selectedValues.length === 1
+          ? CATEGORY_LABELS[selectedValues[0]]
+          : `${selectedValues.length} tags`
+      : value === "all" || value == null
+        ? allOptionLabel
+        : CATEGORY_LABELS[value]);
 
   return (
     <div className="tag-filter-popover" ref={rootRef}>
@@ -49,13 +76,17 @@ export function TagFilterPopover({ value, onChange, ariaLabel }: TagFilterPopove
         <div className="tag-filter-popover__panel" role="dialog" aria-label={ariaLabel}>
           <button
             type="button"
-            className={`tag-filter-popover__option${value === "all" ? " is-active" : ""}`}
+            className={`tag-filter-popover__option${(!isMultiSelect ? value === "all" : selectedValues.length === 0) ? " is-active" : ""}`}
             onClick={() => {
-              onChange("all");
+              if (isMultiSelect) {
+                onClear?.();
+              } else {
+                onChange?.("all");
+              }
               setOpen(false);
             }}
           >
-            All tags
+            {allOptionLabel}
           </button>
 
           {RECIPE_TAG_GROUPS.map((group) => (
@@ -66,10 +97,14 @@ export function TagFilterPopover({ value, onChange, ariaLabel }: TagFilterPopove
                   <button
                     key={tag.id}
                     type="button"
-                    className={`tag-filter-popover__option${value === tag.id ? " is-active" : ""}`}
+                    className={`tag-filter-popover__option${isMultiSelect ? " is-multi" : ""}${(isMultiSelect ? selectedValues.includes(tag.id) : value === tag.id) ? " is-active" : ""}`}
                     onClick={() => {
-                      onChange(tag.id);
-                      setOpen(false);
+                      if (isMultiSelect) {
+                        onToggleValue?.(tag.id);
+                      } else {
+                        onChange?.(tag.id);
+                        setOpen(false);
+                      }
                     }}
                   >
                     {tag.label}

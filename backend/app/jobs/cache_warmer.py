@@ -127,7 +127,7 @@ async def run_cache_warmer(
 
 
 async def _run_scheduled_cache_warmer() -> None:
-    await run_cache_warmer(force_refresh=False)
+    await run_cache_warmer(force_refresh=True)
 
 
 def get_cache_warmer_status() -> dict[str, Any]:
@@ -184,6 +184,7 @@ def start_scheduler() -> AsyncIOScheduler:
         coalesce=True,
     )
     scheduler.start()
+    # Startup fill stays stale-only so a restart does not immediately force-refresh every warm query.
     trigger_cache_warmer(force_refresh=False)
     _scheduler = scheduler
     return scheduler

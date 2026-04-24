@@ -7,7 +7,7 @@ import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
 import { useT } from "../lib/i18n";
 import { RecipeCard } from "../components/RecipeCard";
-import { CATEGORY_LABELS, type LibraryFilterId } from "../lib/recipeCategories";
+import { CATEGORY_LABELS, type LibraryFilterId, type RecipeTagSlug } from "../lib/recipeCategories";
 import { TagFilterPopover } from "../components/TagFilterPopover";
 import type { Recipe } from "../types";
 
@@ -24,7 +24,8 @@ function LibraryPageContent() {
   const [publicRecipes, setPublicRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<LibraryFilterId>("all");
+  const [mineFilters, setMineFilters] = useState<RecipeTagSlug[]>([]);
+  const [publicFilter, setPublicFilter] = useState<LibraryFilterId>("all");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"mine" | "public">("mine");
   const [copyingId, setCopyingId] = useState<string | null>(null);
@@ -58,11 +59,11 @@ function LibraryPageContent() {
       .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
       .filter((r) => {
         const tags = r.library_tags ?? (r.library_category ? [r.library_category] : []);
-        if (filter !== "all" && !tags.includes(filter)) return false;
+        if (mineFilters.length > 0 && !mineFilters.every((tag) => tags.includes(tag))) return false;
         if (q && !r.title.toLowerCase().includes(q)) return false;
         return true;
       });
-  }, [recipes, filter, search]);
+  }, [mineFilters, recipes, search]);
 
   const filteredPublic = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -70,11 +71,21 @@ function LibraryPageContent() {
       .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
       .filter((r) => {
         const tags = r.library_tags ?? (r.library_category ? [r.library_category] : []);
-        if (filter !== "all" && !tags.includes(filter)) return false;
+        if (publicFilter !== "all" && !tags.includes(publicFilter)) return false;
         if (q && !r.title.toLowerCase().includes(q)) return false;
         return true;
       });
-  }, [publicRecipes, filter, search]);
+  }, [publicFilter, publicRecipes, search]);
+
+  const mineFilterLabel = useMemo(() => {
+    if (mineFilters.length === 0) return "All tags";
+    if (mineFilters.length === 1) return CATEGORY_LABELS[mineFilters[0]];
+    return `${mineFilters.length} tags`;
+  }, [mineFilters]);
+
+  function toggleMineFilter(tag: RecipeTagSlug) {
+    setMineFilters((prev) => (prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]));
+  }
 
   const savedPublicIds = useMemo(() => {
     const ids = new Set<string>();
@@ -153,20 +164,43 @@ function LibraryPageContent() {
       </div>
 
       <div className="library-filter-bar">
-        <TagFilterPopover
-          value={filter}
-          onChange={setFilter}
-          ariaLabel={t("library.filterAria")}
-        />
-        {filter !== "all" ? (
-          <button
-            type="button"
-            className="library-filter-reset font-headline"
-            onClick={() => setFilter("all")}
-          >
-            {t("library.clearFilter")}
-          </button>
-        ) : null}
+        {view === "mine" ? (
+          <>
+            <TagFilterPopover
+              values={mineFilters}
+              onToggleValue={toggleMineFilter}
+              onClear={() => setMineFilters([])}
+              ariaLabel={t("library.filterAria")}
+              triggerLabel={mineFilterLabel}
+            />
+            {mineFilters.length > 0 ? (
+              <button
+                type="button"
+                className="library-filter-reset font-headline"
+                onClick={() => setMineFilters([])}
+              >
+                {t("library.clearFilter")}
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <TagFilterPopover
+              value={publicFilter}
+              onChange={setPublicFilter}
+              ariaLabel={t("library.filterAria")}
+            />
+            {publicFilter !== "all" ? (
+              <button
+                type="button"
+                className="library-filter-reset font-headline"
+                onClick={() => setPublicFilter("all")}
+              >
+                {t("library.clearFilter")}
+              </button>
+            ) : null}
+          </>
+        )}
       </div>
 
       {activeList.length === 0 ? (
