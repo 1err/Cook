@@ -534,7 +534,7 @@ async def _fetch_store_products(
                             await page.wait_for_selector(STORE_WAIT_SELECTORS[store], timeout=12000)
                         except PlaywrightTimeoutError:
                             logger.info(
-                                "%s product selector wait timed out for query=%r — continuing with eval",
+                                "%s product selector wait time out for query=%r — continuing with eval",
                                 store,
                                 cleaned_query,
                             )
