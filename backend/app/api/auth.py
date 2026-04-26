@@ -44,6 +44,14 @@ class UserResponse(BaseModel):
         return cls(id=str(u.id), email=u.email)
 
 
+class AuthResponse(UserResponse):
+    access_token: str | None = None
+
+    @classmethod
+    def from_model_with_token(cls, u: UserModel, token: str | None) -> "AuthResponse":
+        return cls(id=str(u.id), email=u.email, access_token=token)
+
+
 def _set_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         key=COOKIE_NAME,
@@ -70,8 +78,15 @@ async def get_current_user(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> UserModel:
-    """Dependency: read JWT from cookie, validate, return user. Raise 401 if invalid."""
-    token = request.cookies.get(COOKIE_NAME)
+    """Dependency: read JWT from bearer header or cookie, validate, return user."""
+    token = None
+    auth_header = request.headers.get("Authorization") or request.headers.get("authorization")
+    if auth_header:
+        scheme, _, value = auth_header.partition(" ")
+        if scheme.lower() == "bearer" and value.strip():
+            token = value.strip()
+    if token is None:
+        token = request.cookies.get(COOKIE_NAME)
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     payload = decode_access_token(token)
@@ -87,7 +102,7 @@ async def get_current_user(
     return user
 
 
-@router.post("/register", response_model=UserResponse)
+@router.post("/register", response_model=AuthResponse)
 async def register(
     body: RegisterBody,
     response: Response,
@@ -109,10 +124,10 @@ async def register(
     )
     token = create_access_token(str(user.id))
     _set_cookie(response, token)
-    return UserResponse.from_model(user)
+    return AuthResponse.from_model_with_token(user, token)
 
 
-@router.post("/login", response_model=UserResponse)
+@router.post("/login", response_model=AuthResponse)
 async def login(
     body: LoginBody,
     response: Response,
@@ -131,7 +146,7 @@ async def login(
         raise HTTPException(status_code=401, detail="User not found")
     token = create_access_token(str(user.id))
     _set_cookie(response, token)
-    return UserResponse.from_model(user)
+    return AuthResponse.from_model_with_token(user, token)
 
 
 @router.post("/logout")

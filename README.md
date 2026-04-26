@@ -50,19 +50,19 @@ python run.py
 
 API: http://localhost:8000. Docs: http://localhost:8000/docs.
 
-### Frontend (Next.js)
+### Web App (Next.js)
 
 ```bash
-cd frontend
+cd apps/web
 npm install
 npm run dev
 ```
 
 App: http://localhost:3000.
 
-**API base (for desktop, phone, or deployed):** The frontend calls the backend using `NEXT_PUBLIC_API_BASE`. Copy `frontend/.env.local.example` to `frontend/.env.local` and set:
+**API base (for desktop, phone, or deployed):** The web app calls the backend using `NEXT_PUBLIC_API_BASE`. Copy `apps/web/.env.local.example` to `apps/web/.env.local` and set:
 
-- **Desktop (same machine):** Optional — if unset, the app defaults to `http://localhost:8000` (see `frontend/app/config.ts`).
+- **Desktop (same machine):** Optional — if unset, the app defaults to `http://localhost:8000` (see `apps/web/app/config.ts`).
 - **Phone on same Wi‑Fi:** Set `NEXT_PUBLIC_API_BASE=http://192.168.1.XX:8000` (your machine’s LAN IP).
 - **Docker Compose (browser on host):** Compose sets `NEXT_PUBLIC_API_BASE=http://localhost:8000` so the **browser** reaches the API on the host.
 

@@ -46,7 +46,7 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: ./apps/web
       dockerfile: Dockerfile
       args:
         # Pin or mirror if Docker Hub auth returns 502: e.g. NODE_IMAGE=node:20-alpine@sha256:...

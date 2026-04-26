@@ -1,0 +1,17 @@
+{
+  "name": "cooking-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "web:dev": "npm --workspace @cooking/web run dev",
+    "web:build": "npm --workspace @cooking/web run build",
+    "web:start": "npm --workspace @cooking/web run start",
+    "web:lint": "npm --workspace @cooking/web run lint",
+    "mobile:start": "npm --workspace @cooking/mobile run start",
+    "mobile:ios": "npm --workspace @cooking/mobile run ios",
+    "mobile:android": "npm --workspace @cooking/mobile run android"
+  }
+}
