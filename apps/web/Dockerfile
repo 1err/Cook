@@ -1,39 +1,48 @@
-# Multi-stage: build then serve with standalone output.
-# Override base when Docker Hub flakes (502 on auth): docker compose build --build-arg NODE_IMAGE=node:20-alpine
-# Or set NODE_IMAGE in a root `.env` file for compose substitution.
+# Monorepo-aware Next.js Dockerfile (build context must be repo root).
 ARG NODE_IMAGE=node:20-alpine
+
 FROM ${NODE_IMAGE} AS builder
+WORKDIR /repo
 
-WORKDIR /app
-
+# Workspace manifests
 COPY package.json package-lock.json ./
-RUN npm ci
 
-COPY . .
-RUN npm run build
+# Local workspace packages + web app
+COPY packages ./packages
+COPY apps/web ./apps/web
 
-# Re-declare for this stage (Dockerfile ARG scope across FROM).
-ARG NODE_IMAGE=node:20-alpine
+# Workspace install and web build
+RUN npm install
+RUN npm --workspace @cooking/web run build
+
 FROM ${NODE_IMAGE} AS runner
-
-WORKDIR /app
+WORKDIR /repo
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Standalone: server + minimal node_modules. Static assets in public/ must be copied explicitly.
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+# Runtime manifests + source needed for workspace dependency resolution
+COPY package.json package-lock.json ./
+COPY packages ./packages
+COPY apps/web/package.json ./apps/web/package.json
+COPY apps/web/next.config.mjs ./apps/web/next.config.mjs
+COPY apps/web/public ./apps/web/public
+
+# Install only production deps for the web workspace
+RUN npm install --omit=dev --workspace @cooking/web --include-workspace-root=false
+
+# Copy built app output
+COPY --from=builder /repo/apps/web/.next ./apps/web/.next
+COPY --from=builder /repo/apps/web/next-env.d.ts ./apps/web/next-env.d.ts
+COPY --from=builder /repo/apps/web/tsconfig.json ./apps/web/tsconfig.json
 
 USER nextjs
 
 EXPOSE 3000
 
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
-
-CMD ["node", "server.js"]
+CMD ["npm", "--workspace", "@cooking/web", "run", "start"]
