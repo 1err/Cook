@@ -30,10 +30,18 @@ docker compose down && docker compose up --build -d   # then open http://localho
 ### Frontend — Vercel
 
 - Project hosts both `chef-world.com` and `www.chef-world.com` plus the auto preview URL `cook-lake-alpha.vercel.app`.
-- **Vercel project setting *Root Directory* = `apps/web`.** Required: with that setting, Vercel detects Next.js in `apps/web/package.json`, and modern npm (v7+) walks up from `apps/web` to find the repo-root `package.json` `"workspaces"` block and links `@cooking/shared` / `@cooking/api-client` automatically. There is no `vercel.json` and no Build / Install / Output overrides in the dashboard — the standard Next.js + npm-workspace monorepo pattern is enough.
+- **Vercel project setting *Root Directory* = `apps/web`.** Build is driven by `apps/web/vercel.json` (placed *inside* the Root Directory so Vercel reads it and resolves all paths relative to `apps/web`).
+- `apps/web/vercel.json` pins:
+  - `framework: "nextjs"`
+  - `installCommand: "npm install --prefix ../.. --include-workspace-root --workspaces"` — runs the install at the repo root via `--prefix` so npm sees the workspace `package.json`, links `@cooking/shared` / `@cooking/api-client` symlinks, and never collides with Vercel's default install pass (which would otherwise produce `Tracker "idealTree" already exists`).
+  - `buildCommand: "next build"`
+  - `outputDirectory: ".next"`
+- **All Build & Development Settings overrides in the dashboard must be OFF.** `apps/web/vercel.json` is the source of truth. Toggling on a dashboard override layers it on top of Vercel's auto-install and will reintroduce the idealTree collision.
 - Production env vars (Vercel → Settings → Environment Variables → Production):
   - `NEXT_PUBLIC_API_BASE = https://api.chef-world.com` (so the browser calls the ECS backend, not localhost).
-- History note: Root Directory used to read `frontend/` from before the monorepo split, which broke every deploy with `The specified Root Directory "frontend" does not exist`. Don't reset it back to empty — Next.js framework detection fails on the root `package.json` (which has no `next` dependency, only the `workspaces` array).
+- History notes:
+  - Root Directory used to read `frontend/` from before the monorepo split, which broke every deploy with `The specified Root Directory "frontend" does not exist`. Don't reset it back to empty — Next.js framework detection fails on the root `package.json` (which has no `next` dependency, only the `workspaces` array).
+  - A repo-root `vercel.json` was tried first and rejected: with Root Directory = `apps/web`, Vercel resolved its `outputDirectory: "apps/web/.next"` against `apps/web`, producing the path-doubled `apps/web/apps/web/.next`. Always keep `vercel.json` inside the Root Directory.
 
 ### Backend — AWS ECS
 
