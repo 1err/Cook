@@ -1,14 +1,17 @@
 """
-Recipe extraction from video: text-first approach.
-Primary: transcript. Secondary: OCR from ingredient-card frames.
-LLM combines both to produce dish name + ingredient list.
+Recipe extraction from a YouTube transcript or pasted text.
+LLM produces dish title + ingredient list; falls back to a deterministic stub
+when ``OPENAI_API_KEY`` is unset so the flow stays testable end-to-end.
 """
+import json
 import logging
-import os
 import re
+import uuid
 from dataclasses import dataclass
 from typing import Optional
-from app.models import Recipe, IngredientItem
+
+from app.core.llm import get_openai_client
+from app.models import IngredientItem, Recipe
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +38,12 @@ def _parse_youtube_video_id(url: str) -> Optional[str]:
     url = (url or "").strip()
     if "youtube.com" not in url and "youtu.be" not in url:
         return None
-    # youtu.be/ID
     m = re.search(r"youtu\.be/([a-zA-Z0-9_-]{11})(?:[?&#]|$)", url)
     if m:
         return m.group(1)
-    # youtube.com/embed/ID
     m = re.search(r"youtube\.com/embed/([a-zA-Z0-9_-]{11})", url)
     if m:
         return m.group(1)
-    # youtube.com/watch?v=ID or ?...&v=ID
     m = re.search(r"[?&]v=([a-zA-Z0-9_-]{11})(?:&|#|$)", url)
     if m:
         return m.group(1)
@@ -68,9 +68,9 @@ def fetch_transcript_from_video_link(url: str) -> TranscriptFetchResult:
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
         from youtube_transcript_api._errors import (
+            NoTranscriptFound,
             TranscriptsDisabled,
             VideoUnavailable,
-            NoTranscriptFound,
         )
     except ModuleNotFoundError:
         logger.warning(
@@ -84,7 +84,6 @@ def fetch_transcript_from_video_link(url: str) -> TranscriptFetchResult:
         )
 
     try:
-        # youtube-transcript-api 1.x: instance .fetch(video_id, languages=...)
         api = YouTubeTranscriptApi()
         fetched = api.fetch(
             video_id,
@@ -92,16 +91,12 @@ def fetch_transcript_from_video_link(url: str) -> TranscriptFetchResult:
         )
         combined = " ".join(snippet.text for snippet in fetched).strip()
         logger.info(
-            "Transcript fetched successfully, video_id=%s, language=%s, length=%d",
+            "Transcript fetched, video_id=%s, language=%s, length=%d",
             video_id,
             getattr(fetched, "language_code", "?"),
             len(combined),
         )
-        return TranscriptFetchResult(
-            transcript=combined,
-            status="ok",
-            video_id=video_id,
-        )
+        return TranscriptFetchResult(transcript=combined, status="ok", video_id=video_id)
     except TranscriptsDisabled:
         logger.warning("Captions disabled for video_id=%s", video_id)
         return TranscriptFetchResult(
@@ -136,30 +131,9 @@ def fetch_transcript_from_video_link(url: str) -> TranscriptFetchResult:
         )
 
 
-def get_transcript_from_video_link(url: str) -> str:
-    """Compatibility wrapper for older call sites."""
-    return fetch_transcript_from_video_link(url).transcript
-
-
-# TODO: Replace with real transcript from uploaded file (e.g. Whisper)
-def get_transcript_from_uploaded_file(file_path: str) -> str:
-    """Stub: return placeholder. Real impl would use speech-to-text."""
-    return ""
-
-
-# TODO: Optional OCR on frames that show ingredient lists (e.g. "Ingredients", "材料")
-def get_ocr_text_from_video(video_path_or_url: str) -> str:
-    """Stub: return empty. Real impl would sample frames and run OCR."""
-    return ""
-
-
-def _build_extraction_prompt(transcript: str, ocr_text: str = "") -> str:
-    combined = transcript.strip()
-    if ocr_text.strip():
-        combined += "\n\n[Text from video screen / ingredient cards]:\n" + ocr_text.strip()
-    if not combined:
-        combined = "(No transcript or OCR text provided.)"
-    return f"""You are extracting a cooking recipe from video content. Below is text from the video (speech transcript and/or on-screen ingredient lists).
+def _build_extraction_prompt(transcript: str) -> str:
+    body = transcript.strip() or "(No transcript provided.)"
+    return f"""You are extracting a cooking recipe from video content. Below is the speech transcript.
 
 Extract:
 1) A short dish title. Use the same language as the source when it is clearly Chinese (e.g. 麻婆豆腐 or 麻婆豆腐 (Mapo Tofu)); do not force an English title if the source is Chinese.
@@ -172,8 +146,8 @@ Language rules for ingredient names (critical):
 
 Do not invent ingredients that are not suggested by the text. If something is unclear, make a reasonable guess or omit it.
 
---- TEXT FROM VIDEO ---
-{combined}
+--- TRANSCRIPT ---
+{body}
 --- END ---
 
 Respond with a JSON object only, no markdown:
@@ -196,8 +170,6 @@ def _split_dual_quantity(quantity: str) -> tuple[str, str | None]:
 
 def parse_llm_recipe_response(raw: str) -> tuple[str, list[dict]]:
     """Parse LLM JSON response into title and list of ingredient dicts."""
-    import json
-    # Strip markdown code block if present
     text = raw.strip()
     if text.startswith("```"):
         text = re.sub(r"^```\w*\n?", "", text)
@@ -220,17 +192,13 @@ def parse_llm_recipe_response(raw: str) -> tuple[str, list[dict]]:
     return title, items
 
 
-async def extract_recipe_from_text(transcript: str, ocr_text: str = "") -> Recipe:
+async def extract_recipe_from_text(transcript: str) -> Recipe:
     """
-    Combine transcript + optional OCR, call LLM, return Recipe (without id; caller assigns id).
+    Run the LLM on a transcript and return a Recipe (without source_url; caller fills it).
+    Falls back to a stub recipe when no API key is configured so the flow stays testable.
     """
-    import uuid
-    from openai import AsyncOpenAI
-
-    prompt = _build_extraction_prompt(transcript, ocr_text)
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        # Stub: no API key -> return a demo recipe from placeholder text
+    client = get_openai_client()
+    if client is None:
         title, ingredients = _stub_extraction(transcript or "(no input)")
         return Recipe(
             id=str(uuid.uuid4()),
@@ -241,10 +209,9 @@ async def extract_recipe_from_text(transcript: str, ocr_text: str = "") -> Recip
             raw_extraction_text=transcript or None,
         )
 
-    client = AsyncOpenAI(api_key=api_key)
     response = await client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
+        messages=[{"role": "user", "content": _build_extraction_prompt(transcript)}],
     )
     raw = response.choices[0].message.content or "{}"
     title, ing_list = parse_llm_recipe_response(raw)

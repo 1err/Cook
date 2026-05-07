@@ -8,18 +8,21 @@ import { RequireAuth } from "../components/RequireAuth";
 import { useT } from "../lib/i18n";
 import { TagFilterPopover } from "../components/TagFilterPopover";
 import type { Recipe } from "../types";
-import { getWeekBounds, getPrevNextWeek, formatWeekPlannerKicker } from "../lib/week";
-import { CATEGORY_LABELS, type LibraryFilterId } from "../lib/recipeCategories";
 import {
   MEAL_PLAN_SLOTS,
+  buildWeekMealPlanFingerprint,
+  emptyMealPlanSlots,
+  formatWeekPlannerKicker,
+  getPrevNextWeek,
+  getWeekBounds,
+  normalizeMealPlanSlots,
+  plannerFingerprintStorageKey,
   type MealPlanDay,
   type MealPlanSlots,
   type MealType,
-  buildWeekMealPlanFingerprint,
-  emptyMealPlanSlots,
-  normalizeMealPlanSlots,
-  plannerFingerprintStorageKey,
-} from "../lib/mealPlan";
+} from "@cooking/shared";
+import { CATEGORY_LABELS, type LibraryFilterId } from "../lib/recipeCategories";
+import { getRecipeTags } from "../lib/recipeTags";
 
 const COL_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -57,7 +60,7 @@ function PlannerPageContent() {
     return [...recipes]
       .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
       .filter((r) => {
-        const tags = r.library_tags ?? (r.library_category ? [r.library_category] : []);
+        const tags = getRecipeTags(r);
         if (categoryFilter !== "all" && !tags.includes(categoryFilter)) return false;
         if (q && !r.title.toLowerCase().includes(q)) return false;
         return true;
@@ -264,14 +267,18 @@ function PlannerPageContent() {
           </div>
           <div className="planner-drag-card__body">
             <h4 className="planner-drag-card__title font-headline">{r.title}</h4>
-            {(r.library_tags?.length || r.library_category) ? (
-              <p className="planner-drag-card__meta">
-                {(r.library_tags ?? (r.library_category ? [r.library_category] : []))
-                  .slice(0, 2)
-                  .map((tag) => CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " "))
-                  .join(" • ")}
-              </p>
-            ) : null}
+            {(() => {
+              const tags = getRecipeTags(r);
+              if (tags.length === 0) return null;
+              return (
+                <p className="planner-drag-card__meta">
+                  {tags
+                    .slice(0, 2)
+                    .map((tag) => CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " "))
+                    .join(" • ")}
+                </p>
+              );
+            })()}
           </div>
         </div>
         {slotPicker ? (

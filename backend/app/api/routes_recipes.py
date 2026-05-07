@@ -1,26 +1,28 @@
 """
-Recipe CRUD and import routes. Uses repo + extract service. All require auth.
+Recipe CRUD, parse, catalog, and image-upload routes. All require auth.
+
+Import flow is two-step: ``/recipes/parse/{link,transcript}`` returns a draft
+Recipe without persisting; the client edits and then ``POST /recipes`` saves it.
 """
 import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api._types import LibraryTags
 from app.api.auth import get_current_user
 from app.core.config import get_public_library_editor_emails, settings
-from app.db.session import get_session
 from app.db import repo_recipes
 from app.db.models import UserModel
-from app.models import Recipe, IngredientItem, coerce_library_tags
-from app.extract import _parse_youtube_video_id
-from app.services.extract_service import (
-    fetch_transcript_from_video_link,
-    get_transcript_from_uploaded_file,
-    get_ocr_text_from_video,
+from app.db.session import get_session
+from app.extract import (
+    _parse_youtube_video_id,
     extract_recipe_from_text,
+    fetch_transcript_from_video_link,
 )
+from app.models import IngredientItem, Recipe
 from app.services.storage_service import (
     generate_image_upload_url,
     save_recipe_image_local,
@@ -42,7 +44,7 @@ class UploadImageResponse(BaseModel):
 async def upload_recipe_image(
     request: Request,
     file: UploadFile = File(...),
-    current_user: UserModel = Depends(get_current_user),
+    _user: UserModel = Depends(get_current_user),
 ):
     """Presigned S3 upload when configured; otherwise save to local disk and return file_url (upload_url empty)."""
     content_type = (file.content_type or "").strip().lower()
@@ -76,27 +78,6 @@ async def upload_recipe_image(
     return UploadImageResponse(upload_url="", file_url=f"{base}{rel}")
 
 
-class ImportLinkBody(BaseModel):
-    url: str = ""
-    notes: str = ""
-    title: str = ""
-    library_tags: list[str] = Field(default_factory=list)
-
-    @field_validator("library_tags", mode="before")
-    @classmethod
-    def validate_library_tags(cls, v: object) -> list[str]:
-        return coerce_library_tags(v)
-
-
-def _build_import_recipe_overrides(title: str, library_tags: list[str]) -> dict[str, object]:
-    updates: dict[str, object] = {}
-    clean_title = title.strip()
-    if clean_title:
-        updates["title"] = clean_title
-    updates["library_tags"] = coerce_library_tags(library_tags)
-    return updates
-
-
 def _append_import_notes(text: str, notes: str) -> str:
     clean_notes = (notes or "").strip()
     if not clean_notes:
@@ -104,7 +85,26 @@ def _append_import_notes(text: str, notes: str) -> str:
     return text + ("\n\n" if text else "") + f"User guidance:\n{clean_notes}"
 
 
-async def _parse_recipe_from_link_body(body: ImportLinkBody) -> Recipe:
+def _apply_import_overrides(recipe: Recipe, title: str, library_tags: list[str]) -> Recipe:
+    updates: dict[str, object] = {"library_tags": library_tags}
+    clean_title = title.strip()
+    if clean_title:
+        updates["title"] = clean_title
+    return recipe.model_copy(update=updates)
+
+
+class ParseLinkBody(BaseModel):
+    url: str = ""
+    notes: str = ""
+    title: str = ""
+    library_tags: LibraryTags = Field(default_factory=list)
+
+
+@router.post("/parse/link", response_model=Recipe)
+async def parse_from_link(
+    body: ParseLinkBody,
+    _user: UserModel = Depends(get_current_user),
+):
     url = (body.url or "").strip()
     if not url:
         raise HTTPException(400, "url is required")
@@ -112,95 +112,32 @@ async def _parse_recipe_from_link_body(body: ImportLinkBody) -> Recipe:
     if transcript_result.status != "ok":
         raise HTTPException(422, transcript_result.message or "Unable to import from this link.")
     transcript = _append_import_notes(transcript_result.transcript, body.notes)
-    ocr_text = get_ocr_text_from_video(url)
-    recipe = await extract_recipe_from_text(transcript, ocr_text)
+    recipe = await extract_recipe_from_text(transcript)
     if recipe.thumbnail_url is None:
         video_id = _parse_youtube_video_id(url)
         if video_id:
             recipe = recipe.model_copy(
                 update={"thumbnail_url": f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"}
             )
-    return recipe.model_copy(
-        update={
-            "source_url": url,
-            **_build_import_recipe_overrides(body.title, body.library_tags),
-        }
-    )
+    recipe = recipe.model_copy(update={"source_url": url})
+    return _apply_import_overrides(recipe, body.title, body.library_tags)
 
 
-@router.post("/parse/link", response_model=Recipe)
-async def parse_from_link(
-    body: ImportLinkBody,
-    current_user: UserModel = Depends(get_current_user),
-):
-    del current_user
-    return await _parse_recipe_from_link_body(body)
-
-
-@router.post("/import/link")
-async def import_from_link(
-    body: ImportLinkBody,
-    session: AsyncSession = Depends(get_session),
-    current_user: UserModel = Depends(get_current_user),
-):
-    """Import recipe from video link. Fetches YouTube captions when possible, then LLM extraction."""
-    recipe = await _parse_recipe_from_link_body(body)
-    await repo_recipes.save_recipe(session, recipe, current_user.id)
-    return recipe
-
-
-@router.post("/import/upload")
-async def import_from_upload(
-    file: UploadFile = File(...),
-    session: AsyncSession = Depends(get_session),
-    current_user: UserModel = Depends(get_current_user),
-):
-    """Import recipe from uploaded video file. Transcript stubbed; real impl would use Whisper."""
-    transcript = get_transcript_from_uploaded_file("")
-    ocr_text = get_ocr_text_from_video("")
-    recipe = await extract_recipe_from_text(transcript, ocr_text)
-    await repo_recipes.save_recipe(session, recipe, current_user.id)
-    return recipe
-
-
-class TranscriptBody(BaseModel):
+class ParseTranscriptBody(BaseModel):
     transcript: str = ""
     notes: str = ""
     title: str = ""
-    library_tags: list[str] = Field(default_factory=list)
-
-    @field_validator("library_tags", mode="before")
-    @classmethod
-    def validate_library_tags(cls, v: object) -> list[str]:
-        return coerce_library_tags(v)
-
-
-async def _parse_recipe_from_transcript_body(body: TranscriptBody) -> Recipe:
-    text = (body.transcript or "").strip()
-    text = _append_import_notes(text, body.notes)
-    recipe = await extract_recipe_from_text(text, "")
-    return recipe.model_copy(update=_build_import_recipe_overrides(body.title, body.library_tags))
+    library_tags: LibraryTags = Field(default_factory=list)
 
 
 @router.post("/parse/transcript", response_model=Recipe)
 async def parse_from_transcript(
-    body: TranscriptBody,
-    current_user: UserModel = Depends(get_current_user),
+    body: ParseTranscriptBody,
+    _user: UserModel = Depends(get_current_user),
 ):
-    del current_user
-    return await _parse_recipe_from_transcript_body(body)
-
-
-@router.post("/import/transcript")
-async def import_from_transcript(
-    body: TranscriptBody,
-    session: AsyncSession = Depends(get_session),
-    current_user: UserModel = Depends(get_current_user),
-):
-    """Import by pasted transcript only."""
-    recipe = await _parse_recipe_from_transcript_body(body)
-    await repo_recipes.save_recipe(session, recipe, current_user.id)
-    return recipe
+    text = _append_import_notes((body.transcript or "").strip(), body.notes)
+    recipe = await extract_recipe_from_text(text)
+    return _apply_import_overrides(recipe, body.title, body.library_tags)
 
 
 class CatalogEditorStatus(BaseModel):
@@ -228,9 +165,8 @@ async def catalog_editor_status(
 @router.get("/catalog", response_model=list[Recipe])
 async def recipes_catalog_list(
     session: AsyncSession = Depends(get_session),
-    current_user: UserModel = Depends(get_current_user),
+    _user: UserModel = Depends(get_current_user),
 ):
-    del current_user
     return await repo_recipes.list_public_recipes(session)
 
 
@@ -285,12 +221,7 @@ class RecipeUpdate(BaseModel):
     title: Optional[str] = None
     thumbnail_url: Optional[str] = None
     ingredients: Optional[list[IngredientItem]] = None
-    library_tags: Optional[list[str]] = None
-
-    @field_validator("library_tags", mode="before")
-    @classmethod
-    def validate_library_tags(cls, v: object) -> list[str]:
-        return coerce_library_tags(v)
+    library_tags: Optional[LibraryTags] = None
 
 
 @router.patch("/{recipe_id}", response_model=Recipe)

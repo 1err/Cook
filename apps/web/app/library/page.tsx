@@ -8,6 +8,7 @@ import { RequireAuth } from "../components/RequireAuth";
 import { useT } from "../lib/i18n";
 import { RecipeCard } from "../components/RecipeCard";
 import { CATEGORY_LABELS, type LibraryFilterId, type RecipeTagSlug } from "../lib/recipeCategories";
+import { getRecipeTags } from "../lib/recipeTags";
 import { TagFilterPopover } from "../components/TagFilterPopover";
 import type { Recipe } from "../types";
 
@@ -58,7 +59,7 @@ function LibraryPageContent() {
     return [...recipes]
       .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
       .filter((r) => {
-        const tags = r.library_tags ?? (r.library_category ? [r.library_category] : []);
+        const tags = getRecipeTags(r);
         if (mineFilters.length > 0 && !mineFilters.every((tag) => tags.includes(tag))) return false;
         if (q && !r.title.toLowerCase().includes(q)) return false;
         return true;
@@ -70,7 +71,7 @@ function LibraryPageContent() {
     return [...publicRecipes]
       .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
       .filter((r) => {
-        const tags = r.library_tags ?? (r.library_category ? [r.library_category] : []);
+        const tags = getRecipeTags(r);
         if (publicFilter !== "all" && !tags.includes(publicFilter)) return false;
         if (q && !r.title.toLowerCase().includes(q)) return false;
         return true;
@@ -260,17 +261,19 @@ function LibraryPageContent() {
                     <p className="recipe-card-stitch__sub" title={preview}>
                       {preview}
                     </p>
-                    {(recipe.library_tags?.length || recipe.library_category) ? (
-                      <div className="recipe-card-stitch__tag-row">
-                        {(recipe.library_tags ?? (recipe.library_category ? [recipe.library_category] : []))
-                          .slice(0, 3)
-                          .map((tag) => (
+                    {(() => {
+                      const tags = getRecipeTags(recipe);
+                      if (tags.length === 0) return null;
+                      return (
+                        <div className="recipe-card-stitch__tag-row">
+                          {tags.slice(0, 3).map((tag) => (
                             <span key={tag} className="recipe-card-stitch__tag-mini font-headline">
                               {CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}
                             </span>
                           ))}
-                      </div>
-                    ) : null}
+                        </div>
+                      );
+                    })()}
                     <button
                       type="button"
                       className="btn-primary"

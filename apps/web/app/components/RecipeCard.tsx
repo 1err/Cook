@@ -6,6 +6,7 @@ import {
   CATEGORY_LABELS,
   categoryBadgeStyle,
 } from "../lib/recipeCategories";
+import { getRecipeTags } from "../lib/recipeTags";
 
 function ingredientPreview(recipe: Recipe, maxLength = 72): string {
   const parts = recipe.ingredients.slice(0, 4).map((i) => i.name).filter(Boolean);
@@ -15,7 +16,7 @@ function ingredientPreview(recipe: Recipe, maxLength = 72): string {
 
 export function RecipeCard({ recipe, isHighlighted }: { recipe: Recipe; isHighlighted: boolean }) {
   const preview = ingredientPreview(recipe);
-  const tags = recipe.library_tags ?? (recipe.library_category ? [recipe.library_category] : []);
+  const tags = getRecipeTags(recipe);
   const featuredTags = tags.slice(0, 2);
   const badgeTag = featuredTags[0];
 

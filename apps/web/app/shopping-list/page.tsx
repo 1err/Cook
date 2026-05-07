@@ -6,22 +6,22 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
 import { useI18n, useT } from "../lib/i18n";
-import { getWeekBounds, getPrevNextWeek, formatWeekRangeDisplay } from "../lib/week";
 import type { Recipe } from "../types";
 import {
-  type MealPlanDay,
-  buildWeekMealPlanFingerprint,
-  plannerFingerprintStorageKey,
-} from "../lib/mealPlan";
-import {
-  GROCERY_CATEGORY_ORDER,
   CATEGORY_MATERIAL_ICONS,
-  getDisplayCategory,
-  normalizeGroceryCategory,
+  GROCERY_CATEGORY_ORDER,
   PRODUCT_STORE_LABELS,
-  type ProductStore,
+  buildWeekMealPlanFingerprint,
+  formatWeekRangeDisplay,
+  getDisplayCategory,
+  getPrevNextWeek,
+  getWeekBounds,
+  normalizeGroceryCategory,
+  plannerFingerprintStorageKey,
   type GroceryCategory,
-} from "../lib/shoppingCategories";
+  type MealPlanDay,
+  type ProductStore,
+} from "@cooking/shared";
 
 const SMART_SHOPPING_LIST_PREFIX = "smartShoppingList";
 const SMART_SHOPPING_PRODUCTS_PREFIX = "smartShoppingProducts";

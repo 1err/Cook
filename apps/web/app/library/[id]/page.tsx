@@ -11,6 +11,7 @@ import {
   RECIPE_TAG_GROUPS,
   type RecipeTagSlug,
 } from "../../lib/recipeCategories";
+import { getRecipeTags } from "../../lib/recipeTags";
 import type { Recipe, IngredientItem } from "../../types";
 
 function RecipeEditContent() {
@@ -40,7 +41,7 @@ function RecipeEditContent() {
         const res = await apiFetch(`/recipes/${id}`);
         if (!res.ok) throw new Error("Recipe not found");
         const data: Recipe = await res.json();
-        const nextTags = (data.library_tags ?? (data.library_category ? [data.library_category] : [])) as RecipeTagSlug[];
+        const nextTags = getRecipeTags(data);
         if (!cancelled) {
           setRecipe(data);
           setTitle(data.title);

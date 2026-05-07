@@ -3,13 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { formatIngredientQuantity } from "@cooking/shared";
 import { apiFetch } from "../../lib/api";
 import { RequireAuth } from "../../components/RequireAuth";
-import { formatIngredientQuantity } from "../../lib/ingredients";
 import { useT } from "../../lib/i18n";
-import {
-  CATEGORY_LABELS,
-} from "../../lib/recipeCategories";
+import { CATEGORY_LABELS } from "../../lib/recipeCategories";
+import { getRecipeTags } from "../../lib/recipeTags";
 import type { Recipe } from "../../types";
 
 function splitTitleAccent(title: string): { lead: string; accent: string } {
@@ -89,7 +88,7 @@ function RecipeDetailContent() {
   if (!recipe) return null;
 
   const ingredientRows = recipe.ingredients.filter((i) => (i.name || "").trim().length > 0);
-  const tags = recipe.library_tags ?? (recipe.library_category ? [recipe.library_category] : []);
+  const tags = getRecipeTags(recipe);
   const { lead, accent } = splitTitleAccent(recipe.title);
 
   return (

@@ -11,6 +11,7 @@ out/
 *.db
 cooking.db
 backend/uploads/
+tsconfig.tsbuildinfo
 
 # Env
 .env

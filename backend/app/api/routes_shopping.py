@@ -1,16 +1,16 @@
 """
-Shopping list aggregation and refine routes. Uses repo + shopping_service + refine_service. All require auth.
+Shopping list aggregation and refine routes. All require auth.
 """
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
-from app.db.session import get_session
-from app.db import repo_recipes, repo_mealplan
+from app.db import repo_mealplan, repo_recipes
 from app.db.models import UserModel
+from app.db.session import get_session
 from app.models import Recipe, ShoppingListItem
-from app.services.refine_service import refine_shopping_list
+from app.refine import refine_shopping_list
 from app.services.shopping_service import aggregate_ingredients
 
 router = APIRouter(tags=["shopping"])
@@ -37,6 +37,11 @@ class PurchaseItem(BaseModel):
 
 
 class RefineResponse(BaseModel):
+    """Legacy shape: ``remove`` and ``likely_pantry`` are always empty.
+
+    The model only emits ``purchase_items`` (with category ``Pantry & Dry Goods``
+    for staples). The two empty arrays are kept for client-side compatibility.
+    """
     remove: list[str]
     likely_pantry: list[LikelyPantryItem]
     purchase_items: list[PurchaseItem]
@@ -49,11 +54,7 @@ async def shopping_list(
     session: AsyncSession = Depends(get_session),
     current_user: UserModel = Depends(get_current_user),
 ):
-    """
-    Aggregated ingredients for meal plans in [start, end].
-    Groups by ingredient name (case-insensitive). Quantities with same unit
-    are summed when parseable; otherwise concatenated.
-    """
+    """Aggregated ingredients for meal plans in [start, end] (inclusive)."""
     plans = await repo_mealplan.get_meal_plans_in_range(session, start, end, current_user.id)
     recipe_cache: dict[str, Recipe | None] = {}
     for p in plans:
@@ -75,17 +76,14 @@ async def shopping_list(
 @router.post("/shopping-list/refine", response_model=RefineResponse)
 async def shopping_list_refine(
     body: RefineRequest,
-    current_user: UserModel = Depends(get_current_user),
+    _user: UserModel = Depends(get_current_user),
 ):
-    """Refine aggregated list: remove non-purchasables, flag pantry, suggest purchase quantities. Stateless."""
+    """Suggest grouped purchase quantities for an aggregated list. Stateless."""
     raw = [{"name": i.name, "quantity": i.quantity} for i in body.items]
-    result = await refine_shopping_list(raw, pantry_names=[])
+    result = await refine_shopping_list(raw)
     return RefineResponse(
-        remove=result["remove"],
-        likely_pantry=[
-            LikelyPantryItem(name=p["name"], reason=p["reason"])
-            for p in result["likely_pantry"]
-        ],
+        remove=[],
+        likely_pantry=[],
         purchase_items=[
             PurchaseItem(
                 name=p["name"],

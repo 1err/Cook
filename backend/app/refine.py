@@ -3,9 +3,10 @@ Generate a structured grocery shopping list from aggregated ingredients using LL
 """
 import json
 import logging
-import os
 import re
 from typing import Any
+
+from app.core.llm import get_openai_client
 
 logger = logging.getLogger(__name__)
 
@@ -195,25 +196,16 @@ def _parse_llm_refine_response(raw: str, fallback_items: list[dict[str, str]]) -
     return {"purchase_items": purchase_out}
 
 
-async def refine_shopping_list(items: list[dict[str, str]], pantry_names: list[str] | None = None) -> dict[str, Any]:
-    """Return ``{ "purchase_items": [...] }`` from aggregated ingredients. ``pantry_names`` is unused (call-site compatibility)."""
-    _ = pantry_names
-
+async def refine_shopping_list(items: list[dict[str, str]]) -> dict[str, Any]:
+    """Return ``{ "purchase_items": [...] }`` from aggregated ingredients."""
     if not items:
         return {"purchase_items": []}
 
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
+    client = get_openai_client()
+    if client is None:
         logger.info("OPENAI_API_KEY not set; returning fallback refine.")
         return _fallback_result(items)
 
-    try:
-        from openai import AsyncOpenAI
-    except ModuleNotFoundError:
-        logger.warning("openai not installed; returning fallback refine.")
-        return _fallback_result(items)
-
-    client = AsyncOpenAI(api_key=api_key)
     try:
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
