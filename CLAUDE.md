@@ -33,7 +33,7 @@ docker compose down && docker compose up --build -d   # then open http://localho
 - **Vercel project setting *Root Directory* = `apps/web`.** Build is driven by `apps/web/vercel.json` (placed *inside* the Root Directory so Vercel reads it and resolves all paths relative to `apps/web`).
 - `apps/web/vercel.json` pins:
   - `framework: "nextjs"`
-  - `installCommand: "npm install --prefix ../.. --include-workspace-root --workspaces"` — runs the install at the repo root via `--prefix` so npm sees the workspace `package.json`, links `@cooking/shared` / `@cooking/api-client` symlinks, and never collides with Vercel's default install pass (which would otherwise produce `Tracker "idealTree" already exists`).
+  - `installCommand: "cd /vercel/path0 && npm install"` — Vercel runs `installCommand` with a shallow cwd (observed empirically: relative `../..` resolved to `/`, not the repo root), so the path is hardcoded to `/vercel/path0` (Vercel's documented clone path). Running `npm install` from the workspace root installs every workspace and links `@cooking/shared` / `@cooking/api-client` symlinks. Setting `installCommand` explicitly also replaces Vercel's default install pass, which removed the `Tracker "idealTree" already exists` collision we hit when an override was set in the dashboard.
   - `buildCommand: "next build"`
   - `outputDirectory: ".next"`
 - **All Build & Development Settings overrides in the dashboard must be OFF.** `apps/web/vercel.json` is the source of truth. Toggling on a dashboard override layers it on top of Vercel's auto-install and will reintroduce the idealTree collision.
