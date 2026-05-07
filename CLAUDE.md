@@ -30,18 +30,20 @@ docker compose down && docker compose up --build -d   # then open http://localho
 ### Frontend — Vercel
 
 - Project hosts both `chef-world.com` and `www.chef-world.com` plus the auto preview URL `cook-lake-alpha.vercel.app`.
-- **Vercel project setting *Root Directory* = `apps/web`.** Build is driven by `apps/web/vercel.json` (placed *inside* the Root Directory so Vercel reads it and resolves all paths relative to `apps/web`).
-- `apps/web/vercel.json` pins:
+- **Vercel project setting *Root Directory* = empty.** The whole build runs from the repo root.
+- **Repo-root `vercel.json`** is the single source of truth:
   - `framework: "nextjs"`
-  - `installCommand: "cd /vercel/path0 && npm install && cd /vercel/path0/apps/web && npm install"` — Vercel runs `installCommand` from a shallow cwd (observed: relative `../..` resolved to filesystem root, not the repo root), so the path is hardcoded to `/vercel/path0` (Vercel's documented clone path). The first `npm install` runs at the workspace root and installs every workspace (hoists most deps into `/vercel/path0/node_modules/`). The second `npm install` runs in `apps/web/` so Vercel's post-install Next.js version check (which reads `apps/web/node_modules/next/package.json`) sees the package and doesn't crash with `No Next.js version detected`. Both installs share npm's cache so the second is fast.
-  - `buildCommand: "next build"`
-  - `outputDirectory: ".next"`
-- **All Build & Development Settings overrides in the dashboard must be OFF.** `apps/web/vercel.json` is the source of truth. Toggling on a dashboard override layers it on top of Vercel's auto-install and will reintroduce the idealTree collision.
+  - `installCommand: "npm ci --no-audit --no-fund"` — `npm ci` is faster, deterministic from the lockfile, and avoids the `Tracker "idealTree" already exists` collision that `npm install` hit. `--no-audit --no-fund` cuts the noisy security-audit and funding-message lines from the build log.
+  - `buildCommand: "npm --workspace @cooking/web run build"` — runs `next build` inside the `@cooking/web` workspace.
+  - `outputDirectory: "apps/web/.next"` — relative to the repo root.
+- **Repo-root `package.json` lists `next` as a `devDependency`.** This is required: Vercel's framework detector reads the project's root `package.json` (regardless of Root Directory) and refuses to deploy without seeing `"next"` listed. The version must match what `apps/web/package.json` declares. When upgrading Next, update both files.
+- **All Build & Development Settings overrides in the dashboard must be OFF.** `vercel.json` is the source of truth. Dashboard overrides layer on top of Vercel's default install pass and reintroduce the idealTree collision.
 - Production env vars (Vercel → Settings → Environment Variables → Production):
   - `NEXT_PUBLIC_API_BASE = https://api.chef-world.com` (so the browser calls the ECS backend, not localhost).
-- History notes:
-  - Root Directory used to read `frontend/` from before the monorepo split, which broke every deploy with `The specified Root Directory "frontend" does not exist`. Don't reset it back to empty — Next.js framework detection fails on the root `package.json` (which has no `next` dependency, only the `workspaces` array).
-  - A repo-root `vercel.json` was tried first and rejected: with Root Directory = `apps/web`, Vercel resolved its `outputDirectory: "apps/web/.next"` against `apps/web`, producing the path-doubled `apps/web/apps/web/.next`. Always keep `vercel.json` inside the Root Directory.
+- History notes (don't repeat these mistakes):
+  - Root Directory used to read `frontend/` from before the monorepo split, which broke every deploy with `The specified Root Directory "frontend" does not exist`.
+  - Setting Root Directory to `apps/web` *seems* logical but doesn't help: Vercel still reads the repo-root `package.json` for its Next.js version check, and we can't reach a clean configuration from there without a dashboard install-command override that hits idealTree collisions. Root Directory must be empty.
+  - `framework: "nextjs"` in `vercel.json` does **not** bypass the version-detection check; it only pins the framework choice. The check still requires `next` in the project's root `package.json`.
 
 ### Backend — AWS ECS
 

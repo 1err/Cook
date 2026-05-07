@@ -13,5 +13,8 @@
     "mobile:start": "npm --workspace @cooking/mobile run start",
     "mobile:ios": "npm --workspace @cooking/mobile run ios",
     "mobile:android": "npm --workspace @cooking/mobile run android"
+  },
+  "devDependencies": {
+    "next": "14.2.21"
   }
 }
