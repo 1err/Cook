@@ -15,6 +15,6 @@
     "mobile:android": "npm --workspace @cooking/mobile run android"
   },
   "devDependencies": {
-    "next": "14.2.21"
+    "next": "14.2.35"
   }
 }
