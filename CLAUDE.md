@@ -30,9 +30,10 @@ docker compose down && docker compose up --build -d   # then open http://localho
 ### Frontend — Vercel
 
 - Project hosts both `chef-world.com` and `www.chef-world.com` plus the auto preview URL `cook-lake-alpha.vercel.app`.
-- Build env: `NEXT_PUBLIC_API_BASE=https://api.chef-world.com` (so the browser hits the ECS backend, not localhost).
-- Build is pinned by `vercel.json` at the repo root: framework `nextjs`, `installCommand: npm install`, `buildCommand: npm --workspace @cooking/web run build`, `outputDirectory: apps/web/.next`. Install runs from repo root so `file:`-linked workspaces (`@cooking/shared`, `@cooking/api-client`) resolve.
-- **Vercel project setting *Root Directory* must be empty (preferred) or `apps/web`.** It used to read `frontend/` (a path that no longer exists from the monorepo split) which broke every deploy. After saving an empty Root Directory the `vercel.json` here drives the build.
+- **Vercel project setting *Root Directory* = `apps/web`.** Required: with that setting, Vercel detects Next.js in `apps/web/package.json`, and modern npm (v7+) walks up from `apps/web` to find the repo-root `package.json` `"workspaces"` block and links `@cooking/shared` / `@cooking/api-client` automatically. There is no `vercel.json` and no Build / Install / Output overrides in the dashboard — the standard Next.js + npm-workspace monorepo pattern is enough.
+- Production env vars (Vercel → Settings → Environment Variables → Production):
+  - `NEXT_PUBLIC_API_BASE = https://api.chef-world.com` (so the browser calls the ECS backend, not localhost).
+- History note: Root Directory used to read `frontend/` from before the monorepo split, which broke every deploy with `The specified Root Directory "frontend" does not exist`. Don't reset it back to empty — Next.js framework detection fails on the root `package.json` (which has no `next` dependency, only the `workspaces` array).
 
 ### Backend — AWS ECS
 
@@ -244,7 +245,6 @@ Two parallel concepts on `RecipeModel`:
 These are tracked here — not in commit messages — so each session can pick them up:
 
 - ECS task def `cooking-backend` `OPENAI_API_KEY` is still a placeholder string — LLM features silently fall back to stubs in production until a real key is set.
-- Vercel dashboard *Root Directory* must be empty (or `apps/web`). The repo now ships a `vercel.json` that pins install/build/output, so once the dashboard is fixed deploys will be reproducible from code. Confirm the dashboard is updated.
 - `LEGACY_LIBRARY_CATEGORY_TO_TAG` and the dual `library_tags` / `library_category` columns: once we backfill all rows so `library_tags` is always populated, drop the `library_category` column + the legacy mapping + the `getRecipeTags` fallback branch.
 - `apps/web/app/globals.css` is ~88 KB. Worth a sweep for orphaned selectors, but only after the next round of UI changes — not blind dead-CSS hunting.
 - `cache_warmer_queries.py::ALL_QUERIES` (~200 entries) — audit against actual hit logs and prune entries no one searches for.
