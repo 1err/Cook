@@ -1,20 +1,42 @@
 {
   "expo": {
-    "name": "Cooking Mobile",
+    "name": "Chef World",
     "slug": "cooking-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
+    "scheme": "cooking",
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.chefworld.cooking",
+      "buildNumber": "1.0.0",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.chefworld.cooking",
       "adaptiveIcon": {
         "backgroundColor": "#faf9f8"
       }
-    }
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Chef World needs access to your photos so you can attach a recipe cover image."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "34e453ca-5d4b-408a-881e-7c82b3c9d2d1"
+      }
+    },
+    "owner": "1945174310"
   }
 }

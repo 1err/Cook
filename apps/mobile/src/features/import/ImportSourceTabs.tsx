@@ -1,0 +1,64 @@
+import React from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { colors, radii, spacing, typography } from "../../theme";
+
+export type ImportMode = "link" | "transcript";
+
+type ImportSourceTabsProps = {
+  value: ImportMode;
+  onChange: (next: ImportMode) => void;
+};
+
+export function ImportSourceTabs({ value, onChange }: ImportSourceTabsProps) {
+  return (
+    <View style={styles.wrap}>
+      {(["link", "transcript"] as ImportMode[]).map((mode) => {
+        const active = value === mode;
+        return (
+          <Pressable
+            key={mode}
+            onPress={() => onChange(mode)}
+            style={({ pressed }) => [
+              styles.tab,
+              active && styles.tabActive,
+              pressed && styles.pressed,
+            ]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+          >
+            <Text style={[styles.label, active && styles.labelActive]}>
+              {mode === "link" ? "YouTube link" : "Transcript"}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    flexDirection: "row",
+    backgroundColor: colors.surfaceContainer,
+    borderRadius: radii.full,
+    padding: 4,
+    marginBottom: spacing.lg,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.full,
+    alignItems: "center",
+  },
+  tabActive: {
+    backgroundColor: colors.white,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  label: { ...typography.subhead, color: colors.onSurfaceVariant, fontWeight: "600" },
+  labelActive: { color: colors.onSurface },
+  pressed: { opacity: 0.8 },
+});
