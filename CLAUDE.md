@@ -13,7 +13,7 @@ The cache is shared across all users: when one user triggers a fresh scrape, eve
 ## Repo shape (npm workspaces + Python)
 
 - `apps/web` — Next.js 14 App Router (`@cooking/web`). Cookie-based auth. Source of nearly all real product UI today. Pages: `import/`, `library/{,[id]}`, `planner/`, `shopping-list/`, `recipe/[id]`, `preview/` (admin cache console), `login/`, `register/`.
-- `apps/mobile` — Expo / React Native (`@cooking/mobile`). **Early scaffolding for a real iOS app — currently messy and not at parity.** Only `Login`, `Register`, `Library`, `RecipeDetail`, and `Settings` are real. `Planner`, `ShoppingList`, and `Import` are still `PlaceholderScreen` stubs (`apps/mobile/src/screens/{Planner,ShoppingList,Import}Screen.tsx`). Don't claim mobile parity in commit messages or docs.
+- `apps/mobile` — Expo / React Native iOS app (`@cooking/mobile`). Bottom tab bar (Library / Planner / Shopping / Profile) over per-tab native stacks, with Import as a root-level modal. Source layout is feature-folders + a small design system (see "Mobile structure" below). All product surfaces ship: auth flow, Library list with **segmented control between "My Library" and "Public Library"** (catalog browse + one-tap copy-to-library, already-copied detection via `catalog_source_recipe_id`), Recipe detail (with editor-only "Add/Remove public library" item in the action menu, gated by `/recipes/catalog/editor-status`), Recipe edit, Planner (week navigation + bottom-sheet recipe picker), Shopping (smart list + per-store product picks + **"Load top picks from {store}" bulk-scrape button** that opens all panels and fetches at concurrency 3 + per-category **"Already have" subsection for checked items** + planner-stale detection), Import (YouTube link + transcript with image upload).
 - `packages/shared` — types, week/meal-plan/ingredient/category helpers, store enum, i18n strings (`packages/shared/src/messages/{en,zh}.json`). **Single source for these helpers** — pages import from `@cooking/shared` directly; no per-app re-export shims under `apps/web/app/lib/`.
 - `packages/api-client` — `createApiClient({ baseUrl, auth })`. `auth.kind: "cookie"` adds `credentials: "include"`; `auth.kind: "bearer"` reads a token via `getToken()` and adds `Authorization: Bearer …`.
 - `backend/` — FastAPI + async SQLAlchemy + Alembic. **Postgres only** (asyncpg).
@@ -57,7 +57,7 @@ docker compose down && docker compose up --build -d   # then open http://localho
   - `DATABASE_URL=postgresql+asyncpg://cooking:<url-encoded-password>@cooking-db.co944gii0fur.us-east-1.rds.amazonaws.com:5432/postgres` — note the `%` in the password is URL-encoded as `%25` in the actual env value (Alembic and asyncpg both fail otherwise; see commit `ea811a6`).
   - `CORS_ALLOW_ORIGINS=http://localhost:3000,https://cook-lake-alpha.vercel.app,https://chef-world.com,https://www.chef-world.com`
   - `COOKIE_SAMESITE=none`, `COOKIE_SECURE=true` — required because the browser is on `chef-world.com` and the API is on `api.chef-world.com` (cross-site). If either is wrong, login appears to succeed but the cookie is dropped on the next request.
-  - `OPENAI_API_KEY=<placeholder>` — currently a placeholder, so production silently falls back to stub extraction (`extract.py` returns demo Mapo Tofu / generic placeholder) and stub refine output. The web flow still works end-to-end; it just doesn't actually call OpenAI. **Replace this before claiming LLM features are live.**
+  - `OPENAI_API_KEY=<real key>` — set in the ECS task def env (not in this repo). When unset/empty, `app/core/llm.py::get_openai_client()` returns `None` and callers fall back to deterministic stubs (extract → demo Mapo Tofu / generic placeholder; refine → passthrough categorized as `Other`).
 - Database: AWS RDS Postgres at `cooking-db.co944gii0fur.us-east-1.rds.amazonaws.com:5432`, database `postgres`, user `cooking`. `DATABASE_SSL` is **not** set in the task def today; if RDS forces TLS this should be flipped to `true`.
 - Image storage: S3 bucket `cooking-images-930067562682` in `us-east-1`. Recipe uploads use presigned PUT directly from the browser when both `AWS_REGION` and `S3_BUCKET_NAME` are set (true in prod).
 - Migrations: backend container runs `alembic upgrade head` on startup (`backend/Dockerfile` CMD). New tasks therefore self-migrate; no separate migration step is wired up.
@@ -65,6 +65,50 @@ docker compose down && docker compose up --build -d   # then open http://localho
 ### Local Docker stack
 
 `docker-compose.yml` brings up Postgres + backend + web. Backend `.env` is loaded via `env_file: backend/.env`, but local compose-level overrides force `DATABASE_URL`, `DATABASE_SSL=false`, and a localhost CORS list. The web container is built with `NEXT_PUBLIC_API_BASE=http://localhost:8000` so the browser still talks to the host-published port. `./backend/uploads` is bind-mounted into `/app/uploads` so locally-uploaded recipe images survive container rebuilds (matters when `S3_BUCKET_NAME` is not set in local `backend/.env`).
+
+### iOS — EAS Build
+
+- App is published as `Chef World` (`apps/mobile/app.json::expo.name`). Bundle identifier: `com.chefworld.cooking` (iOS + Android). Deep-link scheme: `cooking://`.
+- **Expo SDK 54** (`expo@^54.0.0`, `react@19.1.0`, `react-native@0.81.5`). New Architecture is enabled (`app.json::expo.newArchEnabled: true`) — required because Reanimated 4 (which SDK 54 ships) doesn't support the Legacy Architecture. SDK 55 will drop Legacy entirely, so we're already on the only supported path. Reanimated 4 splits worklets into `react-native-worklets` (peer); the Babel plugin name is `react-native-worklets/plugin`, **not** the legacy `react-native-reanimated/plugin`.
+- Build profiles live in `apps/mobile/eas.json`:
+  - `development` — dev client + simulator. `EXPO_PUBLIC_API_BASE=http://localhost:8000`. Use this for day-to-day iteration.
+  - `preview` — internal-distribution build pointed at production API (`https://api.chef-world.com`). No dedicated staging environment exists yet; revisit `eas.json` when one does.
+  - `production` — store-bound build. `autoIncrement: true` so EAS owns build numbers (matches `appVersionSource: "remote"`).
+- Submit profile (`eas.json::submit.production.ios`) has placeholder `appleId` / `ascAppId` / `appleTeamId` — fill in before the first `eas submit -p ios`.
+- One-time prerequisites:
+  ```bash
+  npm i -g eas-cli            # only if you don't already have it
+  eas login                   # interactive Expo account login
+  eas build:configure         # creates the project ID on Expo's side (only once)
+  ```
+- Typical flow:
+  ```bash
+  cd apps/mobile
+  eas build --profile development --platform ios   # dev client for sim/device
+  eas build --profile preview --platform ios       # shareable internal build
+  eas build --profile production --platform ios && eas submit -p ios
+  ```
+- Real-device dev: set `EXPO_PUBLIC_API_BASE=http://<lan-ip>:8000` in your shell before `expo start --dev-client` (the `localhost` default resolves to the phone itself, not your machine).
+
+#### Running the dev client locally — gotchas worth remembering
+
+Three things will eat hours if you don't know them up front. The simulator's redbox error message is misleading in two of these cases ("Could not connect to development server" when Metro is actually fine).
+
+1. **Backend must be running first.** The dev client hits `http://localhost:8000` by default (`apps/mobile/src/config.ts::getApiBase`). Without `docker compose up --build -d` from the repo root, every API call returns "Network request failed" — the simulator boots fine but login fails immediately. Easy to forget after a fresh laptop reboot. Verify with `curl http://localhost:8000/health`.
+
+2. **Hotspot / "constrained" network interfaces blackhole the bundle.** When the Mac's active interface is on a phone hotspot (typically `172.20.10.x`, marked `flags=…constrained` in `ifconfig`), Expo prints `exp://<hotspot-ip>:8081` on startup and the simulator's bundle fetch silently times out at 30s. Metro is healthy (`curl http://localhost:8081/status` returns 200), but the simulator can't reach the hotspot IP. Fix:
+   ```bash
+   cd apps/mobile
+   REACT_NATIVE_PACKAGER_HOSTNAME=localhost npx expo start --ios --clear
+   ```
+   Forces Metro's bundle URL to `http://localhost:8081/...`. The simulator can always reach `localhost`.
+
+3. **Don't run `npm run mobile:ios -- --clear` from the repo root.** npm strips the `--clear` flag with an `Unknown cli config "--clear"` warning, so Metro starts with a stale Babel cache. The worklets plugin (`react-native-worklets/plugin`, used by Reanimated 4) needs the cache cleared on fresh installs (otherwise you'll get cryptic "Reanimated is not configured properly" failures). Run the expo CLI directly:
+   ```bash
+   cd apps/mobile && npx expo start --ios --clear
+   ```
+
+If you see the "Could not connect" redbox, check in this order: is `curl http://localhost:8081/status` returning 200 (Metro alive)? is the bundle URL on-screen using `localhost` and not a hotspot IP (gotcha #2)? did the bundle compile finish (look for `Bundled <ms> apps/mobile/index.js (N modules)` in Metro stdout)? If Metro alive + URL is localhost + bundle never compiles, suspect a workspace resolution failure — `apps/mobile/metro.config.js` must be present (see "Cross-package imports" below).
 
 ## Commands
 
@@ -217,12 +261,16 @@ Both AWS vars must be either both set or both empty (validated in `Settings.vali
 
 ### Cross-package imports
 
-Web and mobile depend on `@cooking/shared` and `@cooking/api-client` via `file:` workspace links. `apps/web/next.config.mjs` lists them in `transpilePackages` — add new shared packages there too, or Next won’t transpile them. The web Dockerfile's build context is the **repo root** for the same reason.
+Web and mobile depend on `@cooking/shared` and `@cooking/api-client` via `file:` workspace links. `apps/web/next.config.mjs` lists them in `transpilePackages` — add new shared packages there too, or Next won’t transpile them. The web Dockerfile's build context is the **repo root** for the same reason. `@cooking/api-client` exposes the full recipe surface including catalog ops: `recipes.catalog()`, `recipes.copyCatalog(id)`, `recipes.editorStatus()`, `recipes.setCatalogVisibility(id, isPublic)`. Web currently uses raw `apiFetch` for the catalog routes; mobile uses these typed methods.
 
-Pages and components import shared helpers (week math, meal-plan slot helpers, ingredient formatting, shopping categories) directly from `@cooking/shared` — there are no per-app re-export shims under `apps/web/app/lib/`. The two real local libs are:
+For mobile, `apps/mobile/metro.config.js` adds the workspace root to `watchFolders` and `resolver.nodeModulesPaths`. The `disableHierarchicalLookup` flag is intentionally left at the default (off): with the SDK 54 dep tree, several Expo transitives (`expo-asset`, `babel-preset-expo`, etc.) end up nested at `apps/mobile/node_modules/expo/node_modules/` rather than hoisted to the root — Metro needs hierarchical walking to find them. Without the workspace-root `watchFolders` + `nodeModulesPaths` entry, Metro hangs on bundle compile (the simulator shows a misleading "Could not connect to development server" red error after a 30s timeout). When adding a new shared package, no Metro changes are needed; just install it in `apps/mobile/package.json`.
 
-- `app/lib/recipeCategories.ts` — UI-only data (`CATEGORY_LABELS`, `RECIPE_TAG_GROUPS`, `LIBRARY_FILTER_CHIPS`, `categoryBadgeStyle`).
-- `app/lib/recipeTags.ts::getRecipeTags(recipe)` — returns `library_tags` or, for legacy rows, `[library_category]`. Use this everywhere instead of the inline `recipe.library_tags ?? (recipe.library_category ? [recipe.library_category] : [])` fallback.
+The mobile `babel.config.js` uses `require.resolve("babel-preset-expo")` and `require.resolve("react-native-worklets/plugin")` rather than bare specifiers. This is necessary because npm sometimes installs these into `apps/mobile/node_modules/` rather than hoisting to the repo root, and Babel runs from `<root>/node_modules/@babel/core/...` where Node's standard resolver can't reach into a sibling workspace. `require.resolve` runs from the babel.config.js file's location, sidestepping the issue.
+
+Pages and components import shared helpers (week math, meal-plan slot helpers, ingredient formatting, shopping categories, recipe tag groups, `getRecipeTags`) directly from `@cooking/shared` — there are no per-app re-export shims under `apps/web/app/lib/`. The one truly web-only lib is:
+
+- `app/lib/recipeCategories.ts` — re-exports `RECIPE_TAG_GROUPS` / `TAG_LABELS` / `CATEGORY_LABELS` / `LIBRARY_FILTER_CHIPS` / `recipeTagGroupFor` / `RecipeTagSlug` from `@cooking/shared`, plus the web-only `categoryBadgeStyle(slug)` (returns `CSSProperties` — needs the React DOM type). Mobile imports the shared exports directly.
+- `app/lib/recipeTags.ts` is a thin re-export of `getRecipeTags` from `@cooking/shared`; existing callers don't need to change. Mobile uses `import { getRecipeTags } from "@cooking/shared"` directly.
 
 The slug union `RecipeTagSlug` lives in `@cooking/shared/types`.
 
@@ -233,11 +281,32 @@ Two parallel concepts on `RecipeModel`:
 - `library_tags` (string of JSON array; new) — multi-select.
 - `library_category` (nullable single string; legacy) — kept in sync as `tags[0]`.
 
-`backend/app/models.py` defines `RECIPE_TAG_SLUGS` (frozen 31-slug set) and `LEGACY_LIBRARY_CATEGORY_TO_TAG` (e.g. `quick_dinner` → `quick`). Anything written to either column passes through `coerce_library_tags`. Request bodies in `routes_recipes.py` use the reusable `LibraryTags = Annotated[list[str], BeforeValidator(coerce_library_tags)]` from `app/api/_types.py` instead of repeating a per-model `@field_validator`. The same slug list is mirrored as a TS union in `packages/shared/src/types.ts::RecipeTagSlug` and re-listed in `apps/web/app/lib/recipeCategories.ts::RECIPE_TAG_GROUPS`. **Adding a tag means three edits**: backend `models.py`, shared `types.ts`, web `recipeCategories.ts`.
+`backend/app/models.py` defines `RECIPE_TAG_SLUGS` (frozen 31-slug set) and `LEGACY_LIBRARY_CATEGORY_TO_TAG` (e.g. `quick_dinner` → `quick`). Anything written to either column passes through `coerce_library_tags`. Request bodies in `routes_recipes.py` use the reusable `LibraryTags = Annotated[list[str], BeforeValidator(coerce_library_tags)]` from `app/api/_types.py` instead of repeating a per-model `@field_validator`. The same slug list is mirrored as a TS union in `packages/shared/src/types.ts::RecipeTagSlug` and re-listed in `packages/shared/src/recipeTags.ts::RECIPE_TAG_GROUPS`. **Adding a tag means three edits**: backend `models.py`, shared `types.ts`, shared `recipeTags.ts`.
 
 ### Meal plan storage
 
 `MealPlanModel.recipe_ids` is a JSON-serialized string in a `Text` column. Newer rows are objects (`{breakfast,lunch,dinner}`); some legacy rows are arrays. `normalize_meal_plan_slots` (in `app/models.py`) handles both shapes on read and on PUT body parsing. Don’t bypass it.
+
+### Mobile structure
+
+`apps/mobile/src/` is organized into:
+
+- `theme/` — `colors.ts`, `spacing.ts`, `radii.ts`, `typography.ts`, `index.ts`. Plain imports (no `useTheme()` hook — no dark mode in scope). All hex codes live here; feature code never inlines colors.
+- `components/` — primitives: `Screen` (safe-area + optional KeyboardAvoidingView + ScrollView with `contentInsetAdjustmentBehavior="automatic"`), `Card`, `Button` (variants `primary | secondary | ghost | destructive`, fires `expo-haptics` selection feedback on primary press-in), `IconButton`, `EmptyState`, `TextField`, `ListRow`. Import from `@/src/components`.
+- `navigation/` — `RootStack` swaps between `AuthStack` and `MainTabs` based on `useAuth().token`, with `ImportModal` as a sibling root screen (`presentation: "modal"`). `MainTabs` is a bottom-tab navigator (Library / Planner / Shopping / Profile); each tab owns a native-stack under `navigation/stacks/`. All `ParamList` types live in `navigation/types.ts` (single source of truth — no more `RootStackParamList` exported from `App.tsx`). The slug for the Profile tab is `ProfileTab` (avoids collision with the `Profile` screen inside the stack).
+- `features/<area>/` — screens grouped by feature (`auth/`, `library/`, `planner/`, `shopping/`, `import/`, `profile/`). New feature work lands here, not in a flat `screens/` directory.
+- `lib/` — `api.ts` (`buildClient` + `useApiClient` hook), `auth.tsx` (`AuthProvider` + `useAuth`; clears `ephemeral` storage on logout), `storage.ts`, `haptics.ts`, plus `config.ts` at `src/` root for `getApiBase()`.
+
+`RootStack` shows a `<SplashGate />` (centered ActivityIndicator) while `useAuth().loading === true`, so cold launches don't flash the Login screen before the SecureStore-saved token resolves.
+
+### Mobile storage conventions
+
+`apps/mobile/src/lib/storage.ts` exposes two backends:
+
+- `persistent` — wraps `@react-native-async-storage/async-storage`. **Mirrors web's `localStorage` keys verbatim** so shared helpers like `plannerFingerprintStorageKey()` from `@cooking/shared` work unchanged. Used for the planner-week fingerprint.
+- `ephemeral` — in-memory `Map<string,string>` only. Mirrors web's `sessionStorage`: cleared on app kill, on logout, and on language change (Phase 4). Used for the smart shopping list cache + per-store product cache. **Always re-validate against the planner fingerprint on read** — the cache can be empty mid-session if the app was backgrounded long enough to be killed.
+
+Both backends share the `json.get/set` helpers for typed JSON read/write. Don't reach for MMKV or Zustand — the persistent layer is small, performance is fine for the planner/shopping use cases, and divergent state-management patterns aren't worth it.
 
 ## Conventions
 
@@ -249,16 +318,23 @@ Two parallel concepts on `RecipeModel`:
 - **Frontend pages use plain CSS classes** from `apps/web/app/globals.css` (Material/Stitch-inspired palette + Material Symbols icons), not Tailwind. Some inline `style={{}}` objects are sprinkled in; Tailwind utility classes are **not** configured.
 - **i18n:** all visible web strings go through `useT()` and `MESSAGE_MAP` from `@cooking/shared` (loaded from `packages/shared/src/messages/{en,zh}.json`). Two-language toggle (English/Chinese) lives in `lib/i18n.tsx`.
 - **Hardcoded admin email** (`jerryxiang24@gmail.com`) is duplicated in `backend/app/core/admin.py::ADMIN_EMAIL` and `apps/web/app/lib/admin.ts::ADMIN_EMAIL`. Keep both in sync.
+- **Mobile design system rule:** no raw hex codes outside `apps/mobile/src/theme/`. Feature code imports from `../../theme` (or however many `..`s); the linter check is `grep -rE "#[0-9a-fA-F]{6}" apps/mobile/src/{features,navigation,components}` returning hits only inside `theme/` (none everywhere else). Same goes for typography — use the `typography` presets, not ad-hoc `fontSize`/`fontWeight`.
+- **Mobile typing:** all `ParamList`s live in `apps/mobile/src/navigation/types.ts`. Use `CompositeScreenProps` for screens that need to navigate across nested navigators (e.g. a Library tab screen pushing `ImportModal`, which is on the Root stack).
 
 ## Known cleanup targets (carry forward across sessions)
 
 These are tracked here — not in commit messages — so each session can pick them up:
 
-- ECS task def `cooking-backend` `OPENAI_API_KEY` is still a placeholder string — LLM features silently fall back to stubs in production until a real key is set.
 - `LEGACY_LIBRARY_CATEGORY_TO_TAG` and the dual `library_tags` / `library_category` columns: once we backfill all rows so `library_tags` is always populated, drop the `library_category` column + the legacy mapping + the `getRecipeTags` fallback branch.
 - `apps/web/app/globals.css` is ~88 KB. Worth a sweep for orphaned selectors, but only after the next round of UI changes — not blind dead-CSS hunting.
 - `cache_warmer_queries.py::ALL_QUERIES` (~200 entries) — audit against actual hit logs and prune entries no one searches for.
 - `apps/web/.env.local` is committed to disk locally and contains `NEXT_PUBLIC_API_BASE=http://localhost:8000`. It is gitignored, so this is fine, but the `.env.local.example` should remain the source of truth for new clones.
+- **EAS dev-build verification (deferred):** the SDK 52 → 54 upgrade was validated via `tsc --noEmit` + a successful Metro bundle compile, but `eas build --profile development --platform ios` was not run. Do that whenever you next have ~20 minutes to wait on a build, to confirm cloud builds still produce a working dev client.
+- **`@react-navigation` v6 → v7 (deferred):** mobile is on `@react-navigation/native@^6.1.18`, `@react-navigation/native-stack@^6.11.0`, `@react-navigation/bottom-tabs@^6.6.1`. v7 is the current line; v6 still works on RN 0.81 + React 19 but won't get new features. Bump as a separate focused session — types tighten between v6 and v7 and most `ParamList` definitions need a sweep.
+- **Smoke-test the mobile app on real hardware:** the SDK 54 upgrade unblocks Expo Go on a physical phone (App Store Expo Go is SDK 54-only). Before leaning on this for daily testing, run a full pass on a phone over LAN to confirm planner bottom-sheet animations, smart-list reorder, and image upload all work under the New Architecture (Reanimated v4). The simulator passed but the bottom-sheet is the highest-risk area under New Arch.
+- **`@gorhom/bottom-sheet` was force-bumped 5.1.1 → 5.2.13** during the SDK 54 upgrade (auto-resolved during `expo install --fix`). Watch for animation regressions over a few days; if anything feels off in the planner picker, that's the place to look.
+- **i18n parity for mobile:** the web app strings are in `packages/shared/src/messages/{en,zh}.json` and surfaced via `useT()` from `apps/web/app/lib/i18n.tsx`. Mobile is currently English-only — when Chinese parity is needed, lift the `I18nProvider` / `useT()` hooks into a small `apps/mobile/src/lib/i18n.tsx` (or a shared `packages/shared-react/`) and gate language toggle in Profile. Defer until product asks for it.
+- **EAS submit credentials:** `apps/mobile/eas.json::submit.production.ios` has `REPLACE_WITH_*` placeholders for `appleId`, `ascAppId`, and `appleTeamId`. Fill these in before the first `eas submit -p ios`.
 
 ## Updating this file
 
@@ -270,7 +346,10 @@ Update the affected sections **in the same change** when you:
 - Change Vercel project settings or the Vercel build env (Deployment section)
 - Add a sessionStorage / localStorage key, or change one
 - Add a new package under `packages/` or a new app under `apps/`
-- Add or implement a mobile screen that's currently a placeholder (move it out of the "scaffolded" list)
+- Add a feature surface to the mobile app that didn't exist before — update the `apps/mobile` bullet's surface list and the Mobile structure / storage conventions sections accordingly
+- Change `apps/mobile/eas.json` build profiles, bundle identifier, deep-link scheme, or the SDK version
+- Change the mobile theme tokens (any file under `apps/mobile/src/theme/`) or add a new component primitive under `apps/mobile/src/components/`
+- Add a `persistent` or `ephemeral` storage key in `apps/mobile/src/lib/storage.ts`
 - Move LLM prompts/models, change cache TTL/version, or change scraper concurrency
 - Add a recipe tag slug (three places noted above)
 - Touch admin gating, catalog gating, or any other auth/authorization rule

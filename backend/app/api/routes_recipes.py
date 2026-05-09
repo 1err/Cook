@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api._types import LibraryTags
 from app.api.auth import get_current_user
 from app.core.config import get_public_library_editor_emails, settings
-from app.db import repo_recipes
+from app.db import repo_mealplan, repo_recipes
 from app.db.models import UserModel
 from app.db.session import get_session
 from app.extract import (
@@ -249,6 +249,9 @@ async def recipe_delete(
     deleted = await repo_recipes.delete_recipe(session, recipe_id, current_user.id)
     if not deleted:
         raise HTTPException(404, "Recipe not found")
+    # Keep the planner clean: drop dangling references in this user's meal plans.
+    # (Other users' meal plans aren't touched — their copies have their own ids.)
+    await repo_mealplan.remove_recipe_id_from_user_plans(session, current_user.id, recipe_id)
 
 
 @router.post("", response_model=Recipe)

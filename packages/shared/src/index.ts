@@ -5,3 +5,4 @@ export * from "./week";
 export * from "./mealPlan";
 export * from "./store";
 export * from "./i18n";
+export * from "./recipeTags";

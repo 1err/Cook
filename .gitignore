@@ -13,6 +13,14 @@ cooking.db
 backend/uploads/
 tsconfig.tsbuildinfo
 
+# Expo / EAS
+.expo/
+*.jks
+*.p12
+*.p8
+*.key
+*.mobileprovision
+
 # Env
 .env
 .env.local

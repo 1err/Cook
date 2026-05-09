@@ -3,6 +3,7 @@
     "name": "Chef World",
     "slug": "cooking-mobile",
     "version": "1.0.0",
+    "newArchEnabled": true,
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "cooking",

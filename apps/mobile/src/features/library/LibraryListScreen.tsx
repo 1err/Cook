@@ -16,6 +16,7 @@ import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import type { Recipe } from "@cooking/shared";
 import { useApiClient } from "../../lib/api";
 import { Button, EmptyState } from "../../components";
+import { haptics } from "../../lib/haptics";
 import { colors, radii, spacing, typography } from "../../theme";
 import type {
   LibraryStackParamList,
@@ -111,8 +112,18 @@ export function LibraryListScreen({ navigation }: Props) {
       setError(null);
       try {
         const copy = await apiClient.recipes.copyCatalog(recipeId);
+        // Optimistic local insert, then a server-confirmed refetch so we never
+        // show a stale list (e.g., if a previous focus listener raced this).
         setRecipes((prev) => (prev.some((row) => row.id === copy.id) ? prev : [copy, ...prev]));
+        haptics.success();
+        try {
+          const fresh = await apiClient.recipes.list();
+          setRecipes(fresh);
+        } catch {
+          // Refetch is best-effort; the optimistic insert above keeps the UI consistent.
+        }
       } catch (e) {
+        haptics.error();
         setError(e instanceof Error ? e.message : "Couldn't add recipe");
       } finally {
         setCopyingId(null);

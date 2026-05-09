@@ -1,4 +1,4 @@
-import type { MealPlanDay, Recipe, ShoppingListItem } from "@cooking/shared";
+import type { MealPlanDay, Recipe, RecipeTagSlug, ShoppingListItem } from "@cooking/shared";
 
 export type AuthStrategy =
   | { kind: "cookie" }
@@ -19,6 +19,22 @@ export type RefineResult = {
 
 export type StoreProduct = { name: string; price: string; image: string; url: string };
 
+export type ParseLinkPayload = {
+  url: string;
+  notes?: string;
+  title?: string;
+  library_tags?: RecipeTagSlug[];
+};
+
+export type ParseTranscriptPayload = {
+  transcript: string;
+  notes?: string;
+  title?: string;
+  library_tags?: RecipeTagSlug[];
+};
+
+export type UploadImageResult = { upload_url: string; file_url: string };
+
 type RequestOptions = RequestInit & { skipJsonContentType?: boolean };
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -37,7 +53,7 @@ export function createApiClient(options: ApiClientOptions) {
     }
     if (headers) {
       const custom = new Headers(headers);
-      custom.forEach((value, key) => nextHeaders.set(key, value));
+      custom.forEach((value: string, key: string) => nextHeaders.set(key, value));
     }
     const init: RequestInit = {
       body,
@@ -84,10 +100,22 @@ export function createApiClient(options: ApiClientOptions) {
       create: (payload: Partial<Recipe>) =>
         json<Recipe>("/recipes", { method: "POST", body: JSON.stringify(payload) }),
       update: (id: string, payload: Partial<Recipe>) =>
-        json<Recipe>(`/recipes/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(payload) }),
+        json<Recipe>(`/recipes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(payload) }),
       remove: (id: string) => request(`/recipes/${encodeURIComponent(id)}`, { method: "DELETE" }),
       catalog: () => json<Recipe[]>("/recipes/catalog"),
       copyCatalog: (id: string) => json<Recipe>(`/recipes/catalog/${encodeURIComponent(id)}/copy`, { method: "POST" }),
+      editorStatus: () => json<{ can_manage: boolean }>("/recipes/catalog/editor-status"),
+      setCatalogVisibility: (id: string, isPublic: boolean) =>
+        json<Recipe>(`/recipes/${encodeURIComponent(id)}/catalog`, {
+          method: "POST",
+          body: JSON.stringify({ is_public: isPublic }),
+        }),
+      parseLink: (payload: ParseLinkPayload) =>
+        json<Recipe>("/recipes/parse/link", { method: "POST", body: JSON.stringify(payload) }),
+      parseTranscript: (payload: ParseTranscriptPayload) =>
+        json<Recipe>("/recipes/parse/transcript", { method: "POST", body: JSON.stringify(payload) }),
+      uploadImage: (formData: FormData) =>
+        json<UploadImageResult>("/recipes/upload-image", { method: "POST", body: formData }),
     },
     mealPlan: {
       list: (start: string, end: string) =>

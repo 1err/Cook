@@ -16,7 +16,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { type Recipe, formatIngredientQuantity } from "@cooking/shared";
 import { useApiClient } from "../../lib/api";
-import { IconButton } from "../../components";
+import { EmptyState, IconButton } from "../../components";
 import { colors, radii, spacing, typography } from "../../theme";
 import { haptics } from "../../lib/haptics";
 import type {
@@ -32,6 +32,19 @@ type Props = CompositeScreenProps<
     NativeStackScreenProps<RootStackParamList>
   >
 >;
+
+// FastAPI errors come through as raw JSON like {"detail":"Recipe not found"};
+// pull out the human message so the user doesn't see braces and quotes.
+function extractApiMessage(raw: string): string {
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.detail === "string") return parsed.detail;
+  } catch {
+    // not JSON, fall through
+  }
+  return raw;
+}
 
 export function RecipeDetailScreen({ navigation, route }: Props) {
   const apiClient = useApiClient();
@@ -96,6 +109,17 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
     }
   }, [apiClient, navigation, recipe]);
 
+  const confirmDelete = useCallback(() => {
+    if (!recipe) return;
+    const message = recipe.is_public_catalog
+      ? "This recipe is in the Public Library. Deleting will also remove it from the catalog. Other users' copies are unaffected. This cannot be undone."
+      : "This cannot be undone.";
+    Alert.alert("Delete recipe?", message, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => void handleDelete() },
+    ]);
+  }, [handleDelete, recipe]);
+
   const presentActions = useCallback(() => {
     if (!recipe) return;
     const catalogLabel = recipe.is_public_catalog ? "Remove from public library" : "Add to public library";
@@ -109,24 +133,19 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
         (index) => {
           if (index === 1) navigation.navigate("RecipeEdit", { recipeId: recipe.id });
           else if (canManage && index === 2) void handleToggleCatalog();
-          else if (index === destructiveButtonIndex) {
-            Alert.alert("Delete recipe?", "This cannot be undone.", [
-              { text: "Cancel", style: "cancel" },
-              { text: "Delete", style: "destructive", onPress: () => void handleDelete() },
-            ]);
-          }
+          else if (index === destructiveButtonIndex) confirmDelete();
         },
       );
     } else {
       const buttons = [
         { text: "Edit", onPress: () => navigation.navigate("RecipeEdit", { recipeId: recipe.id }) },
         ...(canManage ? [{ text: catalogLabel, onPress: () => void handleToggleCatalog() }] : []),
-        { text: "Delete", style: "destructive" as const, onPress: () => void handleDelete() },
+        { text: "Delete", style: "destructive" as const, onPress: confirmDelete },
         { text: "Cancel", style: "cancel" as const },
       ];
       Alert.alert(recipe.title, undefined, buttons);
     }
-  }, [canManage, handleDelete, handleToggleCatalog, navigation, recipe]);
+  }, [canManage, confirmDelete, handleToggleCatalog, navigation, recipe]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -152,9 +171,21 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
   }
 
   if (error || !recipe) {
+    const cleanMessage = extractApiMessage(error ?? "");
+    const notFound = !error || /not found|unavailable/i.test(cleanMessage);
     return (
       <View style={styles.center}>
-        <Text style={styles.error}>{error || "Recipe not found"}</Text>
+        <EmptyState
+          icon={notFound ? "trash-outline" : "alert-circle-outline"}
+          title={notFound ? "Recipe unavailable" : "Couldn't load recipe"}
+          description={
+            notFound
+              ? "This recipe may have been deleted. If it was on your planner, you can return and remove the chip."
+              : cleanMessage
+          }
+          actionLabel="Back"
+          onAction={() => navigation.goBack()}
+        />
       </View>
     );
   }
