@@ -7,6 +7,7 @@ import { apiFetch } from "./api";
 export type AuthUser = {
   id: string;
   email: string;
+  is_library_public: boolean;
 };
 
 type AuthContextValue = {
@@ -14,6 +15,7 @@ type AuthContextValue = {
   loading: boolean;
   refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
+  setLibraryVisibility: (isPublic: boolean) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -36,7 +38,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await apiFetch("/auth/me");
       if (res.status === 200) {
         const data = await res.json();
-        setUser({ id: data.id, email: data.email });
+        setUser({
+          id: data.id,
+          email: data.email,
+          is_library_public: Boolean(data.is_library_public),
+        });
       } else {
         // Stale cookie (e.g. user id from another DB) still sends a valid JWT; backend returns 401.
         if (res.status === 401) {
@@ -62,12 +68,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [router]);
 
+  const setLibraryVisibility = useCallback(async (isPublic: boolean) => {
+    const res = await apiFetch("/auth/library-visibility", {
+      method: "POST",
+      body: JSON.stringify({ is_public: isPublic }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `${res.status} ${res.statusText}`);
+    }
+    const data = await res.json();
+    setUser((prev) =>
+      prev ? { ...prev, is_library_public: Boolean(data.is_library_public) } : prev,
+    );
+  }, []);
+
   useEffect(() => {
     refreshUser();
   }, [refreshUser]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, refreshUser, logout }}>
+    <AuthContext.Provider value={{ user, loading, refreshUser, logout, setLibraryVisibility }}>
       {children}
     </AuthContext.Provider>
   );
