@@ -23,6 +23,7 @@ from app.api.routes_recipes import router as recipes_router
 from app.api.routes_mealplan import router as mealplan_router
 from app.api.routes_shopping import router as shopping_router
 from app.api.routes_store import router as store_router
+from app.api.routes_users import router as users_router
 from app.api.admin import router as admin_router
 from app.jobs.cache_warmer import start_scheduler, stop_scheduler
 from app.services.storage_service import get_local_upload_root
@@ -56,6 +57,7 @@ app.include_router(recipes_router)
 app.include_router(mealplan_router)
 app.include_router(shopping_router)
 app.include_router(store_router)
+app.include_router(users_router)
 app.include_router(admin_router)
 
 _upload_root = get_local_upload_root()
