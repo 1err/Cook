@@ -9,6 +9,8 @@ export type LibraryStackParamList = {
   LibraryList: undefined;
   RecipeDetail: { recipeId: string };
   RecipeEdit: { recipeId?: string } | undefined;
+  FriendSearch: undefined;
+  FriendLibrary: { userId: string; email: string };
 };
 
 export type PlannerStackParamList = {

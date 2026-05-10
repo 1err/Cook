@@ -1,5 +1,7 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { FriendLibraryScreen } from "../../features/library/FriendLibraryScreen";
+import { FriendSearchScreen } from "../../features/library/FriendSearchScreen";
 import { LibraryListScreen } from "../../features/library/LibraryListScreen";
 import { RecipeDetailScreen } from "../../features/library/RecipeDetailScreen";
 import { RecipeEditScreen } from "../../features/library/RecipeEditScreen";
@@ -33,6 +35,16 @@ export function LibraryStack() {
         name="RecipeEdit"
         component={RecipeEditScreen}
         options={{ title: "Edit recipe", presentation: "modal", headerLargeTitle: false }}
+      />
+      <Stack.Screen
+        name="FriendSearch"
+        component={FriendSearchScreen}
+        options={{ title: "Find a friend", headerLargeTitle: false }}
+      />
+      <Stack.Screen
+        name="FriendLibrary"
+        component={FriendLibraryScreen}
+        options={({ route }) => ({ title: route.params.email, headerLargeTitle: false })}
       />
     </Stack.Navigator>
   );
