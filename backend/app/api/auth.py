@@ -166,3 +166,23 @@ async def logout(response: Response):
 async def me(current_user: UserModel = Depends(get_current_user)):
     """Return current authenticated user."""
     return UserResponse.from_model(current_user)
+
+
+class LibraryVisibilityBody(BaseModel):
+    is_public: bool
+
+
+class LibraryVisibilityResponse(BaseModel):
+    is_library_public: bool
+
+
+@router.post("/library-visibility", response_model=LibraryVisibilityResponse)
+async def set_library_visibility(
+    body: LibraryVisibilityBody,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserModel = Depends(get_current_user),
+):
+    """Flip the current user's library-public flag."""
+    current_user.is_library_public = bool(body.is_public)
+    await session.flush()
+    return LibraryVisibilityResponse(is_library_public=current_user.is_library_public)
