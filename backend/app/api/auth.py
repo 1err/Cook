@@ -38,10 +38,11 @@ class LoginBody(BaseModel):
 class UserResponse(BaseModel):
     id: str
     email: str
+    is_library_public: bool
 
     @classmethod
     def from_model(cls, u: UserModel) -> "UserResponse":
-        return cls(id=str(u.id), email=u.email)
+        return cls(id=str(u.id), email=u.email, is_library_public=bool(u.is_library_public))
 
 
 class AuthResponse(UserResponse):
@@ -49,7 +50,12 @@ class AuthResponse(UserResponse):
 
     @classmethod
     def from_model_with_token(cls, u: UserModel, token: str | None) -> "AuthResponse":
-        return cls(id=str(u.id), email=u.email, access_token=token)
+        return cls(
+            id=str(u.id),
+            email=u.email,
+            is_library_public=bool(u.is_library_public),
+            access_token=token,
+        )
 
 
 def _set_cookie(response: Response, token: str) -> None:

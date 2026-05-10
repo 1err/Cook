@@ -19,6 +19,9 @@ class UserModel(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    is_library_public: Mapped[bool] = mapped_column(
+        sa.Boolean(), nullable=False, server_default=sa.false()
+    )
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), server_default=sa.func.now())
     auth_identities: Mapped[list["AuthIdentityModel"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
