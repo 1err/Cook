@@ -72,7 +72,10 @@ function FriendsSearchPageContent() {
       </form>
 
       {result.kind === "found" ? (
-        <Link href={`/library/friends/${encodeURIComponent(result.user.id)}`} style={cardStyle}>
+        <Link
+          href={`/library/friends/${encodeURIComponent(result.user.id)}?email=${encodeURIComponent(result.user.email)}`}
+          style={cardStyle}
+        >
           <span style={{ flex: 1, fontWeight: 600 }}>{result.user.email}</span>
           <span style={{ color: "var(--primary, #9a442d)", fontWeight: 600 }}>Open library →</span>
         </Link>
