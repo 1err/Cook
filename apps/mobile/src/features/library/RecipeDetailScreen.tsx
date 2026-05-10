@@ -17,6 +17,7 @@ import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { type Recipe, formatIngredientQuantity } from "@cooking/shared";
 import { useApiClient } from "../../lib/api";
 import { EmptyState, IconButton } from "../../components";
+import { resolveImageUrl } from "../../lib/imageUrl";
 import { colors, radii, spacing, typography } from "../../theme";
 import { haptics } from "../../lib/haptics";
 import type {
@@ -196,8 +197,8 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={styles.content}
     >
-      {recipe.thumbnail_url ? (
-        <Image source={{ uri: recipe.thumbnail_url }} style={styles.hero} contentFit="cover" transition={200} />
+      {resolveImageUrl(recipe.thumbnail_url) ? (
+        <Image source={{ uri: resolveImageUrl(recipe.thumbnail_url) }} style={styles.hero} contentFit="cover" transition={200} />
       ) : (
         <View style={[styles.hero, styles.heroPlaceholder]}>
           <Ionicons name="restaurant" size={56} color={colors.onPrimaryFixed} />

@@ -17,6 +17,7 @@ import {
 } from "@cooking/shared";
 import { EmptyState, TextField } from "../../components";
 import { colors, radii, spacing, typography } from "../../theme";
+import { resolveImageUrl } from "../../lib/imageUrl";
 import { useRecipePickerData, type TagFilter } from "./useRecipePickerData";
 
 const SLOT_LABELS: Record<MealType, string> = {
@@ -174,8 +175,8 @@ export const RecipePickerSheet = forwardRef<RecipePickerSheetHandle, RecipePicke
                 onPress={() => handlePick(item.id)}
                 style={({ pressed }) => [styles.row, pressed && styles.pressed]}
               >
-                {item.thumbnail_url ? (
-                  <Image source={{ uri: item.thumbnail_url }} style={styles.rowThumb} contentFit="cover" />
+                {resolveImageUrl(item.thumbnail_url) ? (
+                  <Image source={{ uri: resolveImageUrl(item.thumbnail_url) }} style={styles.rowThumb} contentFit="cover" />
                 ) : (
                   <View style={[styles.rowThumb, styles.rowThumbPlaceholder]}>
                     <Ionicons name="restaurant" size={18} color={colors.onPrimaryFixed} />

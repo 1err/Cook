@@ -13,6 +13,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import type { MealType, Recipe } from "@cooking/shared";
 import { colors, radii, spacing, typography } from "../../theme";
+import { resolveImageUrl } from "../../lib/imageUrl";
 
 const SLOT_LABELS: Record<MealType, string> = {
   breakfast: "Breakfast",
@@ -117,8 +118,8 @@ export function SlotRow({
                     pressed && styles.pressed,
                   ]}
                 >
-                  {recipe?.thumbnail_url ? (
-                    <Image source={{ uri: recipe.thumbnail_url }} style={styles.chipThumb} contentFit="cover" />
+                  {resolveImageUrl(recipe?.thumbnail_url) ? (
+                    <Image source={{ uri: resolveImageUrl(recipe?.thumbnail_url) }} style={styles.chipThumb} contentFit="cover" />
                   ) : (
                     <View style={[styles.chipThumb, styles.chipThumbPlaceholder]}>
                       <Ionicons
