@@ -122,9 +122,40 @@ function LibraryPageContent() {
 
   return (
     <>
-      <h1 className="library-page-title font-headline">{t("library.title")}</h1>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "1rem",
+        }}
+      >
+        <h1 className="library-page-title font-headline" style={{ margin: 0 }}>
+          {t("library.title")}
+        </h1>
+        <Link
+          href="/library/friends"
+          aria-label="Find a friend"
+          title="Find a friend"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            background: "var(--surface-container-low)",
+            color: "var(--on-surface)",
+            textDecoration: "none",
+            fontSize: 18,
+            boxShadow: "0 0 0 1px color-mix(in srgb, var(--outline-variant) 20%, transparent)",
+          }}
+        >
+          🔍
+        </Link>
+      </div>
 
-      <div className="library-chip-row" role="tablist" aria-label={t("library.views")} style={{ marginBottom: "1rem" }}>
+      <div className="library-chip-row" role="tablist" aria-label={t("library.views")} style={{ marginBottom: "1rem", marginTop: "1rem" }}>
         <button
           type="button"
           className={`library-chip ${view === "mine" ? "library-chip--active" : "library-chip--idle"}`}
