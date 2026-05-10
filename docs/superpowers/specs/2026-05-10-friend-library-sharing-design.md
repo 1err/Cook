@@ -2,6 +2,8 @@
 
 **Date:** 2026-05-10
 **Status:** Approved (user signed off on approach B + nav placement + profile toggle copy)
+**Branch:** Implementation lands on a fresh `feat/friend-library-sharing` branch cut from `main`. The spec commit (currently on `chore/expo-sdk-54`) is cherry-picked to `main` first so the new branch starts with this doc in place.
+**Coexistence with global public catalog:** The existing editor-gated `/recipes/catalog/*` endpoints and the "Public Library" segment of the Library tab stay untouched. The friend-library feature is purely additive — two separate discovery surfaces (curated featured list, social friends-of-friends graph).
 
 ## Context & motivation
 
