@@ -13,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import get_current_user
 from app.db import repo_users
 from app.db.models import UserModel
+from app.db.repo_recipes import _row_to_recipe
 from app.db.session import get_session
+from app.models import Recipe
 
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -39,3 +41,18 @@ async def search_users(
         email=user.email,
         is_library_public=bool(user.is_library_public),
     )
+
+
+@router.get("/{user_id}/recipes", response_model=list[Recipe])
+async def friend_library_recipes(
+    user_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserModel = Depends(get_current_user),
+):
+    if user_id == current_user.id:
+        raise HTTPException(404, "Library not found.")
+    owner = await repo_users.get_user_by_id(session, user_id)
+    if owner is None or not bool(owner.is_library_public):
+        raise HTTPException(404, "Library not found.")
+    rows = await repo_users.list_friend_library_recipes(session, user_id)
+    return [_row_to_recipe(r) for r in rows]
