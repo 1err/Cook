@@ -8,6 +8,7 @@ const TOKEN_KEY = "cooking-mobile-token";
 type MobileUser = {
   id: string;
   email: string;
+  is_library_public: boolean;
 };
 
 type AuthContextValue = {
@@ -17,6 +18,7 @@ type AuthContextValue = {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  setLibraryVisibility: (isPublic: boolean) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -57,7 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!res.access_token) throw new Error("Token missing from login response");
     await SecureStore.setItemAsync(TOKEN_KEY, res.access_token);
     setToken(res.access_token);
-    setUser({ id: res.id, email: res.email });
+    setUser({ id: res.id, email: res.email, is_library_public: res.is_library_public });
   }, []);
 
   const register = useCallback(async (email: string, password: string) => {
@@ -66,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!res.access_token) throw new Error("Token missing from register response");
     await SecureStore.setItemAsync(TOKEN_KEY, res.access_token);
     setToken(res.access_token);
-    setUser({ id: res.id, email: res.email });
+    setUser({ id: res.id, email: res.email, is_library_public: res.is_library_public });
   }, []);
 
   const logout = useCallback(async () => {
@@ -77,9 +79,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
+  const setLibraryVisibility = useCallback(
+    async (isPublic: boolean) => {
+      if (!token) throw new Error("Not signed in");
+      const client = buildClient(token);
+      const res = await client.auth.setLibraryVisibility(isPublic);
+      setUser((prev) =>
+        prev ? { ...prev, is_library_public: res.is_library_public } : prev,
+      );
+    },
+    [token],
+  );
+
   const value = useMemo(
-    () => ({ token, user, loading, login, register, logout }),
-    [loading, login, logout, register, token, user],
+    () => ({ token, user, loading, login, register, logout, setLibraryVisibility }),
+    [loading, login, logout, register, setLibraryVisibility, token, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
