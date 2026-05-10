@@ -60,3 +60,64 @@ async def list_friend_library_recipes(
         .order_by(func.lower(RecipeModel.title), RecipeModel.id)
     )
     return list(result.scalars().all())
+
+
+async def copy_friend_recipe_to_user(
+    session: AsyncSession,
+    source_user_id: uuid.UUID,
+    recipe_id: str,
+    caller_user_id: uuid.UUID,
+) -> Optional[RecipeModel]:
+    """Clone a recipe from a public-library user into the caller's library.
+
+    Returns None when:
+      - source user doesn't exist or library isn't public
+      - caller IS the source user (no self-copy)
+      - source recipe doesn't exist or isn't owned by source_user_id
+
+    Idempotent: if caller already has a row with catalog_source_recipe_id == recipe_id,
+    that row is returned instead of inserting a duplicate.
+    """
+    if source_user_id == caller_user_id:
+        return None
+
+    owner = await get_user_by_id(session, source_user_id)
+    if owner is None or not bool(owner.is_library_public):
+        return None
+
+    source_result = await session.execute(
+        select(RecipeModel).where(
+            RecipeModel.id == recipe_id,
+            RecipeModel.user_id == source_user_id,
+        )
+    )
+    source = source_result.scalars().one_or_none()
+    if source is None:
+        return None
+
+    existing_result = await session.execute(
+        select(RecipeModel).where(
+            RecipeModel.user_id == caller_user_id,
+            RecipeModel.catalog_source_recipe_id == recipe_id,
+        )
+    )
+    existing = existing_result.scalars().one_or_none()
+    if existing is not None:
+        return existing
+
+    clone = RecipeModel(
+        id=uuid.uuid4().hex,
+        user_id=caller_user_id,
+        title=source.title,
+        source_url=source.source_url,
+        thumbnail_url=source.thumbnail_url,
+        ingredients=source.ingredients,
+        raw_extraction_text=source.raw_extraction_text,
+        library_tags=source.library_tags,
+        library_category=source.library_category,
+        is_public_catalog=False,
+        catalog_source_recipe_id=source.id,
+    )
+    session.add(clone)
+    await session.flush()
+    return clone

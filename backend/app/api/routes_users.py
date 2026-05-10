@@ -56,3 +56,18 @@ async def friend_library_recipes(
         raise HTTPException(404, "Library not found.")
     rows = await repo_users.list_friend_library_recipes(session, user_id)
     return [_row_to_recipe(r) for r in rows]
+
+
+@router.post("/{user_id}/recipes/{recipe_id}/copy", response_model=Recipe)
+async def copy_friend_recipe(
+    user_id: uuid.UUID,
+    recipe_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserModel = Depends(get_current_user),
+):
+    clone = await repo_users.copy_friend_recipe_to_user(
+        session, user_id, recipe_id, current_user.id
+    )
+    if clone is None:
+        raise HTTPException(404, "Recipe not available for copy.")
+    return _row_to_recipe(clone)
