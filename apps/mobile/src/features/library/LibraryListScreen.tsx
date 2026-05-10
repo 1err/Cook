@@ -16,6 +16,8 @@ import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import type { Recipe } from "@cooking/shared";
 import { useApiClient } from "../../lib/api";
 import { Button, EmptyState } from "../../components";
+import { haptics } from "../../lib/haptics";
+import { resolveImageUrl } from "../../lib/imageUrl";
 import { colors, radii, spacing, typography } from "../../theme";
 import type {
   LibraryStackParamList,
@@ -111,8 +113,18 @@ export function LibraryListScreen({ navigation }: Props) {
       setError(null);
       try {
         const copy = await apiClient.recipes.copyCatalog(recipeId);
+        // Optimistic local insert, then a server-confirmed refetch so we never
+        // show a stale list (e.g., if a previous focus listener raced this).
         setRecipes((prev) => (prev.some((row) => row.id === copy.id) ? prev : [copy, ...prev]));
+        haptics.success();
+        try {
+          const fresh = await apiClient.recipes.list();
+          setRecipes(fresh);
+        } catch {
+          // Refetch is best-effort; the optimistic insert above keeps the UI consistent.
+        }
       } catch (e) {
+        haptics.error();
         setError(e instanceof Error ? e.message : "Couldn't add recipe");
       } finally {
         setCopyingId(null);
@@ -177,8 +189,8 @@ export function LibraryListScreen({ navigation }: Props) {
               onPress={() => navigation.navigate("RecipeDetail", { recipeId: item.id })}
               style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
             >
-              {item.thumbnail_url ? (
-                <Image source={{ uri: item.thumbnail_url }} style={styles.thumb} contentFit="cover" transition={150} />
+              {resolveImageUrl(item.thumbnail_url) ? (
+                <Image source={{ uri: resolveImageUrl(item.thumbnail_url) }} style={styles.thumb} contentFit="cover" transition={150} />
               ) : (
                 <View style={[styles.thumb, styles.thumbPlaceholder]}>
                   <Ionicons name="restaurant" size={28} color={colors.onPrimaryFixed} />

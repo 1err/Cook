@@ -24,7 +24,10 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      # Explicit 0.0.0.0 so Docker Desktop's vpnkit binds the LAN interface,
+      # not just loopback. Required for the iOS Simulator and physical phones
+      # to reach the backend at the Mac's LAN IP.
+      - "0.0.0.0:8000:8000"
     command:
       [
         "sh",

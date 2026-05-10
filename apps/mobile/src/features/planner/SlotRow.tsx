@@ -13,6 +13,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import type { MealType, Recipe } from "@cooking/shared";
 import { colors, radii, spacing, typography } from "../../theme";
+import { resolveImageUrl } from "../../lib/imageUrl";
 
 const SLOT_LABELS: Record<MealType, string> = {
   breakfast: "Breakfast",
@@ -82,10 +83,26 @@ export function SlotRow({
           <>
             {recipeIds.map((id) => {
               const recipe = recipeById[id];
+              const orphaned = !recipe;
               return (
                 <Pressable
                   key={id}
-                  onPress={() => onOpenRecipe(id)}
+                  onPress={() => {
+                    if (orphaned) {
+                      // Recipe was deleted — offer to clean the slot rather than
+                      // navigating into a 404 detail screen.
+                      Alert.alert(
+                        "Recipe unavailable",
+                        "This recipe has been deleted. Remove it from this slot?",
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          { text: "Remove", style: "destructive", onPress: () => onRemoveRecipe(id) },
+                        ],
+                      );
+                      return;
+                    }
+                    onOpenRecipe(id);
+                  }}
                   onLongPress={() =>
                     showChipMenu(
                       slotLabel,
@@ -94,18 +111,26 @@ export function SlotRow({
                     )
                   }
                   accessibilityRole="button"
-                  accessibilityLabel={recipe ? `Open ${recipe.title}` : "Recipe"}
-                  style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
+                  accessibilityLabel={recipe ? `Open ${recipe.title}` : "Removed recipe — tap to clean up"}
+                  style={({ pressed }) => [
+                    styles.chip,
+                    orphaned && styles.chipOrphaned,
+                    pressed && styles.pressed,
+                  ]}
                 >
-                  {recipe?.thumbnail_url ? (
-                    <Image source={{ uri: recipe.thumbnail_url }} style={styles.chipThumb} contentFit="cover" />
+                  {resolveImageUrl(recipe?.thumbnail_url) ? (
+                    <Image source={{ uri: resolveImageUrl(recipe?.thumbnail_url) }} style={styles.chipThumb} contentFit="cover" />
                   ) : (
                     <View style={[styles.chipThumb, styles.chipThumbPlaceholder]}>
-                      <Ionicons name="restaurant" size={14} color={colors.onPrimaryFixed} />
+                      <Ionicons
+                        name={orphaned ? "trash-outline" : "restaurant"}
+                        size={14}
+                        color={colors.onPrimaryFixed}
+                      />
                     </View>
                   )}
-                  <Text style={styles.chipLabel} numberOfLines={1}>
-                    {recipe?.title ?? "Recipe"}
+                  <Text style={[styles.chipLabel, orphaned && styles.chipLabelOrphaned]} numberOfLines={1}>
+                    {recipe?.title ?? "Removed recipe"}
                   </Text>
                 </Pressable>
               );
@@ -170,6 +195,14 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
     backgroundColor: colors.surfaceContainerHigh,
     maxWidth: 220,
+  },
+  chipOrphaned: {
+    backgroundColor: colors.surfaceContainerLow,
+    opacity: 0.7,
+  },
+  chipLabelOrphaned: {
+    color: colors.onSurfaceVariant,
+    fontStyle: "italic",
   },
   chipThumb: {
     width: 28,

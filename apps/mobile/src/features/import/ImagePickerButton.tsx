@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, radii, spacing, typography } from "../../theme";
+import { resolveImageUrl } from "../../lib/imageUrl";
 
 type ImagePickerButtonProps = {
   thumbnailUrl: string | null;
@@ -28,8 +29,8 @@ export function ImagePickerButton({
         accessibilityLabel={thumbnailUrl ? "Replace cover image" : "Add cover image"}
         style={({ pressed }) => [styles.frame, pressed && styles.pressed]}
       >
-        {thumbnailUrl ? (
-          <Image source={{ uri: thumbnailUrl }} style={styles.image} contentFit="cover" transition={150} />
+        {resolveImageUrl(thumbnailUrl) ? (
+          <Image source={{ uri: resolveImageUrl(thumbnailUrl) }} style={styles.image} contentFit="cover" transition={150} />
         ) : (
           <View style={styles.placeholder}>
             <Ionicons name="image-outline" size={32} color={colors.onSurfaceVariant} />
