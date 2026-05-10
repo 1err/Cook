@@ -13,7 +13,7 @@ The cache is shared across all users: when one user triggers a fresh scrape, eve
 ## Repo shape (npm workspaces + Python)
 
 - `apps/web` — Next.js 14 App Router (`@cooking/web`). Cookie-based auth. Source of nearly all real product UI today. Pages: `import/`, `library/{,[id]}`, `planner/`, `shopping-list/`, `recipe/[id]`, `preview/` (admin cache console), `login/`, `register/`.
-- `apps/mobile` — Expo / React Native iOS app (`@cooking/mobile`). Bottom tab bar (Library / Planner / Shopping / Profile) over per-tab native stacks, with Import as a root-level modal. Source layout is feature-folders + a small design system (see "Mobile structure" below). All product surfaces ship: auth flow, Library list with **segmented control between "My Library" and "Public Library"** (catalog browse + one-tap copy-to-library, already-copied detection via `catalog_source_recipe_id`), Recipe detail (with editor-only "Add/Remove public library" item in the action menu, gated by `/recipes/catalog/editor-status`), Recipe edit, Planner (week navigation + bottom-sheet recipe picker), Shopping (smart list + per-store product picks + **"Load top picks from {store}" bulk-scrape button** that opens all panels and fetches at concurrency 3 + per-category **"Already have" subsection for checked items** + planner-stale detection), Import (YouTube link + transcript with image upload).
+- `apps/mobile` — Expo / React Native iOS app (`@cooking/mobile`). Bottom tab bar (Library / Planner / Shopping / Profile) over per-tab native stacks, with Import as a root-level modal. Source layout is feature-folders + a small design system (see "Mobile structure" below). All product surfaces ship: auth flow, Library list with **segmented control between "My Library" and "Public Library"** (catalog browse + one-tap copy-to-library, already-copied detection via `catalog_source_recipe_id`), **friend library sharing** (search icon in Library header → `FriendSearchScreen` (email lookup) → `FriendLibraryScreen` (list + copy with already-copied detection); Profile toggle "Share my library" flips `users.is_library_public`), Recipe detail (with editor-only "Add/Remove public library" item in the action menu, gated by `/recipes/catalog/editor-status`), Recipe edit, Planner (week navigation + bottom-sheet recipe picker), Shopping (smart list + per-store product picks + **"Load top picks from {store}" bulk-scrape button** that opens all panels and fetches at concurrency 3 + per-category **"Already have" subsection for checked items** + planner-stale detection), Import (YouTube link + transcript with image upload).
 - `packages/shared` — types, week/meal-plan/ingredient/category helpers, store enum, i18n strings (`packages/shared/src/messages/{en,zh}.json`). **Single source for these helpers** — pages import from `@cooking/shared` directly; no per-app re-export shims under `apps/web/app/lib/`.
 - `packages/api-client` — `createApiClient({ baseUrl, auth })`. `auth.kind: "cookie"` adds `credentials: "include"`; `auth.kind: "bearer"` reads a token via `getToken()` and adds `Authorization: Bearer …`.
 - `backend/` — FastAPI + async SQLAlchemy + Alembic. **Postgres only** (asyncpg).
@@ -176,7 +176,8 @@ Mounted in `backend/app/main.py`. All routes except `/auth/{register,login,logou
 | POST | `/auth/register` | Sets HttpOnly cookie + returns `access_token` in body (mobile uses body). 8-char min password. |
 | POST | `/auth/login` | Same |
 | POST | `/auth/logout` | Clears cookie |
-| GET | `/auth/me` | |
+| GET | `/auth/me` | Returns `{id, email, is_library_public}` |
+| POST | `/auth/library-visibility` | Body `{is_public: bool}`. Flips current user's library-sharing flag. Returns `{is_library_public: bool}` |
 | POST | `/recipes/parse/link` | Returns a draft Recipe from a YouTube URL **without saving** — caller edits then `POST /recipes` |
 | POST | `/recipes/parse/transcript` | Returns a draft Recipe from pasted transcript **without saving** |
 | POST | `/recipes/upload-image` | Multipart. S3 presigned PUT if `AWS_REGION`+`S3_BUCKET_NAME` set, else local disk + `/uploads/...` URL |
@@ -189,6 +190,9 @@ Mounted in `backend/app/main.py`. All routes except `/auth/{register,login,logou
 | GET | `/recipes/catalog/editor-status` | `{ can_manage: bool }` based on `PUBLIC_LIBRARY_EDITOR_EMAILS` |
 | POST | `/recipes/catalog/{id}/copy` | Clone a public recipe into the caller's library (idempotent via `catalog_source_recipe_id`) |
 | POST | `/recipes/{id}/catalog` | `{ is_public: bool }` — toggle catalog visibility (editor-only) |
+| GET | `/users/search?email=` | Exact email match. 200 with `{id, email, is_library_public}` only when target's library is public AND not the caller. 404 otherwise (uniform — no enumeration leak). |
+| GET | `/users/{user_id}/recipes` | List a user's recipes if `is_library_public=true` and not self. 404 otherwise. |
+| POST | `/users/{user_id}/recipes/{recipe_id}/copy` | Idempotent clone into the caller's library. Sets `catalog_source_recipe_id` on the new row. |
 | GET | `/meal-plan?start=&end=` | Inclusive YYYY-MM-DD range |
 | PUT | `/meal-plan/{date}` | Body accepts `{breakfast,lunch,dinner: string[]}` **or** legacy `{recipe_ids: string[]}` (normalized into dinner slot) |
 | GET | `/shopping-list?start=&end=` | Aggregates ingredients across week's meal plans |
@@ -253,6 +257,15 @@ Both AWS vars must be either both set or both empty (validated in `Settings.vali
 3. Else fall back to `["jerryxiang24@gmail.com"]` (this is what prod uses today since `PUBLIC_LIBRARY_EDITOR_EMAILS` is unset on ECS).
 
 `/recipes/catalog/editor-status` returns `can_manage: true` when `editor_emails == []` **or** the user’s email is in the list.
+
+### Friend library sharing is orthogonal to the public catalog
+
+Two separate visibility models coexist:
+
+- `RecipeModel.is_public_catalog` (per-recipe flag) drives the global editor-curated catalog at `/recipes/catalog/*`. Flagging a recipe is gated by `PUBLIC_LIBRARY_EDITOR_EMAILS` (see "Public catalog gating" above).
+- `UserModel.is_library_public` (per-user flag) drives friend-library sharing at `/users/*` (search by email, list a friend's library, copy from it). Anyone can flip this for themselves via `POST /auth/library-visibility` — no editor gating. When on, your entire library becomes visible to anyone who searches your exact email.
+
+`POST /users/{id}/recipes/{rid}/copy` and `POST /recipes/catalog/{id}/copy` both set `catalog_source_recipe_id` on the new row, so client-side already-copied detection (`Set<catalog_source_recipe_id>`) works the same way for both surfaces. The friend-library code lives in `backend/app/db/repo_users.py` + `backend/app/api/routes_users.py`. Smoke testable via `backend/scripts/smoke_friend_library.sh <jd-pw> <bob-pw>`.
 
 ### API base resolution
 
