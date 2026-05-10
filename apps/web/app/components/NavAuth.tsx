@@ -127,6 +127,26 @@ export function NavAuth() {
           >
             {user.email}
           </div>
+          <Link
+            href="/settings"
+            onClick={() => setDropdownOpen(false)}
+            className="font-headline"
+            style={{
+              display: "block",
+              width: "100%",
+              padding: "var(--space-12) var(--space-16)",
+              background: "transparent",
+              color: "var(--on-surface)",
+              fontSize: "0.95rem",
+              fontWeight: 700,
+              textAlign: "left",
+              borderRadius: "var(--radius-md)",
+              textDecoration: "none",
+              boxSizing: "border-box",
+            }}
+          >
+            Settings
+          </Link>
           <button
             type="button"
             onClick={() => {
