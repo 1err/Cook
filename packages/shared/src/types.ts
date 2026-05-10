@@ -65,3 +65,9 @@ export interface ShoppingListItem {
   name: string;
   total_quantity: string;
 }
+
+export interface User {
+  id: string;
+  email: string;
+  is_library_public: boolean;
+}
