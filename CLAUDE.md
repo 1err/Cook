@@ -63,6 +63,18 @@ docker compose down && docker compose up --build -d   # then open http://localho
 - Image storage: S3 bucket `cooking-images-930067562682` in `us-east-1`. Recipe uploads use presigned PUT directly from the browser when both `AWS_REGION` and `S3_BUCKET_NAME` are set (true in prod).
 - Migrations: backend container runs `alembic upgrade head` on startup (`backend/Dockerfile` CMD). New tasks therefore self-migrate; no separate migration step is wired up.
 
+**Deploy procedure (single script):**
+
+```bash
+bash scripts/deploy-backend.sh
+```
+
+What it does: ECR login → `docker buildx build --platform linux/amd64` from `./backend` → push two tags (`:latest` for the running task def + `:<git-sha>` for rollback) → `aws ecs update-service --force-new-deployment` against `cooking-cluster` / `cooking-backend-service` → wait for stable → smoke `/health` plus a route that should exist post-deploy. Fails fast if the smoke route 404s (deploy didn't actually roll). Defaults are hardcoded for the live account (`930067562682.dkr.ecr.us-east-1.amazonaws.com/cooking-backend`); override via env vars (`SERVICE`, `PROBE_PATH`, etc.) for other configs.
+
+**Rollback:** every successful deploy leaves `cooking-backend:<git-sha>` in ECR. To revert, pull that tag, re-tag it as `:latest`, push, and re-run the update-service step from the script. Procedure in the script's footer.
+
+**Deploy order when a feature spans backend + web** (e.g., friend-library, future similar features): deploy backend FIRST (`scripts/deploy-backend.sh`), verify the new route returns `401` not `404` against `https://api.chef-world.com`, THEN merge the feature branch to `main` (which auto-triggers Vercel). Reversed order ships web UI hitting 404s on prod backend.
+
 ### Local Docker stack
 
 `docker-compose.yml` brings up Postgres + backend + web. Backend `.env` is loaded via `env_file: backend/.env`, but local compose-level overrides force `DATABASE_URL`, `DATABASE_SSL=false`, and a localhost CORS list. The web container is built with `NEXT_PUBLIC_API_BASE=http://localhost:8000` so the browser still talks to the host-published port. `./backend/uploads` is bind-mounted into `/app/uploads` so locally-uploaded recipe images survive container rebuilds (matters when `S3_BUCKET_NAME` is not set in local `backend/.env`).
