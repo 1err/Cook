@@ -12,7 +12,7 @@ The cache is shared across all users: when one user triggers a fresh scrape, eve
 
 ## Repo shape (npm workspaces + Python)
 
-- `apps/web` — Next.js 14 App Router (`@cooking/web`). Cookie-based auth. Source of nearly all real product UI today. Pages: `import/`, `library/{,[id]}`, `planner/`, `shopping-list/`, `recipe/[id]`, `preview/` (admin cache console), `login/`, `register/`.
+- `apps/web` — Next.js 14 App Router (`@cooking/web`). Cookie-based auth. Source of nearly all real product UI today. Pages: `import/`, `library/{,[id]}`, `library/friends/{,[userId]/{,[recipeId]}}` (friend library search + read-only browse + copy), `planner/`, `shopping-list/`, `recipe/[id]`, `preview/` (admin cache console), `settings/` ("Share my library" toggle), `login/`, `register/`. Settings link lives in the NavAuth dropdown.
 - `apps/mobile` — Expo / React Native iOS app (`@cooking/mobile`). Bottom tab bar (Library / Planner / Shopping / Profile) over per-tab native stacks, with Import as a root-level modal. Source layout is feature-folders + a small design system (see "Mobile structure" below). All product surfaces ship: auth flow, Library list with **segmented control between "My Library" and "Public Library"** (catalog browse + one-tap copy-to-library, already-copied detection via `catalog_source_recipe_id`), **friend library sharing** (search icon in Library header → `FriendSearchScreen` (email lookup) → `FriendLibraryScreen` (list + copy with already-copied detection); Profile toggle "Share my library" flips `users.is_library_public`), Recipe detail (with editor-only "Add/Remove public library" item in the action menu, gated by `/recipes/catalog/editor-status`), Recipe edit, Planner (week navigation + bottom-sheet recipe picker), Shopping (smart list + per-store product picks + **"Load top picks from {store}" bulk-scrape button** that opens all panels and fetches at concurrency 3 + per-category **"Already have" subsection for checked items** + planner-stale detection), Import (YouTube link + transcript with image upload).
 - `packages/shared` — types, week/meal-plan/ingredient/category helpers, store enum, i18n strings (`packages/shared/src/messages/{en,zh}.json`). **Single source for these helpers** — pages import from `@cooking/shared` directly; no per-app re-export shims under `apps/web/app/lib/`.
 - `packages/api-client` — `createApiClient({ baseUrl, auth })`. `auth.kind: "cookie"` adds `credentials: "include"`; `auth.kind: "bearer"` reads a token via `getToken()` and adds `Authorization: Bearer …`.
@@ -38,6 +38,7 @@ docker compose down && docker compose up --build -d   # then open http://localho
   - `outputDirectory: "apps/web/.next"` — relative to the repo root.
 - **Repo-root `package.json` lists `next` as a `devDependency`.** This is required: Vercel's framework detector reads the project's root `package.json` (regardless of Root Directory) and refuses to deploy without seeing `"next"` listed. The version must match what `apps/web/package.json` declares. When upgrading Next, update both files.
 - **All Build & Development Settings overrides in the dashboard must be OFF.** `vercel.json` is the source of truth. Dashboard overrides layer on top of Vercel's default install pass and reintroduce the idealTree collision.
+- **`@types/react@^18.3.12` + `@types/react-dom@^18.3.0` are pinned at the workspace ROOT** (`package.json::devDependencies`). This is non-obvious but load-bearing: mobile pins `@types/react@~19.1.0` for SDK 54, which npm would otherwise hoist and shadow web's React 18 types, failing the Next.js prod build with `Type 'bigint' is not assignable to type 'ReactNode'` in `apps/web/app/lib/i18n.tsx`. Root pin → v18 wins at root → mobile's v19 lives only in `apps/mobile/node_modules/`. `apps/web/tsconfig.json` also has explicit `paths` for `react` / `react-dom` pointing at apps/web's own copies as defense-in-depth. **Don't remove either pin without verifying `npm --workspace @cooking/web run build` still succeeds.**
 - Production env vars (Vercel → Settings → Environment Variables → Production):
   - `NEXT_PUBLIC_API_BASE = https://api.chef-world.com` (so the browser calls the ECS backend, not localhost).
 - History notes (don't repeat these mistakes):
@@ -165,6 +166,9 @@ The web Dockerfile’s build context is the **repo root** (it needs `packages/`)
 ```bash
 python scripts/precompute_store_products.py          # warms persistent store-product cache
 python scripts/cleanup_bad_store_cache_queries.py    # deletes cache rows containing 新鲜 / 切块
+# Friend-library end-to-end smoke (requires jq + 2 test accounts):
+JD_EMAIL=jd@gmail.com BOB_EMAIL=bob+test@example.com \
+  bash backend/scripts/smoke_friend_library.sh <jd-pw> <bob-pw>
 ```
 
 ## API surface (current)
@@ -267,6 +271,8 @@ Two separate visibility models coexist:
 
 `POST /users/{id}/recipes/{rid}/copy` and `POST /recipes/catalog/{id}/copy` both set `catalog_source_recipe_id` on the new row, so client-side already-copied detection (`Set<catalog_source_recipe_id>`) works the same way for both surfaces. The friend-library code lives in `backend/app/db/repo_users.py` + `backend/app/api/routes_users.py`. Smoke testable via `backend/scripts/smoke_friend_library.sh <jd-pw> <bob-pw>`.
 
+**Deploy order for features that add backend endpoints + web UI** (applies to friend-library and anything similar): deploy the new backend ECS task def FIRST so the new routes exist on prod, THEN merge the feature branch to main (which auto-triggers Vercel). If reversed, web ships UI that hits `404` on prod backend until ECS catches up. Quick prod readiness check before merging web: `curl -i https://api.chef-world.com/<new-route>` should return `401 Not authenticated` (route exists, just needs auth) not `404 Not Found` (route doesn't exist yet).
+
 ### API base resolution
 
 - Web (`apps/web/app/config.ts::getApiBase`) — `NEXT_PUBLIC_API_BASE` if set, else `http://localhost:8000`. Vercel builds bake in `https://api.chef-world.com`; Docker compose bakes in `http://localhost:8000`.
@@ -305,6 +311,8 @@ Two parallel concepts on `RecipeModel`:
 `apps/mobile/src/` is organized into:
 
 - `theme/` — `colors.ts`, `spacing.ts`, `radii.ts`, `typography.ts`, `index.ts`. Plain imports (no `useTheme()` hook — no dark mode in scope). All hex codes live here; feature code never inlines colors.
+- `lib/imageUrl.ts` — `resolveImageUrl(raw)` rewrites loopback hosts (`localhost`, `127.0.0.1`, `0.0.0.0`, `::1`) in image URLs to the configured `EXPO_PUBLIC_API_BASE` host. Backend's `/recipes/upload-image` stores absolute URLs built from `request.base_url`, which on local docker is `http://localhost:8000/...` — on a real phone, `localhost` is the phone. This helper applies at every image render site (library cards, recipe detail hero, planner picker rows + chips, import preview). Cleaner long-term: backend stores relative URLs and clients prefix; for now the rewrite is mobile-only and doesn't touch web rendering.
+- `features/library/Friend{Search,Library}Screen.tsx` — friend-library surface pushed onto `LibraryStackParamList`. Search header icon (`LibraryListScreen.tsx`) → `FriendSearch` (email input, `users.searchByEmail`) → `FriendLibrary` (list + `users.copyFriendRecipe` with already-copied detection on `catalog_source_recipe_id`). Profile toggle `Share my library` in `ProfileScreen.tsx` flips `users.is_library_public` via `useAuth().setLibraryVisibility`.
 - `components/` — primitives: `Screen` (safe-area + optional KeyboardAvoidingView + ScrollView with `contentInsetAdjustmentBehavior="automatic"`), `Card`, `Button` (variants `primary | secondary | ghost | destructive`, fires `expo-haptics` selection feedback on primary press-in), `IconButton`, `EmptyState`, `TextField`, `ListRow`. Import from `@/src/components`.
 - `navigation/` — `RootStack` swaps between `AuthStack` and `MainTabs` based on `useAuth().token`, with `ImportModal` as a sibling root screen (`presentation: "modal"`). `MainTabs` is a bottom-tab navigator (Library / Planner / Shopping / Profile); each tab owns a native-stack under `navigation/stacks/`. All `ParamList` types live in `navigation/types.ts` (single source of truth — no more `RootStackParamList` exported from `App.tsx`). The slug for the Profile tab is `ProfileTab` (avoids collision with the `Profile` screen inside the stack).
 - `features/<area>/` — screens grouped by feature (`auth/`, `library/`, `planner/`, `shopping/`, `import/`, `profile/`). New feature work lands here, not in a flat `screens/` directory.
