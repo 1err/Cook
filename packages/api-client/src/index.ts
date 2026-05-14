@@ -1,4 +1,4 @@
-import type { MealPlanDay, Recipe, RecipeTagSlug, ShoppingListItem } from "@cooking/shared";
+import type { MealPlanDay, Recipe, RecipeTagSlug, ShoppingListItem, User } from "@cooking/shared";
 
 export type AuthStrategy =
   | { kind: "cookie" }
@@ -82,17 +82,22 @@ export function createApiClient(options: ApiClientOptions) {
     request,
     auth: {
       login: (email: string, password: string) =>
-        json<{ id: string; email: string; access_token?: string }>(`/auth/login`, {
+        json<User & { access_token?: string }>(`/auth/login`, {
           method: "POST",
           body: JSON.stringify({ email, password }),
         }),
       register: (email: string, password: string) =>
-        json<{ id: string; email: string; access_token?: string }>(`/auth/register`, {
+        json<User & { access_token?: string }>(`/auth/register`, {
           method: "POST",
           body: JSON.stringify({ email, password }),
         }),
-      me: () => json<{ id: string; email: string }>("/auth/me"),
+      me: () => json<User>("/auth/me"),
       logout: () => json<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+      setLibraryVisibility: (isPublic: boolean) =>
+        json<{ is_library_public: boolean }>("/auth/library-visibility", {
+          method: "POST",
+          body: JSON.stringify({ is_public: isPublic }),
+        }),
     },
     recipes: {
       list: () => json<Recipe[]>("/recipes"),
@@ -116,6 +121,17 @@ export function createApiClient(options: ApiClientOptions) {
         json<Recipe>("/recipes/parse/transcript", { method: "POST", body: JSON.stringify(payload) }),
       uploadImage: (formData: FormData) =>
         json<UploadImageResult>("/recipes/upload-image", { method: "POST", body: formData }),
+    },
+    users: {
+      searchByEmail: (email: string) =>
+        json<User>(`/users/search?email=${encodeURIComponent(email)}`),
+      libraryRecipes: (userId: string) =>
+        json<Recipe[]>(`/users/${encodeURIComponent(userId)}/recipes`),
+      copyFriendRecipe: (userId: string, recipeId: string) =>
+        json<Recipe>(
+          `/users/${encodeURIComponent(userId)}/recipes/${encodeURIComponent(recipeId)}/copy`,
+          { method: "POST" },
+        ),
     },
     mealPlan: {
       list: (start: string, end: string) =>

@@ -38,10 +38,11 @@ class LoginBody(BaseModel):
 class UserResponse(BaseModel):
     id: str
     email: str
+    is_library_public: bool
 
     @classmethod
     def from_model(cls, u: UserModel) -> "UserResponse":
-        return cls(id=str(u.id), email=u.email)
+        return cls(id=str(u.id), email=u.email, is_library_public=bool(u.is_library_public))
 
 
 class AuthResponse(UserResponse):
@@ -49,7 +50,12 @@ class AuthResponse(UserResponse):
 
     @classmethod
     def from_model_with_token(cls, u: UserModel, token: str | None) -> "AuthResponse":
-        return cls(id=str(u.id), email=u.email, access_token=token)
+        return cls(
+            id=str(u.id),
+            email=u.email,
+            is_library_public=bool(u.is_library_public),
+            access_token=token,
+        )
 
 
 def _set_cookie(response: Response, token: str) -> None:
@@ -160,3 +166,23 @@ async def logout(response: Response):
 async def me(current_user: UserModel = Depends(get_current_user)):
     """Return current authenticated user."""
     return UserResponse.from_model(current_user)
+
+
+class LibraryVisibilityBody(BaseModel):
+    is_public: bool
+
+
+class LibraryVisibilityResponse(BaseModel):
+    is_library_public: bool
+
+
+@router.post("/library-visibility", response_model=LibraryVisibilityResponse)
+async def set_library_visibility(
+    body: LibraryVisibilityBody,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserModel = Depends(get_current_user),
+):
+    """Flip the current user's library-public flag."""
+    current_user.is_library_public = bool(body.is_public)
+    await session.flush()
+    return LibraryVisibilityResponse(is_library_public=current_user.is_library_public)

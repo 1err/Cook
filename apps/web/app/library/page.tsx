@@ -122,9 +122,46 @@ function LibraryPageContent() {
 
   return (
     <>
-      <h1 className="library-page-title font-headline">{t("library.title")}</h1>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "1rem",
+          flexWrap: "wrap",
+        }}
+      >
+        <h1 className="library-page-title font-headline" style={{ margin: 0 }}>
+          {t("library.title")}
+        </h1>
+        <Link
+          href="/library/friends"
+          aria-label="Find a friend's library"
+          title="Search for a friend's shared library"
+          className="font-headline"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            padding: "0.55rem 1.1rem",
+            borderRadius: "var(--radius-full, 999px)",
+            background: "var(--primary, #9a442d)",
+            color: "#fff",
+            textDecoration: "none",
+            fontSize: "0.9rem",
+            fontWeight: 700,
+            boxShadow: "var(--kitchen-glow, 0 2px 6px rgba(0,0,0,0.08))",
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+            <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+          Find a friend
+        </Link>
+      </div>
 
-      <div className="library-chip-row" role="tablist" aria-label={t("library.views")} style={{ marginBottom: "1rem" }}>
+      <div className="library-chip-row" role="tablist" aria-label={t("library.views")} style={{ marginBottom: "1rem", marginTop: "1rem" }}>
         <button
           type="button"
           className={`library-chip ${view === "mine" ? "library-chip--active" : "library-chip--idle"}`}

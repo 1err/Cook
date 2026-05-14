@@ -1,5 +1,5 @@
-import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { Alert, StyleSheet, Switch, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth";
@@ -10,7 +10,20 @@ import type { ProfileStackParamList } from "../../navigation/types";
 type Props = NativeStackScreenProps<ProfileStackParamList, "Profile">;
 
 export function ProfileScreen({ navigation }: Props) {
-  const { user } = useAuth();
+  const { user, setLibraryVisibility } = useAuth();
+  const [pending, setPending] = useState(false);
+
+  const onToggle = async (next: boolean) => {
+    if (pending || !user) return;
+    setPending(true);
+    try {
+      await setLibraryVisibility(next);
+    } catch (e) {
+      Alert.alert("Couldn't update", e instanceof Error ? e.message : "Please try again.");
+    } finally {
+      setPending(false);
+    }
+  };
 
   return (
     <Screen scroll padded={false}>
@@ -22,6 +35,18 @@ export function ProfileScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.group}>
+        <ListRow
+          title="Share my library"
+          subtitle="Anyone who knows your email can browse and copy your recipes."
+          leading={<Ionicons name="people-outline" size={20} color={colors.primary} />}
+          trailing={
+            <Switch
+              value={user?.is_library_public ?? false}
+              onValueChange={(next) => void onToggle(next)}
+              disabled={pending || !user}
+            />
+          }
+        />
         <ListRow
           title="Settings"
           leading={<Ionicons name="settings-outline" size={20} color={colors.primary} />}

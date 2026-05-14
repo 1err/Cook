@@ -85,15 +85,26 @@ export function LibraryListScreen({ navigation }: Props) {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Import recipe"
-          onPress={() => navigation.getParent()?.navigate("ImportModal")}
-          hitSlop={12}
-          style={({ pressed }) => [styles.headerAdd, pressed && styles.headerAddPressed]}
-        >
-          <Ionicons name="add" size={22} color={colors.onPrimary} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Find a friend"
+            onPress={() => navigation.navigate("FriendSearch")}
+            hitSlop={12}
+            style={({ pressed }) => [styles.headerIconBtn, pressed && styles.headerAddPressed]}
+          >
+            <Ionicons name="search" size={20} color={colors.onSurface} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Import recipe"
+            onPress={() => navigation.getParent()?.navigate("ImportModal")}
+            hitSlop={12}
+            style={({ pressed }) => [styles.headerAdd, pressed && styles.headerAddPressed]}
+          >
+            <Ionicons name="add" size={22} color={colors.onPrimary} />
+          </Pressable>
+        </View>
       ),
     });
   }, [navigation]);
@@ -300,6 +311,15 @@ const styles = StyleSheet.create({
   cardTitle: { ...typography.headline, color: colors.onSurface },
   cardSub: { ...typography.subhead, color: colors.onSurfaceVariant, marginTop: 2 },
   publicAction: { marginTop: spacing.sm, alignSelf: "flex-start" },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  headerIconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.surfaceContainerHigh,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   headerAdd: {
     width: 32,
     height: 32,
