@@ -190,6 +190,41 @@ class RecipeCreate(BaseModel):
     library_category: Optional[str] = None
     is_public_catalog: bool = False
     catalog_source_recipe_id: Optional[str] = None
+    description: Optional[str] = None
+    total_time_minutes: Optional[int] = None
+    steps: list[RecipeStep] = Field(default_factory=list)
+    tips: list[str] = Field(default_factory=list)
+    equipment: list[str] = Field(default_factory=list)
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _normalize_description(cls, v: object) -> Optional[str]:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            return None
+        s = v.strip()
+        return s or None
+
+    @field_validator("total_time_minutes", mode="before")
+    @classmethod
+    def _normalize_total_time(cls, v: object) -> Optional[int]:
+        return coerce_total_time_minutes(v)
+
+    @field_validator("steps", mode="before")
+    @classmethod
+    def _normalize_steps(cls, v: object) -> list[RecipeStep]:
+        return coerce_steps(v)
+
+    @field_validator("tips", mode="before")
+    @classmethod
+    def _normalize_tips(cls, v: object) -> list[str]:
+        return coerce_string_list(v)
+
+    @field_validator("equipment", mode="before")
+    @classmethod
+    def _normalize_equipment(cls, v: object) -> list[str]:
+        return coerce_string_list(v)
 
     @field_validator("library_tags", mode="before")
     @classmethod
