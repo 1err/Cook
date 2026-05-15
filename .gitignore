@@ -29,3 +29,6 @@ tsconfig.tsbuildinfo
 .idea/
 *.swp
 .DS_Store
+
+# Superpowers brainstorm scratch
+.superpowers/
