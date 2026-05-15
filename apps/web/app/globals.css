@@ -4390,3 +4390,18 @@ button:disabled {
 .char-counter { font-size:.78rem; opacity:.65; text-align:right; margin-top:.15rem; }
 .inline-input-row { display:flex; align-items:center; gap:.5rem; }
 .inline-input-row .suffix { font-size:.85rem; opacity:.75; }
+
+/* ── StepListEditor + DurationField ─────────────────────────────────────── */
+.duration-field { display:inline-flex; align-items:center; gap:.25rem; }
+.duration-field input { width:3.5rem; text-align:center; }
+.step-list-editor ol { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:.75rem; }
+.step-row { display:grid; grid-template-columns:2rem 1fr auto; gap:.6rem; align-items:start; }
+.step-row__index { font-weight:600; padding-top:.4rem; }
+.step-row__body textarea { width:100%; }
+.step-row__meta { display:flex; align-items:center; gap:.5rem; margin-top:.3rem; font-size:.85rem; }
+.step-row__image img { max-width:200px; max-height:120px; border-radius:8px; margin-top:.4rem; display:block; }
+.step-row__upload input { display:none; }
+.step-row__upload { display:inline-block; padding:.3rem .5rem; border:1px dashed currentColor; border-radius:6px; cursor:pointer; font-size:.85rem; margin-top:.3rem; }
+.step-row__actions { display:flex; flex-direction:column; gap:.2rem; }
+.add-row-btn { margin-top:.6rem; }
+.hint { opacity:.6; font-size:.9rem; margin:.3rem 0; }
