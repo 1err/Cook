@@ -55,6 +55,11 @@ export function RecipeEditScreen({ navigation, route }: Props) {
         thumbnail_url: draft.thumbnail_url,
         ingredients: cleanedIngredients,
         library_tags: draft.library_tags,
+        description: draft.description,
+        total_time_minutes: draft.total_time_minutes,
+        steps: draft.steps,
+        tips: draft.tips,
+        equipment: draft.equipment,
       });
       navigation.goBack();
     } catch (e) {
