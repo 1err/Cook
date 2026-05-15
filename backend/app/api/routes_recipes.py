@@ -8,10 +8,10 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api._types import LibraryTags
+from app.api._types import LibraryTags, StepList, StringList
 from app.api.auth import get_current_user
 from app.core.config import get_public_library_editor_emails, settings
 from app.db import repo_mealplan, repo_recipes
@@ -222,6 +222,22 @@ class RecipeUpdate(BaseModel):
     thumbnail_url: Optional[str] = None
     ingredients: Optional[list[IngredientItem]] = None
     library_tags: Optional[LibraryTags] = None
+    description: Optional[str] = None
+    total_time_minutes: Optional[int] = None
+    steps: Optional[StepList] = None
+    tips: Optional[StringList] = None
+    equipment: Optional[StringList] = None
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def normalize_description(cls, v: object) -> Optional[str]:
+        """Trim whitespace; return None if empty after trimming."""
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            return None
+        s = v.strip()
+        return s or None
 
 
 @router.patch("/{recipe_id}", response_model=Recipe)
