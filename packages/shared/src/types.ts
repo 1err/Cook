@@ -38,6 +38,12 @@ export interface IngredientItem {
   notes?: string | null;
 }
 
+export interface RecipeStep {
+  text: string;
+  duration_seconds?: number | null;
+  image_url?: string | null;
+}
+
 export interface Recipe {
   id: string;
   title: string;
@@ -49,6 +55,11 @@ export interface Recipe {
   library_category?: RecipeTagSlug | null;
   is_public_catalog?: boolean;
   catalog_source_recipe_id?: string | null;
+  description?: string | null;
+  total_time_minutes?: number | null;
+  steps?: RecipeStep[];
+  tips?: string[];
+  equipment?: string[];
 }
 
 export type MealPlanDay = {
