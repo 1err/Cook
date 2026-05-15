@@ -172,6 +172,11 @@ async def copy_public_recipe_to_user(
         library_category=source.library_category,
         is_public_catalog=False,
         catalog_source_recipe_id=source.id,
+        description=source.description,
+        total_time_minutes=source.total_time_minutes,
+        steps=source.steps,
+        tips=source.tips,
+        equipment=source.equipment,
     )
     session.add(clone)
     await session.flush()
