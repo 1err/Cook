@@ -4385,3 +4385,8 @@ button:disabled {
 .import-engine__cta .import-spin {
   animation: import-cta-spin 0.85s linear infinite;
 }
+
+.field-label { display:block; font-weight:600; margin:.75rem 0 .25rem; font-size:.92rem; }
+.char-counter { font-size:.78rem; opacity:.65; text-align:right; margin-top:.15rem; }
+.inline-input-row { display:flex; align-items:center; gap:.5rem; }
+.inline-input-row .suffix { font-size:.85rem; opacity:.75; }

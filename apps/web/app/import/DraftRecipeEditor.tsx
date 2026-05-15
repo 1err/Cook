@@ -214,6 +214,22 @@ export function DraftRecipeEditor({
         </section>
 
         <section className="import-review-section">
+          <label className="field-label">{t("recipe.description")}</label>
+          <textarea
+            rows={3}
+            maxLength={500}
+            placeholder={t("recipe.description.placeholder")}
+            value={draft.description ?? ""}
+            onChange={(e) =>
+              onChange({ ...draft, description: e.target.value })
+            }
+          />
+          <div className="char-counter">
+            {(draft.description ?? "").length} / 500
+          </div>
+        </section>
+
+        <section className="import-review-section">
           <label className="import-engine__label" htmlFor="draft-title">
             {t("recipe.recipeTitle")}
           </label>
@@ -225,6 +241,24 @@ export function DraftRecipeEditor({
             onChange={(e) => onChange({ ...draft, title: e.target.value })}
             disabled={saving}
           />
+        </section>
+
+        <section className="import-review-section">
+          <label className="field-label">{t("recipe.totalTime")}</label>
+          <div className="inline-input-row">
+            <input
+              type="number"
+              min={0}
+              placeholder={t("recipe.totalTime.placeholder")}
+              value={draft.total_time_minutes ?? ""}
+              onChange={(e) => {
+                const raw = e.target.value;
+                const n = raw === "" ? null : Math.max(0, Math.floor(Number(raw) || 0));
+                onChange({ ...draft, total_time_minutes: n });
+              }}
+            />
+            <span className="suffix">{t("recipe.totalTime.minutesSuffix")}</span>
+          </div>
         </section>
 
         <section className="import-review-section">
