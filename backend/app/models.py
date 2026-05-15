@@ -99,6 +99,8 @@ class RecipeStep(BaseModel):
     @field_validator("text", mode="before")
     @classmethod
     def _trim_text(cls, v: object) -> str:
+        # Empty/None text is allowed at the model level; coerce_steps filters
+        # out empty-text rows before persistence. Direct construction can yield "".
         if v is None:
             return ""
         if not isinstance(v, str):
@@ -122,12 +124,12 @@ class RecipeStep(BaseModel):
         if v is None:
             return None
         if not isinstance(v, str):
-            return None
+            return None  # field is Optional; non-string inputs are silently dropped
         s = v.strip()
         return s or None
 
 
-def coerce_steps(v: object) -> list["RecipeStep"]:
+def coerce_steps(v: object) -> list[RecipeStep]:
     if v is None:
         return []
     if not isinstance(v, list):
