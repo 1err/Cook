@@ -9,7 +9,14 @@ from typing import Optional
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Recipe, IngredientItem, coerce_library_tags
+from app.models import (
+    Recipe,
+    IngredientItem,
+    RecipeStep,
+    coerce_library_tags,
+    coerce_steps,
+    coerce_string_list,
+)
 from app.db.models import RecipeModel
 
 
@@ -17,6 +24,9 @@ def _row_to_recipe(row: RecipeModel) -> Recipe:
     ingredients_data = json.loads(row.ingredients or "[]")
     raw_tags = json.loads(row.library_tags or "[]") if getattr(row, "library_tags", None) else []
     normalized_tags = coerce_library_tags(raw_tags or row.library_category)
+    steps_raw = json.loads(row.steps or "[]") if getattr(row, "steps", None) else []
+    tips_raw = json.loads(row.tips or "[]") if getattr(row, "tips", None) else []
+    equipment_raw = json.loads(row.equipment or "[]") if getattr(row, "equipment", None) else []
     return Recipe(
         id=row.id,
         title=row.title,
@@ -28,6 +38,11 @@ def _row_to_recipe(row: RecipeModel) -> Recipe:
         library_category=normalized_tags[0] if normalized_tags else None,
         is_public_catalog=row.is_public_catalog,
         catalog_source_recipe_id=row.catalog_source_recipe_id,
+        description=row.description,
+        total_time_minutes=row.total_time_minutes,
+        steps=coerce_steps(steps_raw),
+        tips=coerce_string_list(tips_raw),
+        equipment=coerce_string_list(equipment_raw),
     )
 
 
@@ -36,6 +51,9 @@ async def save_recipe(session: AsyncSession, recipe: Recipe, user_id: uuid.UUID)
         [i.model_dump() if hasattr(i, "model_dump") else i for i in recipe.ingredients]
     )
     tags = coerce_library_tags(getattr(recipe, "library_tags", None) or recipe.library_category)
+    steps_list = coerce_steps(getattr(recipe, "steps", None))
+    tips_list = coerce_string_list(getattr(recipe, "tips", None))
+    equipment_list = coerce_string_list(getattr(recipe, "equipment", None))
     model = RecipeModel(
         id=recipe.id,
         user_id=user_id,
@@ -48,6 +66,11 @@ async def save_recipe(session: AsyncSession, recipe: Recipe, user_id: uuid.UUID)
         library_category=tags[0] if tags else None,
         is_public_catalog=recipe.is_public_catalog,
         catalog_source_recipe_id=recipe.catalog_source_recipe_id,
+        description=getattr(recipe, "description", None),
+        total_time_minutes=getattr(recipe, "total_time_minutes", None),
+        steps=json.dumps([s.model_dump() for s in steps_list]),
+        tips=json.dumps(tips_list),
+        equipment=json.dumps(equipment_list),
     )
     await session.merge(model)
     await session.flush()
