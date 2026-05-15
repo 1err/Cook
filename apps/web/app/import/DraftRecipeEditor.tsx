@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { uploadRecipeImage } from "../lib/uploadRecipeImage";
 import { useT } from "../lib/i18n";
 import {
   CATEGORY_LABELS,
@@ -29,24 +30,6 @@ async function readErrorMessage(res: Response, fallback: string): Promise<string
   } catch {
     return fallback;
   }
-}
-
-async function uploadRecipeImage(file: File, errLabel: string): Promise<string> {
-  const form = new FormData();
-  form.append("file", file);
-  const res = await apiFetch("/recipes/upload-image", { method: "POST", body: form });
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res, errLabel));
-  }
-  const { upload_url, file_url } = (await res.json()) as { upload_url: string; file_url: string };
-  if (upload_url) {
-    await fetch(upload_url, {
-      method: "PUT",
-      headers: { "Content-Type": file.type },
-      body: file,
-    });
-  }
-  return file_url;
 }
 
 export interface DraftRecipeEditorProps {
