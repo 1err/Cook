@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, Image } from "react-native";
+import { View, Text, TextInput, Pressable, Image, Alert } from "react-native";
 import type { RecipeStep } from "@cooking/shared";
 import { typography, spacing, colors, radii } from "../../theme";
 import { Button } from "../../components";
+import { haptics } from "../../lib/haptics";
 import { DurationField } from "./DurationField";
 import { resolveImageUrl } from "../../lib/imageUrl";
 
@@ -32,8 +33,13 @@ export function StepListEditor({ steps, onChange, pickImage }: Props) {
   const onPickImage = async (i: number) => {
     setUploadingIndex(i);
     try {
+      // pickImage contract: resolves to a URL on success, null on
+      // cancel/permission-denied (no error UI), throws on upload failure.
       const url = await pickImage();
       if (url) updateAt(i, { ...steps[i], image_url: url });
+    } catch (e) {
+      haptics.error();
+      Alert.alert("Couldn't add image", e instanceof Error ? e.message : "Please try again.");
     } finally {
       setUploadingIndex(null);
     }

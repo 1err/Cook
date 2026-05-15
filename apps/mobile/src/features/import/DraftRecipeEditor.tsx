@@ -1,6 +1,5 @@
 import React from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import * as ImagePicker from "expo-image-picker";
 import type { IngredientItem, Recipe, RecipeStep, RecipeTagSlug } from "@cooking/shared";
 import { Button, TextField } from "../../components";
 import { useApiClient } from "../../lib/api";
@@ -11,7 +10,7 @@ import { StepListEditor } from "./StepListEditor";
 import { StringListEditor } from "./StringListEditor";
 import { TagPicker } from "./TagPicker";
 import { TotalTimeField } from "./TotalTimeField";
-import { useImageUpload } from "./useImageUpload";
+import { pickAndUploadImage, useImageUpload } from "./useImageUpload";
 
 export type DraftRecipeEditorProps = {
   draft: Recipe;
@@ -37,47 +36,13 @@ export function DraftRecipeEditor({
   const upload = useImageUpload(draft.thumbnail_url);
   const apiClient = useApiClient();
 
-  // Pick an image from the library and upload it, returning the final URL.
-  // Mirrors useImageUpload's upload path but returns the URL instead of
-  // storing it as the thumbnail (used for per-step images).
-  const pickStepImage = React.useCallback(async (): Promise<string | null> => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) return null;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.85,
-    });
-    if (result.canceled) return null;
-    const asset = result.assets[0];
-    if (!asset) return null;
-
-    const fileName = asset.fileName ?? `upload-${Date.now()}.jpg`;
-    const type =
-      asset.mimeType ??
-      (fileName.endsWith(".png")
-        ? "image/png"
-        : fileName.endsWith(".webp")
-        ? "image/webp"
-        : fileName.endsWith(".gif")
-        ? "image/gif"
-        : "image/jpeg");
-    const filePart = { uri: asset.uri, name: fileName, type };
-
-    const form = new FormData();
-    // RN's FormData accepts a blob descriptor; the typing isn't DOM-compatible.
-    form.append("file", filePart as unknown as Blob);
-    const res = await apiClient.recipes.uploadImage(form);
-    if (res.upload_url) {
-      const putRes = await fetch(res.upload_url, {
-        method: "PUT",
-        headers: { "Content-Type": filePart.type },
-        body: filePart as unknown as BodyInit,
-      });
-      if (!putRes.ok) throw new Error("Failed to upload image to storage");
-    }
-    return res.file_url;
-  }, [apiClient]);
+  // Per-step image picker. Delegates to the shared uploader: returns the
+  // final URL, null on cancel/permission-denied, throws on upload failure
+  // (StepListEditor catches and surfaces the error).
+  const pickStepImage = React.useCallback(
+    () => pickAndUploadImage(apiClient),
+    [apiClient],
+  );
 
   // Sync upload state into the draft.
   React.useEffect(() => {
@@ -127,6 +92,8 @@ export function DraftRecipeEditor({
         <Text style={styles.sectionLabel}>Description</Text>
         <TextInput
           multiline
+          // Client-side cap only — the backend does not enforce a description
+          // length limit (it only trims/normalizes; see models.py).
           maxLength={500}
           placeholder="Optional short description"
           style={styles.descriptionInput}
