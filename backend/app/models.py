@@ -91,6 +91,93 @@ class IngredientItem(BaseModel):
     notes: Optional[str] = None
 
 
+class RecipeStep(BaseModel):
+    text: str
+    duration_seconds: Optional[int] = None
+    image_url: Optional[str] = None
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def _trim_text(cls, v: object) -> str:
+        if v is None:
+            return ""
+        if not isinstance(v, str):
+            raise ValueError("step text must be a string")
+        return v.strip()
+
+    @field_validator("duration_seconds", mode="before")
+    @classmethod
+    def _nonneg_duration(cls, v: object) -> Optional[int]:
+        if v is None or v == "":
+            return None
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            return None
+        return n if n >= 0 else None
+
+    @field_validator("image_url", mode="before")
+    @classmethod
+    def _trim_image_url(cls, v: object) -> Optional[str]:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            return None
+        s = v.strip()
+        return s or None
+
+
+def coerce_steps(v: object) -> list["RecipeStep"]:
+    if v is None:
+        return []
+    if not isinstance(v, list):
+        raise ValueError("steps must be a list")
+    out: list[RecipeStep] = []
+    for item in v:
+        if isinstance(item, RecipeStep):
+            step = item
+        elif isinstance(item, dict):
+            step = RecipeStep(**item)
+        elif isinstance(item, str):
+            step = RecipeStep(text=item)
+        else:
+            continue
+        if step.text:
+            out.append(step)
+    return out
+
+
+def coerce_string_list(v: object) -> list[str]:
+    if v is None:
+        return []
+    if isinstance(v, str):
+        s = v.strip()
+        return [s] if s else []
+    if not isinstance(v, list):
+        raise ValueError("expected a list of strings")
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in v:
+        if not isinstance(item, str):
+            continue
+        s = item.strip()
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+    return out
+
+
+def coerce_total_time_minutes(v: object) -> Optional[int]:
+    if v is None or v == "":
+        return None
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return None
+    return n if n >= 0 else None
+
+
 class RecipeCreate(BaseModel):
     title: str
     source_url: Optional[str] = None
