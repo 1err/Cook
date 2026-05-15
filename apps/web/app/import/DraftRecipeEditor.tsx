@@ -10,6 +10,8 @@ import {
   type RecipeTagSlug,
 } from "../lib/recipeCategories";
 import type { IngredientItem, Recipe } from "../types";
+import { StepListEditor } from "./StepListEditor";
+import { StringListEditor } from "./StringListEditor";
 
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {
   try {
@@ -27,6 +29,24 @@ async function readErrorMessage(res: Response, fallback: string): Promise<string
   } catch {
     return fallback;
   }
+}
+
+async function uploadRecipeImage(file: File, errLabel: string): Promise<string> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await apiFetch("/recipes/upload-image", { method: "POST", body: form });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, errLabel));
+  }
+  const { upload_url, file_url } = (await res.json()) as { upload_url: string; file_url: string };
+  if (upload_url) {
+    await fetch(upload_url, {
+      method: "PUT",
+      headers: { "Content-Type": file.type },
+      body: file,
+    });
+  }
+  return file_url;
 }
 
 export interface DraftRecipeEditorProps {
@@ -92,20 +112,7 @@ export function DraftRecipeEditor({
     setError(null);
     setUploadingImage(true);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await apiFetch("/recipes/upload-image", { method: "POST", body: form });
-      if (!res.ok) {
-        throw new Error(await readErrorMessage(res, t("common.upload")));
-      }
-      const { upload_url, file_url } = (await res.json()) as { upload_url: string; file_url: string };
-      if (upload_url) {
-        await fetch(upload_url, {
-          method: "PUT",
-          headers: { "Content-Type": file.type },
-          body: file,
-        });
-      }
+      const file_url = await uploadRecipeImage(file, t("common.upload"));
       onChange({ ...draft, thumbnail_url: file_url });
     } catch (e) {
       setError(e instanceof Error ? e.message : t("common.upload"));
@@ -183,33 +190,16 @@ export function DraftRecipeEditor({
 
       <div className="import-review-panel">
         <section className="import-review-section">
-          <div className="import-review-section__head">
-            <label className="import-engine__label" style={{ marginBottom: 0 }}>
-              {t("recipe.coverImage")}
-            </label>
-            <button
-              type="button"
-              className="import-review-add font-headline"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingImage}
-            >
-              {uploadingImage ? t("recipe.uploading") : t("import.uploadImage")}
-            </button>
-          </div>
+          <label className="import-engine__label" htmlFor="draft-title">
+            {t("recipe.recipeTitle")}
+          </label>
           <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleDraftImageFile}
-            style={{ display: "none" }}
-          />
-          <input
+            id="draft-title"
             className="import-engine__input import-engine__input--plain"
-            type="url"
-            placeholder={t("import.orPasteImageUrl")}
-            value={draft.thumbnail_url ?? ""}
-            onChange={(e) => onChange({ ...draft, thumbnail_url: e.target.value })}
-            disabled={uploadingImage || saving}
+            type="text"
+            value={draft.title}
+            onChange={(e) => onChange({ ...draft, title: e.target.value })}
+            disabled={saving}
           />
         </section>
 
@@ -227,20 +217,6 @@ export function DraftRecipeEditor({
           <div className="char-counter">
             {(draft.description ?? "").length} / 500
           </div>
-        </section>
-
-        <section className="import-review-section">
-          <label className="import-engine__label" htmlFor="draft-title">
-            {t("recipe.recipeTitle")}
-          </label>
-          <input
-            id="draft-title"
-            className="import-engine__input import-engine__input--plain"
-            type="text"
-            value={draft.title}
-            onChange={(e) => onChange({ ...draft, title: e.target.value })}
-            disabled={saving}
-          />
         </section>
 
         <section className="import-review-section">
@@ -309,6 +285,28 @@ export function DraftRecipeEditor({
           </div>
         </section>
 
+        <StepListEditor
+          steps={draft.steps ?? []}
+          onChange={(steps) => onChange({ ...draft, steps })}
+          uploadImage={(file) => uploadRecipeImage(file, t("common.upload"))}
+        />
+
+        <StringListEditor
+          label={t("recipe.tips")}
+          addLabel={t("recipe.tips.addRow")}
+          placeholder={t("recipe.tips.placeholder")}
+          values={draft.tips ?? []}
+          onChange={(tips) => onChange({ ...draft, tips })}
+        />
+
+        <StringListEditor
+          label={t("recipe.equipment")}
+          addLabel={t("recipe.equipment.addRow")}
+          placeholder={t("recipe.equipment.placeholder")}
+          values={draft.equipment ?? []}
+          onChange={(equipment) => onChange({ ...draft, equipment })}
+        />
+
         <section className="import-review-section">
           <label className="import-engine__label">
             {t("common.tags")}
@@ -335,6 +333,37 @@ export function DraftRecipeEditor({
               </div>
             ))}
           </div>
+        </section>
+
+        <section className="import-review-section">
+          <div className="import-review-section__head">
+            <label className="import-engine__label" style={{ marginBottom: 0 }}>
+              {t("recipe.coverImage")}
+            </label>
+            <button
+              type="button"
+              className="import-review-add font-headline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingImage}
+            >
+              {uploadingImage ? t("recipe.uploading") : t("import.uploadImage")}
+            </button>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleDraftImageFile}
+            style={{ display: "none" }}
+          />
+          <input
+            className="import-engine__input import-engine__input--plain"
+            type="url"
+            placeholder={t("import.orPasteImageUrl")}
+            value={draft.thumbnail_url ?? ""}
+            onChange={(e) => onChange({ ...draft, thumbnail_url: e.target.value })}
+            disabled={uploadingImage || saving}
+          />
         </section>
 
         {error ? (
