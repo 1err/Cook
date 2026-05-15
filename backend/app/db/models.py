@@ -57,6 +57,11 @@ class RecipeModel(Base):
     library_category: Mapped[str | None] = mapped_column(String(32), nullable=True)
     is_public_catalog: Mapped[bool] = mapped_column(sa.Boolean(), nullable=False, server_default=sa.false())
     catalog_source_recipe_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    total_time_minutes: Mapped[int | None] = mapped_column(sa.Integer(), nullable=True)
+    steps: Mapped[str] = mapped_column(Text, nullable=False, server_default="[]")           # JSON array
+    tips: Mapped[str] = mapped_column(Text, nullable=False, server_default="[]")            # JSON array
+    equipment: Mapped[str] = mapped_column(Text, nullable=False, server_default="[]")       # JSON array
 
 
 class MealPlanModel(Base):
