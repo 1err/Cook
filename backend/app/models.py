@@ -198,7 +198,7 @@ class RecipeCreate(BaseModel):
 
     @field_validator("description", mode="before")
     @classmethod
-    def _normalize_description(cls, v: object) -> Optional[str]:
+    def normalize_description(cls, v: object) -> Optional[str]:
         if v is None:
             return None
         if not isinstance(v, str):
@@ -208,22 +208,22 @@ class RecipeCreate(BaseModel):
 
     @field_validator("total_time_minutes", mode="before")
     @classmethod
-    def _normalize_total_time(cls, v: object) -> Optional[int]:
+    def normalize_total_time(cls, v: object) -> Optional[int]:
         return coerce_total_time_minutes(v)
 
     @field_validator("steps", mode="before")
     @classmethod
-    def _normalize_steps(cls, v: object) -> list[RecipeStep]:
+    def normalize_steps(cls, v: object) -> list[RecipeStep]:
         return coerce_steps(v)
 
     @field_validator("tips", mode="before")
     @classmethod
-    def _normalize_tips(cls, v: object) -> list[str]:
+    def normalize_tips(cls, v: object) -> list[str]:
         return coerce_string_list(v)
 
     @field_validator("equipment", mode="before")
     @classmethod
-    def _normalize_equipment(cls, v: object) -> list[str]:
+    def normalize_equipment(cls, v: object) -> list[str]:
         return coerce_string_list(v)
 
     @field_validator("library_tags", mode="before")
