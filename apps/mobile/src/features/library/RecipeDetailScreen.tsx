@@ -207,39 +207,48 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
 
       <View style={styles.body}>
         <Text style={styles.title}>{recipe.title}</Text>
-        <Text style={styles.metaPill}>
-          {recipe.ingredients.length} {recipe.ingredients.length === 1 ? "ingredient" : "ingredients"}
-        </Text>
 
         {recipe.description ? (
           <Text style={styles.description}>{recipe.description}</Text>
         ) : null}
-        {typeof recipe.total_time_minutes === "number" ? (
-          <View style={styles.totalTime}>
-            <Text style={styles.totalTimeText}>⏱</Text>
-            <Text style={styles.totalTimeText}>{recipe.total_time_minutes} min</Text>
-          </View>
-        ) : null}
 
-        <Text style={styles.sectionTitle}>Ingredients</Text>
-        {recipe.ingredients.length === 0 ? (
-          <Text style={styles.subtle}>No ingredients listed.</Text>
-        ) : (
-          <View style={styles.list}>
-            {recipe.ingredients.map((ingredient, index) => (
-              <View key={`${ingredient.name}-${index}`} style={styles.ingredient}>
-                <View style={styles.bullet} />
-                <View style={styles.ingredientText}>
-                  <Text style={styles.ingredientName}>{ingredient.name}</Text>
-                  <Text style={styles.ingredientQty}>{formatIngredientQuantity(ingredient)}</Text>
-                </View>
-              </View>
-            ))}
+        <View style={styles.metaCard}>
+          {typeof recipe.total_time_minutes === "number" ? (
+            <View style={styles.totalTimeChip}>
+              <Text style={styles.totalTimeText}>⏱ {recipe.total_time_minutes} min</Text>
+            </View>
+          ) : null}
+          <View style={styles.metaRow}>
+            <Text style={styles.metaLabel}>Ingredients</Text>
+            <Text style={styles.metaVal}>{recipe.ingredients.length}</Text>
           </View>
-        )}
+          <View style={styles.metaRow}>
+            <Text style={styles.metaLabel}>Source</Text>
+            <Text style={styles.metaVal}>{recipe.source_url ? "Imported" : "Library"}</Text>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Ingredients</Text>
+          {recipe.ingredients.length === 0 ? (
+            <Text style={styles.subtle}>No ingredients listed.</Text>
+          ) : (
+            <View style={styles.list}>
+              {recipe.ingredients.map((ingredient, index) => (
+                <View key={`${ingredient.name}-${index}`} style={styles.ingredient}>
+                  <View style={styles.bullet} />
+                  <View style={styles.ingredientText}>
+                    <Text style={styles.ingredientName}>{ingredient.name}</Text>
+                    <Text style={styles.ingredientQty}>{formatIngredientQuantity(ingredient)}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
 
         {(recipe.equipment ?? []).length > 0 ? (
-          <View>
+          <View style={styles.card}>
             <Text style={styles.sectionTitle}>Equipment</Text>
             <View style={styles.list}>
               {recipe.equipment!.map((item, index) => (
@@ -253,7 +262,7 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
         ) : null}
 
         {(recipe.steps ?? []).length > 0 ? (
-          <View>
+          <View style={styles.card}>
             <Text style={styles.sectionTitle}>Steps</Text>
             {recipe.steps!.map((step, index) => {
               const duration =
@@ -284,7 +293,7 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
         ) : null}
 
         {(recipe.tips ?? []).length > 0 ? (
-          <View>
+          <View style={[styles.card, styles.tipsCard]}>
             <Text style={styles.sectionTitle}>Tips</Text>
             <View style={styles.list}>
               {recipe.tips!.map((tip, index) => (
@@ -302,41 +311,65 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
+  flex: { flex: 1, backgroundColor: colors.recipePaper },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.recipePaper },
   content: { paddingBottom: spacing["3xl"] },
-  hero: { width: "100%", aspectRatio: 16 / 9, backgroundColor: colors.primaryFixed },
+  hero: { width: "100%", aspectRatio: 16 / 9, backgroundColor: colors.accentSoft, borderBottomLeftRadius: radii.lg, borderBottomRightRadius: radii.lg },
   heroPlaceholder: { alignItems: "center", justifyContent: "center" },
   body: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
-  title: { ...typography.title1, color: colors.onSurface },
-  metaPill: {
-    ...typography.footnote,
+  title: { ...typography.recipeTitle, color: colors.onSurface, textAlign: "center" },
+  metaCard: {
+    marginTop: spacing.lg,
+    padding: spacing.lg,
+    backgroundColor: colors.recipeCard,
+    borderColor: colors.recipeLine,
+    borderWidth: 1,
+    borderRadius: radii.lg,
+    gap: spacing.sm,
+  },
+  metaRow: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: spacing.md },
+  metaLabel: { ...typography.caption, color: colors.onSurfaceVariant, textTransform: "uppercase", letterSpacing: 1, fontWeight: "700" },
+  metaVal: { ...typography.body, color: colors.onSurface, fontWeight: "700" },
+  totalTimeChip: {
+    flexDirection: "row",
+    alignItems: "center",
     alignSelf: "flex-start",
-    marginTop: spacing.sm,
+    gap: spacing.xs,
+    backgroundColor: colors.accentSoft,
     paddingVertical: 4,
     paddingHorizontal: spacing.md,
-    backgroundColor: colors.primaryFixed,
-    color: colors.onPrimaryFixed,
     borderRadius: radii.full,
-    fontWeight: "600",
   },
-  sectionTitle: { ...typography.title3, color: colors.onSurface, marginTop: spacing.xl, marginBottom: spacing.sm },
-  description: {
-    ...typography.body,
-    color: colors.onSurfaceVariant,
-    fontStyle: "italic",
-    marginTop: spacing.md,
+  totalTimeText: { ...typography.footnote, color: colors.accent, fontWeight: "700" },
+  card: {
+    marginTop: spacing.xl,
+    padding: spacing.lg,
+    backgroundColor: colors.recipeCard,
+    borderColor: colors.recipeLine,
+    borderWidth: 1,
+    borderRadius: radii.lg,
   },
-  totalTime: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.md },
-  totalTimeText: { ...typography.body, color: colors.onSurface },
-  bulletText: { ...typography.body, color: colors.onSurface, flex: 1 },
+  tipsCard: { borderLeftWidth: 4, borderLeftColor: colors.accent, backgroundColor: colors.tipsCallout },
+  sectionTitle: { ...typography.title3, color: colors.onSurface, marginBottom: spacing.sm },
+  description: { ...typography.body, color: colors.onSurfaceVariant, fontStyle: "italic", marginTop: spacing.md, textAlign: "center" },
   step: { marginTop: spacing.md },
   stepHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  stepIndex: { ...typography.body, color: colors.onSurface, fontWeight: "600" },
+  stepIndex: {
+    ...typography.footnote,
+    minWidth: 26,
+    height: 26,
+    lineHeight: 26,
+    textAlign: "center",
+    color: colors.white,
+    backgroundColor: colors.accent,
+    borderRadius: radii.full,
+    fontWeight: "800",
+    overflow: "hidden",
+  },
   stepChip: {
     ...typography.caption,
-    color: colors.onSurfaceVariant,
-    backgroundColor: colors.surfaceContainer,
+    color: colors.accent,
+    backgroundColor: colors.accentSoft,
     paddingVertical: 2,
     paddingHorizontal: spacing.sm,
     borderRadius: radii.sm,
@@ -345,17 +378,11 @@ const styles = StyleSheet.create({
   stepImage: { width: "100%", height: 220, borderRadius: radii.md, marginTop: spacing.sm },
   list: { gap: spacing.sm },
   ingredient: { flexDirection: "row", alignItems: "flex-start", paddingVertical: spacing.xs },
-  bullet: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.primary,
-    marginTop: 9,
-    marginRight: spacing.md,
-  },
+  bullet: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent, marginTop: 9, marginRight: spacing.md },
   ingredientText: { flex: 1 },
   ingredientName: { ...typography.body, color: colors.onSurface },
   ingredientQty: { ...typography.subhead, color: colors.onSurfaceVariant, marginTop: 2 },
+  bulletText: { ...typography.body, color: colors.onSurface, flex: 1 },
   subtle: { ...typography.subhead, color: colors.onSurfaceVariant },
   error: { ...typography.body, color: colors.error },
 });
