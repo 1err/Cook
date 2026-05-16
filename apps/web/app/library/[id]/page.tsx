@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "../../lib/api";
+import { uploadRecipeImage } from "../../lib/uploadRecipeImage";
 import { RequireAuth } from "../../components/RequireAuth";
 import { useT } from "../../lib/i18n";
 import {
@@ -12,7 +13,9 @@ import {
   type RecipeTagSlug,
 } from "../../lib/recipeCategories";
 import { getRecipeTags } from "../../lib/recipeTags";
-import type { Recipe, IngredientItem } from "../../types";
+import type { Recipe, IngredientItem, RecipeStep } from "../../types";
+import { StepListEditor } from "../../import/StepListEditor";
+import { StringListEditor } from "../../import/StringListEditor";
 
 function RecipeEditContent() {
   const params = useParams();
@@ -23,6 +26,11 @@ function RecipeEditContent() {
   const [thumbnailUrl, setThumbnailUrl] = useState("");
   const [libraryTags, setLibraryTags] = useState<RecipeTagSlug[]>([]);
   const [ingredients, setIngredients] = useState<IngredientItem[]>([]);
+  const [description, setDescription] = useState("");
+  const [totalTimeMinutes, setTotalTimeMinutes] = useState<number | null>(null);
+  const [steps, setSteps] = useState<RecipeStep[]>([]);
+  const [tips, setTips] = useState<string[]>([]);
+  const [equipment, setEquipment] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -48,6 +56,11 @@ function RecipeEditContent() {
           setThumbnailUrl(data.thumbnail_url ?? "");
           setLibraryTags(nextTags);
           setIngredients(data.ingredients?.length ? [...data.ingredients] : []);
+          setDescription(data.description ?? "");
+          setTotalTimeMinutes(typeof data.total_time_minutes === "number" ? data.total_time_minutes : null);
+          setSteps(Array.isArray(data.steps) ? data.steps.map((s) => ({ ...s })) : []);
+          setTips(Array.isArray(data.tips) ? [...data.tips] : []);
+          setEquipment(Array.isArray(data.equipment) ? [...data.equipment] : []);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load");
@@ -106,21 +119,7 @@ function RecipeEditContent() {
     setError(null);
     setUploadingImage(true);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await apiFetch("/recipes/upload-image", { method: "POST", body: form });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Upload failed");
-      }
-      const { upload_url, file_url } = (await res.json()) as { upload_url: string; file_url: string };
-      if (upload_url) {
-        await fetch(upload_url, {
-          method: "PUT",
-          headers: { "Content-Type": file.type },
-          body: file,
-        });
-      }
+      const file_url = await uploadRecipeImage(file, t("common.upload"));
       setThumbnailUrl(file_url ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -140,6 +139,11 @@ function RecipeEditContent() {
         thumbnail_url: thumbnailUrl.trim() || null,
         ingredients: ingredients.filter((i) => i.name.trim() !== ""),
         library_tags: libraryTags,
+        description: description.trim() || null,
+        total_time_minutes: totalTimeMinutes,
+        steps,
+        tips,
+        equipment,
       };
       const res = await apiFetch(`/recipes/${id}`, {
         method: "PATCH",
@@ -236,6 +240,36 @@ function RecipeEditContent() {
           </section>
 
           <section style={section}>
+            <label className="field-label">{t("recipe.description")}</label>
+            <textarea
+              rows={3}
+              maxLength={500}
+              placeholder={t("recipe.description.placeholder")}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+            <div className="char-counter">{description.length} / 500</div>
+          </section>
+
+          <section style={section}>
+            <label className="field-label">{t("recipe.totalTime")}</label>
+            <div className="inline-input-row">
+              <input
+                type="number"
+                min={0}
+                placeholder={t("recipe.totalTime.placeholder")}
+                value={totalTimeMinutes ?? ""}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const n = raw === "" ? null : Math.max(0, Math.floor(Number(raw) || 0));
+                  setTotalTimeMinutes(n);
+                }}
+              />
+              <span className="suffix">{t("recipe.totalTime.minutesSuffix")}</span>
+            </div>
+          </section>
+
+          <section style={section}>
             <div style={sectionHead}>
               <label className="font-headline" style={labelUpper}>
                 {t("common.ingredients")}
@@ -280,6 +314,28 @@ function RecipeEditContent() {
               ))}
             </ul>
           </section>
+
+          <StepListEditor
+            steps={steps}
+            onChange={setSteps}
+            uploadImage={(file) => uploadRecipeImage(file, t("common.upload"))}
+          />
+
+          <StringListEditor
+            label={t("recipe.tips")}
+            addLabel={t("recipe.tips.addRow")}
+            placeholder={t("recipe.tips.placeholder")}
+            values={tips}
+            onChange={setTips}
+          />
+
+          <StringListEditor
+            label={t("recipe.equipment")}
+            addLabel={t("recipe.equipment.addRow")}
+            placeholder={t("recipe.equipment.placeholder")}
+            values={equipment}
+            onChange={setEquipment}
+          />
         </div>
 
         <aside className="editor-grid__side">

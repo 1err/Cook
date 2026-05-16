@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { formatIngredientQuantity } from "@cooking/shared";
+import { formatIngredientQuantity, formatStepDuration } from "@cooking/shared";
 import { apiFetch } from "../../lib/api";
 import { RequireAuth } from "../../components/RequireAuth";
 import { useT } from "../../lib/i18n";
@@ -184,6 +184,15 @@ function RecipeDetailContent() {
             {blurb}
           </p>
         )}
+        {recipe.description && (
+          <p className="recipe-description">{recipe.description}</p>
+        )}
+        {typeof recipe.total_time_minutes === "number" && (
+          <div className="recipe-total-time-chip">
+            <span>⏱</span>
+            <span>{recipe.total_time_minutes} {t("recipe.totalTime.minutesSuffix")}</span>
+          </div>
+        )}
         <div className="recipe-editorial__stats">
           <div>
             <p className="recipe-editorial__stats-label font-headline">{t("recipe.tags")}</p>
@@ -213,6 +222,40 @@ function RecipeDetailContent() {
           ))
         )}
       </div>
+
+      {(recipe.equipment ?? []).length > 0 && (
+        <section className="recipe-equipment">
+          <h3>{t("recipe.equipment")}</h3>
+          <ul>{recipe.equipment!.map((e, i) => <li key={i}>{e}</li>)}</ul>
+        </section>
+      )}
+
+      {(recipe.steps ?? []).length > 0 && (
+        <section className="recipe-steps">
+          <h3>{t("recipe.steps")}</h3>
+          <ol>
+            {recipe.steps!.map((s, i) => (
+              <li key={i} className="recipe-step">
+                <div className="recipe-step__header">
+                  <span className="recipe-step__index">{i + 1}</span>
+                  {s.duration_seconds && s.duration_seconds > 0 && (
+                    <span className="recipe-step__chip">⏱ {formatStepDuration(s.duration_seconds)}</span>
+                  )}
+                </div>
+                <p className="recipe-step__text">{s.text}</p>
+                {s.image_url && <img src={s.image_url} alt="" className="recipe-step__image" />}
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {(recipe.tips ?? []).length > 0 && (
+        <section className="recipe-tips">
+          <h3>{t("recipe.tips")}</h3>
+          <ul>{recipe.tips!.map((tp, i) => <li key={i}>{tp}</li>)}</ul>
+        </section>
+      )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", justifyContent: "center" }}>
         <Link href={`/library/${id}`} className="btn-primary" style={{ textDecoration: "none", display: "inline-flex" }}>

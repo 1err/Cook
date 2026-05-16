@@ -1,1 +1,1 @@
-export type { IngredientItem, MealPlanDay, MealPlanSlots, MealType, Recipe, RecipeTagSlug, ShoppingListItem } from "@cooking/shared";
+export type { IngredientItem, MealPlanDay, MealPlanSlots, MealType, Recipe, RecipeStep, RecipeTagSlug, ShoppingListItem } from "@cooking/shared";

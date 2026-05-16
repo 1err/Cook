@@ -162,7 +162,7 @@ python run.py                  # uvicorn on :8000 with reload
 
 `DATABASE_URL` must be `postgresql+asyncpg://...`; startup hard-fails on SQLite or missing URL (`backend/app/core/config.py::Settings.require_postgres`). Special characters in the password (notably `%`) must be URL-encoded.
 
-Alembic head is `20260416_store_cache` (see `backend/alembic/versions/`). New revisions: `alembic revision -m "msg"` then edit the generated file.
+Alembic head is `20260514_recipe_tut` (chain tail: `20260416_store_cache` → `20260510_user_lib` → `20260514_recipe_tut`; see `backend/alembic/versions/`). New revisions: `alembic revision -m "msg"` then edit the generated file.
 
 ### Docker
 
@@ -200,7 +200,7 @@ Mounted in `backend/app/main.py`. All routes except `/auth/{register,login,logou
 | GET | `/recipes` | List user's recipes |
 | POST | `/recipes` | Create |
 | GET | `/recipes/{id}` | |
-| PATCH | `/recipes/{id}` | Partial update of `title`, `thumbnail_url`, `ingredients`, `library_tags` |
+| PATCH | `/recipes/{id}` | Partial update of `title`, `thumbnail_url`, `ingredients`, `library_tags`, `description`, `total_time_minutes`, `steps`, `tips`, `equipment` |
 | DELETE | `/recipes/{id}` | 204 |
 | GET | `/recipes/catalog` | Public recipe catalog |
 | GET | `/recipes/catalog/editor-status` | `{ can_manage: bool }` based on `PUBLIC_LIBRARY_EDITOR_EMAILS` |
@@ -314,6 +314,20 @@ Two parallel concepts on `RecipeModel`:
 
 `backend/app/models.py` defines `RECIPE_TAG_SLUGS` (frozen 31-slug set) and `LEGACY_LIBRARY_CATEGORY_TO_TAG` (e.g. `quick_dinner` → `quick`). Anything written to either column passes through `coerce_library_tags`. Request bodies in `routes_recipes.py` use the reusable `LibraryTags = Annotated[list[str], BeforeValidator(coerce_library_tags)]` from `app/api/_types.py` instead of repeating a per-model `@field_validator`. The same slug list is mirrored as a TS union in `packages/shared/src/types.ts::RecipeTagSlug` and re-listed in `packages/shared/src/recipeTags.ts::RECIPE_TAG_GROUPS`. **Adding a tag means three edits**: backend `models.py`, shared `types.ts`, shared `recipeTags.ts`.
 
+### Recipe tutorial fields
+
+`Recipe` carries five optional, backward-compatible fields beyond the base ingredients/title set:
+`description`, `total_time_minutes`, `steps`, `tips`, `equipment`. Stored as five new columns on
+`recipes` (added in migration `20260514_recipe_tut`): the list-shaped fields are JSON-in-Text (same
+pattern as `library_tags`); `description` is `Text NULL`; `total_time_minutes` is `Integer NULL`.
+
+Each `RecipeStep` is `{ text, duration_seconds?, image_url? }`. **No stable IDs** — steps are
+array-position only. If sub-project C (multi-modal extraction) later needs stable references to
+enrich a specific step with a frame, add an `id` field then with on-read backfill; legacy entries
+won't break.
+
+Legacy recipes render gracefully with the new fields empty; no backfill job is wired up.
+
 ### Meal plan storage
 
 `MealPlanModel.recipe_ids` is a JSON-serialized string in a `Text` column. Newer rows are objects (`{breakfast,lunch,dinner}`); some legacy rows are arrays. `normalize_meal_plan_slots` (in `app/models.py`) handles both shapes on read and on PUT body parsing. Don’t bypass it.
@@ -368,6 +382,10 @@ These are tracked here — not in commit messages — so each session can pick t
 - **`@gorhom/bottom-sheet` was force-bumped 5.1.1 → 5.2.13** during the SDK 54 upgrade (auto-resolved during `expo install --fix`). Watch for animation regressions over a few days; if anything feels off in the planner picker, that's the place to look.
 - **i18n parity for mobile:** the web app strings are in `packages/shared/src/messages/{en,zh}.json` and surfaced via `useT()` from `apps/web/app/lib/i18n.tsx`. Mobile is currently English-only — when Chinese parity is needed, lift the `I18nProvider` / `useT()` hooks into a small `apps/mobile/src/lib/i18n.tsx` (or a shared `packages/shared-react/`) and gate language toggle in Profile. Defer until product asks for it.
 - **EAS submit credentials:** `apps/mobile/eas.json::submit.production.ios` has `REPLACE_WITH_*` placeholders for `appleId`, `ascAppId`, and `appleTeamId`. Fill these in before the first `eas submit -p ios`.
+- **Stable step IDs:** Steps in `RecipeStep` are array-position only. Sub-project C (multi-modal
+  extraction) will likely want stable IDs to attach extracted frames to specific steps. Add an
+  optional `id: str` field to `RecipeStep`, generate ids on read for legacy rows, then drop the
+  fallback once all rows are normalized.
 
 ## Updating this file
 

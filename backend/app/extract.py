@@ -135,23 +135,32 @@ def _build_extraction_prompt(transcript: str) -> str:
     body = transcript.strip() or "(No transcript provided.)"
     return f"""You are extracting a cooking recipe from video content. Below is the speech transcript.
 
-Extract:
-1) A short dish title. Use the same language as the source when it is clearly Chinese (e.g. 麻婆豆腐 or 麻婆豆腐 (Mapo Tofu)); do not force an English title if the source is Chinese.
-2) A list of ingredients. For each ingredient give: name, quantity (as free text), and optional notes.
+Extract the following JSON:
+- title: short dish name. Preserve the source language (CJK stays CJK; English parens optional, e.g. "麻婆豆腐 (Mapo Tofu)").
+- description: one short paragraph (<= 2 sentences) describing the dish. null if the transcript doesn't say.
+- total_time_minutes: integer total minutes, or null if unclear.
+- ingredients: list of {{name, quantity, notes}}.
+- equipment: list of distinct tools/pans named in the transcript. [] if none mentioned.
+- steps: ordered list of {{text, duration_seconds}}. duration_seconds is integer or null. Each step is one short instruction. If the transcript is thin or doesn't describe procedure, return []. DO NOT invent steps.
+- tips: list of chef tips/tricks explicitly mentioned (e.g., "press tofu first"). [] if none.
 
-Language rules for ingredient names (critical):
-- If the text names an ingredient in Chinese, keep the name in Chinese in the "name" field. Do not translate Chinese ingredient names to English-only.
-- You may add English in parentheses for clarity, e.g. 牛腱肉 (beef shank), 八角 (star anise). Plain Chinese alone is fine.
-- Quantities and notes may stay as spoken/written (Chinese numerals/units OK).
+Language rules:
+- If the source names ingredients/steps/tips in Chinese, keep them in Chinese. English in parens is optional.
+- Quantities and durations may stay in the source language.
 
-Do not invent ingredients that are not suggested by the text. If something is unclear, make a reasonable guess or omit it.
+Do not invent details that are not suggested by the text.
 
 --- TRANSCRIPT ---
 {body}
 --- END ---
 
 Respond with a JSON object only, no markdown:
-{{ "title": "...", "ingredients": [ {{ "name": "...", "quantity": "...", "notes": null or "..." }} ] }}"""
+{{ "title": "...", "description": null, "total_time_minutes": null,
+   "ingredients": [{{ "name": "...", "quantity": "...", "notes": null }}],
+   "equipment": [],
+   "steps": [{{ "text": "...", "duration_seconds": null }}],
+   "tips": []
+}}"""
 
 
 def _split_dual_quantity(quantity: str) -> tuple[str, str | None]:
@@ -168,73 +177,127 @@ def _split_dual_quantity(quantity: str) -> tuple[str, str | None]:
     return primary, metric
 
 
-def parse_llm_recipe_response(raw: str) -> tuple[str, list[dict]]:
-    """Parse LLM JSON response into title and list of ingredient dicts."""
+def parse_llm_recipe_response(raw: str) -> dict:
+    """Parse LLM JSON response into a recipe-shaped dict.
+
+    Returns: {title, description, total_time_minutes, ingredients, equipment, steps, tips}.
+    All fields default to safe empty values; the caller passes this dict to Recipe(...).
+    """
     text = raw.strip()
     if text.startswith("```"):
         text = re.sub(r"^```\w*\n?", "", text)
         text = re.sub(r"\n?```\s*$", "", text)
-    data = json.loads(text)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return {
+            "title": "Imported Recipe",
+            "description": None,
+            "total_time_minutes": None,
+            "ingredients": [],
+            "equipment": [],
+            "steps": [],
+            "tips": [],
+        }
+
     title = data.get("title") or "Untitled Recipe"
-    ingredients = data.get("ingredients") or []
-    items = []
-    for i in ingredients:
+
+    ingredients_raw = data.get("ingredients") or []
+    ingredients: list[dict] = []
+    for i in ingredients_raw:
         if isinstance(i, dict):
             quantity, metric_quantity = _split_dual_quantity(i.get("quantity") or "")
-            items.append({
+            ingredients.append({
                 "name": i.get("name") or "",
                 "quantity": quantity,
                 "metric_quantity": metric_quantity,
                 "notes": i.get("notes"),
             })
         else:
-            items.append({"name": str(i), "quantity": "", "notes": None})
-    return title, items
+            ingredients.append({"name": str(i), "quantity": "", "notes": None})
+
+    steps_raw = data.get("steps") or []
+    steps: list[dict] = []
+    for s in steps_raw:
+        if isinstance(s, dict):
+            steps.append({
+                "text": s.get("text") or "",
+                "duration_seconds": s.get("duration_seconds"),
+            })
+        elif isinstance(s, str):
+            steps.append({"text": s, "duration_seconds": None})
+
+    return {
+        "title": title,
+        "description": data.get("description"),
+        "total_time_minutes": data.get("total_time_minutes"),
+        "ingredients": ingredients,
+        "equipment": data.get("equipment") or [],
+        "steps": steps,
+        "tips": data.get("tips") or [],
+    }
 
 
 async def extract_recipe_from_text(transcript: str) -> Recipe:
-    """
-    Run the LLM on a transcript and return a Recipe (without source_url; caller fills it).
-    Falls back to a stub recipe when no API key is configured so the flow stays testable.
-    """
     client = get_openai_client()
     if client is None:
-        title, ingredients = _stub_extraction(transcript or "(no input)")
-        return Recipe(
-            id=str(uuid.uuid4()),
-            title=title,
-            source_url=None,
-            thumbnail_url=None,
-            ingredients=[IngredientItem(**i) for i in ingredients],
-            raw_extraction_text=transcript or None,
+        data = _stub_extraction(transcript or "(no input)")
+    else:
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": _build_extraction_prompt(transcript)}],
         )
+        raw = response.choices[0].message.content or "{}"
+        data = parse_llm_recipe_response(raw)
 
-    response = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": _build_extraction_prompt(transcript)}],
-    )
-    raw = response.choices[0].message.content or "{}"
-    title, ing_list = parse_llm_recipe_response(raw)
     return Recipe(
         id=str(uuid.uuid4()),
-        title=title,
+        title=data["title"],
         source_url=None,
         thumbnail_url=None,
-        ingredients=[IngredientItem(**x) for x in ing_list],
+        ingredients=[IngredientItem(**x) for x in data["ingredients"]],
         raw_extraction_text=transcript or None,
+        description=data.get("description"),
+        total_time_minutes=data.get("total_time_minutes"),
+        steps=data.get("steps") or [],
+        tips=data.get("tips") or [],
+        equipment=data.get("equipment") or [],
     )
 
 
-def _stub_extraction(input_text: str) -> tuple[str, list[dict]]:
+def _stub_extraction(input_text: str) -> dict:
     """When OPENAI_API_KEY is not set, return a demo recipe so the flow is testable."""
-    if "tofu" in input_text.lower() or "mapo" in input_text.lower():
-        return "Mapo Tofu", [
-            {"name": "Soft tofu", "quantity": "1 block", "notes": "diced"},
-            {"name": "Ground pork", "quantity": "100g", "notes": None},
-            {"name": "Doubanjiang", "quantity": "1 tbsp", "notes": None},
-            {"name": "Garlic", "quantity": "2 cloves", "notes": "minced"},
-            {"name": "Green onion", "quantity": "2", "notes": "chopped"},
-        ]
-    return "Imported Recipe", [
-        {"name": "Example ingredient", "quantity": "to taste", "notes": "Replace with real extraction"},
-    ]
+    text = (input_text or "").lower()
+    if "tofu" in text or "mapo" in text:
+        return {
+            "title": "Mapo Tofu",
+            "description": "A spicy Sichuan classic of soft tofu in a fiery doubanjiang sauce.",
+            "total_time_minutes": 25,
+            "ingredients": [
+                {"name": "Soft tofu", "quantity": "1 block", "notes": "diced"},
+                {"name": "Ground pork", "quantity": "100g", "notes": None},
+                {"name": "Doubanjiang", "quantity": "1 tbsp", "notes": None},
+                {"name": "Garlic", "quantity": "2 cloves", "notes": "minced"},
+                {"name": "Green onion", "quantity": "2", "notes": "chopped"},
+            ],
+            "equipment": ["wok", "spatula"],
+            "steps": [
+                {"text": "Dice the tofu into 2 cm cubes and let it sit in lightly salted hot water.", "duration_seconds": 180},
+                {"text": "Sear ground pork in the wok until browned and crispy at the edges.", "duration_seconds": 240},
+                {"text": "Add doubanjiang and garlic; stir-fry until fragrant.", "duration_seconds": 60},
+                {"text": "Drain the tofu, slide it into the wok, and simmer gently with stock.", "duration_seconds": 180},
+                {"text": "Thicken with a cornstarch slurry, finish with green onion and Sichuan pepper.", "duration_seconds": 60},
+            ],
+            "tips": ["Drain the tofu well before adding it — it absorbs sauce better."],
+        }
+    return {
+        "title": "Imported Recipe",
+        "description": None,
+        "total_time_minutes": None,
+        "ingredients": [
+            {"name": "Example ingredient", "quantity": "to taste", "notes": "Replace with real extraction"},
+        ],
+        "equipment": [],
+        "steps": [],
+        "tips": [],
+    }

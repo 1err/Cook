@@ -4385,3 +4385,38 @@ button:disabled {
 .import-engine__cta .import-spin {
   animation: import-cta-spin 0.85s linear infinite;
 }
+
+.field-label { display:block; font-weight:600; margin:.75rem 0 .25rem; font-size:.92rem; }
+.char-counter { font-size:.78rem; opacity:.65; text-align:right; margin-top:.15rem; }
+.inline-input-row { display:flex; align-items:center; gap:.5rem; }
+.inline-input-row .suffix { font-size:.85rem; opacity:.75; }
+
+/* ── StepListEditor + DurationField ─────────────────────────────────────── */
+.duration-field { display:inline-flex; align-items:center; gap:.25rem; }
+.duration-field input { width:3.5rem; text-align:center; }
+.step-list-editor ol { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:.75rem; }
+.step-row { display:grid; grid-template-columns:2rem 1fr auto; gap:.6rem; align-items:start; }
+.step-row__index { font-weight:600; padding-top:.4rem; }
+.step-row__body textarea { width:100%; }
+.step-row__meta { display:flex; align-items:center; gap:.5rem; margin-top:.3rem; font-size:.85rem; }
+.step-row__image img { max-width:200px; max-height:120px; border-radius:8px; margin-top:.4rem; display:block; }
+.step-row__upload input { display:none; }
+.step-row__upload { display:inline-block; padding:.3rem .5rem; border:1px dashed currentColor; border-radius:6px; cursor:pointer; font-size:.85rem; margin-top:.3rem; }
+.step-row__actions { display:flex; flex-direction:column; gap:.2rem; }
+.add-row-btn { margin-top:.6rem; }
+.hint { opacity:.6; font-size:.9rem; margin:.3rem 0; }
+.string-list-editor ul { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:.4rem; }
+.string-row { display:flex; gap:.4rem; }
+.string-row input { flex:1; }
+
+/* Recipe view — tutorial fields */
+.recipe-description { font-style: italic; opacity:.85; margin: .5rem 0 1rem; }
+.recipe-total-time-chip { display:inline-flex; gap:.3rem; align-items:center; background:#eef; padding:.2rem .55rem; border-radius:999px; font-size:.85rem; margin-bottom:.8rem; }
+.recipe-step { display:flex; flex-direction:column; gap:.3rem; margin-bottom:1rem; }
+.recipe-step__header { display:flex; align-items:center; gap:.5rem; font-weight:600; }
+.recipe-step__index { background:#333; color:#fff; border-radius:999px; padding:.05rem .5rem; font-size:.8rem; }
+.recipe-step__chip { background:#fef3c7; color:#92400e; border-radius:999px; padding:.05rem .5rem; font-size:.75rem; }
+.recipe-step__text { margin: .2rem 0; }
+.recipe-step__image { max-width: 100%; max-height: 320px; border-radius:10px; }
+.recipe-equipment ul, .recipe-tips ul { padding-left:1.3rem; }
+.recipe-steps ol { padding-left: 0; list-style: none; }

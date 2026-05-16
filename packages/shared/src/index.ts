@@ -6,3 +6,4 @@ export * from "./mealPlan";
 export * from "./store";
 export * from "./i18n";
 export * from "./recipeTags";
+export { formatStepDuration } from "./formatStepDuration";

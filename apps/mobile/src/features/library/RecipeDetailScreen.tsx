@@ -14,7 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { CompositeScreenProps } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
-import { type Recipe, formatIngredientQuantity } from "@cooking/shared";
+import { type Recipe, formatIngredientQuantity, formatStepDuration } from "@cooking/shared";
 import { useApiClient } from "../../lib/api";
 import { EmptyState, IconButton } from "../../components";
 import { resolveImageUrl } from "../../lib/imageUrl";
@@ -211,6 +211,16 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
           {recipe.ingredients.length} {recipe.ingredients.length === 1 ? "ingredient" : "ingredients"}
         </Text>
 
+        {recipe.description ? (
+          <Text style={styles.description}>{recipe.description}</Text>
+        ) : null}
+        {typeof recipe.total_time_minutes === "number" ? (
+          <View style={styles.totalTime}>
+            <Text style={styles.totalTimeText}>⏱</Text>
+            <Text style={styles.totalTimeText}>{recipe.total_time_minutes} min</Text>
+          </View>
+        ) : null}
+
         <Text style={styles.sectionTitle}>Ingredients</Text>
         {recipe.ingredients.length === 0 ? (
           <Text style={styles.subtle}>No ingredients listed.</Text>
@@ -227,6 +237,65 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
             ))}
           </View>
         )}
+
+        {(recipe.equipment ?? []).length > 0 ? (
+          <View>
+            <Text style={styles.sectionTitle}>Equipment</Text>
+            <View style={styles.list}>
+              {recipe.equipment!.map((item, index) => (
+                <View key={`${item}-${index}`} style={styles.ingredient}>
+                  <View style={styles.bullet} />
+                  <Text style={styles.bulletText}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {(recipe.steps ?? []).length > 0 ? (
+          <View>
+            <Text style={styles.sectionTitle}>Steps</Text>
+            {recipe.steps!.map((step, index) => {
+              const duration =
+                step.duration_seconds && step.duration_seconds > 0
+                  ? formatStepDuration(step.duration_seconds)
+                  : "";
+              return (
+                <View key={index} style={styles.step}>
+                  <View style={styles.stepHeader}>
+                    <Text style={styles.stepIndex}>{index + 1}.</Text>
+                    {duration ? (
+                      <Text style={styles.stepChip}>⏱ {duration}</Text>
+                    ) : null}
+                  </View>
+                  <Text style={styles.stepText}>{step.text}</Text>
+                  {step.image_url ? (
+                    <Image
+                      source={{ uri: resolveImageUrl(step.image_url) ?? step.image_url }}
+                      style={styles.stepImage}
+                      contentFit="cover"
+                      transition={200}
+                    />
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+
+        {(recipe.tips ?? []).length > 0 ? (
+          <View>
+            <Text style={styles.sectionTitle}>Tips</Text>
+            <View style={styles.list}>
+              {recipe.tips!.map((tip, index) => (
+                <View key={`${tip}-${index}`} style={styles.ingredient}>
+                  <View style={styles.bullet} />
+                  <Text style={styles.bulletText}>{tip}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
       </View>
     </ScrollView>
   );
@@ -252,6 +321,28 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   sectionTitle: { ...typography.title3, color: colors.onSurface, marginTop: spacing.xl, marginBottom: spacing.sm },
+  description: {
+    ...typography.body,
+    color: colors.onSurfaceVariant,
+    fontStyle: "italic",
+    marginTop: spacing.md,
+  },
+  totalTime: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.md },
+  totalTimeText: { ...typography.body, color: colors.onSurface },
+  bulletText: { ...typography.body, color: colors.onSurface, flex: 1 },
+  step: { marginTop: spacing.md },
+  stepHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  stepIndex: { ...typography.body, color: colors.onSurface, fontWeight: "600" },
+  stepChip: {
+    ...typography.caption,
+    color: colors.onSurfaceVariant,
+    backgroundColor: colors.surfaceContainer,
+    paddingVertical: 2,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.sm,
+  },
+  stepText: { ...typography.body, color: colors.onSurface, marginTop: spacing.xs },
+  stepImage: { width: "100%", height: 220, borderRadius: radii.md, marginTop: spacing.sm },
   list: { gap: spacing.sm },
   ingredient: { flexDirection: "row", alignItems: "flex-start", paddingVertical: spacing.xs },
   bullet: {

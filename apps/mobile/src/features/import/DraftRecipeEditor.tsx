@@ -1,12 +1,16 @@
 import React from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
-import type { IngredientItem, Recipe, RecipeTagSlug } from "@cooking/shared";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import type { IngredientItem, Recipe, RecipeStep, RecipeTagSlug } from "@cooking/shared";
 import { Button, TextField } from "../../components";
-import { colors, spacing, typography } from "../../theme";
+import { useApiClient } from "../../lib/api";
+import { colors, radii, spacing, typography } from "../../theme";
 import { ImagePickerButton } from "./ImagePickerButton";
 import { IngredientList } from "./IngredientList";
+import { StepListEditor } from "./StepListEditor";
+import { StringListEditor } from "./StringListEditor";
 import { TagPicker } from "./TagPicker";
-import { useImageUpload } from "./useImageUpload";
+import { TotalTimeField } from "./TotalTimeField";
+import { pickAndUploadImage, useImageUpload } from "./useImageUpload";
 
 export type DraftRecipeEditorProps = {
   draft: Recipe;
@@ -30,6 +34,15 @@ export function DraftRecipeEditor({
   cancelLabel = "Back",
 }: DraftRecipeEditorProps) {
   const upload = useImageUpload(draft.thumbnail_url);
+  const apiClient = useApiClient();
+
+  // Per-step image picker. Delegates to the shared uploader: returns the
+  // final URL, null on cancel/permission-denied, throws on upload failure
+  // (StepListEditor catches and surfaces the error).
+  const pickStepImage = React.useCallback(
+    () => pickAndUploadImage(apiClient),
+    [apiClient],
+  );
 
   // Sync upload state into the draft.
   React.useEffect(() => {
@@ -75,10 +88,53 @@ export function DraftRecipeEditor({
         autoCapitalize="words"
       />
 
+      <View style={styles.field}>
+        <Text style={styles.sectionLabel}>Description</Text>
+        <TextInput
+          multiline
+          // Client-side cap only — the backend does not enforce a description
+          // length limit (it only trims/normalizes; see models.py).
+          maxLength={500}
+          placeholder="Optional short description"
+          style={styles.descriptionInput}
+          value={draft.description ?? ""}
+          onChangeText={(description) => onChange({ ...draft, description })}
+        />
+      </View>
+
+      <View style={styles.field}>
+        <Text style={styles.sectionLabel}>Total time</Text>
+        <TotalTimeField
+          minutes={draft.total_time_minutes ?? null}
+          onChange={(total_time_minutes) => onChange({ ...draft, total_time_minutes })}
+          suffix="min"
+        />
+      </View>
+
       <Text style={styles.sectionLabel}>Ingredients</Text>
       <IngredientList
         value={draft.ingredients}
         onChange={(ingredients: IngredientItem[]) => onChange({ ...draft, ingredients })}
+      />
+
+      <StepListEditor
+        steps={draft.steps ?? []}
+        onChange={(steps: RecipeStep[]) => onChange({ ...draft, steps })}
+        pickImage={pickStepImage}
+      />
+      <StringListEditor
+        label="Tips"
+        addLabel="Add tip"
+        placeholder="Add a chef's note"
+        values={draft.tips ?? []}
+        onChange={(tips: string[]) => onChange({ ...draft, tips })}
+      />
+      <StringListEditor
+        label="Equipment"
+        addLabel="Add equipment"
+        placeholder="Add a pan or tool"
+        values={draft.equipment ?? []}
+        onChange={(equipment: string[]) => onChange({ ...draft, equipment })}
       />
 
       <Text style={styles.sectionLabel}>Tags</Text>
@@ -107,6 +163,16 @@ const styles = StyleSheet.create({
     color: colors.onSurface,
     marginTop: spacing.md,
     marginBottom: spacing.sm,
+  },
+  field: { marginTop: spacing.md },
+  descriptionInput: {
+    ...typography.body,
+    color: colors.onSurface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    padding: spacing.sm,
+    minHeight: 60,
   },
   error: { ...typography.subhead, color: colors.error, marginBottom: spacing.md },
   actions: { gap: spacing.sm, marginTop: spacing.md },
