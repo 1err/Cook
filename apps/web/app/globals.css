@@ -4030,24 +4030,28 @@ button:disabled {
 }
 
 .recipe-editorial__hero-img {
+  display: flex;
+  justify-content: center;
   width: 100%;
-  aspect-ratio: 21 / 9;
+  max-height: 30rem;
   border-radius: 1rem;
   overflow: hidden;
   box-shadow: var(--recipe-card-shadow);
+  background: var(--recipe-accent-soft);
   margin-bottom: 2rem;
 }
 
 .recipe-editorial__hero-img img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 30rem;
+  object-fit: contain;
 }
 
 .recipe-editorial__hero-fallback {
   width: 100%;
-  height: 100%;
-  min-height: 12rem;
+  height: 16rem;
   background: linear-gradient(135deg, var(--recipe-accent-soft), var(--recipe-accent));
 }
 
