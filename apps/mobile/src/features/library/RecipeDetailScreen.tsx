@@ -201,7 +201,7 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
         <Image source={{ uri: resolveImageUrl(recipe.thumbnail_url) }} style={styles.hero} contentFit="cover" transition={200} />
       ) : (
         <View style={[styles.hero, styles.heroPlaceholder]}>
-          <Ionicons name="restaurant" size={56} color={colors.onPrimaryFixed} />
+          <Ionicons name="restaurant" size={56} color={colors.accent} />
         </View>
       )}
 
