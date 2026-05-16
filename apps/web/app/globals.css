@@ -4030,10 +4030,8 @@ button:disabled {
 }
 
 .recipe-editorial__hero-img {
-  display: flex;
-  justify-content: center;
+  position: relative;
   width: 100%;
-  max-height: 30rem;
   border-radius: 1rem;
   overflow: hidden;
   box-shadow: var(--recipe-card-shadow);
@@ -4042,11 +4040,11 @@ button:disabled {
 }
 
 .recipe-editorial__hero-img img {
-  width: auto;
+  display: block;
+  width: 100%;
   height: auto;
-  max-width: 100%;
-  max-height: 30rem;
-  object-fit: contain;
+  max-height: 28rem;
+  object-fit: cover;
 }
 
 .recipe-editorial__hero-fallback {
