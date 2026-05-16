@@ -328,6 +328,18 @@ won't break.
 
 Legacy recipes render gracefully with the new fields empty; no backfill job is wired up.
 
+### Recipe view skin (sub-project E)
+
+The recipe detail view (web `apps/web/app/recipe/[id]/page.tsx` + `.recipe-editorial*`
+rules in `globals.css`; mobile `RecipeDetailScreen.tsx`) uses a "Warm Cookbook" skin
+**scoped to the recipe view only** — it does not change app chrome or other pages. Web
+defines the palette as `--recipe-*` custom properties on `.recipe-editorial`; mobile uses
+warm tokens in `apps/mobile/src/theme/` (`recipePaper`, `recipeCard`, `recipeLine`,
+`accent`, `accentSoft`, `tipsCallout`) + the `typography.recipeTitle` serif preset. Web
+is two-column (sticky meta/ingredients/equipment rail + steps/tips main) above 900px and
+single column below; mobile is always single column. A future app-wide restyle (E2) would
+make this skin global and is tracked as a follow-up. Presentation-only: no schema/API.
+
 ### Meal plan storage
 
 `MealPlanModel.recipe_ids` is a JSON-serialized string in a `Text` column. Newer rows are objects (`{breakfast,lunch,dinner}`); some legacy rows are arrays. `normalize_meal_plan_slots` (in `app/models.py`) handles both shapes on read and on PUT body parsing. Don’t bypass it.
