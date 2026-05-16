@@ -4043,8 +4043,6 @@ button:disabled {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 28rem;
-  object-fit: cover;
 }
 
 .recipe-editorial__hero-fallback {

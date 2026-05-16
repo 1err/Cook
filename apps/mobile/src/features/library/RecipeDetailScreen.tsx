@@ -53,6 +53,7 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [canManage, setCanManage] = useState(false);
+  const [heroRatio, setHeroRatio] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -198,7 +199,16 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
       contentContainerStyle={styles.content}
     >
       {resolveImageUrl(recipe.thumbnail_url) ? (
-        <Image source={{ uri: resolveImageUrl(recipe.thumbnail_url) }} style={styles.hero} contentFit="cover" transition={200} />
+        <Image
+          source={{ uri: resolveImageUrl(recipe.thumbnail_url) }}
+          style={[styles.hero, heroRatio ? { aspectRatio: heroRatio } : null]}
+          contentFit="cover"
+          transition={200}
+          onLoad={(e) => {
+            const { width, height } = e.source;
+            if (width && height) setHeroRatio(width / height);
+          }}
+        />
       ) : (
         <View style={[styles.hero, styles.heroPlaceholder]}>
           <Ionicons name="restaurant" size={56} color={colors.accent} />
