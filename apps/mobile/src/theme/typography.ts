@@ -3,6 +3,7 @@ import type { TextStyle } from "react-native";
 export const typography = {
   largeTitle: { fontSize: 34, fontWeight: "700", letterSpacing: 0.37 },
   title1: { fontSize: 28, fontWeight: "700", letterSpacing: 0.36 },
+  recipeTitle: { fontSize: 28, fontWeight: "700", letterSpacing: 0.36, fontFamily: "Georgia" },
   title2: { fontSize: 22, fontWeight: "700" },
   title3: { fontSize: 20, fontWeight: "600" },
   headline: { fontSize: 17, fontWeight: "600" },

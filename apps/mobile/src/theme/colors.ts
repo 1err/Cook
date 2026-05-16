@@ -12,6 +12,13 @@ export const colors = {
   surfaceContainerHigh: "#e9e8e7",
   white: "#ffffff",
 
+  recipePaper: "#f6efe1",
+  recipeCard: "#fffaf0",
+  recipeLine: "#e3d6bb",
+  accentSoft: "#efe2c6",
+  accent: "#b07a32",
+  tipsCallout: "#fdf5e3",
+
   onSurface: "#1a1c1c",
   onSurfaceVariant: "#55423e",
 
