@@ -1,9 +1,11 @@
+import { radii as sharedRadii } from "@cooking/design-tokens";
+
 export const radii = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  full: 9999,
+  sm: sharedRadii.control,
+  md: sharedRadii.field,
+  lg: sharedRadii.card,
+  xl: sharedRadii.modal,
+  full: sharedRadii.round,
 } as const;
 
 export type RadiusToken = keyof typeof radii;

@@ -58,24 +58,26 @@ export function Button({
       onPressIn={handlePressIn}
       disabled={disabled || loading}
       unstable_pressDelay={0}
-      style={({ pressed }) => [containerStyle, pressed && !disabled && styles.pressed]}
+      style={({ pressed }) => [containerStyle, pressed && !disabled && !loading && styles.pressed]}
       accessibilityRole="button"
+      accessibilityLabel={title}
       accessibilityState={{ disabled: disabled || loading, busy: loading }}
     >
-      {loading ? (
-        <ActivityIndicator color={variantStyles[variant].label.color} />
-      ) : (
-        <View style={styles.row}>
-          {leadingIcon ? <View style={styles.leading}>{leadingIcon}</View> : null}
-          <Text style={[styles.label, variantStyles[variant].label]}>{title}</Text>
-        </View>
-      )}
+      <View style={styles.row}>
+        {loading ? (
+          <ActivityIndicator style={styles.leading} color={variantStyles[variant].label.color} />
+        ) : leadingIcon ? (
+          <View style={styles.leading}>{leadingIcon}</View>
+        ) : null}
+        <Text style={[styles.label, variantStyles[variant].label]}>{title}</Text>
+      </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   base: {
+    minHeight: 44,
     borderRadius: radii.full,
     alignItems: "center",
     justifyContent: "center",
@@ -96,21 +98,21 @@ const sizeStyles: Record<Size, ViewStyle> = {
 type VariantStyle = { container: ViewStyle; label: { color: string } };
 const variantStyles: Record<Variant, VariantStyle> = {
   primary: {
-    container: { backgroundColor: colors.primary },
-    label: { color: colors.onPrimary },
+    container: { backgroundColor: colors.terracotta },
+    label: { color: colors.onAction },
   },
   secondary: {
     container: {
-      backgroundColor: colors.surfaceContainerHigh,
+      backgroundColor: colors.subtleSurface,
     },
-    label: { color: colors.onSurface },
+    label: { color: colors.ink },
   },
   ghost: {
     container: { backgroundColor: "transparent" },
-    label: { color: colors.primary },
+    label: { color: colors.terracotta },
   },
   destructive: {
     container: { backgroundColor: colors.error },
-    label: { color: colors.onError },
+    label: { color: colors.onAction },
   },
 };
