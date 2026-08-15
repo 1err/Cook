@@ -32,3 +32,6 @@ tsconfig.tsbuildinfo
 
 # Superpowers brainstorm scratch
 .superpowers/
+
+# Local isolated feature worktrees
+.worktrees/
