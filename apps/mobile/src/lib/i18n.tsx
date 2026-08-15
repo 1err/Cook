@@ -1,6 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MESSAGE_MAP, type Language } from "@cooking/shared";
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 export type { Language };
 
@@ -25,13 +33,18 @@ function interpolate(template: string, variables?: TranslationVariables): string
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<Language>("en");
   const [loading, setLoading] = useState(true);
+  const hasExplicitLanguage = useRef(false);
 
   useEffect(() => {
     let active = true;
 
     void AsyncStorage.getItem(LANGUAGE_STORAGE_KEY)
       .then((savedLanguage) => {
-        if (active && (savedLanguage === "en" || savedLanguage === "zh")) {
+        if (
+          active &&
+          !hasExplicitLanguage.current &&
+          (savedLanguage === "en" || savedLanguage === "zh")
+        ) {
           setLanguageState(savedLanguage);
         }
       })
@@ -46,6 +59,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setLanguage = useCallback((nextLanguage: Language) => {
+    hasExplicitLanguage.current = true;
     setLanguageState(nextLanguage);
     void AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage).catch(() => undefined);
   }, []);
