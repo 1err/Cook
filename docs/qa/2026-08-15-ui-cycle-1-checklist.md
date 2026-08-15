@@ -5,7 +5,7 @@ This record is intentionally evidence-first. Check an item only after observing 
 ## Run 1 — iPhone SE, English
 
 - Simulator OS: iOS 26.4 (26.4.1, build 23E254a)
-- Commit SHA: Task 6 working tree based on `abaaf73`
+- Commit SHA: `f11db0a`
 - Reviewer: Codex
 - Date: 2026-08-15
 - Screenshot paths: `docs/qa/artifacts/ui-cycle-1/iphone-se-login-en.png`
@@ -26,7 +26,7 @@ This record is intentionally evidence-first. Check an item only after observing 
 ## Run 2 — iPhone SE, Chinese
 
 - Simulator OS: iOS 26.4 (26.4.1, build 23E254a)
-- Commit SHA: Task 6 working tree based on `abaaf73`
+- Commit SHA: `f11db0a`
 - Reviewer: Codex
 - Date: 2026-08-15
 - Screenshot paths: None; authenticated Chinese state was not reachable without credentials.
@@ -47,7 +47,7 @@ This record is intentionally evidence-first. Check an item only after observing 
 ## Run 3 — iPhone 16 Pro, English
 
 - Simulator OS: iOS 26.4 (26.4.1, build 23E254a)
-- Commit SHA: Task 6 working tree based on `abaaf73`
+- Commit SHA: `f11db0a`
 - Reviewer: Codex
 - Date: 2026-08-15
 - Screenshot paths: `docs/qa/artifacts/ui-cycle-1/iphone-16-pro-login-en.png`
@@ -68,7 +68,7 @@ This record is intentionally evidence-first. Check an item only after observing 
 ## Run 4 — iPhone 16 Pro, Chinese
 
 - Simulator OS: iOS 26.4 (26.4.1, build 23E254a)
-- Commit SHA: Task 6 working tree based on `abaaf73`
+- Commit SHA: `f11db0a`
 - Reviewer: Codex
 - Date: 2026-08-15
 - Screenshot paths: None; authenticated Chinese state was not reachable without credentials.

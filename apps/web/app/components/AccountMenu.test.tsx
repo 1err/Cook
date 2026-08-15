@@ -29,18 +29,19 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-test("exposes Store cache and Design system only to admin users", async () => {
+test("exposes Store cache and Design system to admin users", async () => {
   const user = userEvent.setup();
-  const { rerender } = render(
-    <AccountMenu email="admin@example.com" isAdmin onLogout={vi.fn()} />,
-  );
+  render(<AccountMenu email="admin@example.com" isAdmin onLogout={vi.fn()} />);
 
   await user.click(screen.getByRole("button", { name: "Account for admin@example.com" }));
 
   expect(screen.getByRole("link", { name: "Store cache" })).toBeVisible();
   expect(screen.getByRole("link", { name: "Design system" })).toBeVisible();
+});
 
-  rerender(<AccountMenu email="cook@example.com" isAdmin={false} onLogout={vi.fn()} />);
+test("omits Store cache and Design system for non-admin users", async () => {
+  const user = userEvent.setup();
+  render(<AccountMenu email="cook@example.com" isAdmin={false} onLogout={vi.fn()} />);
 
   await user.click(screen.getByRole("button", { name: "Account for cook@example.com" }));
 

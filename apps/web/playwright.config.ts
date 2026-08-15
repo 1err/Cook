@@ -5,7 +5,8 @@ const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: "./e2e",
-  snapshotPathTemplate: "{testDir}/__screenshots__/{testFilePath}/{arg}-{projectName}{ext}",
+  snapshotPathTemplate:
+    "{testDir}/__screenshots__/{testFilePath}/{arg}-{projectName}-{platform}{ext}",
   webServer: {
     command: `npm run dev -- --hostname 127.0.0.1 --port ${port}`,
     url: baseURL,
