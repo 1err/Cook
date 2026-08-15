@@ -13,14 +13,12 @@ const weekDates = [
 
 const recipes = Array.from({ length: 24 }, (_, index) => {
   const number = String(index + 1).padStart(2, "0");
-  const color = index % 2 === 0 ? "#e07a5f" : "#9a442d";
-  const thumbnail = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120"><rect width="160" height="120" fill="${color}"/><circle cx="80" cy="60" r="34" fill="#ffdbd2"/><text x="80" y="67" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#55423e">${number}</text></svg>`;
 
   return {
     id: `recipe-${number}`,
     title: `Recipe ${number} with a descriptive two-line title`,
     source_url: null,
-    thumbnail_url: `data:image/svg+xml,${encodeURIComponent(thumbnail)}`,
+    thumbnail_url: null,
     ingredients: [{ name: `Ingredient ${number}`, quantity: "1 cup" }],
     raw_extraction_text: null,
     library_tags: index % 2 === 0 ? ["weeknight"] : ["main_dish"],
@@ -93,15 +91,16 @@ async function installPlannerFixtures(page: Page) {
   });
 }
 
-test.use({ viewport: { width: 1280, height: 800 } });
-
 test.beforeEach(async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "The planner viewport contract runs in the desktop project.");
+  if (testInfo.project.name === "desktop") {
+    await page.setViewportSize({ width: 1280, height: 800 });
+  }
   await installPlannerFixtures(page);
   await page.goto("/planner?week=2026-08-10");
 });
 
-test("keeps the full planner in one desktop viewport and preserves every planner interaction", async ({ page }) => {
+test("keeps the full planner in one desktop viewport and preserves every planner interaction", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "The fixed viewport contract runs in the desktop project.");
   await expect(page.getByTestId("planner-day-column")).toHaveCount(7);
   await expect(page.getByTestId("planner-meal-slot")).toHaveCount(21);
   const viewportMetrics = await page.evaluate(() => ({
@@ -185,4 +184,95 @@ test("keeps the full planner in one desktop viewport and preserves every planner
     })
     .click();
   await expect(page).toHaveURL(/\/recipe\/recipe-04$/);
+});
+
+test("keeps phone and tablet planners stacked, scrollable, and picker-friendly", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "desktop", "Responsive planner behavior runs in phone and tablet projects.");
+  await expect(page.getByTestId("planner-day-column")).toHaveCount(7);
+  await expect(page.getByTestId("planner-meal-slot")).toHaveCount(21);
+  await expect(page.getByText("Phone-friendly planning")).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight),
+  ).toBe(true);
+
+  const [firstDay, secondDay] = await page.getByTestId("planner-day-column").evaluateAll((days) =>
+    days.slice(0, 2).map((day) => {
+      const box = day.getBoundingClientRect();
+      return { bottom: box.bottom, top: box.top };
+    }),
+  );
+  expect(secondDay.top).toBeGreaterThanOrEqual(firstDay.bottom);
+
+  await page
+    .getByRole("button", { name: "Choose a recipe for breakfast on 2026-08-11" })
+    .click();
+  const picker = page.getByRole("dialog", { name: "Choose recipe for meal slot" });
+  await expect(picker).toBeVisible();
+  const addRequest = page.waitForRequest(
+    (request) => request.method() === "PUT" && request.url().endsWith("/meal-plan/2026-08-11"),
+  );
+  await picker.getByRole("button", { name: "Add", exact: true }).first().click();
+  expect((await addRequest).postDataJSON().breakfast).toEqual(["recipe-01"]);
+  await expect(picker).toBeHidden();
+  await expect(
+    page.locator('[data-date="2026-08-11"][data-slot-index="0"]').getByRole("button", {
+      name: "Open Recipe 01 with a descriptive two-line title for breakfast on 2026-08-11",
+    }),
+  ).toBeVisible();
+});
+
+test("supports keyboard traversal through desktop slot controls and overflow", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Desktop keyboard order runs in the desktop project.");
+  const firstTile = page.getByRole("button", {
+    name: "Open Recipe 01 with a descriptive two-line title for breakfast on 2026-08-10",
+  });
+  const firstRemove = page.getByRole("button", {
+    name: "Remove Recipe 01 with a descriptive two-line title from breakfast on 2026-08-10",
+  });
+  const overflow = page.getByRole("button", {
+    name: "Show 1 more recipe for breakfast on 2026-08-10",
+  });
+
+  await page.getByRole("button", { name: "Next" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(firstTile).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(firstRemove).toBeFocused();
+  await expect(firstRemove).toHaveCSS("opacity", "1");
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", {
+      name: "Open Recipe 02 with a descriptive two-line title for breakfast on 2026-08-10",
+    }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", {
+      name: "Remove Recipe 02 with a descriptive two-line title from breakfast on 2026-08-10",
+    }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", { name: "Add another recipe for breakfast on 2026-08-10" }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(overflow).toBeFocused();
+
+  await page
+    .getByRole("button", { name: "Add another recipe for dinner on 2026-08-10" })
+    .focus();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", { name: "Choose a recipe for breakfast on 2026-08-11" }),
+  ).toBeFocused();
+
+  await overflow.focus();
+  await page.keyboard.press("Enter");
+  const overflowDialog = page.getByRole("dialog", {
+    name: "Breakfast recipes for 2026-08-10",
+  });
+  await expect(overflowDialog).toBeVisible();
+  await expect(overflowDialog.getByRole("button", { name: "Close meal recipes" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(overflow).toBeFocused();
 });
