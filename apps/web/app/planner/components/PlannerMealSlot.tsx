@@ -27,6 +27,11 @@ function useDialogKeyboard(
 ) {
   useEffect(() => {
     if (!overflowOpen) return;
+    queueMicrotask(() => {
+      dialogRef.current?.querySelector<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )?.focus();
+    });
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -60,11 +65,11 @@ function slotTitle(slot: MealType) {
   return slot.charAt(0).toUpperCase() + slot.slice(1);
 }
 
-function RecipeTile({ recipe, onOpen }: { recipe: Recipe; onOpen: () => void }) {
+function RecipeTile({ recipe, slot, date, onOpen }: { recipe: Recipe; slot: MealType; date: string; onOpen: () => void }) {
   const t = useT();
 
   return (
-    <button type="button" className="planner-meal-card w-full h-full" onClick={onOpen} aria-label={t("planner.openRecipe", { title: recipe.title })}>
+    <button type="button" className="planner-meal-card w-full h-full" onClick={onOpen} aria-label={t("planner.openRecipe", { title: recipe.title, slot, date })}>
       {recipe.thumbnail_url ? (
         <img src={recipe.thumbnail_url} alt="" className="planner-meal-card__img" />
       ) : (
@@ -122,9 +127,25 @@ export function PlannerMealSlot({
         <div className="planner-slot-recipes">
           {visibleRecipes.map(({ recipeId, recipe }) => (
             <div key={recipeId} className="planner-slot-recipe">
-              <RecipeTile recipe={recipe} onOpen={() => onOpen(recipeId)} />
+              <RecipeTile recipe={recipe} slot={slot} date={date} onOpen={() => onOpen(recipeId)} />
+              <button
+                type="button"
+                className="planner-meal-card__clear"
+                onClick={() => onRemove(recipeId)}
+                aria-label={t("planner.removeRecipeFromSlot", { title: recipe.title, slot, date })}
+              >
+                <span className="material-symbols-outlined text-sm">close</span>
+              </button>
             </div>
           ))}
+          <button
+            type="button"
+            className="planner-slot-action font-headline"
+            onClick={onChoose}
+            aria-label={t("planner.addAnotherRecipeForSlot", { slot, date })}
+          >
+            {t("planner.addAnotherRecipe")}
+          </button>
           {overflow.length ? (
             <button
               ref={overflowTriggerRef}
@@ -146,7 +167,7 @@ export function PlannerMealSlot({
           type="button"
           className="planner-slot-empty-trigger"
           onClick={onChoose}
-          aria-label={t("planner.chooseRecipeForMealSlot")}
+          aria-label={t("planner.chooseRecipeForSlot", { slot, date })}
         >
           <span className="planner-slot-plus" aria-hidden="true">
             <span className="material-symbols-outlined text-2xl opacity-40">add</span>
@@ -156,9 +177,9 @@ export function PlannerMealSlot({
       )}
 
       {overflowOpen ? (
-        <div ref={dialogRef} className="planner-mobile-picker" role="dialog" aria-modal="true" aria-label={t("planner.slotRecipes", { slot: slotTitle(slot), date })}>
-          <button type="button" className="planner-mobile-picker__backdrop" aria-label={t("planner.closeSlotRecipes")} onClick={closeOverflow} />
-          <div className="planner-mobile-picker__sheet" onClick={(event) => event.stopPropagation()}>
+        <div className="planner-mobile-picker" onPointerDown={closeOverflow}>
+          <div className="planner-mobile-picker__backdrop" aria-hidden="true" />
+          <div ref={dialogRef} className="planner-mobile-picker__sheet" role="dialog" aria-modal="true" aria-label={t("planner.slotRecipes", { slot: slotTitle(slot), date })} onPointerDown={(event) => event.stopPropagation()}>
             <div className="planner-mobile-picker__head">
               <h2 className="planner-mobile-picker__title font-headline">{t("planner.slotRecipes", { slot: slotTitle(slot), date })}</h2>
               <button type="button" className="planner-mobile-picker__close" onClick={closeOverflow} aria-label={t("planner.closeSlotRecipes")}>
@@ -168,7 +189,7 @@ export function PlannerMealSlot({
             <div className="planner-mobile-picker__list">
               {dialogRecipes.map(({ recipeId, recipe }) => (
                 <div key={recipeId} className="planner-slot-recipe">
-                  <RecipeTile recipe={recipe} onOpen={() => onOpen(recipeId)} />
+                  <RecipeTile recipe={recipe} slot={slot} date={date} onOpen={() => onOpen(recipeId)} />
                   <button
                     type="button"
                     className="planner-meal-card__clear"
