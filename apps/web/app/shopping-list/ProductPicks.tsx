@@ -28,7 +28,7 @@ export function ProductPicks({ state, onRetry }: ProductPicksProps) {
   if (state.status === "error" || state.status === "empty") {
     const message =
       state.status === "error"
-        ? state.error ?? t("shopping.productLoadFailed")
+        ? t("shopping.productLoadFailed")
         : t("shopping.noProductsFound", { store: WEEE_STORE_LABEL });
     return (
       <div className="shop-bento-products__status">

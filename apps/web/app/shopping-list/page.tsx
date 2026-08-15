@@ -25,9 +25,15 @@ import {
 import { ProductPicks } from "./ProductPicks";
 import {
   buildVisualProductQueue,
-  runOrderedProductQueue,
   type ProductLookupState,
 } from "./productLoading";
+import {
+  buildProductLookupStorage,
+  canonicalIngredientKey,
+  createProductLookupCoordinator,
+  isStoreProduct,
+  parseProductLookupStorage,
+} from "./productLookupCoordinator";
 
 const SMART_SHOPPING_LIST_PREFIX = "smartShoppingList";
 const SMART_SHOPPING_PRODUCTS_PREFIX = "smartShoppingProducts";
@@ -120,22 +126,6 @@ interface SmartStored extends RefineResponse {
   _plannerFingerprint?: string;
 }
 
-interface SmartProductsStored {
-  open: Record<string, boolean>;
-  lookup: Record<string, ProductLookupState>;
-}
-
-function isStoreProduct(row: unknown): row is StoreProduct {
-  if (!row || typeof row !== "object") return false;
-  const maybe = row as Partial<StoreProduct>;
-  return (
-    typeof maybe.name === "string" &&
-    typeof maybe.price === "string" &&
-    typeof maybe.image === "string" &&
-    typeof maybe.url === "string"
-  );
-}
-
 async function loadProduct(key: string): Promise<StoreProduct[]> {
   const res = await apiFetch(`/store-products?query=${encodeURIComponent(key)}`);
   if (!res.ok) throw new Error("Failed to load products");
@@ -176,44 +166,6 @@ function parseSmartStored(
   }
 }
 
-function parseSmartProductsStored(raw: string): SmartProductsStored | null {
-  try {
-    const parsed = JSON.parse(raw) as SmartProductsStored;
-    if (!parsed || typeof parsed !== "object") return null;
-    if (!parsed.open || typeof parsed.open !== "object") return null;
-    if (!parsed.lookup || typeof parsed.lookup !== "object") return null;
-    const lookup: Record<string, ProductLookupState> = {};
-    for (const [key, value] of Object.entries(parsed.lookup)) {
-      if (!value || typeof value !== "object") continue;
-      if (value.status === "success") {
-        if (
-          !Array.isArray(value.products) ||
-          !value.products.length ||
-          !value.products.every(isStoreProduct)
-        ) {
-          continue;
-        }
-        lookup[key] = { status: "success", products: value.products.slice(0, 3) };
-      } else if (value.status === "empty") {
-        lookup[key] = { status: "empty", products: [] };
-      } else if (value.status === "error") {
-        lookup[key] = {
-          status: "error",
-          error: typeof value.error === "string" ? value.error : undefined,
-        };
-      }
-    }
-    return {
-      open: Object.fromEntries(
-        Object.entries(parsed.open).filter(([, value]) => typeof value === "boolean")
-      ),
-      lookup,
-    };
-  } catch {
-    return null;
-  }
-}
-
 function ShoppingListPageContent() {
   const router = useRouter();
   const { language } = useI18n();
@@ -246,7 +198,21 @@ function ShoppingListPageContent() {
   const [openProductsByIngredient, setOpenProductsByIngredient] = useState<Record<string, boolean>>({});
   const [lookupByIngredient, setLookupByIngredient] = useState<Record<string, ProductLookupState>>({});
   const productLoadGenerationRef = useRef(0);
+  const productLookupCoordinatorRef = useRef<ReturnType<
+    typeof createProductLookupCoordinator
+  > | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+
+  if (!productLookupCoordinatorRef.current) {
+    productLookupCoordinatorRef.current = createProductLookupCoordinator({
+      load: loadProduct,
+      shouldPublish: (generation) => productLoadGenerationRef.current === generation,
+      onState: (key, state) => {
+        setLookupByIngredient((current) => ({ ...current, [key]: state }));
+      },
+    });
+  }
+  const productLookupCoordinator = productLookupCoordinatorRef.current;
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -386,7 +352,7 @@ function ShoppingListPageContent() {
         clearProductResults();
         return;
       }
-      const parsed = parseSmartProductsStored(raw);
+      const parsed = parseProductLookupStorage(raw);
       if (!parsed) {
         clearProductResults();
         return;
@@ -402,15 +368,10 @@ function ShoppingListPageContent() {
 
   useEffect(() => {
     if (!activeRefinedData) return;
-    const terminalLookup = Object.fromEntries(
-      Object.entries(lookupByIngredient).filter(([, state]) =>
-        state.status === "success" || state.status === "empty" || state.status === "error"
-      )
+    const payload = buildProductLookupStorage(
+      openProductsByIngredient,
+      lookupByIngredient,
     );
-    const payload: SmartProductsStored = {
-      open: openProductsByIngredient,
-      lookup: terminalLookup,
-    };
     sessionStorage.setItem(smartProductsStorageKey(start), JSON.stringify(payload));
   }, [activeRefinedData, lookupByIngredient, openProductsByIngredient, start]);
 
@@ -559,7 +520,7 @@ function ShoppingListPageContent() {
     openPanel = true,
     forceRetry = false
   ) {
-    const key = ingredientName.trim();
+    const key = canonicalIngredientKey(ingredientName);
     if (!key) return;
 
     if (openPanel) {
@@ -571,31 +532,11 @@ function ShoppingListPageContent() {
     }
 
     const generation = productLoadGenerationRef.current;
-    setLookupByIngredient((prev) => ({ ...prev, [key]: { status: "loading" } }));
-
-    try {
-      const products = await loadProduct(key);
-      if (productLoadGenerationRef.current !== generation) return;
-      setLookupByIngredient((prev) => ({
-        ...prev,
-        [key]: products.length
-          ? { status: "success", products }
-          : { status: "empty", products: [] },
-      }));
-    } catch (error) {
-      if (productLoadGenerationRef.current !== generation) return;
-      setLookupByIngredient((prev) => ({
-        ...prev,
-        [key]: {
-          status: "error",
-          error: error instanceof Error ? error.message : undefined,
-        },
-      }));
-    }
+    await productLookupCoordinator.request(ingredientName, generation);
   }
 
   async function handleToggleProducts(ingredientName: string) {
-    const key = ingredientName.trim();
+    const key = canonicalIngredientKey(ingredientName);
     if (!key) return;
 
     const isOpen = !!openProductsByIngredient[key];
@@ -604,7 +545,7 @@ function ShoppingListPageContent() {
       return;
     }
 
-    await ensureProductsLoaded(key);
+    await ensureProductsLoaded(ingredientName);
   }
 
   async function handleRetryProducts(ingredientName: string) {
@@ -614,27 +555,23 @@ function ShoppingListPageContent() {
   async function handleLoadAllProducts() {
     const keys = buildVisualProductQueue(productQueueGroups);
     if (!keys.length) return;
-    const generation = ++productLoadGenerationRef.current;
+    const generation = productLoadGenerationRef.current;
     setOpenProductsByIngredient((current) => ({
       ...current,
-      ...Object.fromEntries(keys.map((key) => [key, true])),
+      ...Object.fromEntries(keys.map((key) => [canonicalIngredientKey(key), true])),
     }));
     setBulkLoadingProducts(true);
     setBulkLoadProgress({ current: 0, total: keys.length });
+    let completed = 0;
     try {
-      await runOrderedProductQueue({
-        keys,
-        load: loadProduct,
-        shouldContinue: () => productLoadGenerationRef.current === generation,
-        onState: (key, state) => {
+      await Promise.all(
+        keys.map(async (key) => {
+          await productLookupCoordinator.request(key, generation);
           if (productLoadGenerationRef.current !== generation) return;
-          setLookupByIngredient((current) => ({ ...current, [key]: state }));
-        },
-        onProgress: (current, total) => {
-          if (productLoadGenerationRef.current !== generation) return;
-          setBulkLoadProgress({ current, total });
-        },
-      });
+          completed += 1;
+          setBulkLoadProgress({ current: completed, total: keys.length });
+        }),
+      );
     } finally {
       if (productLoadGenerationRef.current === generation) {
         setBulkLoadingProducts(false);
@@ -777,7 +714,7 @@ function ShoppingListPageContent() {
                         </div>
                         <div>
                           {uncheckedRows.map(({ item, origIndex }) => {
-                            const productKey = item.name.trim();
+                            const productKey = canonicalIngredientKey(item.name);
                             const productsOpen = !!openProductsByIngredient[productKey];
                             const productState = lookupByIngredient[productKey] ?? { status: "idle" };
                             const productsPending = productState.status === "queued" || productState.status === "loading";
@@ -848,7 +785,7 @@ function ShoppingListPageContent() {
                             <div className="shop-bento-checked-group">
                               <p className="shop-bento-checked-group__label font-headline">{t("shopping.alreadyHave")}</p>
                               {checkedRows.map(({ item, origIndex }) => {
-                                const productKey = item.name.trim();
+                                const productKey = canonicalIngredientKey(item.name);
                                 const productsOpen = !!openProductsByIngredient[productKey];
                                 const productState = lookupByIngredient[productKey] ?? { status: "idle" };
                                 const productsPending = productState.status === "queued" || productState.status === "loading";
@@ -949,7 +886,7 @@ function ShoppingListPageContent() {
                       </div>
                       <div>
                         {uncheckedRows.map(({ item, origIndex }) => {
-                          const productKey = item.name.trim();
+                          const productKey = canonicalIngredientKey(item.name);
                           const productsOpen = !!openProductsByIngredient[productKey];
                           const productState = lookupByIngredient[productKey] ?? { status: "idle" };
                           const productsPending = productState.status === "queued" || productState.status === "loading";
@@ -1020,7 +957,7 @@ function ShoppingListPageContent() {
                           <div className="shop-bento-checked-group">
                             <p className="shop-bento-checked-group__label font-headline">{t("shopping.alreadyHave")}</p>
                             {checkedRows.map(({ item, origIndex }) => {
-                              const productKey = item.name.trim();
+                              const productKey = canonicalIngredientKey(item.name);
                               const productsOpen = !!openProductsByIngredient[productKey];
                               const productState = lookupByIngredient[productKey] ?? { status: "idle" };
                               const productsPending = productState.status === "queued" || productState.status === "loading";
