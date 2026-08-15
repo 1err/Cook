@@ -5,11 +5,17 @@
     "apps/*",
     "packages/*"
   ],
+  "overrides": {
+    "playwright-core": "1.58.0"
+  },
   "scripts": {
     "web:dev": "npm --workspace @cooking/web run dev",
     "web:build": "npm --workspace @cooking/web run build",
     "web:start": "npm --workspace @cooking/web run start",
     "web:lint": "npm --workspace @cooking/web run lint",
+    "test:web": "npm --workspace @cooking/web test",
+    "test:mobile": "npm --workspace @cooking/mobile test",
+    "test:ui": "npm run tokens:test && npm run tokens:build && npm run test:web && npm run test:mobile && npx tsc -p apps/web/tsconfig.json --noEmit && npx tsc -p apps/mobile/tsconfig.json --noEmit && npm run web:build && npm --workspace @cooking/web run test:e2e",
     "mobile:start": "npm --workspace @cooking/mobile run start",
     "mobile:ios": "npm --workspace @cooking/mobile run ios",
     "mobile:android": "npm --workspace @cooking/mobile run android",
@@ -19,6 +25,7 @@
   "devDependencies": {
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.0",
-    "next": "14.2.35"
+    "next": "14.2.35",
+    "playwright-core": "1.58.0"
   }
 }

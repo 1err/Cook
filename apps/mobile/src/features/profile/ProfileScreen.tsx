@@ -55,6 +55,13 @@ export function ProfileScreen({ navigation }: Props) {
           leading={<Ionicons name="settings-outline" size={20} color={colors.primary} />}
           onPress={() => navigation.navigate("Settings")}
         />
+        {__DEV__ ? (
+          <ListRow
+            title="Design system"
+            leading={<Ionicons name="color-palette-outline" size={20} color={colors.primary} />}
+            onPress={() => navigation.navigate("DesignSystem")}
+          />
+        ) : null}
       </View>
 
       <View style={styles.language}>

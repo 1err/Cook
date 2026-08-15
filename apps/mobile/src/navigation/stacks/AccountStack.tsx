@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { IconButton } from "../../components";
 import { ProfileScreen } from "../../features/profile/ProfileScreen";
 import { SettingsScreen } from "../../features/profile/SettingsScreen";
+import { DesignSystemScreen } from "../../features/profile/DesignSystemScreen";
 import { useT } from "../../lib/i18n";
 import { coreStackScreenOptions } from "../coreStackOptions";
 import type { ProfileStackParamList } from "../types";
@@ -32,6 +33,11 @@ export function AccountStack() {
         name="Settings"
         component={SettingsScreen}
         options={{ title: t("nav.settings"), headerLargeTitle: false }}
+      />
+      <Stack.Screen
+        name="DesignSystem"
+        component={DesignSystemScreen}
+        options={{ title: "Design system", headerLargeTitle: false }}
       />
     </Stack.Navigator>
   );

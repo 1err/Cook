@@ -98,6 +98,16 @@ export function AccountMenu({ email, isAdmin, onLogout }: AccountMenuProps) {
                     <span>{t("nav.cachePreview")}</span>
                   </Link>
                 </li>
+                <li>
+                  <Link
+                    className={styles.action}
+                    href="/admin/design-system"
+                    onClick={closeMenu}
+                  >
+                    <Icon name="admin" />
+                    <span>Design system</span>
+                  </Link>
+                </li>
               </ul>
             </section>
           ) : null}

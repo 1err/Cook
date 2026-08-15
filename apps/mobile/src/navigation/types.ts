@@ -24,6 +24,7 @@ export type ShoppingStackParamList = {
 export type ProfileStackParamList = {
   Profile: undefined;
   Settings: undefined;
+  DesignSystem: undefined;
 };
 
 export type MainTabsParamList = {

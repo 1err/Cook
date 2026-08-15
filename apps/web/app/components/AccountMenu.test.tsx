@@ -29,13 +29,23 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-test("does not expose admin tools to a non-admin user", async () => {
+test("exposes Store cache and Design system only to admin users", async () => {
   const user = userEvent.setup();
-  render(<AccountMenu email="cook@example.com" isAdmin={false} onLogout={vi.fn()} />);
+  const { rerender } = render(
+    <AccountMenu email="admin@example.com" isAdmin onLogout={vi.fn()} />,
+  );
+
+  await user.click(screen.getByRole("button", { name: "Account for admin@example.com" }));
+
+  expect(screen.getByRole("link", { name: "Store cache" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "Design system" })).toBeVisible();
+
+  rerender(<AccountMenu email="cook@example.com" isAdmin={false} onLogout={vi.fn()} />);
 
   await user.click(screen.getByRole("button", { name: "Account for cook@example.com" }));
 
   expect(screen.queryByRole("link", { name: "Store cache" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Design system" })).not.toBeInTheDocument();
 });
 
 test("Escape closes the menu and restores focus to its trigger", async () => {
