@@ -253,3 +253,43 @@ test("keeps a later queued recipe when the preceding write fails", async () => {
     expect(screen.getByRole("button", { name: /Open Second recipe/ })).toBeVisible();
   });
 });
+
+test("creates an empty day and saves an optimistic recipe when the plan read fails", async () => {
+  const saved = deferredResponse();
+  const requests: Array<{ date: string; slots: { breakfast: string[]; lunch: string[]; dinner: string[] } }> = [];
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse({ detail: "read failed" }, 500));
+    if (path === "/recipes") {
+      return Promise.resolve(jsonResponse([{ id: "recipe-1", title: "Test recipe", ingredients: [] }]));
+    }
+    if (path === "/meal-plan/2026-08-10" && options?.method === "PUT") {
+      requests.push({
+        date: path.slice("/meal-plan/".length),
+        slots: JSON.parse(String(options.body)),
+      });
+      return saved.promise;
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  const user = userEvent.setup();
+  render(<PlannerPage />);
+
+  await user.click(
+    await screen.findByRole("button", {
+      name: "Choose a recipe for dinner on 2026-08-10",
+    }),
+  );
+  const picker = await screen.findByRole("dialog", { name: "Choose recipe for meal slot" });
+  await user.click(within(picker).getByRole("button", { name: "Add" }));
+
+  expect(await screen.findByRole("button", { name: /Open Test recipe/ })).toBeVisible();
+  expect(requests).toEqual([
+    { date: "2026-08-10", slots: { breakfast: [], lunch: [], dinner: ["recipe-1"] } },
+  ]);
+
+  saved.resolve(mealPlanResponse("2026-08-10", ["recipe-1"]));
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /Open Test recipe/ })).toBeVisible();
+    expect(requests).toHaveLength(1);
+  });
+});

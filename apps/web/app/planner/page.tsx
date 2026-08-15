@@ -102,29 +102,28 @@ function PlannerPageContent() {
         if (!recipesRes.ok) throw new Error("Failed to load recipes");
         const recs: Recipe[] = await recipesRes.json();
         if (!cancelled) setRecipes(recs);
+        const nextPlan: Record<string, MealPlanSlots> = Object.fromEntries(
+          dates.map((date) => [date, emptyMealPlanSlots()]),
+        );
         if (plansRes.ok) {
           const plans: MealPlanDay[] = await plansRes.json();
-          const nextPlan: Record<string, MealPlanSlots> = {};
           plans.forEach((p) => {
             nextPlan[p.date] = normalizeMealPlanSlots(p);
           });
-          dates.forEach((d) => {
-            if (!nextPlan[d]) nextPlan[d] = emptyMealPlanSlots();
-          });
-          if (!cancelled && loadGeneration.current === generation) {
-            mutationQueuesByDate.current = Object.fromEntries(
-              dates.map((date) => [
-                date,
-                {
-                  confirmed: nextPlan[date],
-                  operations: [],
-                  inFlight: false,
-                  generation,
-                },
-              ]),
-            );
-            setPlanByDate(nextPlan);
-          }
+        }
+        if (!cancelled && loadGeneration.current === generation) {
+          mutationQueuesByDate.current = Object.fromEntries(
+            dates.map((date) => [
+              date,
+              {
+                confirmed: nextPlan[date],
+                operations: [],
+                inFlight: false,
+                generation,
+              },
+            ]),
+          );
+          setPlanByDate(nextPlan);
         }
       } catch {
         if (!cancelled) setRecipes([]);
