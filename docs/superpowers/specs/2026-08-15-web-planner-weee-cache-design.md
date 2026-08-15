@@ -144,7 +144,9 @@ The page owns recipes, filtering, meal-plan state, optimistic mutations, API cal
 
 ## Grocery Loading Architecture
 
-### Visual queue order
+### Visual queue order without layout changes
+
+The grocery bento layout, column widths, category placement, and card presentation remain unchanged. The reference to `Pantry & Dry Goods` as the primary left column documents the existing layout; it is not a proposal to move categories or create a new pantry-only design. The existing secondary column continues to render Produce, Dairy, Meat & Seafood, Frozen, Bakery, and Other exactly as it does today.
 
 The queue is produced by a pure helper from the same category groups and row arrays used for rendering. Its category order is:
 
@@ -153,7 +155,7 @@ The queue is produced by a pure helper from the same category groups and row arr
 
 Within each category, unchecked visible rows keep their rendered order. Duplicate normalized ingredient names are removed without changing the first occurrence.
 
-This ordering is a page-layout concern and will not change the shared generic `GROCERY_CATEGORY_ORDER`, which is still used by other screens and categorization logic.
+This ordering changes only request scheduling. It does not change the rendered grocery layout or the shared generic `GROCERY_CATEGORY_ORDER`, which is still used by other screens and categorization logic.
 
 ### Client state machine
 
