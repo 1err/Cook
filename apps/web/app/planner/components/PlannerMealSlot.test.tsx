@@ -55,12 +55,14 @@ test("forwards visible recipe, add, and drag callbacks", async () => {
   await user.click(screen.getByRole("button", { name: "Add another recipe for dinner on 2026-08-10" }));
   const root = screen.getByTestId("planner-meal-slot");
   fireEvent.dragOver(root);
+  fireEvent.dragLeave(root);
   fireEvent.drop(root);
 
   expect(props.onOpen).toHaveBeenCalledWith("r1");
   expect(props.onRemove).toHaveBeenCalledWith("r1");
   expect(props.onChoose).toHaveBeenCalledTimes(1);
   expect(props.onDragOver).toHaveBeenCalledTimes(1);
+  expect(props.onDragLeave).toHaveBeenCalledTimes(1);
   expect(props.onDrop).toHaveBeenCalledTimes(1);
 });
 
