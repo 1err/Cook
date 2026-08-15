@@ -5,27 +5,37 @@ import { FriendSearchScreen } from "../../features/library/FriendSearchScreen";
 import { LibraryListScreen } from "../../features/library/LibraryListScreen";
 import { RecipeDetailScreen } from "../../features/library/RecipeDetailScreen";
 import { RecipeEditScreen } from "../../features/library/RecipeEditScreen";
-import { colors } from "../../theme";
+import { IconButton } from "../../components";
+import { CoreHeaderActions } from "../../components/CoreHeaderActions";
+import { useT } from "../../lib/i18n";
+import { coreStackScreenOptions } from "../coreStackOptions";
 import type { LibraryStackParamList } from "../types";
 
 const Stack = createNativeStackNavigator<LibraryStackParamList>();
 
 export function LibraryStack() {
+  const t = useT();
+
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerLargeTitle: true,
-        headerLargeTitleShadowVisible: false,
-        headerShadowVisible: false,
-        headerTransparent: false,
-        headerTintColor: colors.primary,
-        headerStyle: { backgroundColor: colors.surface },
-        headerLargeStyle: { backgroundColor: colors.background },
-        headerTitleStyle: { color: colors.onSurface },
-        headerLargeTitleStyle: { color: colors.onSurface },
-      }}
-    >
-      <Stack.Screen name="LibraryList" component={LibraryListScreen} options={{ title: "Library" }} />
+    <Stack.Navigator screenOptions={coreStackScreenOptions}>
+      <Stack.Screen
+        name="LibraryList"
+        component={LibraryListScreen}
+        options={({ navigation }) => ({
+          title: t("nav.library"),
+          headerRight: () => (
+            <CoreHeaderActions
+              before={
+                <IconButton
+                  icon="search"
+                  accessibilityLabel={t("nav.findFriend")}
+                  onPress={() => navigation.navigate("FriendSearch")}
+                />
+              }
+            />
+          ),
+        })}
+      />
       <Stack.Screen
         name="RecipeDetail"
         component={RecipeDetailScreen}

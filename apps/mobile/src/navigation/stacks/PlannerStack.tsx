@@ -1,26 +1,23 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { CoreHeaderActions } from "../../components/CoreHeaderActions";
 import { PlannerWeekScreen } from "../../features/planner/PlannerWeekScreen";
-import { colors } from "../../theme";
+import { useT } from "../../lib/i18n";
+import { coreStackScreenOptions } from "../coreStackOptions";
 import type { PlannerStackParamList } from "../types";
 
 const Stack = createNativeStackNavigator<PlannerStackParamList>();
 
 export function PlannerStack() {
+  const t = useT();
+
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerLargeTitle: true,
-        headerLargeTitleShadowVisible: false,
-        headerShadowVisible: false,
-        headerTintColor: colors.primary,
-        headerStyle: { backgroundColor: colors.surface },
-        headerLargeStyle: { backgroundColor: colors.background },
-        headerTitleStyle: { color: colors.onSurface },
-        headerLargeTitleStyle: { color: colors.onSurface },
-      }}
-    >
-      <Stack.Screen name="PlannerWeek" component={PlannerWeekScreen} options={{ title: "Planner" }} />
+    <Stack.Navigator screenOptions={coreStackScreenOptions}>
+      <Stack.Screen
+        name="PlannerWeek"
+        component={PlannerWeekScreen}
+        options={{ title: t("nav.planner"), headerRight: () => <CoreHeaderActions /> }}
+      />
     </Stack.Navigator>
   );
 }

@@ -1,26 +1,23 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { CoreHeaderActions } from "../../components/CoreHeaderActions";
 import { ShoppingListScreen } from "../../features/shopping/ShoppingListScreen";
-import { colors } from "../../theme";
+import { useT } from "../../lib/i18n";
+import { coreStackScreenOptions } from "../coreStackOptions";
 import type { ShoppingStackParamList } from "../types";
 
 const Stack = createNativeStackNavigator<ShoppingStackParamList>();
 
 export function ShoppingStack() {
+  const t = useT();
+
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerLargeTitle: true,
-        headerLargeTitleShadowVisible: false,
-        headerShadowVisible: false,
-        headerTintColor: colors.primary,
-        headerStyle: { backgroundColor: colors.surface },
-        headerLargeStyle: { backgroundColor: colors.background },
-        headerTitleStyle: { color: colors.onSurface },
-        headerLargeTitleStyle: { color: colors.onSurface },
-      }}
-    >
-      <Stack.Screen name="ShoppingList" component={ShoppingListScreen} options={{ title: "Shopping" }} />
+    <Stack.Navigator screenOptions={coreStackScreenOptions}>
+      <Stack.Screen
+        name="ShoppingList"
+        component={ShoppingListScreen}
+        options={{ title: t("nav.shopping"), headerRight: () => <CoreHeaderActions /> }}
+      />
     </Stack.Navigator>
   );
 }
