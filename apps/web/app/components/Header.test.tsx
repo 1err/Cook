@@ -48,7 +48,10 @@ beforeEach(() => {
   mockUseI18n.mockReturnValue({ language: "en", setLanguage: vi.fn(), t });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
+});
 
 test("keeps only core destinations in primary navigation and preserves the Add Recipe origin", () => {
   render(<Header />);
@@ -86,4 +89,39 @@ test("preserves sign-in and registration actions for unauthenticated routes", ()
   expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
   expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute("href", "/register");
   expect(screen.queryByRole("link", { name: "Add Recipe" })).not.toBeInTheDocument();
+});
+
+test("the navigation disclosure owns and precedes the links it reveals in tab order", async () => {
+  const user = userEvent.setup();
+  render(<Header />);
+  const trigger = screen.getByRole("button", { name: "Open navigation menu" });
+  const navigation = screen.getByRole("navigation", { name: "Main" });
+  const libraryLink = screen.getByRole("link", { name: "Library" });
+
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+  expect(trigger).toHaveAttribute("aria-controls", navigation.id);
+  expect(trigger).not.toHaveAttribute("aria-pressed");
+  expect(trigger.compareDocumentPosition(libraryLink) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+  await user.click(trigger);
+  expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+  await user.tab();
+  expect(libraryLink).toHaveFocus();
+});
+
+test("the account anchor is the final narrow action so its panel remains inside 320px", async () => {
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 320 });
+  const user = userEvent.setup();
+  render(<Header />);
+  const accountTrigger = screen.getByRole("button", {
+    name: "Account for jerryxiang24@gmail.com",
+  });
+  const accountRoot = accountTrigger.parentElement;
+  const actionGroup = accountRoot?.parentElement;
+
+  expect(actionGroup?.lastElementChild).toBe(accountRoot);
+
+  await user.click(accountTrigger);
+  expect(document.getElementById(accountTrigger.getAttribute("aria-controls") ?? "")).toBeVisible();
 });

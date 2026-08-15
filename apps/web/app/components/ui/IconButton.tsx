@@ -6,14 +6,18 @@ type IconButtonProps = {
   icon: IconName;
   label: string;
   onClick: React.MouseEventHandler<HTMLButtonElement>;
+  controls?: string;
   disabled?: boolean;
+  expanded?: boolean;
   pressed?: boolean;
   className?: string;
 };
 
 export function IconButton({
   className,
+  controls,
   disabled = false,
+  expanded,
   icon,
   label,
   onClick,
@@ -21,6 +25,8 @@ export function IconButton({
 }: IconButtonProps) {
   return (
     <button
+      aria-controls={controls}
+      aria-expanded={expanded}
       aria-label={label}
       aria-pressed={pressed}
       className={[styles.button, className].filter(Boolean).join(" ")}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { isAdminUser } from "../lib/admin";
 import { useAuth } from "../lib/auth";
 import { useI18n } from "../lib/i18n";
@@ -22,6 +22,7 @@ export function Header() {
   const { loading, logout, user } = useAuth();
   const { t } = useI18n();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const navigationId = useId();
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -51,10 +52,22 @@ export function Header() {
           </span>
         </Link>
 
+        {!loading && user ? (
+          <IconButton
+            className={styles.menuButton}
+            controls={navigationId}
+            expanded={mobileMenuOpen}
+            icon={mobileMenuOpen ? "close" : "menu"}
+            label={mobileMenuOpen ? t("nav.closeMenu") : t("nav.openMenu")}
+            onClick={() => setMobileMenuOpen((current) => !current)}
+          />
+        ) : null}
+
         {user ? (
           <nav
             aria-label="Main"
             className={`${styles.nav}${mobileMenuOpen ? ` ${styles.navOpen}` : ""}`}
+            id={navigationId}
           >
             {PRIMARY_LINKS.map((link) => {
               const active = isActive(link.href);
@@ -87,13 +100,6 @@ export function Header() {
                 {t("nav.addRecipe")}
               </ActionLink>
               <AccountMenu email={user.email} isAdmin={isAdminUser(user)} onLogout={logout} />
-              <IconButton
-                className={styles.menuButton}
-                icon={mobileMenuOpen ? "close" : "menu"}
-                label={mobileMenuOpen ? t("nav.closeMenu") : t("nav.openMenu")}
-                onClick={() => setMobileMenuOpen((current) => !current)}
-                pressed={mobileMenuOpen}
-              />
             </>
           ) : null}
 
