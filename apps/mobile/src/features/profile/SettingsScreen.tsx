@@ -2,18 +2,20 @@ import React, { useState } from "react";
 import { Alert, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth";
+import { useT } from "../../lib/i18n";
 import { Button, Screen } from "../../components";
 import { colors, radii, spacing, typography } from "../../theme";
 
 export function SettingsScreen() {
   const { user, logout } = useAuth();
+  const t = useT();
   const [signingOut, setSigningOut] = useState(false);
 
   function confirmLogout() {
-    Alert.alert("Sign out?", "You'll need to sign back in to access your library.", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(t("account.signOutConfirmTitle"), t("account.signOutConfirmBody"), [
+      { text: t("common.cancel"), style: "cancel" },
       {
-        text: "Sign out",
+        text: t("account.signOut"),
         style: "destructive",
         onPress: async () => {
           setSigningOut(true);
@@ -34,7 +36,7 @@ export function SettingsScreen() {
           <Ionicons name="mail-outline" size={20} color={colors.onPrimaryFixed} />
         </View>
         <View style={styles.rowBody}>
-          <Text style={styles.rowLabel}>Account</Text>
+          <Text style={styles.rowLabel}>{t("nav.account")}</Text>
           <Text style={styles.rowValue} numberOfLines={1}>
             {user?.email ?? ""}
           </Text>
@@ -43,7 +45,7 @@ export function SettingsScreen() {
 
       <View style={styles.actions}>
         <Button
-          title="Sign out"
+          title={t("account.signOut")}
           onPress={confirmLogout}
           variant="destructive"
           loading={signingOut}

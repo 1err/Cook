@@ -331,11 +331,6 @@ function LibraryPageContent() {
           })}
         </ul>
       )}
-
-      <Link href="/import" className="library-fab" aria-label={t("library.importRecipe")}>
-        <span style={{ fontSize: "1.35rem", lineHeight: 1 }}>+</span>
-        <span className="library-fab__text">{t("library.importRecipe")}</span>
-      </Link>
     </>
   );
 }
@@ -343,7 +338,7 @@ function LibraryPageContent() {
 export default function LibraryPage() {
   return (
     <RequireAuth>
-      <div className="app-container app-container--fab" style={{ position: "relative" }}>
+      <div className="app-container" style={{ position: "relative" }}>
         <Suspense fallback={<p style={mutedStyle}>Loading...</p>}>
           <LibraryPageContent />
         </Suspense>

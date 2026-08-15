@@ -1,12 +1,15 @@
+import { spacing as sharedSpacing } from "@cooking/design-tokens";
+
 export const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
-  "2xl": 32,
-  "3xl": 40,
-  "4xl": 56,
+  xs: sharedSpacing["1"],
+  sm: sharedSpacing["2"],
+  md: sharedSpacing["3"],
+  lg: sharedSpacing["4"],
+  xl: sharedSpacing["6"],
+  "2xl": sharedSpacing["8"],
+  "3xl": sharedSpacing["10"],
+  "4xl": sharedSpacing["14"],
+  "5xl": sharedSpacing["18"],
 } as const;
 
 export type SpacingToken = keyof typeof spacing;

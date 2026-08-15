@@ -1,0 +1,35 @@
+name: Frontend UI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run tokens:test
+      - run: npm run tokens:build
+      - run: git diff --exit-code
+      - run: npm run test:web
+      - run: npm run test:mobile
+      - run: npx tsc -p apps/web/tsconfig.json --noEmit
+      - run: npx tsc -p apps/mobile/tsconfig.json --noEmit
+      - run: npm run web:build
+      - run: npm exec --workspace @cooking/web playwright install --with-deps chromium
+      - run: npm --workspace @cooking/web run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: frontend-ui-failure
+          path: |
+            apps/web/test-results
+            apps/web/playwright-report

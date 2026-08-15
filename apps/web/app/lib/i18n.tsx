@@ -71,26 +71,3 @@ export function useI18n() {
 export function useT() {
   return useI18n().t;
 }
-
-export function LanguageToggle() {
-  const { language, setLanguage, t } = useI18n();
-
-  return (
-    <div aria-label={t("language.label")} className="language-toggle">
-      {(["en", "zh"] as const).map((option) => {
-        const active = language === option;
-        return (
-          <button
-            key={option}
-            type="button"
-            onClick={() => setLanguage(option)}
-            className={`font-headline language-toggle__button${active ? " is-active" : ""}`}
-            aria-pressed={active}
-          >
-            {t(`language.${option}`)}
-          </button>
-        );
-      })}
-    </div>
-  );
-}

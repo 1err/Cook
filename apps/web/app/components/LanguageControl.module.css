@@ -1,0 +1,39 @@
+.control {
+  align-items: center;
+  background: var(--cw-color-subtle-surface);
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-round);
+  display: inline-flex;
+  gap: var(--cw-space-1);
+  padding: var(--cw-space-1);
+}
+
+.option {
+  background: transparent;
+  border: 0;
+  border-radius: var(--cw-radius-round);
+  color: var(--cw-color-muted-ink);
+  cursor: pointer;
+  font-family: Inter, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  min-height: 40px;
+  min-width: 56px;
+  padding: var(--cw-space-2) var(--cw-space-3);
+}
+
+.compact .option {
+  min-height: 36px;
+  min-width: 48px;
+  padding: var(--cw-space-1) var(--cw-space-2);
+}
+
+.option:hover,
+.option[aria-pressed="true"] {
+  background: var(--cw-color-surface);
+  color: var(--cw-color-action);
+}
+
+.option[aria-pressed="true"] {
+  box-shadow: var(--cw-elevation-raised);
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { LanguageControl } from "./LanguageControl";
 
 const HERO_IMAGE =
   "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1600&q=80";
@@ -35,7 +36,7 @@ export function AuthShell({
             </svg>
           </div>
           <span className="font-headline" style={{ fontSize: "1.25rem", fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>
-            Cooking
+            Chef World
           </span>
         </div>
         <div className="auth-hero__copy">
@@ -49,7 +50,10 @@ export function AuthShell({
         </div>
       </section>
 
-      <section className="auth-panel">
+      <section className="auth-panel" style={{ position: "relative" }}>
+        <div style={{ position: "absolute", right: "var(--cw-space-6)", top: "var(--cw-space-6)" }}>
+          <LanguageControl compact />
+        </div>
         <div className="auth-panel__inner">
           <header style={{ marginBottom: "2.25rem" }}>
             <h1 className="font-headline" style={{ fontSize: "clamp(1.75rem, 4vw, 2.25rem)", fontWeight: 800, letterSpacing: "-0.03em", margin: "0 0 0.65rem", color: "var(--on-surface)" }}>

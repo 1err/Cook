@@ -5,3 +5,8 @@ export { IconButton } from "./IconButton";
 export { EmptyState } from "./EmptyState";
 export { TextField } from "./TextField";
 export { ListRow } from "./ListRow";
+export {
+  SegmentedControl,
+  type SegmentedControlProps,
+  type SegmentedOption,
+} from "./SegmentedControl";

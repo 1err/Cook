@@ -1,0 +1,112 @@
+.root {
+  position: relative;
+}
+
+.trigger {
+  align-items: center;
+  background: var(--cw-color-ink);
+  border: 0;
+  border-radius: var(--cw-radius-round);
+  color: var(--cw-color-on-action);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: Inter, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  height: 44px;
+  justify-content: center;
+  width: 44px;
+}
+
+.trigger:hover,
+.trigger[aria-expanded="true"] {
+  background: var(--cw-color-action);
+}
+
+.panel {
+  background: var(--cw-color-surface);
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-card);
+  box-shadow: var(--cw-elevation-overlay);
+  color: var(--cw-color-ink);
+  padding: var(--cw-space-2);
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--cw-space-2));
+  width: min(304px, calc(100vw - var(--cw-space-6)));
+  z-index: 60;
+}
+
+.email {
+  color: var(--cw-color-muted-ink);
+  font-size: 0.8125rem;
+  margin: 0;
+  overflow: hidden;
+  padding: var(--cw-space-2) var(--cw-space-3) var(--cw-space-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.action {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--cw-radius-control);
+  color: var(--cw-color-ink);
+  cursor: pointer;
+  display: flex;
+  font-family: Inter, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  gap: var(--cw-space-3);
+  min-height: 44px;
+  padding: var(--cw-space-2) var(--cw-space-3);
+  text-align: left;
+  text-decoration: none;
+  width: 100%;
+}
+
+.action:hover {
+  background: var(--cw-color-subtle-surface);
+  color: var(--cw-color-action);
+}
+
+.languageItem {
+  border-top: 1px solid var(--cw-color-divider);
+  display: grid;
+  gap: var(--cw-space-2);
+  margin-top: var(--cw-space-1);
+  padding: var(--cw-space-3);
+}
+
+.languageLabel {
+  align-items: center;
+  color: var(--cw-color-ink);
+  display: flex;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  gap: var(--cw-space-3);
+}
+
+.adminSection,
+.logoutSection {
+  border-top: 1px solid var(--cw-color-divider);
+  margin-top: var(--cw-space-1);
+  padding-top: var(--cw-space-1);
+}
+
+.sectionLabel {
+  color: var(--cw-color-muted-ink);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0;
+  padding: var(--cw-space-2) var(--cw-space-3) var(--cw-space-1);
+  text-transform: uppercase;
+}

@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LibraryStack } from "./stacks/LibraryStack";
 import { PlannerStack } from "./stacks/PlannerStack";
 import { ShoppingStack } from "./stacks/ShoppingStack";
-import { ProfileStack } from "./stacks/ProfileStack";
+import { useT } from "../lib/i18n";
 import { colors } from "../theme";
 import type { MainTabsParamList } from "./types";
 
@@ -12,14 +12,28 @@ const Tabs = createBottomTabNavigator<MainTabsParamList>();
 
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
-const ICONS: Record<keyof MainTabsParamList, { active: IoniconName; inactive: IoniconName }> = {
-  Library: { active: "book", inactive: "book-outline" },
-  Planner: { active: "calendar", inactive: "calendar-outline" },
-  Shopping: { active: "cart", inactive: "cart-outline" },
-  ProfileTab: { active: "person", inactive: "person-outline" },
+type MainTabDefinition = {
+  name: keyof MainTabsParamList;
+  labelKey: string;
+  active: IoniconName;
+  inactive: IoniconName;
+};
+
+export const MAIN_TAB_DEFINITIONS = [
+  { name: "Library", labelKey: "nav.library", active: "book", inactive: "book-outline" },
+  { name: "Planner", labelKey: "nav.planner", active: "calendar", inactive: "calendar-outline" },
+  { name: "Shopping", labelKey: "nav.shopping", active: "cart", inactive: "cart-outline" },
+] as const satisfies readonly MainTabDefinition[];
+
+const TAB_COMPONENTS = {
+  Library: LibraryStack,
+  Planner: PlannerStack,
+  Shopping: ShoppingStack,
 };
 
 export function MainTabs() {
+  const t = useT();
+
   return (
     <Tabs.Navigator
       screenOptions={({ route }) => ({
@@ -32,15 +46,25 @@ export function MainTabs() {
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
         tabBarIcon: ({ color, size, focused }) => {
-          const name = ICONS[route.name as keyof MainTabsParamList];
-          return <Ionicons name={focused ? name.active : name.inactive} size={size} color={color} />;
+          const definition = MAIN_TAB_DEFINITIONS.find(({ name }) => name === route.name)!;
+          return (
+            <Ionicons
+              name={focused ? definition.active : definition.inactive}
+              size={size}
+              color={color}
+            />
+          );
         },
       })}
     >
-      <Tabs.Screen name="Library" component={LibraryStack} options={{ title: "Library" }} />
-      <Tabs.Screen name="Planner" component={PlannerStack} options={{ title: "Planner" }} />
-      <Tabs.Screen name="Shopping" component={ShoppingStack} options={{ title: "Shopping" }} />
-      <Tabs.Screen name="ProfileTab" component={ProfileStack} options={{ title: "Profile" }} />
+      {MAIN_TAB_DEFINITIONS.map((definition) => (
+        <Tabs.Screen
+          key={definition.name}
+          name={definition.name}
+          component={TAB_COMPONENTS[definition.name]}
+          options={{ title: t(definition.labelKey) }}
+        />
+      ))}
     </Tabs.Navigator>
   );
 }

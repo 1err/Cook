@@ -18,7 +18,7 @@ export function IconButton({
   icon,
   onPress,
   accessibilityLabel,
-  tint = colors.primary,
+  tint = colors.terracotta,
   size = 24,
   disabled = false,
 }: IconButtonProps) {
@@ -29,6 +29,7 @@ export function IconButton({
       hitSlop={12}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled }}
       style={({ pressed }) => [styles.button, pressed && !disabled && styles.pressed, disabled && styles.disabled]}
     >
       <Ionicons name={icon} size={size} color={tint} />
@@ -37,7 +38,12 @@ export function IconButton({
 }
 
 const styles = StyleSheet.create({
-  button: { padding: 4 },
+  button: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   pressed: { opacity: 0.6 },
   disabled: { opacity: 0.4 },
 });

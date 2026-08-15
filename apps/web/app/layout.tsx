@@ -1,11 +1,18 @@
 import type { Metadata } from "next";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/600.css";
+import "@fontsource/inter/700.css";
+import "@fontsource/source-serif-4/400.css";
+import "@fontsource/source-serif-4/600.css";
+import "@cooking/design-tokens/tokens.css";
 import "./globals.css";
+import "./styles/foundation.css";
 import { AuthProvider } from "./lib/auth";
 import { Header } from "./components/Header";
-import { I18nProvider, LanguageToggle } from "./lib/i18n";
+import { I18nProvider } from "./lib/i18n";
 
 export const metadata: Metadata = {
-  title: "Cooking — Recipe library & planner",
+  title: "Chef World — Recipe library & planner",
   description: "Import recipes, plan meals, and build your shopping list.",
 };
 
@@ -25,7 +32,6 @@ export default function RootLayout({
       <body>
         <I18nProvider>
           <AuthProvider>
-            <LanguageToggle />
             <Header />
             <main>{children}</main>
           </AuthProvider>

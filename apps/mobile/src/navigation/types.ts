@@ -24,19 +24,20 @@ export type ShoppingStackParamList = {
 export type ProfileStackParamList = {
   Profile: undefined;
   Settings: undefined;
+  DesignSystem: undefined;
 };
 
 export type MainTabsParamList = {
   Library: NavigatorScreenParams<LibraryStackParamList> | undefined;
   Planner: NavigatorScreenParams<PlannerStackParamList> | undefined;
   Shopping: NavigatorScreenParams<ShoppingStackParamList> | undefined;
-  ProfileTab: NavigatorScreenParams<ProfileStackParamList> | undefined;
 };
 
 export type RootStackParamList = {
   Auth: NavigatorScreenParams<AuthStackParamList> | undefined;
   Main: NavigatorScreenParams<MainTabsParamList> | undefined;
   ImportModal: undefined;
+  Account: NavigatorScreenParams<ProfileStackParamList> | undefined;
 };
 
 declare global {

@@ -6,6 +6,7 @@ import { useAuth } from "../lib/auth";
 import { AuthStack } from "./AuthStack";
 import { MainTabs } from "./MainTabs";
 import { ImportModalScreen } from "../features/import/ImportModalScreen";
+import { AccountStack } from "./stacks/AccountStack";
 import { colors } from "../theme";
 import type { RootStackParamList } from "./types";
 
@@ -32,6 +33,11 @@ export function RootStack() {
         ) : (
           <>
             <Stack.Screen name="Main" component={MainTabs} />
+            <Stack.Screen
+              name="Account"
+              component={AccountStack}
+              options={{ presentation: "modal", headerShown: false }}
+            />
             <Stack.Screen
               name="ImportModal"
               component={ImportModalScreen}
