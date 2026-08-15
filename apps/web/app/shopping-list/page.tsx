@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
+import type { StoreProduct } from "@cooking/api-client";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
 import { useI18n, useT } from "../lib/i18n";
@@ -21,6 +22,12 @@ import {
   type GroceryCategory,
   type MealPlanDay,
 } from "@cooking/shared";
+import { ProductPicks } from "./ProductPicks";
+import {
+  buildVisualProductQueue,
+  runOrderedProductQueue,
+  type ProductLookupState,
+} from "./productLoading";
 
 const SMART_SHOPPING_LIST_PREFIX = "smartShoppingList";
 const SMART_SHOPPING_PRODUCTS_PREFIX = "smartShoppingProducts";
@@ -39,27 +46,10 @@ const DOW_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const PREVIEW_MEAL_ROWS = 4;
 
-const BULK_LOAD_CONCURRENCY = 3;
 const SHOPPING_PRIMARY_CATEGORIES: GroceryCategory[] = ["Pantry & Dry Goods"];
 const SHOPPING_SECONDARY_CATEGORIES = GROCERY_CATEGORY_ORDER.filter(
   (cat) => !SHOPPING_PRIMARY_CATEGORIES.includes(cat)
 ) as GroceryCategory[];
-
-/** Run async work on `items` with at most `limit` concurrent tasks. */
-async function mapWithConcurrency<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
-  if (items.length === 0) return;
-  const capped = Math.max(1, Math.min(limit, items.length));
-  let i = 0;
-  async function worker() {
-    while (true) {
-      const idx = i;
-      i += 1;
-      if (idx >= items.length) return;
-      await fn(items[idx]);
-    }
-  }
-  await Promise.all(Array.from({ length: capped }, () => worker()));
-}
 
 /** Served from /public — avoids Stitch/Google hotlink URLs that often 403 or expire. */
 const SHOP_CONFIRM_HERO_SRC = "/shopping-list-hero.jpg";
@@ -125,13 +115,6 @@ interface RefineResponse {
   purchase_items: PurchaseItem[];
 }
 
-interface StoreProductResult {
-  name: string;
-  price: string;
-  image: string;
-  url: string;
-}
-
 interface SmartStored extends RefineResponse {
   _ui?: { hidden: number[]; checked: number[] };
   _plannerFingerprint?: string;
@@ -139,8 +122,26 @@ interface SmartStored extends RefineResponse {
 
 interface SmartProductsStored {
   open: Record<string, boolean>;
-  products: Record<string, StoreProductResult[]>;
-  errors: Record<string, string | null>;
+  lookup: Record<string, ProductLookupState>;
+}
+
+function isStoreProduct(row: unknown): row is StoreProduct {
+  if (!row || typeof row !== "object") return false;
+  const maybe = row as Partial<StoreProduct>;
+  return (
+    typeof maybe.name === "string" &&
+    typeof maybe.price === "string" &&
+    typeof maybe.image === "string" &&
+    typeof maybe.url === "string"
+  );
+}
+
+async function loadProduct(key: string): Promise<StoreProduct[]> {
+  const res = await apiFetch(`/store-products?query=${encodeURIComponent(key)}`);
+  if (!res.ok) throw new Error("Failed to load products");
+  const data: unknown = await res.json();
+  if (!Array.isArray(data)) throw new Error("Failed to load products");
+  return data.filter(isStoreProduct).slice(0, 3);
 }
 
 function bentoIconWrapClass(cat: GroceryCategory): string {
@@ -180,31 +181,33 @@ function parseSmartProductsStored(raw: string): SmartProductsStored | null {
     const parsed = JSON.parse(raw) as SmartProductsStored;
     if (!parsed || typeof parsed !== "object") return null;
     if (!parsed.open || typeof parsed.open !== "object") return null;
-    if (!parsed.products || typeof parsed.products !== "object") return null;
-    if (!parsed.errors || typeof parsed.errors !== "object") return null;
+    if (!parsed.lookup || typeof parsed.lookup !== "object") return null;
+    const lookup: Record<string, ProductLookupState> = {};
+    for (const [key, value] of Object.entries(parsed.lookup)) {
+      if (!value || typeof value !== "object") continue;
+      if (value.status === "success") {
+        if (
+          !Array.isArray(value.products) ||
+          !value.products.length ||
+          !value.products.every(isStoreProduct)
+        ) {
+          continue;
+        }
+        lookup[key] = { status: "success", products: value.products.slice(0, 3) };
+      } else if (value.status === "empty") {
+        lookup[key] = { status: "empty", products: [] };
+      } else if (value.status === "error") {
+        lookup[key] = {
+          status: "error",
+          error: typeof value.error === "string" ? value.error : undefined,
+        };
+      }
+    }
     return {
       open: Object.fromEntries(
         Object.entries(parsed.open).filter(([, value]) => typeof value === "boolean")
       ),
-      products: Object.fromEntries(
-        Object.entries(parsed.products).filter(([, value]) =>
-          Array.isArray(value) &&
-          value.every(
-            (row) =>
-              row &&
-              typeof row === "object" &&
-              typeof row.name === "string" &&
-              typeof row.price === "string" &&
-              typeof row.image === "string" &&
-              typeof row.url === "string"
-          )
-        )
-      ) as Record<string, StoreProductResult[]>,
-      errors: Object.fromEntries(
-        Object.entries(parsed.errors).filter(
-          ([, value]) => value === null || typeof value === "string"
-        )
-      ) as Record<string, string | null>,
+      lookup,
     };
   } catch {
     return null;
@@ -241,9 +244,8 @@ function ShoppingListPageContent() {
   const [smartChecked, setSmartChecked] = useState<Set<number>>(new Set());
   const [menuOpenFor, setMenuOpenFor] = useState<number | null>(null);
   const [openProductsByIngredient, setOpenProductsByIngredient] = useState<Record<string, boolean>>({});
-  const [productsByIngredient, setProductsByIngredient] = useState<Record<string, StoreProductResult[]>>({});
-  const [productLoadingByIngredient, setProductLoadingByIngredient] = useState<Record<string, boolean>>({});
-  const [productErrorByIngredient, setProductErrorByIngredient] = useState<Record<string, string | null>>({});
+  const [lookupByIngredient, setLookupByIngredient] = useState<Record<string, ProductLookupState>>({});
+  const productLoadGenerationRef = useRef(0);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -257,13 +259,18 @@ function ShoppingListPageContent() {
   }, [menuOpenFor]);
 
   function clearProductResults() {
+    productLoadGenerationRef.current += 1;
     setOpenProductsByIngredient({});
-    setProductsByIngredient({});
-    setProductLoadingByIngredient({});
-    setProductErrorByIngredient({});
+    setLookupByIngredient({});
     setBulkLoadingProducts(false);
     setBulkLoadProgress(null);
   }
+
+  useEffect(() => {
+    return () => {
+      productLoadGenerationRef.current += 1;
+    };
+  }, []);
 
   const persistSmart = useCallback(
     (data: RefineResponse, hidden: Set<number>, checked: Set<number>, plannerFingerprint: string) => {
@@ -385,9 +392,7 @@ function ShoppingListPageContent() {
         return;
       }
       setOpenProductsByIngredient(parsed.open);
-      setProductsByIngredient(parsed.products);
-      setProductErrorByIngredient(parsed.errors);
-      setProductLoadingByIngredient({});
+      setLookupByIngredient(parsed.lookup);
       setBulkLoadingProducts(false);
       setBulkLoadProgress(null);
     } catch {
@@ -397,13 +402,17 @@ function ShoppingListPageContent() {
 
   useEffect(() => {
     if (!activeRefinedData) return;
+    const terminalLookup = Object.fromEntries(
+      Object.entries(lookupByIngredient).filter(([, state]) =>
+        state.status === "success" || state.status === "empty" || state.status === "error"
+      )
+    );
     const payload: SmartProductsStored = {
       open: openProductsByIngredient,
-      products: productsByIngredient,
-      errors: productErrorByIngredient,
+      lookup: terminalLookup,
     };
     sessionStorage.setItem(smartProductsStorageKey(start), JSON.stringify(payload));
-  }, [activeRefinedData, openProductsByIngredient, productErrorByIngredient, productsByIngredient, start]);
+  }, [activeRefinedData, lookupByIngredient, openProductsByIngredient, start]);
 
   useEffect(() => {
     if (!activeRefinedData || !activeSavedPlannerFingerprint) return;
@@ -461,6 +470,18 @@ function ShoppingListPageContent() {
     }
     return map;
   }, [visiblePurchaseItems]);
+
+  const productQueueGroups = useMemo(
+    () =>
+      [...SHOPPING_PRIMARY_CATEGORIES, ...SHOPPING_SECONDARY_CATEGORIES].map((category) => ({
+        category,
+        rows: (purchaseByCategory.get(category) ?? []).map(({ item, origIndex }) => ({
+          name: item.name,
+          checked: smartChecked.has(origIndex),
+        })),
+      })),
+    [purchaseByCategory, smartChecked],
+  );
 
   const planRows = useMemo(
     () => buildPlannedMealRows(mealPlans, recipeById, start),
@@ -544,40 +565,32 @@ function ShoppingListPageContent() {
     if (openPanel) {
       setOpenProductsByIngredient((prev) => ({ ...prev, [key]: true }));
     }
-    if (
-      !forceRetry &&
-      ((productsByIngredient[key] !== undefined && !productErrorByIngredient[key]) ||
-        productLoadingByIngredient[key])
-    ) {
+    const currentState = lookupByIngredient[key];
+    if (!forceRetry && currentState && currentState.status !== "idle") {
       return;
     }
 
-    setProductLoadingByIngredient((prev) => ({ ...prev, [key]: true }));
-    setProductErrorByIngredient((prev) => ({ ...prev, [key]: null }));
+    const generation = productLoadGenerationRef.current;
+    setLookupByIngredient((prev) => ({ ...prev, [key]: { status: "loading" } }));
 
     try {
-      const res = await apiFetch(`/store-products?query=${encodeURIComponent(key)}`);
-      if (!res.ok) throw new Error("Failed to load products");
-      const data: unknown = await res.json();
-      const products = Array.isArray(data)
-        ? data
-            .filter((row): row is StoreProductResult => {
-              if (!row || typeof row !== "object") return false;
-              const maybe = row as Partial<StoreProductResult>;
-              return (
-                typeof maybe.name === "string" &&
-                typeof maybe.price === "string" &&
-                typeof maybe.image === "string" &&
-                typeof maybe.url === "string"
-              );
-            })
-            .slice(0, 3)
-        : [];
-      setProductsByIngredient((prev) => ({ ...prev, [key]: products }));
-    } catch {
-      setProductErrorByIngredient((prev) => ({ ...prev, [key]: "Failed to load products" }));
-    } finally {
-      setProductLoadingByIngredient((prev) => ({ ...prev, [key]: false }));
+      const products = await loadProduct(key);
+      if (productLoadGenerationRef.current !== generation) return;
+      setLookupByIngredient((prev) => ({
+        ...prev,
+        [key]: products.length
+          ? { status: "success", products }
+          : { status: "empty", products: [] },
+      }));
+    } catch (error) {
+      if (productLoadGenerationRef.current !== generation) return;
+      setLookupByIngredient((prev) => ({
+        ...prev,
+        [key]: {
+          status: "error",
+          error: error instanceof Error ? error.message : undefined,
+        },
+      }));
     }
   }
 
@@ -599,25 +612,34 @@ function ShoppingListPageContent() {
   }
 
   async function handleLoadAllProducts() {
-    const names = GROCERY_CATEGORY_ORDER.flatMap((cat) =>
-      (purchaseByCategory.get(cat) ?? [])
-        .filter(({ origIndex }) => !smartChecked.has(origIndex))
-        .map(({ item }) => item.name.trim())
-        .filter(Boolean)
-    );
-    if (!names.length) return;
+    const keys = buildVisualProductQueue(productQueueGroups);
+    if (!keys.length) return;
+    const generation = ++productLoadGenerationRef.current;
+    setOpenProductsByIngredient((current) => ({
+      ...current,
+      ...Object.fromEntries(keys.map((key) => [key, true])),
+    }));
     setBulkLoadingProducts(true);
-    setBulkLoadProgress({ current: 0, total: names.length });
-    let completed = 0;
+    setBulkLoadProgress({ current: 0, total: keys.length });
     try {
-      await mapWithConcurrency(names, BULK_LOAD_CONCURRENCY, async (name) => {
-        await ensureProductsLoaded(name, true);
-        completed += 1;
-        setBulkLoadProgress({ current: completed, total: names.length });
+      await runOrderedProductQueue({
+        keys,
+        load: loadProduct,
+        shouldContinue: () => productLoadGenerationRef.current === generation,
+        onState: (key, state) => {
+          if (productLoadGenerationRef.current !== generation) return;
+          setLookupByIngredient((current) => ({ ...current, [key]: state }));
+        },
+        onProgress: (current, total) => {
+          if (productLoadGenerationRef.current !== generation) return;
+          setBulkLoadProgress({ current, total });
+        },
       });
     } finally {
-      setBulkLoadingProducts(false);
-      setBulkLoadProgress(null);
+      if (productLoadGenerationRef.current === generation) {
+        setBulkLoadingProducts(false);
+        setBulkLoadProgress(null);
+      }
     }
   }
 
@@ -755,10 +777,10 @@ function ShoppingListPageContent() {
                         </div>
                         <div>
                           {uncheckedRows.map(({ item, origIndex }) => {
-                            const productsOpen = !!openProductsByIngredient[item.name];
-                            const loadingProducts = !!productLoadingByIngredient[item.name];
-                            const productError = productErrorByIngredient[item.name];
-                            const products = productsByIngredient[item.name] ?? [];
+                            const productKey = item.name.trim();
+                            const productsOpen = !!openProductsByIngredient[productKey];
+                            const productState = lookupByIngredient[productKey] ?? { status: "idle" };
+                            const productsPending = productState.status === "queued" || productState.status === "loading";
                             return (
                               <div key={origIndex} className="shop-bento-row-block">
                                 <div className="shop-bento-row">
@@ -804,56 +826,17 @@ function ShoppingListPageContent() {
                                     type="button"
                                     className="shop-bento-products__toggle font-headline"
                                     onClick={() => handleToggleProducts(item.name)}
-                                    disabled={loadingProducts}
+                                    disabled={productsPending}
                                   >
                                     {productsOpen ? t("shopping.hideProducts") : t("shopping.viewProducts")}
                                   </button>
 
                                   {productsOpen ? (
                                     <div className="shop-bento-products__panel">
-                                      {loadingProducts ? (
-                                        <p className="shop-bento-products__status">{t("shopping.loadingProducts")}</p>
-                                      ) : productError ? (
-                                        <div className="shop-bento-products__status">
-                                          <p style={{ margin: 0 }}>{productError}</p>
-                                          <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
-                                            {t("shopping.retryProducts")}
-                                          </button>
-                                        </div>
-                                      ) : products.length === 0 ? (
-                                        <div className="shop-bento-products__status">
-                                          <p style={{ margin: 0 }}>
-                                            {t("shopping.noProductsFound", { store: WEEE_STORE_LABEL })}
-                                          </p>
-                                          <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
-                                            {t("shopping.retryProducts")}
-                                          </button>
-                                        </div>
-                                      ) : (
-                                        products.map((product) => (
-                                          <div key={product.url} className="shop-bento-product-card">
-                                            {product.image ? (
-                                              <img src={product.image} alt={product.name} loading="lazy" />
-                                            ) : (
-                                              <div className="shop-bento-product-card__img-placeholder" aria-hidden>
-                                                <span className="material-symbols-outlined">image</span>
-                                              </div>
-                                            )}
-                                            <div className="shop-bento-product-card__body">
-                                              <p className="shop-bento-product-card__name">{product.name}</p>
-                                              <p className="shop-bento-product-card__price">{product.price || t("shopping.seeListing")}</p>
-                                              <a
-                                                className="shop-bento-product-card__link font-headline"
-                                                href={product.url}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                              >
-                                                {t("shopping.viewOnStore", { store: WEEE_STORE_LABEL })}
-                                              </a>
-                                            </div>
-                                          </div>
-                                        ))
-                                      )}
+                                      <ProductPicks
+                                        state={productState}
+                                        onRetry={() => void handleRetryProducts(item.name)}
+                                      />
                                     </div>
                                   ) : null}
                                 </div>
@@ -865,10 +848,10 @@ function ShoppingListPageContent() {
                             <div className="shop-bento-checked-group">
                               <p className="shop-bento-checked-group__label font-headline">{t("shopping.alreadyHave")}</p>
                               {checkedRows.map(({ item, origIndex }) => {
-                                const productsOpen = !!openProductsByIngredient[item.name];
-                                const loadingProducts = !!productLoadingByIngredient[item.name];
-                                const productError = productErrorByIngredient[item.name];
-                                const products = productsByIngredient[item.name] ?? [];
+                                const productKey = item.name.trim();
+                                const productsOpen = !!openProductsByIngredient[productKey];
+                                const productState = lookupByIngredient[productKey] ?? { status: "idle" };
+                                const productsPending = productState.status === "queued" || productState.status === "loading";
                                 return (
                                   <div key={origIndex} className="shop-bento-row-block is-checked">
                                     <div className="shop-bento-row is-checked">
@@ -915,56 +898,17 @@ function ShoppingListPageContent() {
                                         type="button"
                                         className="shop-bento-products__toggle font-headline"
                                         onClick={() => handleToggleProducts(item.name)}
-                                        disabled={loadingProducts}
+                                        disabled={productsPending}
                                       >
                                         {productsOpen ? t("shopping.hideProducts") : t("shopping.viewProducts")}
                                       </button>
 
                                       {productsOpen ? (
                                         <div className="shop-bento-products__panel">
-                                          {loadingProducts ? (
-                                            <p className="shop-bento-products__status">{t("shopping.loadingProducts")}</p>
-                                          ) : productError ? (
-                                            <div className="shop-bento-products__status">
-                                              <p style={{ margin: 0 }}>{productError}</p>
-                                              <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
-                                                {t("shopping.retryProducts")}
-                                              </button>
-                                            </div>
-                                          ) : products.length === 0 ? (
-                                            <div className="shop-bento-products__status">
-                                              <p style={{ margin: 0 }}>
-                                                {t("shopping.noProductsFound", { store: WEEE_STORE_LABEL })}
-                                              </p>
-                                              <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
-                                                {t("shopping.retryProducts")}
-                                              </button>
-                                            </div>
-                                          ) : (
-                                            products.map((product) => (
-                                              <div key={product.url} className="shop-bento-product-card">
-                                                {product.image ? (
-                                                  <img src={product.image} alt={product.name} loading="lazy" />
-                                                ) : (
-                                                  <div className="shop-bento-product-card__img-placeholder" aria-hidden>
-                                                    <span className="material-symbols-outlined">image</span>
-                                                  </div>
-                                                )}
-                                                <div className="shop-bento-product-card__body">
-                                                  <p className="shop-bento-product-card__name">{product.name}</p>
-                                                  <p className="shop-bento-product-card__price">{product.price || t("shopping.seeListing")}</p>
-                                                  <a
-                                                    className="shop-bento-product-card__link font-headline"
-                                                    href={product.url}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                  >
-                                                    {t("shopping.viewOnStore", { store: WEEE_STORE_LABEL })}
-                                                  </a>
-                                                </div>
-                                              </div>
-                                            ))
-                                          )}
+                                          <ProductPicks
+                                            state={productState}
+                                            onRetry={() => void handleRetryProducts(item.name)}
+                                          />
                                         </div>
                                       ) : null}
                                     </div>
@@ -1005,10 +949,10 @@ function ShoppingListPageContent() {
                       </div>
                       <div>
                         {uncheckedRows.map(({ item, origIndex }) => {
-                          const productsOpen = !!openProductsByIngredient[item.name];
-                          const loadingProducts = !!productLoadingByIngredient[item.name];
-                          const productError = productErrorByIngredient[item.name];
-                          const products = productsByIngredient[item.name] ?? [];
+                          const productKey = item.name.trim();
+                          const productsOpen = !!openProductsByIngredient[productKey];
+                          const productState = lookupByIngredient[productKey] ?? { status: "idle" };
+                          const productsPending = productState.status === "queued" || productState.status === "loading";
                           return (
                             <div key={origIndex} className="shop-bento-row-block">
                               <div className="shop-bento-row">
@@ -1054,56 +998,17 @@ function ShoppingListPageContent() {
                                   type="button"
                                   className="shop-bento-products__toggle font-headline"
                                   onClick={() => handleToggleProducts(item.name)}
-                                  disabled={loadingProducts}
+                                  disabled={productsPending}
                                 >
                                   {productsOpen ? t("shopping.hideProducts") : t("shopping.viewProducts")}
                                 </button>
 
                                 {productsOpen ? (
                                   <div className="shop-bento-products__panel">
-                                    {loadingProducts ? (
-                                      <p className="shop-bento-products__status">{t("shopping.loadingProducts")}</p>
-                                    ) : productError ? (
-                                      <div className="shop-bento-products__status">
-                                        <p style={{ margin: 0 }}>{productError}</p>
-                                        <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
-                                          {t("shopping.retryProducts")}
-                                        </button>
-                                      </div>
-                                    ) : products.length === 0 ? (
-                                      <div className="shop-bento-products__status">
-                                        <p style={{ margin: 0 }}>
-                                          {t("shopping.noProductsFound", { store: WEEE_STORE_LABEL })}
-                                        </p>
-                                        <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
-                                          {t("shopping.retryProducts")}
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      products.map((product) => (
-                                        <div key={product.url} className="shop-bento-product-card">
-                                          {product.image ? (
-                                            <img src={product.image} alt={product.name} loading="lazy" />
-                                          ) : (
-                                            <div className="shop-bento-product-card__img-placeholder" aria-hidden>
-                                              <span className="material-symbols-outlined">image</span>
-                                            </div>
-                                          )}
-                                          <div className="shop-bento-product-card__body">
-                                            <p className="shop-bento-product-card__name">{product.name}</p>
-                                            <p className="shop-bento-product-card__price">{product.price || t("shopping.seeListing")}</p>
-                                            <a
-                                              className="shop-bento-product-card__link font-headline"
-                                              href={product.url}
-                                              target="_blank"
-                                              rel="noreferrer"
-                                            >
-                                              {t("shopping.viewOnStore", { store: WEEE_STORE_LABEL })}
-                                            </a>
-                                          </div>
-                                        </div>
-                                      ))
-                                    )}
+                                    <ProductPicks
+                                      state={productState}
+                                      onRetry={() => void handleRetryProducts(item.name)}
+                                    />
                                 </div>
                                 ) : null}
                               </div>
@@ -1115,10 +1020,10 @@ function ShoppingListPageContent() {
                           <div className="shop-bento-checked-group">
                             <p className="shop-bento-checked-group__label font-headline">{t("shopping.alreadyHave")}</p>
                             {checkedRows.map(({ item, origIndex }) => {
-                              const productsOpen = !!openProductsByIngredient[item.name];
-                              const loadingProducts = !!productLoadingByIngredient[item.name];
-                              const productError = productErrorByIngredient[item.name];
-                              const products = productsByIngredient[item.name] ?? [];
+                              const productKey = item.name.trim();
+                              const productsOpen = !!openProductsByIngredient[productKey];
+                              const productState = lookupByIngredient[productKey] ?? { status: "idle" };
+                              const productsPending = productState.status === "queued" || productState.status === "loading";
                               return (
                                 <div key={origIndex} className="shop-bento-row-block is-checked">
                                   <div className="shop-bento-row is-checked">
@@ -1165,56 +1070,17 @@ function ShoppingListPageContent() {
                                       type="button"
                                       className="shop-bento-products__toggle font-headline"
                                       onClick={() => handleToggleProducts(item.name)}
-                                      disabled={loadingProducts}
+                                      disabled={productsPending}
                                     >
                                       {productsOpen ? t("shopping.hideProducts") : t("shopping.viewProducts")}
                                     </button>
 
                                     {productsOpen ? (
                                       <div className="shop-bento-products__panel">
-                                        {loadingProducts ? (
-                                          <p className="shop-bento-products__status">{t("shopping.loadingProducts")}</p>
-                                        ) : productError ? (
-                                          <div className="shop-bento-products__status">
-                                            <p style={{ margin: 0 }}>{productError}</p>
-                                            <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
-                                              {t("shopping.retryProducts")}
-                                            </button>
-                                          </div>
-                                        ) : products.length === 0 ? (
-                                          <div className="shop-bento-products__status">
-                                            <p style={{ margin: 0 }}>
-                                              {t("shopping.noProductsFound", { store: WEEE_STORE_LABEL })}
-                                            </p>
-                                            <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
-                                              {t("shopping.retryProducts")}
-                                            </button>
-                                          </div>
-                                        ) : (
-                                          products.map((product) => (
-                                            <div key={product.url} className="shop-bento-product-card">
-                                              {product.image ? (
-                                                <img src={product.image} alt={product.name} loading="lazy" />
-                                              ) : (
-                                                <div className="shop-bento-product-card__img-placeholder" aria-hidden>
-                                                  <span className="material-symbols-outlined">image</span>
-                                                </div>
-                                              )}
-                                              <div className="shop-bento-product-card__body">
-                                                <p className="shop-bento-product-card__name">{product.name}</p>
-                                                <p className="shop-bento-product-card__price">{product.price || t("shopping.seeListing")}</p>
-                                                <a
-                                                  className="shop-bento-product-card__link font-headline"
-                                                  href={product.url}
-                                                  target="_blank"
-                                                  rel="noreferrer"
-                                                >
-                                                  {t("shopping.viewOnStore", { store: WEEE_STORE_LABEL })}
-                                                </a>
-                                              </div>
-                                            </div>
-                                          ))
-                                        )}
+                                        <ProductPicks
+                                          state={productState}
+                                          onRetry={() => void handleRetryProducts(item.name)}
+                                        />
                                       </div>
                                     ) : null}
                                   </div>
