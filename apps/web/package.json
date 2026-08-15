@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@cooking/api-client": "file:../../packages/api-client",
+    "@cooking/design-tokens": "file:../../packages/design-tokens",
     "@cooking/shared": "file:../../packages/shared",
     "next": "14.2.35",
     "react": "^18.3.1",

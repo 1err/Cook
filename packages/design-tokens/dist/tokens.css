@@ -1,0 +1,37 @@
+:root {
+  --cw-color-canvas: #FBF8F2;
+  --cw-color-surface: #FFFFFF;
+  --cw-color-subtle-surface: #F3ECE4;
+  --cw-color-ink: #2F2621;
+  --cw-color-muted-ink: #6F6259;
+  --cw-color-action: #A64B34;
+  --cw-color-action-pressed: #8F3E2B;
+  --cw-color-sage: #687761;
+  --cw-color-divider: #E6DED6;
+  --cw-color-error: #B42318;
+  --cw-color-success: #3F6B4A;
+  --cw-color-on-action: #FFFFFF;
+  --cw-space-1: 4px;
+  --cw-space-2: 8px;
+  --cw-space-3: 12px;
+  --cw-space-4: 16px;
+  --cw-space-6: 24px;
+  --cw-space-8: 32px;
+  --cw-space-10: 40px;
+  --cw-space-14: 56px;
+  --cw-space-18: 72px;
+  --cw-radius-control: 8px;
+  --cw-radius-field: 12px;
+  --cw-radius-card: 16px;
+  --cw-radius-modal: 24px;
+  --cw-radius-round: 9999px;
+  --cw-type-display-family: Source Serif 4;
+  --cw-type-ui-family: Inter;
+  --cw-type-display-fallback: Iowan Old Style, Songti SC, ui-serif, Georgia, serif;
+  --cw-type-ui-fallback: SF Pro Text, PingFang SC, system-ui, sans-serif;
+  --cw-motion-fast-ms: 120ms;
+  --cw-motion-standard-ms: 180ms;
+  --cw-elevation-raised: 0 1px 2px rgba(47, 38, 33, 0.08);
+  --cw-elevation-overlay: 0 12px 32px rgba(47, 38, 33, 0.12);
+  --cw-elevation-modal: 0 24px 64px rgba(47, 38, 33, 0.16);
+}

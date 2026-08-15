@@ -12,7 +12,9 @@
     "web:lint": "npm --workspace @cooking/web run lint",
     "mobile:start": "npm --workspace @cooking/mobile run start",
     "mobile:ios": "npm --workspace @cooking/mobile run ios",
-    "mobile:android": "npm --workspace @cooking/mobile run android"
+    "mobile:android": "npm --workspace @cooking/mobile run android",
+    "tokens:build": "npm --workspace @cooking/design-tokens run build",
+    "tokens:test": "npm --workspace @cooking/design-tokens run test"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
