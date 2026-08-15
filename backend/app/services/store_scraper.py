@@ -465,36 +465,11 @@ def _store_extract_script(store: StoreName) -> str:
     """
 
 
-async def _fetch_store_products(
-    query: str,
+async def _scrape_store_products(
+    cleaned_query: str,
     store: StoreName,
-    session: AsyncSession | None = None,
-    *,
-    force_refresh: bool = False,
+    weee_lang: str,
 ) -> list[dict[str, str]]:
-    prepared = prepare_store_query(query, store)
-    if prepared is None:
-        return []
-    cleaned_query, weee_lang = prepared
-    logger.info("%s store lookup query=%r cleaned_query=%r", store, _normalize_space(query), cleaned_query)
-    cache_key = (store, weee_lang, CACHE_VERSION, cleaned_query)
-    if not force_refresh:
-        memory_cached = _memory_cache_get(cache_key)
-        if memory_cached is not None:
-            return memory_cached
-    if session is not None and not force_refresh:
-        db_cached = await repo_store_cache.get_cached_store_products(
-            session,
-            query=cleaned_query,
-            store=store,
-            language=weee_lang,
-            cache_version=CACHE_VERSION,
-            max_age_seconds=CACHE_TTL_SECONDS,
-        )
-        if db_cached is not None:
-            _memory_cache_set(cache_key, db_cached)
-            return db_cached
-
     try:
         from playwright.async_api import TimeoutError as PlaywrightTimeoutError
     except ModuleNotFoundError:
@@ -582,17 +557,55 @@ async def _fetch_store_products(
     if not products and last_exception is not None:
         logger.info("%s returning empty products after retries for query=%r", store, cleaned_query)
 
-    if products:
-        _memory_cache_set(cache_key, products)
+    return products
+
+
+async def _fetch_store_products(
+    query: str,
+    store: StoreName,
+    session: AsyncSession | None = None,
+    *,
+    force_refresh: bool = False,
+) -> list[dict[str, str]]:
+    prepared = prepare_store_query(query, store)
+    if prepared is None:
+        return []
+    cleaned_query, weee_lang = prepared
+    logger.info("%s store lookup query=%r cleaned_query=%r", store, _normalize_space(query), cleaned_query)
+    cache_key = (store, weee_lang, CACHE_VERSION, cleaned_query)
+
+    if not force_refresh:
+        memory_cached = _memory_cache_get(cache_key)
+        if memory_cached is not None:
+            return memory_cached
+
         if session is not None:
-            await repo_store_cache.upsert_cached_store_products(
+            db_cached = await repo_store_cache.get_cached_store_products(
                 session,
                 query=cleaned_query,
                 store=store,
                 language=weee_lang,
                 cache_version=CACHE_VERSION,
-                data=products,
+                max_age_seconds=CACHE_TTL_SECONDS,
             )
+            if db_cached is not None:
+                _memory_cache_set(cache_key, db_cached)
+                return db_cached
+
+    products = await _scrape_store_products(cleaned_query, store, weee_lang)
+    if not products:
+        return []
+
+    if session is not None:
+        await repo_store_cache.upsert_cached_store_products(
+            session,
+            query=cleaned_query,
+            store=store,
+            language=weee_lang,
+            cache_version=CACHE_VERSION,
+            data=products,
+        )
+    _memory_cache_set(cache_key, products)
     return products
 
 

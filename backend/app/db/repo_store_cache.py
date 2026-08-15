@@ -12,6 +12,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import CachedStoreProductModel
 
 
+def is_cache_entry_fresh(
+    updated_at: datetime,
+    now: datetime,
+    max_age_seconds: int,
+) -> bool:
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=timezone.utc)
+    return now - updated_at < timedelta(seconds=max_age_seconds)
+
+
 def _normalize_products(data: object) -> list[dict[str, str]] | None:
     if not isinstance(data, list):
         return None
@@ -63,13 +73,14 @@ async def get_cached_store_products(
     row = result.scalars().one_or_none()
     if row is None or row.updated_at is None:
         return None
-    age_cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
-    updated_at = row.updated_at
-    if updated_at.tzinfo is None:
-        updated_at = updated_at.replace(tzinfo=timezone.utc)
-    if updated_at < age_cutoff:
+    if not is_cache_entry_fresh(
+        row.updated_at,
+        datetime.now(timezone.utc),
+        max_age_seconds,
+    ):
         return None
-    return _normalize_products(row.data)
+    products = _normalize_products(row.data)
+    return products or None
 
 
 async def get_cached_store_product_entry(
@@ -151,7 +162,7 @@ async def upsert_cached_store_products(
     )
     row = result.scalars().one_or_none()
     normalized = _normalize_products(data)
-    if normalized is None:
+    if not normalized:
         return
     seen: set[str] = set()
     deduped: list[dict[str, str]] = []
