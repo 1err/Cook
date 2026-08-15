@@ -1,22 +1,18 @@
-"""
-Fetch store products from supported stores using Playwright.
-
-Scope is intentionally narrow: search one store for one ingredient and return a
-few basic product results for UI display. Results are cached in-process and can
-optionally flow through a persistent DB-backed cache.
-"""
+"""Fetch Weee products with process-local and PostgreSQL caching."""
 from __future__ import annotations
 
 import asyncio
 import logging
 import re
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 from urllib.parse import quote_plus, urljoin
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import repo_store_cache
+from app.db import session as db_session
 
 logger = logging.getLogger(__name__)
 
@@ -25,44 +21,36 @@ _browser_lock = asyncio.Lock()
 _playwright_inst: Any = None
 _shared_browser: Any = None
 
-StoreName = Literal["weee", "amazon"]
+StoreName = Literal["weee"]
+CacheKey = tuple[StoreName, str, str, str]
+
+
+class StoreScrapeError(RuntimeError):
+    """A Weee request failed before producing a trustworthy result."""
+
 
 MAX_RESULTS = 3
 PLAYWRIGHT_TIMEOUT_MS = 15000
-SUPPORTED_STORES: tuple[StoreName, ...] = ("weee", "amazon")
+SUPPORTED_STORES: tuple[StoreName, ...] = ("weee",)
 CACHE_TTL_SECONDS = 86400
 CACHE_VERSION = "v6"
 SCRAPE_CONCURRENCY = 4
 WEEE_PDP_CONCURRENCY = 3
 WEEE_MAX_ATTEMPTS = 2
-CACHE: dict[tuple[StoreName, str, str, str], dict[str, Any]] = {}
+CACHE: dict[CacheKey, dict[str, Any]] = {}
 _scrape_semaphore = asyncio.Semaphore(SCRAPE_CONCURRENCY)
+_inflight: dict[CacheKey, asyncio.Task[list[dict[str, str]]]] = {}
+_inflight_lock = asyncio.Lock()
 
-STORE_BASE_URLS: dict[StoreName, str] = {
-    "weee": "https://www.sayweee.com",
-    "amazon": "https://www.amazon.com",
-}
-
-STORE_SEARCH_URLS: dict[StoreName, str] = {
-    "weee": STORE_BASE_URLS["weee"] + "/en/search?keyword={query}",
-    "amazon": STORE_BASE_URLS["amazon"] + "/s?k={query}",
-}
+WEEE_BASE_URL = "https://www.sayweee.com"
+WEEE_SEARCH_URL = WEEE_BASE_URL + "/en/search?keyword={query}"
+WEEE_WAIT_SELECTOR = "[data-testid*='product'] a[href*='/product/'], a[href*='/product/']"
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
 
 def _query_has_cjk(query: str) -> bool:
     return bool(_CJK_RE.search(query or ""))
-
-STORE_WAIT_SELECTORS: dict[StoreName, str] = {
-    "weee": "[data-testid*='product'] a[href*='/product/'], a[href*='/product/']",
-    "amazon": "[data-component-type='s-search-result']",
-}
-
-STORE_URL_PATTERNS: dict[StoreName, tuple[str, ...]] = {
-    "weee": ("/product/",),
-    "amazon": ("/dp/", "/gp/product/"),
-}
 
 
 def _normalize_space(value: str) -> str:
@@ -175,19 +163,15 @@ def _cleanup_name(text: str) -> str:
     return _normalize_space(name)
 
 
-def _normalize_product(
-    candidate: dict[str, Any], store: StoreName, *, weee_prefer_zh: bool = False
+def _normalize_weee_product(
+    candidate: dict[str, Any], *, prefer_zh: bool = False
 ) -> dict[str, str] | None:
-    base_url = STORE_BASE_URLS[store]
     href = _normalize_space(str(candidate.get("href") or ""))
     if not href:
         return None
 
-    url = urljoin(base_url, href)
-    url_lower = url.lower()
-    if store == "weee" and "/product/" not in url_lower:
-        return None
-    elif store != "weee" and not any(part in url for part in STORE_URL_PATTERNS[store]):
+    url = urljoin(WEEE_BASE_URL, href)
+    if "/product/" not in url.lower():
         return None
 
     text = _normalize_space(str(candidate.get("text") or ""))
@@ -195,7 +179,7 @@ def _normalize_product(
     image_alt = _normalize_space(str(candidate.get("image_alt") or ""))
 
     name = ""
-    if store == "weee" and weee_prefer_zh:
+    if prefer_zh:
         name = _resolve_weee_zh_product_name(
             {
                 "primary_title": candidate.get("primary_title"),
@@ -211,12 +195,12 @@ def _normalize_product(
     return {
         "name": name,
         "price": _normalize_space(str(candidate.get("price") or "")) or _extract_price(text),
-        "image": _normalize_image_url(str(candidate.get("image") or ""), base_url),
+        "image": _normalize_image_url(str(candidate.get("image") or ""), WEEE_BASE_URL),
         "url": url,
     }
 
 
-def _memory_cache_get(cache_key: tuple[StoreName, str, str, str]) -> list[dict[str, str]] | None:
+def _memory_cache_get(cache_key: CacheKey) -> list[dict[str, str]] | None:
     cached = CACHE.get(cache_key)
     if not cached:
         return None
@@ -229,7 +213,7 @@ def _memory_cache_get(cache_key: tuple[StoreName, str, str, str]) -> list[dict[s
 
 
 def _memory_cache_set(
-    cache_key: tuple[StoreName, str, str, str],
+    cache_key: CacheKey,
     products: list[dict[str, str]],
     *,
     timestamp: float | None = None,
@@ -247,15 +231,15 @@ def _clean_query(q: str) -> str:
     return _normalize_space(cleaned).strip()
 
 
-def prepare_store_query(query: str, store: StoreName) -> tuple[str, str] | None:
+def prepare_store_query(query: str) -> tuple[str, str] | None:
     original_query = _clean_query(_normalize_space(query))
     cleaned_query = _clean_search_query(query) or original_query
     cleaned_query = _clean_query(cleaned_query)
     cleaned_query = cleaned_query.lower().strip() or original_query
     if not cleaned_query:
         return None
-    weee_lang = "zh" if store == "weee" and _query_has_cjk(cleaned_query) else "en"
-    return cleaned_query, weee_lang
+    language = "zh" if _query_has_cjk(cleaned_query) else "en"
+    return cleaned_query, language
 
 
 async def _ensure_shared_browser() -> Any:
@@ -291,7 +275,9 @@ async def _weee_fetch_search_items_with_retry(page: Any, script: str) -> list[An
                 return raw_items
         except Exception as exc:
             logger.info("weee search scroll-retry failed (attempt %s): %s", attempt + 1, exc)
-    return raw_items if isinstance(raw_items, list) else []
+    if not isinstance(raw_items, list):
+        raise StoreScrapeError("Weee returned an invalid product payload.")
+    return raw_items
 
 
 async def _wait_for_weee_results(page: Any, query: str, *, attempt: int) -> None:
@@ -301,7 +287,7 @@ async def _wait_for_weee_results(page: Any, query: str, *, attempt: int) -> None
     except Exception:
         pass
     try:
-        await page.wait_for_selector(STORE_WAIT_SELECTORS["weee"], timeout=14000 if attempt == 0 else 17000)
+        await page.wait_for_selector(WEEE_WAIT_SELECTOR, timeout=14000 if attempt == 0 else 17000)
     except Exception:
         logger.info("weee product selector wait timed out for query=%r on attempt=%s", query, attempt + 1)
     await page.wait_for_timeout(900 if attempt == 0 else 1500)
@@ -359,57 +345,7 @@ async def _enrich_weee_products_from_detail_pages(
     await asyncio.gather(*(enrich_product(product) for product in products))
 
 
-async def _fill_missing_images_from_product_pages(context: Any, store: StoreName, products: list[dict[str, str]]) -> None:
-    """Load missing product images from product page metadata."""
-    base_url = STORE_BASE_URLS[store]
-    for product in products:
-        if product.get("image"):
-            continue
-        detail_page = None
-        try:
-            detail_page = await context.new_page()
-            await detail_page.goto(product["url"], wait_until="domcontentloaded", timeout=PLAYWRIGHT_TIMEOUT_MS)
-            raw_image = await detail_page.evaluate(
-                """
-                () =>
-                  document.querySelector('meta[property="og:image"]')?.getAttribute("content") ||
-                  document.querySelector('meta[name="twitter:image"]')?.getAttribute("content") ||
-                  document.querySelector('img')?.currentSrc ||
-                  document.querySelector('img')?.getAttribute("src") ||
-                  ""
-                """
-            )
-            product["image"] = _normalize_image_url(str(raw_image or ""), base_url)
-        except Exception as exc:
-            logger.info("%s image fallback failed for url=%r: %s", store, product.get("url"), exc)
-        finally:
-            if detail_page is not None:
-                await detail_page.close()
-
-
-def _store_extract_script(store: StoreName) -> str:
-    if store == "amazon":
-        return """
-        () => Array.from(document.querySelectorAll('[data-component-type="s-search-result"]')).map((card) => {
-          const link = card.querySelector('h2 a') || card.querySelector('a.a-link-normal[href*="/dp/"]');
-          const img = card.querySelector('img.s-image') || card.querySelector('img');
-          const price = card.querySelector('.a-price .a-offscreen') || card.querySelector('.a-price');
-          return {
-            href: link?.href || link?.getAttribute('href') || '',
-            text: (card.innerText || '').replace(/\\s+/g, ' ').trim(),
-            name: (link?.textContent || img?.alt || '').replace(/\\s+/g, ' ').trim(),
-            price: (price?.textContent || '').replace(/\\s+/g, ' ').trim(),
-            image:
-              img?.currentSrc ||
-              img?.src ||
-              img?.getAttribute('src') ||
-              img?.getAttribute('data-src') ||
-              img?.getAttribute('srcset') ||
-              '',
-            image_alt: img?.alt || ''
-          };
-        })
-        """
+def _weee_extract_script() -> str:
     return """
     () => {
       const preferredSelector = '[data-testid*="product"] a[href*="/product/"]';
@@ -473,126 +409,199 @@ def _store_extract_script(store: StoreName) -> str:
     """
 
 
-async def _scrape_store_products(
+async def _scrape_weee_products(
     cleaned_query: str,
-    store: StoreName,
-    weee_lang: str,
+    language: str,
 ) -> list[dict[str, str]]:
     try:
-        from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+        import playwright.async_api  # noqa: F401
     except ModuleNotFoundError:
-        logger.warning("playwright is not installed; store products unavailable")
-        return []
+        raise StoreScrapeError("Playwright is not installed.") from None
 
-    if store == "weee" and weee_lang == "zh":
-        search_url = f"{STORE_BASE_URLS['weee']}/zh/search?keyword={quote_plus(cleaned_query)}"
+    if language == "zh":
+        search_url = f"{WEEE_BASE_URL}/zh/search?keyword={quote_plus(cleaned_query)}"
     else:
-        search_url = STORE_SEARCH_URLS[store].format(query=quote_plus(cleaned_query))
-    weee_prefer_zh = store == "weee" and weee_lang == "zh"
+        search_url = WEEE_SEARCH_URL.format(query=quote_plus(cleaned_query))
+    prefer_zh = language == "zh"
     products: list[dict[str, str]] = []
-    attempts = WEEE_MAX_ATTEMPTS if store == "weee" else 1
-    last_exception: Exception | None = None
-    for attempt in range(attempts):
+    for attempt in range(WEEE_MAX_ATTEMPTS):
         products = []
         try:
-            async with _scrape_semaphore:
-                browser = await _ensure_shared_browser()
-                context_kwargs: dict[str, Any] = {
-                    "locale": "zh-CN" if weee_prefer_zh else "en-US",
-                    "user_agent": (
-                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-                    ),
-                }
-                if weee_prefer_zh:
-                    context_kwargs["extra_http_headers"] = {"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"}
-                context = await browser.new_context(**context_kwargs)
-                try:
-                    page = await context.new_page()
-                    await page.goto(search_url, wait_until="domcontentloaded", timeout=PLAYWRIGHT_TIMEOUT_MS)
-                    if store == "weee":
-                        await _wait_for_weee_results(page, cleaned_query, attempt=attempt)
-                    else:
-                        try:
-                            await page.wait_for_selector(STORE_WAIT_SELECTORS[store], timeout=12000)
-                        except PlaywrightTimeoutError:
-                            logger.info(
-                                "%s product selector wait time out for query=%r — continuing with eval",
-                                store,
-                                cleaned_query,
-                            )
-                        await page.wait_for_timeout(450)
+            browser = await _ensure_shared_browser()
+            context_kwargs: dict[str, Any] = {
+                "locale": "zh-CN" if prefer_zh else "en-US",
+                "user_agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                ),
+            }
+            if prefer_zh:
+                context_kwargs["extra_http_headers"] = {"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"}
+            context = await browser.new_context(**context_kwargs)
+            try:
+                page = await context.new_page()
+                await page.goto(search_url, wait_until="domcontentloaded", timeout=PLAYWRIGHT_TIMEOUT_MS)
+                await _wait_for_weee_results(page, cleaned_query, attempt=attempt)
+                raw_items = await _weee_fetch_search_items_with_retry(page, _weee_extract_script())
 
-                    extract_script = _store_extract_script(store)
-                    if store == "weee":
-                        raw_items = await _weee_fetch_search_items_with_retry(page, extract_script)
-                    else:
-                        ri = await page.evaluate(extract_script)
-                        raw_items = ri if isinstance(ri, list) else []
-
-                    seen_urls: set[str] = set()
-                    for item in raw_items:
-                        if not isinstance(item, dict):
-                            continue
-                        product = _normalize_product(item, store, weee_prefer_zh=weee_prefer_zh)
-                        if not product:
-                            continue
-                        if product["url"] in seen_urls:
-                            continue
-                        seen_urls.add(product["url"])
+                for item in raw_items:
+                    if not isinstance(item, dict):
+                        continue
+                    product = _normalize_weee_product(item, prefer_zh=prefer_zh)
+                    if product:
                         products.append(product)
-                        if len(products) >= MAX_RESULTS:
-                            break
+                    if len(products) >= MAX_RESULTS:
+                        break
 
-                    if store == "weee" and products:
-                        await _enrich_weee_products_from_detail_pages(context, STORE_BASE_URLS["weee"], products)
-                    elif products:
-                        await _fill_missing_images_from_product_pages(context, store, products)
-                finally:
-                    await context.close()
+                if raw_items and not products:
+                    raise StoreScrapeError("Weee returned an invalid product payload.")
+                if products:
+                    await _enrich_weee_products_from_detail_pages(context, WEEE_BASE_URL, products)
+            finally:
+                await context.close()
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
-            last_exception = exc
-            if attempt + 1 < attempts:
-                logger.info("%s scrape attempt %s failed for query=%r; retrying once: %s", store, attempt + 1, cleaned_query, exc)
+            if attempt + 1 < WEEE_MAX_ATTEMPTS:
+                logger.info(
+                    "weee scrape attempt %s failed for query=%r; retrying once: %s",
+                    attempt + 1,
+                    cleaned_query,
+                    exc,
+                )
                 continue
-            logger.exception("%s scraping failed for query=%r: %s", store, cleaned_query, exc)
-            return []
+            if isinstance(exc, StoreScrapeError):
+                raise
+            raise StoreScrapeError(f"Weee scraping failed for query {cleaned_query!r}.") from exc
 
-        if products or attempt + 1 >= attempts:
+        if products or attempt + 1 >= WEEE_MAX_ATTEMPTS:
             break
-        logger.info("%s scrape returned no products for query=%r on attempt=%s; retrying once", store, cleaned_query, attempt + 1)
-
-    if not products and last_exception is not None:
-        logger.info("%s returning empty products after retries for query=%r", store, cleaned_query)
+        logger.info(
+            "weee scrape returned no products for query=%r on attempt=%s; retrying once",
+            cleaned_query,
+            attempt + 1,
+        )
 
     return products
 
 
-async def _fetch_store_products(
+def _validate_products(raw_products: object) -> list[dict[str, str]]:
+    if not isinstance(raw_products, list):
+        raise StoreScrapeError("Weee returned a non-list product payload.")
+
+    products: list[dict[str, str]] = []
+    seen_names: set[str] = set()
+    seen_urls: set[str] = set()
+    for raw in raw_products:
+        if not isinstance(raw, dict):
+            continue
+        values = tuple(raw.get(field) for field in ("name", "price", "image", "url"))
+        if not all(isinstance(value, str) for value in values):
+            continue
+        name, price, image, url = (_normalize_space(value) for value in values)
+        if not _is_valid_name(name) or "/product/" not in url.lower():
+            continue
+        normalized_name = name.casefold()
+        if normalized_name in seen_names or url in seen_urls:
+            continue
+        seen_names.add(normalized_name)
+        seen_urls.add(url)
+        products.append({"name": name, "price": price, "image": image, "url": url})
+        if len(products) >= MAX_RESULTS:
+            break
+
+    if raw_products and not products:
+        raise StoreScrapeError("Weee returned no valid products.")
+    return products
+
+
+def _log_event(
+    event: str,
+    cache_key: CacheKey,
+    *,
+    started_at: float | None = None,
+    error: BaseException | None = None,
+) -> None:
+    elapsed_ms = round((time.perf_counter() - started_at) * 1000, 2) if started_at is not None else 0.0
+    extra: dict[str, Any] = {
+        "event": event,
+        "store": cache_key[0],
+        "language": cache_key[1],
+        "cache_version": cache_key[2],
+        "query": cache_key[3],
+        "elapsed_ms": elapsed_ms,
+    }
+    if error is not None:
+        extra["error_type"] = type(error).__name__
+    logger.info("store_cache.%s", event, extra=extra)
+
+
+def _clear_completed_flight(cache_key: CacheKey, task: asyncio.Task[list[dict[str, str]]]) -> None:
+    if _inflight.get(cache_key) is task:
+        _inflight.pop(cache_key, None)
+    if not task.cancelled():
+        task.exception()
+
+
+async def _join_or_start_scrape(
+    cache_key: CacheKey,
+    operation: Callable[[], Awaitable[list[dict[str, str]]]],
+) -> list[dict[str, str]]:
+    async with _inflight_lock:
+        task = _inflight.get(cache_key)
+        if task is None:
+            task = asyncio.create_task(operation())
+            _inflight[cache_key] = task
+            task.add_done_callback(lambda completed: _clear_completed_flight(cache_key, completed))
+        else:
+            _log_event("single_flight_wait", cache_key)
+    return await asyncio.shield(task)
+
+
+async def _persist_positive_result(
+    cleaned_query: str,
+    language: str,
+    products: list[dict[str, str]],
+) -> None:
+    maker = db_session.async_session_maker
+    if maker is None:
+        raise RuntimeError("Database session maker is not initialized.")
+    async with maker() as write_session:
+        await repo_store_cache.upsert_cached_store_products(
+            write_session,
+            query=cleaned_query,
+            store="weee",
+            language=language,
+            cache_version=CACHE_VERSION,
+            data=products,
+        )
+        await write_session.commit()
+
+
+async def fetch_store_products(
     query: str,
-    store: StoreName,
     session: AsyncSession | None = None,
     *,
     force_refresh: bool = False,
 ) -> list[dict[str, str]]:
-    prepared = prepare_store_query(query, store)
+    prepared = prepare_store_query(query)
     if prepared is None:
         return []
-    cleaned_query, weee_lang = prepared
-    logger.info("%s store lookup query=%r cleaned_query=%r", store, _normalize_space(query), cleaned_query)
-    cache_key = (store, weee_lang, CACHE_VERSION, cleaned_query)
+    cleaned_query, language = prepared
+    cache_key: CacheKey = ("weee", language, CACHE_VERSION, cleaned_query)
 
     if not force_refresh:
         memory_cached = _memory_cache_get(cache_key)
         if memory_cached is not None:
+            _log_event("memory_hit", cache_key)
             return memory_cached
 
         if session is not None:
             db_cached = await repo_store_cache.get_cached_store_products_with_metadata(
                 session,
                 query=cleaned_query,
-                store=store,
-                language=weee_lang,
+                store="weee",
+                language=language,
                 cache_version=CACHE_VERSION,
                 max_age_seconds=CACHE_TTL_SECONDS,
             )
@@ -602,51 +611,28 @@ async def _fetch_store_products(
                     db_cached.products,
                     timestamp=db_cached.updated_at.timestamp(),
                 )
+                _log_event("postgres_hit", cache_key)
                 return db_cached.products
 
-    products = await _scrape_store_products(cleaned_query, store, weee_lang)
-    if not products:
-        return []
+    _log_event("cache_miss", cache_key)
 
-    if session is not None:
-        await repo_store_cache.upsert_cached_store_products(
-            session,
-            query=cleaned_query,
-            store=store,
-            language=weee_lang,
-            cache_version=CACHE_VERSION,
-            data=products,
-        )
-    _memory_cache_set(cache_key, products)
-    return products
+    async def scrape_and_persist() -> list[dict[str, str]]:
+        started_at = time.perf_counter()
+        try:
+            async with _scrape_semaphore:
+                raw_products = await _scrape_weee_products(cleaned_query, language)
+                products = _validate_products(raw_products)
+                if not products:
+                    _log_event("scrape_empty", cache_key, started_at=started_at)
+                    return []
+                await _persist_positive_result(cleaned_query, language, products)
+                _memory_cache_set(cache_key, products)
+                _log_event("scrape_success", cache_key, started_at=started_at)
+                return products
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            _log_event("scrape_failure", cache_key, started_at=started_at, error=exc)
+            raise
 
-
-async def fetch_weee_products(
-    query: str,
-    session: AsyncSession | None = None,
-    *,
-    force_refresh: bool = False,
-) -> list[dict[str, str]]:
-    return await _fetch_store_products(query, "weee", session=session, force_refresh=force_refresh)
-
-
-async def fetch_amazon_products(
-    query: str,
-    session: AsyncSession | None = None,
-    *,
-    force_refresh: bool = False,
-) -> list[dict[str, str]]:
-    return await _fetch_store_products(query, "amazon", session=session, force_refresh=force_refresh)
-
-
-async def fetch_store_products(
-    query: str,
-    store: str,
-    session: AsyncSession | None = None,
-    *,
-    force_refresh: bool = False,
-) -> list[dict[str, str]]:
-    normalized = (store or "").strip().lower()
-    if normalized not in SUPPORTED_STORES:
-        return []
-    return await _fetch_store_products(query, normalized, session=session, force_refresh=force_refresh)
+    return await _join_or_start_scrape(cache_key, scrape_and_persist)
