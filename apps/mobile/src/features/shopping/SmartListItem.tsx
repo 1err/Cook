@@ -10,7 +10,6 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { StoreProduct } from "@cooking/api-client";
-import type { ProductStore } from "@cooking/shared";
 import { colors, radii, spacing, typography } from "../../theme";
 import type { PurchaseItem } from "./storage";
 import { StoreProductPicks } from "./StoreProductPicks";
@@ -25,7 +24,6 @@ type SmartListItemProps = {
   productsLoading: boolean;
   productsError: string | null;
   products: StoreProduct[] | undefined;
-  store: ProductStore;
   onTogglePanel: () => void;
   onRetryProducts: () => void;
 };
@@ -60,7 +58,6 @@ export function SmartListItem({
   productsLoading,
   productsError,
   products,
-  store,
   onTogglePanel,
   onRetryProducts,
 }: SmartListItemProps) {
@@ -109,7 +106,6 @@ export function SmartListItem({
       </Pressable>
       {productsOpen ? (
         <StoreProductPicks
-          store={store}
           loading={productsLoading}
           error={productsError}
           products={products}

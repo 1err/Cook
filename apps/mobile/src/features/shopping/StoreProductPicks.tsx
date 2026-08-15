@@ -3,12 +3,11 @@ import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "r
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import type { StoreProduct } from "@cooking/api-client";
-import { PRODUCT_STORE_LABELS, type ProductStore } from "@cooking/shared";
+import { WEEE_STORE_LABEL } from "@cooking/shared";
 import { Button } from "../../components";
 import { colors, radii, spacing, typography } from "../../theme";
 
-type StoreProductPicksProps = {
-  store: ProductStore;
+export type StoreProductPicksProps = {
   loading: boolean;
   error: string | null;
   products: StoreProduct[] | undefined;
@@ -16,7 +15,6 @@ type StoreProductPicksProps = {
 };
 
 export function StoreProductPicks({
-  store,
   loading,
   error,
   products,
@@ -25,7 +23,7 @@ export function StoreProductPicks({
   const matchingState = (
     <View style={styles.center}>
       <ActivityIndicator color={colors.primary} />
-      <Text style={styles.muted}>Finding matches on {PRODUCT_STORE_LABELS[store]}…</Text>
+      <Text style={styles.muted}>Finding matches on {WEEE_STORE_LABEL}…</Text>
     </View>
   );
 
@@ -69,7 +67,7 @@ export function StoreProductPicks({
               }}
               style={({ pressed }) => [styles.linkBtn, pressed && styles.pressed]}
             >
-              <Text style={styles.linkBtnText}>View on {PRODUCT_STORE_LABELS[store]}</Text>
+              <Text style={styles.linkBtnText}>View on {WEEE_STORE_LABEL}</Text>
               <Ionicons name="open-outline" size={14} color={colors.primary} />
             </Pressable>
           </View>

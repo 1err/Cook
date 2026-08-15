@@ -6,7 +6,6 @@ import {
   CATEGORY_MATERIAL_ICONS,
   getDisplayCategory,
   type GroceryCategory,
-  type ProductStore,
 } from "@cooking/shared";
 import { Card } from "../../components";
 import { colors, spacing, typography } from "../../theme";
@@ -19,7 +18,6 @@ type SmartListCardProps = {
   category: GroceryCategory;
   rows: Row[];
   checked: Set<number>;
-  store: ProductStore;
   productsOpenByName: Record<string, boolean>;
   productsByName: Record<string, StoreProduct[]>;
   productsLoadingByName: Record<string, boolean>;
@@ -44,7 +42,6 @@ export function SmartListCard({
   category,
   rows,
   checked,
-  store,
   productsOpenByName,
   productsByName,
   productsLoadingByName,
@@ -74,7 +71,6 @@ export function SmartListCard({
         productsLoading={!!productsLoadingByName[key]}
         productsError={productsErrorByName[key] ?? null}
         products={productsByName[key]}
-        store={store}
         onTogglePanel={() => onTogglePanel(key)}
         onRetryProducts={() => onRetryProducts(key)}
       />

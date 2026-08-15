@@ -5,7 +5,6 @@ import { StoreProductPicks } from "./StoreProductPicks";
 test("keeps an ingredient in the matching state until its lookup finishes", async () => {
   await render(
     <StoreProductPicks
-      store="weee"
       loading={false}
       error={null}
       products={undefined}
@@ -20,7 +19,6 @@ test("keeps an ingredient in the matching state until its lookup finishes", asyn
 test("shows the empty result only after a lookup completes without products", async () => {
   await render(
     <StoreProductPicks
-      store="weee"
       loading={false}
       error={null}
       products={[]}
@@ -35,7 +33,6 @@ test("shows the empty result only after a lookup completes without products", as
 test("keeps a failed lookup in the retry state when it has no products", async () => {
   await render(
     <StoreProductPicks
-      store="weee"
       loading={false}
       error="We couldn't reach Weee."
       products={undefined}
@@ -46,4 +43,17 @@ test("keeps a failed lookup in the retry state when it has no products", async (
   expect(screen.getByText("We couldn't reach Weee.")).toBeOnTheScreen();
   expect(screen.getByRole("button", { name: "Retry" })).toBeOnTheScreen();
   expect(screen.queryByText("Finding matches on Weee…")).not.toBeOnTheScreen();
+});
+
+test("links successful product results to Weee", async () => {
+  await render(
+    <StoreProductPicks
+      loading={false}
+      error={null}
+      products={[{ name: "Silken tofu", price: "$2.99", image: "", url: "https://www.sayweee.com" }]}
+      onRetry={jest.fn()}
+    />,
+  );
+
+  expect(screen.getByText("View on Weee")).toBeOnTheScreen();
 });

@@ -1,8 +1,2 @@
-export type ProductStore = "weee" | "amazon";
-
-export const PRODUCT_STORES = ["weee", "amazon"] as const satisfies readonly ProductStore[];
-
-export const PRODUCT_STORE_LABELS: Record<ProductStore, string> = {
-  weee: "Weee",
-  amazon: "Amazon",
-};
+export const WEEE_STORE = "weee" as const;
+export const WEEE_STORE_LABEL = "Weee";

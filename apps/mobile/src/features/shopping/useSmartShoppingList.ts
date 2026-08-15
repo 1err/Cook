@@ -13,7 +13,7 @@ import { useApiClient, type ApiClient } from "../../lib/api";
 import {
   type RefineResponse,
   clearSmartList,
-  clearSmartProductsForAllStores,
+  clearSmartProducts,
   readSmartList,
   writeSmartList,
 } from "./storage";
@@ -236,7 +236,7 @@ export function useSmartShoppingList(weekStart: string | undefined) {
         items.map((i) => ({ name: i.name, quantity: i.total_quantity })),
       );
       dispatch({ type: "refineSucceeded", refinedData: refined, fingerprint });
-      await clearSmartProductsForAllStores(current.bounds.start);
+      await clearSmartProducts(current.bounds.start);
       await writeSmartList(current.bounds.start, refined, new Set(), new Set(), fingerprint);
     } catch (e) {
       dispatch({
@@ -250,7 +250,7 @@ export function useSmartShoppingList(weekStart: string | undefined) {
     const current = stateRef.current;
     if (current.status !== "ready") return;
     await clearSmartList(current.bounds.start);
-    await clearSmartProductsForAllStores(current.bounds.start);
+    await clearSmartProducts(current.bounds.start);
     dispatch({ type: "backToOriginal" });
   }, []);
 

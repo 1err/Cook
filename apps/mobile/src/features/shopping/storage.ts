@@ -1,13 +1,12 @@
 import type { StoreProduct } from "@cooking/api-client";
-import { PRODUCT_STORES, type ProductStore } from "@cooking/shared";
 import { ephemeral, json } from "../../lib/storage";
 
 export const SMART_SHOPPING_LIST_PREFIX = "smartShoppingList";
 export const SMART_SHOPPING_PRODUCTS_PREFIX = "smartShoppingProducts";
 
 export const smartListKey = (weekStart: string) => `${SMART_SHOPPING_LIST_PREFIX}:${weekStart}`;
-export const smartProductsKey = (weekStart: string, store: ProductStore) =>
-  `${SMART_SHOPPING_PRODUCTS_PREFIX}:${weekStart}:${store}`;
+export const smartProductsKey = (weekStart: string) =>
+  `${SMART_SHOPPING_PRODUCTS_PREFIX}:${weekStart}:weee`;
 
 export interface PurchaseItem {
   name: string;
@@ -111,25 +110,19 @@ export async function clearSmartList(weekStart: string): Promise<void> {
   await ephemeral.remove(smartListKey(weekStart));
 }
 
-export async function readSmartProducts(
-  weekStart: string,
-  store: ProductStore,
-): Promise<SmartProductsStored | null> {
-  const raw = await json.get<unknown>(ephemeral, smartProductsKey(weekStart, store));
+export async function readSmartProducts(weekStart: string): Promise<SmartProductsStored | null> {
+  const raw = await json.get<unknown>(ephemeral, smartProductsKey(weekStart));
   if (raw == null) return null;
   return parseSmartProductsStored(raw);
 }
 
 export async function writeSmartProducts(
   weekStart: string,
-  store: ProductStore,
   payload: SmartProductsStored,
 ): Promise<void> {
-  await json.set(ephemeral, smartProductsKey(weekStart, store), payload);
+  await json.set(ephemeral, smartProductsKey(weekStart), payload);
 }
 
-export async function clearSmartProductsForAllStores(weekStart: string): Promise<void> {
-  await Promise.all(
-    PRODUCT_STORES.map((store) => ephemeral.remove(smartProductsKey(weekStart, store))),
-  );
+export async function clearSmartProducts(weekStart: string): Promise<void> {
+  await ephemeral.remove(smartProductsKey(weekStart));
 }

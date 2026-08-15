@@ -10,7 +10,7 @@ import type { Recipe } from "../types";
 import {
   CATEGORY_MATERIAL_ICONS,
   GROCERY_CATEGORY_ORDER,
-  PRODUCT_STORE_LABELS,
+  WEEE_STORE_LABEL,
   buildWeekMealPlanFingerprint,
   formatWeekRangeDisplay,
   getDisplayCategory,
@@ -20,7 +20,6 @@ import {
   plannerFingerprintStorageKey,
   type GroceryCategory,
   type MealPlanDay,
-  type ProductStore,
 } from "@cooking/shared";
 
 const SMART_SHOPPING_LIST_PREFIX = "smartShoppingList";
@@ -30,8 +29,8 @@ function smartListStorageKey(weekStart: string) {
   return `${SMART_SHOPPING_LIST_PREFIX}:${weekStart}`;
 }
 
-function smartProductsStorageKey(weekStart: string, store: ProductStore) {
-  return `${SMART_SHOPPING_PRODUCTS_PREFIX}:${weekStart}:${store}`;
+function smartProductsStorageKey(weekStart: string) {
+  return `${SMART_SHOPPING_PRODUCTS_PREFIX}:${weekStart}:weee`;
 }
 
 const SLOT_ORDER = ["breakfast", "lunch", "dinner"] as const;
@@ -229,7 +228,6 @@ function ShoppingListPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [productStore, setProductStore] = useState<ProductStore>("weee");
   const [bulkLoadingProducts, setBulkLoadingProducts] = useState(false);
   const [bulkLoadProgress, setBulkLoadProgress] = useState<{ current: number; total: number } | null>(null);
   const [refinedData, setRefinedData] = useState<RefineResponse | null>(null);
@@ -247,7 +245,6 @@ function ShoppingListPageContent() {
   const [productLoadingByIngredient, setProductLoadingByIngredient] = useState<Record<string, boolean>>({});
   const [productErrorByIngredient, setProductErrorByIngredient] = useState<Record<string, string | null>>({});
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const productStoreRef = useRef<ProductStore>("weee");
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -268,11 +265,6 @@ function ShoppingListPageContent() {
     setBulkLoadProgress(null);
   }
 
-  useEffect(() => {
-    productStoreRef.current = productStore;
-    clearProductResults();
-  }, [productStore]);
-
   const persistSmart = useCallback(
     (data: RefineResponse, hidden: Set<number>, checked: Set<number>, plannerFingerprint: string) => {
       const payload: SmartStored = {
@@ -286,9 +278,7 @@ function ShoppingListPageContent() {
   );
 
   const clearStoredProductResults = useCallback(() => {
-    for (const store of ["weee", "amazon"] as const) {
-      sessionStorage.removeItem(smartProductsStorageKey(start, store));
-    }
+    sessionStorage.removeItem(smartProductsStorageKey(start));
   }, [start]);
 
   const currentPlannerFingerprint = useMemo(
@@ -384,7 +374,7 @@ function ShoppingListPageContent() {
       return;
     }
     try {
-      const raw = sessionStorage.getItem(smartProductsStorageKey(start, productStore));
+      const raw = sessionStorage.getItem(smartProductsStorageKey(start));
       if (!raw) {
         clearProductResults();
         return;
@@ -403,7 +393,7 @@ function ShoppingListPageContent() {
     } catch {
       clearProductResults();
     }
-  }, [activeRefinedData, productStore, start]);
+  }, [activeRefinedData, start]);
 
   useEffect(() => {
     if (!activeRefinedData) return;
@@ -412,8 +402,8 @@ function ShoppingListPageContent() {
       products: productsByIngredient,
       errors: productErrorByIngredient,
     };
-    sessionStorage.setItem(smartProductsStorageKey(start, productStore), JSON.stringify(payload));
-  }, [activeRefinedData, openProductsByIngredient, productErrorByIngredient, productsByIngredient, productStore, start]);
+    sessionStorage.setItem(smartProductsStorageKey(start), JSON.stringify(payload));
+  }, [activeRefinedData, openProductsByIngredient, productErrorByIngredient, productsByIngredient, start]);
 
   useEffect(() => {
     if (!activeRefinedData || !activeSavedPlannerFingerprint) return;
@@ -545,7 +535,6 @@ function ShoppingListPageContent() {
 
   async function ensureProductsLoaded(
     ingredientName: string,
-    store: ProductStore,
     openPanel = true,
     forceRetry = false
   ) {
@@ -567,7 +556,7 @@ function ShoppingListPageContent() {
     setProductErrorByIngredient((prev) => ({ ...prev, [key]: null }));
 
     try {
-      const res = await apiFetch(`/store-products?query=${encodeURIComponent(key)}&store=${store}`);
+      const res = await apiFetch(`/store-products?query=${encodeURIComponent(key)}`);
       if (!res.ok) throw new Error("Failed to load products");
       const data: unknown = await res.json();
       const products = Array.isArray(data)
@@ -584,13 +573,10 @@ function ShoppingListPageContent() {
             })
             .slice(0, 3)
         : [];
-      if (productStoreRef.current !== store) return;
       setProductsByIngredient((prev) => ({ ...prev, [key]: products }));
     } catch {
-      if (productStoreRef.current !== store) return;
       setProductErrorByIngredient((prev) => ({ ...prev, [key]: "Failed to load products" }));
     } finally {
-      if (productStoreRef.current !== store) return;
       setProductLoadingByIngredient((prev) => ({ ...prev, [key]: false }));
     }
   }
@@ -605,11 +591,11 @@ function ShoppingListPageContent() {
       return;
     }
 
-    await ensureProductsLoaded(key, productStore);
+    await ensureProductsLoaded(key);
   }
 
   async function handleRetryProducts(ingredientName: string) {
-    await ensureProductsLoaded(ingredientName, productStore, true, true);
+    await ensureProductsLoaded(ingredientName, true, true);
   }
 
   async function handleLoadAllProducts() {
@@ -623,22 +609,15 @@ function ShoppingListPageContent() {
     setBulkLoadingProducts(true);
     setBulkLoadProgress({ current: 0, total: names.length });
     let completed = 0;
-    const storeSnapshot = productStore;
-
     try {
       await mapWithConcurrency(names, BULK_LOAD_CONCURRENCY, async (name) => {
-        if (productStoreRef.current !== storeSnapshot) return;
-        await ensureProductsLoaded(name, storeSnapshot, true);
+        await ensureProductsLoaded(name, true);
         completed += 1;
-        if (productStoreRef.current === storeSnapshot) {
-          setBulkLoadProgress({ current: completed, total: names.length });
-        }
+        setBulkLoadProgress({ current: completed, total: names.length });
       });
     } finally {
-      if (productStoreRef.current === storeSnapshot) {
-        setBulkLoadingProducts(false);
-        setBulkLoadProgress(null);
-      }
+      setBulkLoadingProducts(false);
+      setBulkLoadProgress(null);
     }
   }
 
@@ -725,21 +704,6 @@ function ShoppingListPageContent() {
                     <p className="shop-smart-hero__sub">
                       {t("shopping.smartSummary", { count: visiblePurchaseItems.length })}
                     </p>
-                    <div className="shop-product-store">
-                      <span className="shop-product-store__label">{t("shopping.productSource")}</span>
-                      <div className="shop-product-store__chips" role="group" aria-label={t("shopping.productSource")}>
-                        {(["weee", "amazon"] as ProductStore[]).map((store) => (
-                          <button
-                            key={store}
-                            type="button"
-                            className={`shop-product-store__chip font-headline${productStore === store ? " is-active" : ""}`}
-                            onClick={() => setProductStore(store)}
-                          >
-                            {PRODUCT_STORE_LABELS[store]}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
                   </div>
                   <div className="shop-smart-stat">
                     <p className="shop-smart-stat__num font-headline">{smartItemCount}</p>
@@ -859,7 +823,7 @@ function ShoppingListPageContent() {
                                       ) : products.length === 0 ? (
                                         <div className="shop-bento-products__status">
                                           <p style={{ margin: 0 }}>
-                                            {t("shopping.noProductsFound", { store: PRODUCT_STORE_LABELS[productStore] })}
+                                            {t("shopping.noProductsFound", { store: WEEE_STORE_LABEL })}
                                           </p>
                                           <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
                                             {t("shopping.retryProducts")}
@@ -884,7 +848,7 @@ function ShoppingListPageContent() {
                                                 target="_blank"
                                                 rel="noreferrer"
                                               >
-                                                {t("shopping.viewOnStore", { store: PRODUCT_STORE_LABELS[productStore] })}
+                                                {t("shopping.viewOnStore", { store: WEEE_STORE_LABEL })}
                                               </a>
                                             </div>
                                           </div>
@@ -970,7 +934,7 @@ function ShoppingListPageContent() {
                                           ) : products.length === 0 ? (
                                             <div className="shop-bento-products__status">
                                               <p style={{ margin: 0 }}>
-                                                {t("shopping.noProductsFound", { store: PRODUCT_STORE_LABELS[productStore] })}
+                                                {t("shopping.noProductsFound", { store: WEEE_STORE_LABEL })}
                                               </p>
                                               <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
                                                 {t("shopping.retryProducts")}
@@ -995,7 +959,7 @@ function ShoppingListPageContent() {
                                                     target="_blank"
                                                     rel="noreferrer"
                                                   >
-                                                    {t("shopping.viewOnStore", { store: PRODUCT_STORE_LABELS[productStore] })}
+                                                    {t("shopping.viewOnStore", { store: WEEE_STORE_LABEL })}
                                                   </a>
                                                 </div>
                                               </div>
@@ -1109,7 +1073,7 @@ function ShoppingListPageContent() {
                                     ) : products.length === 0 ? (
                                       <div className="shop-bento-products__status">
                                         <p style={{ margin: 0 }}>
-                                          {t("shopping.noProductsFound", { store: PRODUCT_STORE_LABELS[productStore] })}
+                                          {t("shopping.noProductsFound", { store: WEEE_STORE_LABEL })}
                                         </p>
                                         <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
                                           {t("shopping.retryProducts")}
@@ -1134,7 +1098,7 @@ function ShoppingListPageContent() {
                                               target="_blank"
                                               rel="noreferrer"
                                             >
-                                              {t("shopping.viewOnStore", { store: PRODUCT_STORE_LABELS[productStore] })}
+                                              {t("shopping.viewOnStore", { store: WEEE_STORE_LABEL })}
                                             </a>
                                           </div>
                                         </div>
@@ -1220,7 +1184,7 @@ function ShoppingListPageContent() {
                                         ) : products.length === 0 ? (
                                           <div className="shop-bento-products__status">
                                             <p style={{ margin: 0 }}>
-                                              {t("shopping.noProductsFound", { store: PRODUCT_STORE_LABELS[productStore] })}
+                                              {t("shopping.noProductsFound", { store: WEEE_STORE_LABEL })}
                                             </p>
                                             <button type="button" className="shop-bento-products__toggle font-headline" onClick={() => void handleRetryProducts(item.name)}>
                                               {t("shopping.retryProducts")}
@@ -1245,7 +1209,7 @@ function ShoppingListPageContent() {
                                                   target="_blank"
                                                   rel="noreferrer"
                                                 >
-                                                  {t("shopping.viewOnStore", { store: PRODUCT_STORE_LABELS[productStore] })}
+                                                  {t("shopping.viewOnStore", { store: WEEE_STORE_LABEL })}
                                                 </a>
                                               </div>
                                             </div>
@@ -1284,8 +1248,8 @@ function ShoppingListPageContent() {
                   >
                     <span className="material-symbols-outlined">storefront</span>
                     {bulkLoadingProducts
-                      ? `Loading picks from ${PRODUCT_STORE_LABELS[productStore]}…`
-                      : `Load top picks from ${PRODUCT_STORE_LABELS[productStore]}`}
+                      ? `Loading picks from ${WEEE_STORE_LABEL}…`
+                      : `Load top picks from ${WEEE_STORE_LABEL}`}
                   </button>
                 </div>
                 {bulkLoadingProducts && bulkLoadProgress ? (

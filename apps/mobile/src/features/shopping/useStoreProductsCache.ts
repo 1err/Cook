@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { StoreProduct } from "@cooking/api-client";
-import type { ProductStore } from "@cooking/shared";
 import { useApiClient, type ApiClient } from "../../lib/api";
 import {
   readSmartProducts,
@@ -9,7 +8,6 @@ import {
 } from "./storage";
 
 type State = {
-  store: ProductStore;
   open: Record<string, boolean>;
   products: Record<string, StoreProduct[]>;
   loading: Record<string, boolean>;
@@ -17,7 +15,6 @@ type State = {
 };
 
 type Action =
-  | { type: "setStore"; store: ProductStore }
   | { type: "hydrate"; payload: SmartProductsStored }
   | { type: "clear" }
   | { type: "setOpen"; key: string; open: boolean }
@@ -35,9 +32,6 @@ const emptyMaps = () => ({
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
-    case "setStore":
-      if (state.store === action.store) return state;
-      return { store: action.store, ...emptyMaps() };
     case "hydrate":
       return {
         ...state,
@@ -79,12 +73,8 @@ function reducer(state: State, action: Action): State {
   }
 }
 
-async function fetchProducts(
-  apiClient: ApiClient,
-  query: string,
-  store: ProductStore,
-): Promise<StoreProduct[]> {
-  const data = await apiClient.shopping.storeProducts(query, store);
+async function fetchProducts(apiClient: ApiClient, query: string): Promise<StoreProduct[]> {
+  const data = await apiClient.shopping.storeProducts(query);
   if (!Array.isArray(data)) return [];
   return data
     .filter(
@@ -104,12 +94,7 @@ export type BulkLoadingState = { active: boolean; done: number; total: number };
 
 export function useStoreProductsCache(weekStart: string | null) {
   const apiClient = useApiClient();
-  const [state, dispatch] = useReducer(reducer, {
-    store: "weee" as ProductStore,
-    ...emptyMaps(),
-  });
-  const storeRef = useRef<ProductStore>(state.store);
-  storeRef.current = state.store;
+  const [state, dispatch] = useReducer(reducer, emptyMaps());
 
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -120,7 +105,7 @@ export function useStoreProductsCache(weekStart: string | null) {
     total: 0,
   });
 
-  // Hydrate from ephemeral whenever the (week, store) pair changes.
+  // Hydrate from ephemeral whenever the week changes.
   useEffect(() => {
     if (!weekStart) {
       dispatch({ type: "clear" });
@@ -128,7 +113,7 @@ export function useStoreProductsCache(weekStart: string | null) {
     }
     let cancelled = false;
     void (async () => {
-      const cached = await readSmartProducts(weekStart, state.store);
+      const cached = await readSmartProducts(weekStart);
       if (cancelled) return;
       if (cached) dispatch({ type: "hydrate", payload: cached });
       else dispatch({ type: "clear" });
@@ -136,31 +121,29 @@ export function useStoreProductsCache(weekStart: string | null) {
     return () => {
       cancelled = true;
     };
-  }, [weekStart, state.store]);
+  }, [weekStart]);
 
   // Persist on every change.
   useEffect(() => {
     if (!weekStart) return;
-    void writeSmartProducts(weekStart, state.store, {
+    void writeSmartProducts(weekStart, {
       open: state.open,
       products: state.products,
       errors: state.errors,
     });
-  }, [weekStart, state.store, state.open, state.products, state.errors]);
+  }, [weekStart, state.open, state.products, state.errors]);
 
   const loadOne = useCallback(
-    async (key: string, storeAtStart: ProductStore, force: boolean) => {
+    async (key: string, force: boolean) => {
       const snapshot = stateRef.current;
       const alreadyLoaded = snapshot.products[key] !== undefined && !snapshot.errors[key];
       const inFlight = snapshot.loading[key];
       if (!force && (alreadyLoaded || inFlight)) return;
       dispatch({ type: "loadStarted", key });
       try {
-        const products = await fetchProducts(apiClient, key, storeAtStart);
-        if (storeRef.current !== storeAtStart) return;
+        const products = await fetchProducts(apiClient, key);
         dispatch({ type: "loadSucceeded", key, products });
       } catch (e) {
-        if (storeRef.current !== storeAtStart) return;
         dispatch({
           type: "loadFailed",
           key,
@@ -175,7 +158,7 @@ export function useStoreProductsCache(weekStart: string | null) {
     async (rawName: string, force = false) => {
       const key = rawName.trim();
       if (!key) return;
-      await loadOne(key, storeRef.current, force);
+      await loadOne(key, force);
     },
     [loadOne],
   );
@@ -201,7 +184,6 @@ export function useStoreProductsCache(weekStart: string | null) {
     async (rawNames: string[]) => {
       const keys = Array.from(new Set(rawNames.map((n) => n.trim()).filter(Boolean)));
       if (keys.length === 0) return;
-      const storeAtStart = storeRef.current;
       setBulkLoading({ active: true, done: 0, total: keys.length });
 
       const queue = [...keys];
@@ -209,10 +191,9 @@ export function useStoreProductsCache(weekStart: string | null) {
 
       const worker = async () => {
         while (queue.length > 0) {
-          if (storeRef.current !== storeAtStart) return;
           const key = queue.shift();
           if (!key) return;
-          await loadOne(key, storeAtStart, false);
+          await loadOne(key, false);
           doneCount += 1;
           setBulkLoading({ active: true, done: doneCount, total: keys.length });
         }
@@ -225,15 +206,9 @@ export function useStoreProductsCache(weekStart: string | null) {
     [loadOne],
   );
 
-  const setStore = useCallback((next: ProductStore) => {
-    dispatch({ type: "setStore", store: next });
-  }, []);
-
   const retry = useCallback((rawName: string) => ensureLoaded(rawName, true), [ensureLoaded]);
 
   return {
-    store: state.store,
-    setStore,
     open: state.open,
     products: state.products,
     loading: state.loading,

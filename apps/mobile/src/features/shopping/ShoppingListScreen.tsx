@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -17,9 +16,7 @@ import {
   getPrevNextWeek,
   getWeekBounds,
   normalizeGroceryCategory,
-  PRODUCT_STORES,
-  PRODUCT_STORE_LABELS,
-  type ProductStore,
+  WEEE_STORE_LABEL,
 } from "@cooking/shared";
 import { Button, Card, EmptyState } from "../../components";
 import { colors, spacing, typography } from "../../theme";
@@ -121,10 +118,9 @@ export function ShoppingListScreen({ navigation, route }: Props) {
     .map(({ item }) => item.name)
     .filter((name) => name && name.trim().length > 0);
   const bulk = productsCache.bulkLoading;
-  const storeLabel = PRODUCT_STORE_LABELS[productsCache.store];
   const bulkLabel = bulk.active
     ? `Loading store matches… ${bulk.done} of ${bulk.total}`
-    : `Load top picks from ${storeLabel}`;
+    : `Load top picks from ${WEEE_STORE_LABEL}`;
 
   return (
     <ScrollView
@@ -171,27 +167,6 @@ export function ShoppingListScreen({ navigation, route }: Props) {
             />
           </View>
 
-          <View style={styles.storeToggleRow}>
-            {PRODUCT_STORES.map((s: ProductStore) => {
-              const active = s === productsCache.store;
-              return (
-                <Pressable
-                  key={s}
-                  onPress={() => productsCache.setStore(s)}
-                  style={({ pressed }) => [
-                    styles.storeChip,
-                    active && styles.storeChipActive,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={[styles.storeChipLabel, active && styles.storeChipLabelActive]}>
-                    {PRODUCT_STORE_LABELS[s]}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
           {bulkLoadableNames.length > 0 ? (
             <View style={styles.bulkLoadRow}>
               <Button
@@ -236,7 +211,6 @@ export function ShoppingListScreen({ navigation, route }: Props) {
                 category={cat}
                 rows={rows}
                 checked={data.checked}
-                store={productsCache.store}
                 productsOpenByName={productsCache.open}
                 productsByName={productsCache.products}
                 productsLoadingByName={productsCache.loading}
@@ -283,27 +257,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   smartHeaderTitle: { ...typography.title3, color: colors.onSurface },
-  storeToggleRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-  },
-  storeChip: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
-    backgroundColor: colors.surfaceContainer,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  storeChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  storeChipLabel: { ...typography.subhead, color: colors.onSurfaceVariant, fontWeight: "600" },
-  storeChipLabelActive: { color: colors.onPrimary },
   bulkLoadRow: {
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.md,

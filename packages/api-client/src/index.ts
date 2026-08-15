@@ -150,10 +150,8 @@ export function createApiClient(options: ApiClientOptions) {
           method: "POST",
           body: JSON.stringify({ items }),
         }),
-      storeProducts: (query: string, store: "weee" | "amazon") =>
-        json<StoreProduct[]>(
-          `/store-products?query=${encodeURIComponent(query)}&store=${encodeURIComponent(store)}`
-        ),
+      storeProducts: (query: string) =>
+        json<StoreProduct[]>(`/store-products?query=${encodeURIComponent(query)}`),
     },
     admin: {
       cachePreview: (params: URLSearchParams) => json(`/admin/cache-preview?${params.toString()}`),

@@ -16,7 +16,6 @@ type CachedProduct = {
 
 type CachePreviewEntry = {
   query: string;
-  store: string;
   language: string;
   updated_at: string | null;
   is_warm_query: boolean;
@@ -70,8 +69,8 @@ const DEFAULT_PREVIEW: CachePreviewResponse = {
   stale_only: false,
 };
 
-function rowKey(entry: Pick<CachePreviewEntry, "query" | "store" | "language">): string {
-  return `${entry.query}::${entry.store}::${entry.language}`;
+function rowKey(entry: Pick<CachePreviewEntry, "query" | "language">): string {
+  return `${entry.query}::${entry.language}`;
 }
 
 function formatUpdatedAt(value: string | null): string {
@@ -95,10 +94,6 @@ function formatRelativeTime(value: string | null): string {
   if (Math.abs(diffHours) < 24) return `${diffHours}h ago`;
   const diffDays = Math.round(diffHours / 24);
   return `${diffDays}d ago`;
-}
-
-function storeLabel(store: string): string {
-  return store === "weee" ? "Weee" : store === "amazon" ? "Amazon" : store;
 }
 
 function isStaleUpdatedAt(value: string | null, ttlMs: number): boolean {
@@ -133,7 +128,6 @@ function PreviewPageContent() {
   const [refreshingOne, setRefreshingOne] = useState<string | null>(null);
   const [refreshStatus, setRefreshStatus] = useState<CacheRefreshStatus | null>(null);
   const [search, setSearch] = useState("");
-  const [storeFilter, setStoreFilter] = useState("all");
   const [languageFilter, setLanguageFilter] = useState("all");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "alphabetical">("newest");
   const [pageSize, setPageSize] = useState(250);
@@ -238,14 +232,13 @@ function PreviewPageContent() {
   const filteredEntries = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     const next = preview.items.filter((entry) => {
-      if (storeFilter !== "all" && entry.store !== storeFilter) return false;
       if (languageFilter !== "all" && entry.language.toLowerCase() !== languageFilter) return false;
       if (!normalizedSearch) return true;
       return entry.query.toLowerCase().includes(normalizedSearch);
     });
     next.sort((a, b) => {
       if (sortBy === "alphabetical") {
-        return a.query.localeCompare(b.query) || a.store.localeCompare(b.store);
+        return a.query.localeCompare(b.query) || a.language.localeCompare(b.language);
       }
       if (sortBy === "oldest") {
         return (a.updated_at ?? "").localeCompare(b.updated_at ?? "") || a.query.localeCompare(b.query);
@@ -253,7 +246,7 @@ function PreviewPageContent() {
       return (b.updated_at ?? "").localeCompare(a.updated_at ?? "") || a.query.localeCompare(b.query);
     });
     return next;
-  }, [languageFilter, preview.items, search, sortBy, storeFilter]);
+  }, [languageFilter, preview.items, search, sortBy]);
 
   const visibleProducts = useMemo(
     () => filteredEntries.reduce((sum, entry) => sum + entry.data.length, 0),
@@ -290,7 +283,7 @@ function PreviewPageContent() {
     try {
       const res = await apiFetch("/admin/cache-refresh-one", {
         method: "POST",
-        body: JSON.stringify({ query: entry.query, store: entry.store }),
+        body: JSON.stringify({ query: entry.query }),
       });
       if (res.status === 403) throw new Error("Admin access required.");
       if (!res.ok) throw new Error("Failed to refresh query");
@@ -397,11 +390,6 @@ function PreviewPageContent() {
           placeholder="Search query"
           style={inputStyle}
         />
-        <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)} style={selectStyle}>
-          <option value="all">All stores</option>
-          <option value="weee">Weee</option>
-          <option value="amazon">Amazon</option>
-        </select>
         <select
           value={languageFilter}
           onChange={(event) => setLanguageFilter(event.target.value)}
@@ -446,7 +434,6 @@ function PreviewPageContent() {
         <section style={tableWrapStyle}>
           <div style={tableHeaderStyle}>
             <span>Query</span>
-            <span>Store</span>
             <span>Lang</span>
             <span>Updated</span>
             <span>Products</span>
@@ -470,7 +457,6 @@ function PreviewPageContent() {
                       {isStale ? <span style={staleBadgeStyle}>STALE</span> : null}
                     </div>
                   </div>
-                  <div style={metaCellStyle}>{storeLabel(entry.store)}</div>
                   <div style={metaCellStyle}>{entry.language.toUpperCase()}</div>
                   <div style={updatedCellStyle}>
                     <span>{formatUpdatedAt(entry.updated_at)}</span>
@@ -596,7 +582,7 @@ const tableWrapStyle: CSSProperties = {
 
 const tableHeaderStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(140px, 1.3fr) 90px 70px 170px minmax(360px, 2fr) 110px",
+  gridTemplateColumns: "minmax(140px, 1.3fr) 70px 170px minmax(360px, 2fr) 110px",
   gap: "var(--space-12)",
   padding: "0.9rem 1rem",
   borderBottom: "1px solid color-mix(in srgb, var(--outline-variant) 35%, transparent)",
@@ -613,7 +599,7 @@ const tableBodyStyle: CSSProperties = {
 
 const tableRowStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(140px, 1.3fr) 90px 70px 170px minmax(360px, 2fr) 110px",
+  gridTemplateColumns: "minmax(140px, 1.3fr) 70px 170px minmax(360px, 2fr) 110px",
   gap: "var(--space-12)",
   padding: "0.9rem 1rem",
   alignItems: "center",
