@@ -1,0 +1,49 @@
+import React from "react";
+import { render, screen } from "@testing-library/react-native";
+import { StoreProductPicks } from "./StoreProductPicks";
+
+test("keeps an ingredient in the matching state until its lookup finishes", async () => {
+  await render(
+    <StoreProductPicks
+      store="weee"
+      loading={false}
+      error={null}
+      products={undefined}
+      onRetry={jest.fn()}
+    />,
+  );
+
+  expect(screen.getByText("Finding matches on Weee…")).toBeOnTheScreen();
+  expect(screen.queryByText("No products found.")).not.toBeOnTheScreen();
+});
+
+test("shows the empty result only after a lookup completes without products", async () => {
+  await render(
+    <StoreProductPicks
+      store="weee"
+      loading={false}
+      error={null}
+      products={[]}
+      onRetry={jest.fn()}
+    />,
+  );
+
+  expect(screen.getByText("No products found.")).toBeOnTheScreen();
+  expect(screen.queryByText("Finding matches on Weee…")).not.toBeOnTheScreen();
+});
+
+test("keeps a failed lookup in the retry state when it has no products", async () => {
+  await render(
+    <StoreProductPicks
+      store="weee"
+      loading={false}
+      error="We couldn't reach Weee."
+      products={undefined}
+      onRetry={jest.fn()}
+    />,
+  );
+
+  expect(screen.getByText("We couldn't reach Weee.")).toBeOnTheScreen();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeOnTheScreen();
+  expect(screen.queryByText("Finding matches on Weee…")).not.toBeOnTheScreen();
+});

@@ -1,5 +1,5 @@
 import React, { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -7,7 +7,6 @@ import {
   type BottomSheetBackdropProps,
   BottomSheetFlatList,
   BottomSheetModal,
-  BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import {
   type MealType,
@@ -104,98 +103,103 @@ export const RecipePickerSheet = forwardRef<RecipePickerSheetHandle, RecipePicke
         backgroundStyle={styles.sheetBg}
         handleIndicatorStyle={styles.handle}
       >
-        <BottomSheetView style={styles.header}>
-          <Text style={styles.headerTitle}>Add a recipe</Text>
-          {target ? <Text style={styles.headerSub}>{headerSubtitle}</Text> : null}
-        </BottomSheetView>
-        <BottomSheetView style={styles.searchRow}>
-          <TextField
-            placeholder="Search your library"
-            value={search}
-            onChangeText={setSearch}
-            leadingIcon="search"
-            autoCorrect={false}
-            autoCapitalize="none"
-            returnKeyType="search"
-          />
-        </BottomSheetView>
-        <BottomSheetView style={styles.chipsRow}>
-          <BottomSheetFlatList
-            horizontal
-            data={tagChips}
-            keyExtractor={(item) => item.id}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsContent}
-            renderItem={({ item }) => {
-              const active = item.id === tagFilter;
-              return (
-                <Pressable
-                  onPress={() => setTagFilter(item.id)}
-                  style={({ pressed }) => [
-                    styles.tagChip,
-                    active && styles.tagChipActive,
-                    pressed && styles.pressed,
-                  ]}
+        <BottomSheetFlatList
+          testID="recipe-picker-content"
+          data={filtered}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={
+            <View>
+              <View style={styles.header}>
+                <Text style={styles.headerTitle}>Add a recipe</Text>
+                {target ? <Text style={styles.headerSub}>{headerSubtitle}</Text> : null}
+              </View>
+              <View style={styles.searchRow}>
+                <TextField
+                  placeholder="Search your library"
+                  value={search}
+                  onChangeText={setSearch}
+                  leadingIcon="search"
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  returnKeyType="search"
+                />
+              </View>
+              <View style={styles.chipsRow}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.chipsContent}
                 >
-                  <Text style={[styles.tagChipLabel, active && styles.tagChipLabelActive]}>
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            }}
-          />
-        </BottomSheetView>
-
-        {recipes.length === 0 ? (
-          <BottomSheetView style={styles.emptyWrap}>
-            <EmptyState
-              icon="restaurant-outline"
-              title="No recipes yet"
-              description="Import your first recipe, then come back here to plan your week."
-              actionLabel="Import a recipe"
-              onAction={() => {
-                sheetRef.current?.dismiss();
-                onImportRecipe();
-              }}
-            />
-          </BottomSheetView>
-        ) : (
-          <BottomSheetFlatList
-            data={filtered}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContent}
-            ItemSeparatorComponent={() => <View style={styles.separator} />}
-            ListEmptyComponent={
+                  {tagChips.map((item) => {
+                    const active = item.id === tagFilter;
+                    return (
+                      <Pressable
+                        key={item.id}
+                        onPress={() => setTagFilter(item.id)}
+                        style={({ pressed }) => [
+                          styles.tagChip,
+                          active && styles.tagChipActive,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Text style={[styles.tagChipLabel, active && styles.tagChipLabelActive]}>
+                          {item.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </View>
+          }
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ListEmptyComponent={
+            recipes.length === 0 ? (
+              <View style={styles.emptyWrap}>
+                <EmptyState
+                  icon="restaurant-outline"
+                  title="No recipes yet"
+                  description="Import your first recipe, then come back here to plan your week."
+                  actionLabel="Import a recipe"
+                  onAction={() => {
+                    sheetRef.current?.dismiss();
+                    onImportRecipe();
+                  }}
+                />
+              </View>
+            ) : (
               <View style={styles.emptyWrap}>
                 <EmptyState title="No matches" description="Try a different search term or filter." />
               </View>
-            }
-            renderItem={({ item }) => (
-              <Pressable
-                onPress={() => handlePick(item.id)}
-                style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-              >
-                {resolveImageUrl(item.thumbnail_url) ? (
-                  <Image source={{ uri: resolveImageUrl(item.thumbnail_url) }} style={styles.rowThumb} contentFit="cover" />
-                ) : (
-                  <View style={[styles.rowThumb, styles.rowThumbPlaceholder]}>
-                    <Ionicons name="restaurant" size={18} color={colors.onPrimaryFixed} />
-                  </View>
-                )}
-                <View style={styles.rowBody}>
-                  <Text style={styles.rowTitle} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                  <Text style={styles.rowSub}>
-                    {item.ingredients.length}{" "}
-                    {item.ingredients.length === 1 ? "ingredient" : "ingredients"}
-                  </Text>
+            )
+          }
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() => handlePick(item.id)}
+              style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+            >
+              {resolveImageUrl(item.thumbnail_url) ? (
+                <Image source={{ uri: resolveImageUrl(item.thumbnail_url) }} style={styles.rowThumb} contentFit="cover" />
+              ) : (
+                <View style={[styles.rowThumb, styles.rowThumbPlaceholder]}>
+                  <Ionicons name="restaurant" size={18} color={colors.onPrimaryFixed} />
                 </View>
-                <Ionicons name="add-circle" size={26} color={colors.primary} />
-              </Pressable>
-            )}
-          />
-        )}
+              )}
+              <View style={styles.rowBody}>
+                <Text style={styles.rowTitle} numberOfLines={1}>
+                  {item.title}
+                </Text>
+                <Text style={styles.rowSub}>
+                  {item.ingredients.length}{" "}
+                  {item.ingredients.length === 1 ? "ingredient" : "ingredients"}
+                </Text>
+              </View>
+              <Ionicons name="add-circle" size={26} color={colors.primary} />
+            </Pressable>
+          )}
+        />
       </BottomSheetModal>
     );
   },
@@ -249,8 +253,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   listContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
     paddingBottom: spacing["3xl"],
   },
   separator: { height: spacing.sm },
@@ -260,6 +262,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: radii.lg,
     padding: spacing.md,
+    marginHorizontal: spacing.lg,
   },
   rowThumb: {
     width: 48,
@@ -272,6 +275,6 @@ const styles = StyleSheet.create({
   rowBody: { flex: 1 },
   rowTitle: { ...typography.headline, color: colors.onSurface },
   rowSub: { ...typography.subhead, color: colors.onSurfaceVariant, marginTop: 2 },
-  emptyWrap: { paddingVertical: spacing.xl },
+  emptyWrap: { paddingHorizontal: spacing.lg, paddingVertical: spacing.xl },
   pressed: { opacity: 0.85 },
 });

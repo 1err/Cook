@@ -22,13 +22,14 @@ export function StoreProductPicks({
   products,
   onRetry,
 }: StoreProductPicksProps) {
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
-  }
+  const matchingState = (
+    <View style={styles.center}>
+      <ActivityIndicator color={colors.primary} />
+      <Text style={styles.muted}>Finding matches on {PRODUCT_STORE_LABELS[store]}…</Text>
+    </View>
+  );
+
+  if (loading) return matchingState;
   if (error) {
     return (
       <View style={styles.errorWrap}>
@@ -37,7 +38,8 @@ export function StoreProductPicks({
       </View>
     );
   }
-  if (!products || products.length === 0) {
+  if (products === undefined) return matchingState;
+  if (products.length === 0) {
     return (
       <View style={styles.errorWrap}>
         <Text style={styles.muted}>No products found.</Text>
@@ -78,7 +80,7 @@ export function StoreProductPicks({
 }
 
 const styles = StyleSheet.create({
-  center: { paddingVertical: spacing.lg, alignItems: "center" },
+  center: { paddingVertical: spacing.lg, alignItems: "center", gap: spacing.sm },
   errorWrap: { paddingVertical: spacing.md, alignItems: "flex-start", gap: spacing.xs },
   errorText: { ...typography.subhead, color: colors.error },
   muted: { ...typography.subhead, color: colors.onSurfaceVariant },
