@@ -450,8 +450,6 @@ async def _scrape_weee_products(
                     product = _normalize_weee_product(item, prefer_zh=prefer_zh)
                     if product:
                         products.append(product)
-                    if len(products) >= MAX_RESULTS:
-                        break
 
                 if raw_items and not products:
                     raise StoreScrapeError("Weee returned an invalid product payload.")
@@ -519,10 +517,10 @@ def _log_event(
     event: str,
     cache_key: CacheKey,
     *,
-    started_at: float | None = None,
+    started_at: float,
     error: BaseException | None = None,
 ) -> None:
-    elapsed_ms = round((time.perf_counter() - started_at) * 1000, 2) if started_at is not None else 0.0
+    elapsed_ms = max((time.perf_counter() - started_at) * 1000, 0.0)
     extra: dict[str, Any] = {
         "event": event,
         "store": cache_key[0],
@@ -547,6 +545,8 @@ async def _join_or_start_scrape(
     cache_key: CacheKey,
     operation: Callable[[], Awaitable[list[dict[str, str]]]],
 ) -> list[dict[str, str]]:
+    wait_started_at = time.perf_counter()
+    joined_existing = False
     async with _inflight_lock:
         task = _inflight.get(cache_key)
         if task is None:
@@ -554,8 +554,12 @@ async def _join_or_start_scrape(
             _inflight[cache_key] = task
             task.add_done_callback(lambda completed: _clear_completed_flight(cache_key, completed))
         else:
-            _log_event("single_flight_wait", cache_key)
-    return await asyncio.shield(task)
+            joined_existing = True
+    try:
+        return await asyncio.shield(task)
+    finally:
+        if joined_existing:
+            _log_event("single_flight_wait", cache_key, started_at=wait_started_at)
 
 
 async def _persist_positive_result(
@@ -567,15 +571,19 @@ async def _persist_positive_result(
     if maker is None:
         raise RuntimeError("Database session maker is not initialized.")
     async with maker() as write_session:
-        await repo_store_cache.upsert_cached_store_products(
-            write_session,
-            query=cleaned_query,
-            store="weee",
-            language=language,
-            cache_version=CACHE_VERSION,
-            data=products,
-        )
-        await write_session.commit()
+        try:
+            await repo_store_cache.upsert_cached_store_products(
+                write_session,
+                query=cleaned_query,
+                store="weee",
+                language=language,
+                cache_version=CACHE_VERSION,
+                data=products,
+            )
+            await write_session.commit()
+        except BaseException:
+            await write_session.rollback()
+            raise
 
 
 async def fetch_store_products(
@@ -584,6 +592,7 @@ async def fetch_store_products(
     *,
     force_refresh: bool = False,
 ) -> list[dict[str, str]]:
+    lookup_started_at = time.perf_counter()
     prepared = prepare_store_query(query)
     if prepared is None:
         return []
@@ -593,7 +602,7 @@ async def fetch_store_products(
     if not force_refresh:
         memory_cached = _memory_cache_get(cache_key)
         if memory_cached is not None:
-            _log_event("memory_hit", cache_key)
+            _log_event("memory_hit", cache_key, started_at=lookup_started_at)
             return memory_cached
 
         if session is not None:
@@ -611,10 +620,15 @@ async def fetch_store_products(
                     db_cached.products,
                     timestamp=db_cached.updated_at.timestamp(),
                 )
-                _log_event("postgres_hit", cache_key)
+                _log_event("postgres_hit", cache_key, started_at=lookup_started_at)
                 return db_cached.products
 
-    _log_event("cache_miss", cache_key)
+            memory_cached = _memory_cache_get(cache_key)
+            if memory_cached is not None:
+                _log_event("memory_hit", cache_key, started_at=lookup_started_at)
+                return memory_cached
+
+    _log_event("cache_miss", cache_key, started_at=lookup_started_at)
 
     async def scrape_and_persist() -> list[dict[str, str]]:
         started_at = time.perf_counter()

@@ -1,12 +1,14 @@
 import asyncio
 import logging
+import sys
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
 import pytest
 
 from app.db import repo_store_cache
+from app.db import session as db_session
 from app.db.repo_store_cache import is_cache_entry_fresh
 from app.services import store_scraper
 
@@ -102,6 +104,46 @@ async def test_fresh_postgresql_hit_repopulates_memory_and_skips_scrape(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_postgresql_miss_rechecks_memory_before_starting_a_new_flight(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    first_database_read_started = asyncio.Event()
+    release_first_database_read = asyncio.Event()
+    database_calls = 0
+    scrape_calls = 0
+
+    async def gated_database_miss(*args: Any, **kwargs: Any) -> None:
+        nonlocal database_calls
+        database_calls += 1
+        if database_calls == 1:
+            first_database_read_started.set()
+            await release_first_database_read.wait()
+        return None
+
+    async def scrape_live(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+        nonlocal scrape_calls
+        scrape_calls += 1
+        return [PRODUCT]
+
+    async def persist_positive(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(repo_store_cache, "get_cached_store_products_with_metadata", gated_database_miss)
+    monkeypatch.setattr(store_scraper, "_scrape_weee_products", scrape_live)
+    monkeypatch.setattr(store_scraper, "_persist_positive_result", persist_positive)
+
+    delayed = asyncio.create_task(store_scraper.fetch_store_products("silken tofu", session=object()))
+    await asyncio.wait_for(first_database_read_started.wait(), timeout=1)
+
+    assert await store_scraper.fetch_store_products("SILKEN TOFU", session=object()) == [PRODUCT]
+    release_first_database_read.set()
+
+    assert await delayed == [PRODUCT]
+    assert database_calls == 2
+    assert scrape_calls == 1
+
+
+@pytest.mark.asyncio
 async def test_near_expiry_database_hit_does_not_extend_memory_freshness(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -179,29 +221,117 @@ async def test_expired_database_miss_reaches_live_scrape_without_returning_stale
 async def test_positive_live_scrape_is_committed_before_result_and_memory_are_published(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    persist_started = asyncio.Event()
-    allow_persist = asyncio.Event()
+    commit_started = asyncio.Event()
+    allow_commit = asyncio.Event()
+    calls: list[str] = []
+
+    class WriteSession:
+        async def commit(self) -> None:
+            calls.append("commit")
+            commit_started.set()
+            await allow_commit.wait()
+
+        async def rollback(self) -> None:
+            calls.append("rollback")
+
+    write_session = WriteSession()
+
+    class SessionContext:
+        async def __aenter__(self) -> WriteSession:
+            return write_session
+
+        async def __aexit__(self, *args: Any) -> None:
+            calls.append("close")
+
+    def session_maker() -> SessionContext:
+        return SessionContext()
 
     async def scrape_live(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
         return [PRODUCT]
 
-    async def persist_positive(*args: Any, **kwargs: Any) -> None:
-        persist_started.set()
-        await allow_persist.wait()
+    async def upsert_positive(session: object, **kwargs: Any) -> None:
+        assert session is write_session
+        assert kwargs["store"] == "weee"
+        assert kwargs["data"] == [PRODUCT]
+        calls.append("upsert")
 
-    monkeypatch.setattr(store_scraper, "_scrape_weee_products", scrape_live, raising=False)
-    monkeypatch.setattr(store_scraper, "_persist_positive_result", persist_positive, raising=False)
+    monkeypatch.setattr(store_scraper, "_scrape_weee_products", scrape_live)
+    monkeypatch.setattr(db_session, "async_session_maker", session_maker)
+    monkeypatch.setattr(repo_store_cache, "upsert_cached_store_products", upsert_positive)
 
     result_task = asyncio.create_task(store_scraper.fetch_store_products("silken tofu", force_refresh=True))
-    await asyncio.wait_for(persist_started.wait(), timeout=1)
+    await asyncio.wait_for(commit_started.wait(), timeout=1)
+    follower = asyncio.create_task(store_scraper.fetch_store_products("SILKEN TOFU", force_refresh=True))
+    await asyncio.sleep(0)
 
     cache_key = ("weee", "en", store_scraper.CACHE_VERSION, "silken tofu")
     assert not result_task.done()
+    assert not follower.done()
     assert store_scraper._memory_cache_get(cache_key) is None
+    assert calls == ["upsert", "commit"]
 
-    allow_persist.set()
-    assert await result_task == [PRODUCT]
+    allow_commit.set()
+    assert await asyncio.gather(result_task, follower) == [[PRODUCT], [PRODUCT]]
+    assert calls == ["upsert", "commit", "close"]
     assert store_scraper._memory_cache_get(cache_key) == [PRODUCT]
+
+
+@pytest.mark.asyncio
+async def test_failed_independent_writer_rolls_back_closes_and_allows_retry(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    calls: list[str] = []
+    writer_attempts = 0
+
+    class WriteSession:
+        def __init__(self, *, fail_commit: bool):
+            self.fail_commit = fail_commit
+
+        async def commit(self) -> None:
+            calls.append("commit")
+            if self.fail_commit:
+                raise RuntimeError("commit failed")
+
+        async def rollback(self) -> None:
+            calls.append("rollback")
+
+    class SessionContext:
+        def __init__(self, session: WriteSession):
+            self.session = session
+
+        async def __aenter__(self) -> WriteSession:
+            return self.session
+
+        async def __aexit__(self, *args: Any) -> None:
+            calls.append("close")
+
+    def session_maker() -> SessionContext:
+        nonlocal writer_attempts
+        writer_attempts += 1
+        return SessionContext(WriteSession(fail_commit=writer_attempts == 1))
+
+    async def scrape_live(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+        return [PRODUCT]
+
+    async def upsert_positive(*args: Any, **kwargs: Any) -> None:
+        calls.append("upsert")
+
+    monkeypatch.setattr(store_scraper, "_scrape_weee_products", scrape_live)
+    monkeypatch.setattr(db_session, "async_session_maker", session_maker)
+    monkeypatch.setattr(repo_store_cache, "upsert_cached_store_products", upsert_positive)
+
+    cache_key = ("weee", "en", store_scraper.CACHE_VERSION, "silken tofu")
+    with pytest.raises(RuntimeError, match="commit failed"):
+        await store_scraper.fetch_store_products("silken tofu", force_refresh=True)
+
+    await asyncio.sleep(0)
+    assert calls == ["upsert", "commit", "rollback", "close"]
+    assert store_scraper._memory_cache_get(cache_key) is None
+    assert store_scraper._inflight == {}
+
+    assert await store_scraper.fetch_store_products("silken tofu", force_refresh=True) == [PRODUCT]
+    assert calls == ["upsert", "commit", "rollback", "close", "upsert", "commit", "close"]
+    assert writer_attempts == 2
 
 
 @pytest.mark.asyncio
@@ -314,6 +444,86 @@ async def test_failed_flight_propagates_to_all_waiters_and_later_call_retries(
 
 
 @pytest.mark.asyncio
+async def test_cancelled_leader_does_not_cancel_shared_flight_and_registry_cleans(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    scrape_started = asyncio.Event()
+    allow_scrape = asyncio.Event()
+    scrape_calls = 0
+
+    async def scrape_live(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+        nonlocal scrape_calls
+        scrape_calls += 1
+        scrape_started.set()
+        await allow_scrape.wait()
+        return [PRODUCT]
+
+    async def persist_positive(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(store_scraper, "_scrape_weee_products", scrape_live)
+    monkeypatch.setattr(store_scraper, "_persist_positive_result", persist_positive)
+
+    leader = asyncio.create_task(store_scraper.fetch_store_products("tofu", force_refresh=True))
+    await asyncio.wait_for(scrape_started.wait(), timeout=1)
+    follower = asyncio.create_task(store_scraper.fetch_store_products("TOFU", force_refresh=True))
+    await asyncio.sleep(0)
+    assert len(store_scraper._inflight) == 1
+
+    leader.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await leader
+    assert not follower.done()
+
+    allow_scrape.set()
+    assert await follower == [PRODUCT]
+    await asyncio.sleep(0)
+    assert store_scraper._inflight == {}
+    assert scrape_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelled_waiter_does_not_block_failed_flight_cleanup_or_retry(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    scrape_started = asyncio.Event()
+    allow_failure = asyncio.Event()
+    scrape_calls = 0
+
+    async def scrape_live(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+        nonlocal scrape_calls
+        scrape_calls += 1
+        if scrape_calls == 1:
+            scrape_started.set()
+            await allow_failure.wait()
+            raise store_scraper.StoreScrapeError("upstream unavailable")
+        return [PRODUCT]
+
+    async def persist_positive(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(store_scraper, "_scrape_weee_products", scrape_live)
+    monkeypatch.setattr(store_scraper, "_persist_positive_result", persist_positive)
+
+    leader = asyncio.create_task(store_scraper.fetch_store_products("tofu", force_refresh=True))
+    await asyncio.wait_for(scrape_started.wait(), timeout=1)
+    waiter = asyncio.create_task(store_scraper.fetch_store_products("TOFU", force_refresh=True))
+    await asyncio.sleep(0)
+
+    waiter.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiter
+    allow_failure.set()
+    with pytest.raises(store_scraper.StoreScrapeError):
+        await leader
+
+    await asyncio.sleep(0)
+    assert store_scraper._inflight == {}
+    assert await store_scraper.fetch_store_products("tofu", force_refresh=True) == [PRODUCT]
+    assert scrape_calls == 2
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("outcome", ["empty", "failure"])
 async def test_empty_or_failed_force_refresh_preserves_positive_entry(
     monkeypatch: pytest.MonkeyPatch,
@@ -387,6 +597,90 @@ async def test_invalid_weee_search_payload_raises_typed_failure():
 
 
 @pytest.mark.asyncio
+async def test_extraction_keeps_later_distinct_candidates_for_final_validation(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    candidates = [
+        {
+            "href": PRODUCT["url"],
+            "name": PRODUCT["name"],
+            "price": PRODUCT["price"],
+            "image": PRODUCT["image"],
+        },
+        {
+            "href": PRODUCT["url"],
+            "name": PRODUCT["name"],
+            "price": "$3.49",
+            "image": PRODUCT["image"],
+        },
+        {
+            "href": "https://www.sayweee.com/product/firm-tofu",
+            "name": "Firm tofu",
+            "price": "$3.99",
+            "image": PRODUCT["image"],
+        },
+        {
+            "href": "https://www.sayweee.com/product/fried-tofu",
+            "name": "Fried tofu",
+            "price": "$4.99",
+            "image": PRODUCT["image"],
+        },
+    ]
+
+    class Page:
+        async def goto(self, *args: Any, **kwargs: Any) -> None:
+            return None
+
+    class Context:
+        async def new_page(self) -> Page:
+            return Page()
+
+        async def close(self) -> None:
+            return None
+
+    class Browser:
+        async def new_context(self, **kwargs: Any) -> Context:
+            return Context()
+
+    async def fake_browser() -> Browser:
+        return Browser()
+
+    async def no_wait(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    async def extracted(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+        return candidates
+
+    monkeypatch.setattr(store_scraper, "_ensure_shared_browser", fake_browser)
+    monkeypatch.setattr(store_scraper, "_wait_for_weee_results", no_wait)
+    monkeypatch.setattr(store_scraper, "_weee_fetch_search_items_with_retry", extracted)
+    monkeypatch.setattr(store_scraper, "_enrich_weee_products_from_detail_pages", no_wait)
+    playwright_module = ModuleType("playwright")
+    async_api_module = ModuleType("playwright.async_api")
+    playwright_module.async_api = async_api_module  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright", playwright_module)
+    monkeypatch.setitem(sys.modules, "playwright.async_api", async_api_module)
+
+    extracted_products = await store_scraper._scrape_weee_products("tofu", "en")
+
+    assert store_scraper._validate_products(extracted_products) == [
+        PRODUCT,
+        {
+            "name": "Firm tofu",
+            "price": "$3.99",
+            "image": PRODUCT["image"],
+            "url": "https://www.sayweee.com/product/firm-tofu",
+        },
+        {
+            "name": "Fried tofu",
+            "price": "$4.99",
+            "image": PRODUCT["image"],
+            "url": "https://www.sayweee.com/product/fried-tofu",
+        },
+    ]
+
+
+@pytest.mark.asyncio
 async def test_cache_and_scrape_logs_have_distinguishable_event_fields(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -394,6 +688,12 @@ async def test_cache_and_scrape_logs_have_distinguishable_event_fields(
     scrape_started = asyncio.Event()
     allow_scrape = asyncio.Event()
     calls = 0
+    clock = 100.0
+
+    def perf_counter() -> float:
+        nonlocal clock
+        clock += 0.01
+        return clock
 
     async def scrape_live(query: str, language: str) -> list[dict[str, str]]:
         nonlocal calls
@@ -411,6 +711,7 @@ async def test_cache_and_scrape_logs_have_distinguishable_event_fields(
 
     monkeypatch.setattr(store_scraper, "_scrape_weee_products", scrape_live, raising=False)
     monkeypatch.setattr(store_scraper, "_persist_positive_result", persist_positive, raising=False)
+    monkeypatch.setattr(store_scraper.time, "perf_counter", perf_counter)
     caplog.set_level(logging.INFO, logger=store_scraper.__name__)
 
     leader = asyncio.create_task(store_scraper.fetch_store_products("tofu", force_refresh=True))
@@ -424,15 +725,27 @@ async def test_cache_and_scrape_logs_have_distinguishable_event_fields(
     with pytest.raises(store_scraper.StoreScrapeError):
         await store_scraper.fetch_store_products("failure", force_refresh=True)
 
+    async def postgres_hit(*args: Any, **kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(products=[PRODUCT], updated_at=datetime.now(timezone.utc))
+
+    monkeypatch.setattr(repo_store_cache, "get_cached_store_products_with_metadata", postgres_hit)
+    assert await store_scraper.fetch_store_products("database tofu", session=object()) == [PRODUCT]
+
     events = {getattr(record, "event", None) for record in caplog.records}
-    assert {
+    required_events = {
         "memory_hit",
+        "postgres_hit",
         "cache_miss",
         "single_flight_wait",
         "scrape_success",
         "scrape_empty",
         "scrape_failure",
-    } <= events
+    }
+    assert required_events <= events
+    for event in required_events:
+        matching = [record for record in caplog.records if getattr(record, "event", None) == event]
+        assert matching
+        assert all(record.elapsed_ms > 0 for record in matching)
     assert calls == 3
 
 
