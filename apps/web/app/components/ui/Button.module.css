@@ -85,7 +85,7 @@
 .spinner {
   animation: spin var(--cw-motion-standard-ms) linear infinite;
   border: 2px solid currentColor;
-  border-radius: var(--cw-radius-round);
+  border-radius: 50%;
   border-right-color: transparent;
   height: var(--cw-space-4);
   width: var(--cw-space-4);
