@@ -24,6 +24,10 @@ test("renders all seven days and 21 accessible meal slots", () => {
       />
     </I18nProvider>,
   );
-  expect(screen.getAllByTestId("planner-day-column")).toHaveLength(7);
+  const dayColumns = screen.getAllByTestId("planner-day-column");
+  expect(dayColumns).toHaveLength(7);
+  dayColumns.forEach((column) => {
+    expect(column).toHaveClass("flex", "flex-col", "gap-4", "min-w-0");
+  });
   expect(screen.getAllByTestId("planner-meal-slot")).toHaveLength(21);
 });

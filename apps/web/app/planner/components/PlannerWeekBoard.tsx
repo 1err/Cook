@@ -39,7 +39,7 @@ export function PlannerWeekBoard({
   return (
     <div className="planner-editorial__grid">
       {dates.map((date, dayIndex) => (
-        <section key={date} data-testid="planner-day-column" className="planner-editorial__day-column">
+        <section key={date} data-testid="planner-day-column" className="planner-editorial__day-column flex flex-col gap-4 min-w-0">
           <header className={`planner-editorial__day-head${date === today ? " is-today" : ""}`}>
             <p className="dow font-headline">{COL_SHORT[dayIndex]}</p>
             <p className="dom">{dayOfMonth(date)}</p>
