@@ -228,8 +228,16 @@ def _memory_cache_get(cache_key: tuple[StoreName, str, str, str]) -> list[dict[s
     return data if isinstance(data, list) else None
 
 
-def _memory_cache_set(cache_key: tuple[StoreName, str, str, str], products: list[dict[str, str]]) -> None:
-    CACHE[cache_key] = {"data": products, "timestamp": time.time()}
+def _memory_cache_set(
+    cache_key: tuple[StoreName, str, str, str],
+    products: list[dict[str, str]],
+    *,
+    timestamp: float | None = None,
+) -> None:
+    CACHE[cache_key] = {
+        "data": products,
+        "timestamp": time.time() if timestamp is None else timestamp,
+    }
 
 
 def _clean_query(q: str) -> str:
@@ -580,7 +588,7 @@ async def _fetch_store_products(
             return memory_cached
 
         if session is not None:
-            db_cached = await repo_store_cache.get_cached_store_products(
+            db_cached = await repo_store_cache.get_cached_store_products_with_metadata(
                 session,
                 query=cleaned_query,
                 store=store,
@@ -589,8 +597,12 @@ async def _fetch_store_products(
                 max_age_seconds=CACHE_TTL_SECONDS,
             )
             if db_cached is not None:
-                _memory_cache_set(cache_key, db_cached)
-                return db_cached
+                _memory_cache_set(
+                    cache_key,
+                    db_cached.products,
+                    timestamp=db_cached.updated_at.timestamp(),
+                )
+                return db_cached.products
 
     products = await _scrape_store_products(cleaned_query, store, weee_lang)
     if not products:

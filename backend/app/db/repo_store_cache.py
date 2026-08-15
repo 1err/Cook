@@ -3,6 +3,7 @@ Persistent cache access for store product lookups.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import re
 
@@ -10,6 +11,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import CachedStoreProductModel
+
+
+@dataclass(frozen=True)
+class CachedStoreProducts:
+    products: list[dict[str, str]]
+    updated_at: datetime
 
 
 def is_cache_entry_fresh(
@@ -62,6 +69,26 @@ async def get_cached_store_products(
     cache_version: str,
     max_age_seconds: int,
 ) -> list[dict[str, str]] | None:
+    entry = await get_cached_store_products_with_metadata(
+        session,
+        query=query,
+        store=store,
+        language=language,
+        cache_version=cache_version,
+        max_age_seconds=max_age_seconds,
+    )
+    return entry.products if entry is not None else None
+
+
+async def get_cached_store_products_with_metadata(
+    session: AsyncSession,
+    *,
+    query: str,
+    store: str,
+    language: str,
+    cache_version: str,
+    max_age_seconds: int,
+) -> CachedStoreProducts | None:
     result = await session.execute(
         select(CachedStoreProductModel).where(
             CachedStoreProductModel.query == query,
@@ -73,14 +100,17 @@ async def get_cached_store_products(
     row = result.scalars().one_or_none()
     if row is None or row.updated_at is None:
         return None
+    updated_at = row.updated_at
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=timezone.utc)
     if not is_cache_entry_fresh(
-        row.updated_at,
+        updated_at,
         datetime.now(timezone.utc),
         max_age_seconds,
     ):
         return None
     products = _normalize_products(row.data)
-    return products or None
+    return CachedStoreProducts(products=products, updated_at=updated_at) if products else None
 
 
 async def get_cached_store_product_entry(

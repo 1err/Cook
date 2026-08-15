@@ -80,15 +80,20 @@ async def test_fresh_memory_hit_skips_database_and_scrape(monkeypatch: pytest.Mo
 async def test_fresh_postgresql_hit_repopulates_memory_and_skips_scrape(monkeypatch: pytest.MonkeyPatch):
     database_calls = 0
 
-    async def fresh_database(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+    async def fresh_database(*args: Any, **kwargs: Any) -> SimpleNamespace:
         nonlocal database_calls
         database_calls += 1
-        return [PRODUCT]
+        return SimpleNamespace(products=[PRODUCT], updated_at=datetime.now(timezone.utc))
 
     async def unexpected_scrape(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
         raise AssertionError("a fresh PostgreSQL result must skip scraping")
 
-    monkeypatch.setattr(repo_store_cache, "get_cached_store_products", fresh_database)
+    monkeypatch.setattr(
+        repo_store_cache,
+        "get_cached_store_products_with_metadata",
+        fresh_database,
+        raising=False,
+    )
     monkeypatch.setattr(store_scraper, "_scrape_store_products", unexpected_scrape, raising=False)
 
     first = await store_scraper.fetch_weee_products("silken tofu", session=object())
@@ -97,6 +102,51 @@ async def test_fresh_postgresql_hit_repopulates_memory_and_skips_scrape(monkeypa
     assert first == [PRODUCT]
     assert second == [PRODUCT]
     assert database_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_near_expiry_database_hit_does_not_extend_memory_freshness(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    clock = {"seconds": 1_000_000.0}
+    database_calls = 0
+    scrape_calls = 0
+    database_product = {**PRODUCT, "price": "$2.99"}
+    refreshed_product = {**PRODUCT, "price": "$3.99"}
+    updated_at = datetime.fromtimestamp(clock["seconds"] - 86399, tz=timezone.utc)
+
+    async def database_hit_with_metadata(*args: Any, **kwargs: Any) -> SimpleNamespace | None:
+        nonlocal database_calls
+        database_calls += 1
+        if clock["seconds"] < 1_000_001.0:
+            return SimpleNamespace(products=[database_product], updated_at=updated_at)
+        return None
+
+    async def scrape_live(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+        nonlocal scrape_calls
+        scrape_calls += 1
+        return [refreshed_product]
+
+    async def persist_positive(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(store_scraper.time, "time", lambda: clock["seconds"])
+    monkeypatch.setattr(
+        repo_store_cache,
+        "get_cached_store_products_with_metadata",
+        database_hit_with_metadata,
+        raising=False,
+    )
+    monkeypatch.setattr(repo_store_cache, "upsert_cached_store_products", persist_positive)
+    monkeypatch.setattr(store_scraper, "_scrape_store_products", scrape_live)
+
+    assert await store_scraper.fetch_weee_products("silken tofu", session=object()) == [database_product]
+
+    clock["seconds"] = 1_000_002.0
+
+    assert await store_scraper.fetch_weee_products("silken tofu", session=object()) == [refreshed_product]
+    assert database_calls == 2
+    assert scrape_calls == 1
 
 
 @pytest.mark.asyncio
@@ -118,7 +168,12 @@ async def test_expired_database_miss_reaches_live_scrape_without_returning_stale
     async def persist_positive(*args: Any, **kwargs: Any) -> None:
         return None
 
-    monkeypatch.setattr(repo_store_cache, "get_cached_store_products", expired_database)
+    monkeypatch.setattr(
+        repo_store_cache,
+        "get_cached_store_products_with_metadata",
+        expired_database,
+        raising=False,
+    )
     monkeypatch.setattr(repo_store_cache, "upsert_cached_store_products", persist_positive)
     monkeypatch.setattr(store_scraper, "_scrape_store_products", scrape_live, raising=False)
     store_scraper.CACHE[("weee", "en", store_scraper.CACHE_VERSION, "stale tofu")] = {
@@ -151,7 +206,12 @@ async def test_positive_live_scrape_persists_weee_before_future_call_uses_memory
         assert kwargs["data"] == [PRODUCT]
         calls.append("upsert")
 
-    monkeypatch.setattr(repo_store_cache, "get_cached_store_products", cache_miss)
+    monkeypatch.setattr(
+        repo_store_cache,
+        "get_cached_store_products_with_metadata",
+        cache_miss,
+        raising=False,
+    )
     monkeypatch.setattr(repo_store_cache, "upsert_cached_store_products", persist_positive)
     monkeypatch.setattr(store_scraper, "_scrape_store_products", scrape_live, raising=False)
 
@@ -174,7 +234,12 @@ async def test_empty_live_result_never_overwrites_a_positive_cache_entry(monkeyp
     async def unexpected_upsert(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("an empty scrape must not overwrite cached products")
 
-    monkeypatch.setattr(repo_store_cache, "get_cached_store_products", cache_miss)
+    monkeypatch.setattr(
+        repo_store_cache,
+        "get_cached_store_products_with_metadata",
+        cache_miss,
+        raising=False,
+    )
     monkeypatch.setattr(repo_store_cache, "upsert_cached_store_products", unexpected_upsert)
     monkeypatch.setattr(store_scraper, "_scrape_store_products", scrape_empty, raising=False)
 
