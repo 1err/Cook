@@ -1,88 +1,113 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { useAuth } from "../lib/auth";
+import { useEffect, useState } from "react";
 import { isAdminUser } from "../lib/admin";
-import { useT } from "../lib/i18n";
-import { NavAuth } from "./NavAuth";
+import { useAuth } from "../lib/auth";
+import { useI18n } from "../lib/i18n";
+import { AccountMenu } from "./AccountMenu";
+import styles from "./Header.module.css";
+import { ActionLink } from "./ui/Button";
+import { IconButton } from "./ui/IconButton";
+
+const PRIMARY_LINKS = [
+  { href: "/library", key: "nav.library" },
+  { href: "/planner", key: "nav.planner" },
+  { href: "/shopping-list", key: "nav.shopping" },
+] as const;
 
 export function Header() {
   const pathname = usePathname();
-  const { user } = useAuth();
-  const t = useT();
+  const { loading, logout, user } = useAuth();
+  const { t } = useI18n();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const hideHeader = pathname === "/login" || pathname === "/register";
 
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  if (hideHeader) {
+  if (pathname === "/login" || pathname === "/register") {
     return null;
   }
 
-  const isActive = (href: string, alsoActive?: string) =>
-    pathname === href || (alsoActive != null && pathname === alsoActive);
-
-  const isLogoActive = pathname === "/" || pathname === "/import";
-  const logoHref = user ? "/library" : "/login";
-  const showPreview = isAdminUser(user);
+  const isActive = (href: string) =>
+    pathname === href || (href === "/library" && pathname.startsWith("/library/"));
+  const addRecipeHref = `/import?from=${encodeURIComponent(pathname)}`;
 
   return (
-    <header className="app-header">
-      <div className="app-header__inner">
-        <div className="app-header__left">
-          <Link href={logoHref} className="app-header__brand" aria-label={t("nav.home")}>
-            <span className="app-header__mark" aria-hidden>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M8 3v18M16 3v18M4 8h16M4 16h16"
-                  stroke="white"
-                  strokeWidth="1.75"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </span>
-            <span className={`font-headline app-header__logo-text${isLogoActive ? " is-active" : ""}`}>
-              {t("nav.appName")}
-            </span>
-          </Link>
-          {user ? (
+    <header className={styles.header}>
+      <div className={styles.inner}>
+        <Link
+          aria-label={t("nav.appName")}
+          className={styles.brand}
+          href={user ? "/library" : "/login"}
+        >
+          <span aria-hidden="true" className={styles.brandMark}>
+            CW
+          </span>
+          <span aria-hidden="true" className={styles.brandName}>
+            {t("nav.appName")}
+          </span>
+        </Link>
+
+        {user ? (
+          <nav
+            aria-label="Main"
+            className={`${styles.nav}${mobileMenuOpen ? ` ${styles.navOpen}` : ""}`}
+          >
+            {PRIMARY_LINKS.map((link) => {
+              const active = isActive(link.href);
+              return (
+                <Link
+                  aria-current={active ? "page" : undefined}
+                  className={`${styles.navLink}${active ? ` ${styles.navLinkActive}` : ""}`}
+                  href={link.href}
+                  key={link.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {t(link.key)}
+                </Link>
+              );
+            })}
+          </nav>
+        ) : null}
+
+        <div className={styles.actions}>
+          {loading ? <span aria-hidden="true" className={styles.accountSkeleton} /> : null}
+
+          {!loading && user ? (
             <>
-              <button
-                type="button"
-                className="app-header__menu-button"
-                aria-expanded={mobileMenuOpen}
-                aria-label={mobileMenuOpen ? t("nav.closeMenu") : t("nav.openMenu")}
-                onClick={() => setMobileMenuOpen((open) => !open)}
+              <ActionLink
+                className={styles.addRecipe}
+                href={addRecipeHref}
+                leadingIcon="add"
+                size="sm"
               >
-                <span className="material-symbols-outlined">{mobileMenuOpen ? "close" : "menu"}</span>
-              </button>
-              <nav className={`app-header__nav${mobileMenuOpen ? " is-open" : ""}`} aria-label="Main">
-                <Link href="/library" className={`headerNavLink${isActive("/library") ? " is-active" : ""}`}>
-                  {t("nav.library")}
-                </Link>
-                <Link href="/planner" className={`headerNavLink${isActive("/planner") ? " is-active" : ""}`}>
-                  {t("nav.planner")}
-                </Link>
-                <Link href="/shopping-list" className={`headerNavLink${isActive("/shopping-list") ? " is-active" : ""}`}>
-                  {t("nav.shoppingList")}
-                </Link>
-                <Link href="/import" className={`headerNavLink${isActive("/import") ? " is-active" : ""}`}>
-                  {t("nav.import")}
-                </Link>
-                {showPreview ? (
-                  <Link href="/preview" className={`headerNavLink${isActive("/preview") ? " is-active" : ""}`}>
-                    {t("nav.preview")}
-                  </Link>
-                ) : null}
-              </nav>
+                {t("nav.addRecipe")}
+              </ActionLink>
+              <AccountMenu email={user.email} isAdmin={isAdminUser(user)} onLogout={logout} />
+              <IconButton
+                className={styles.menuButton}
+                icon={mobileMenuOpen ? "close" : "menu"}
+                label={mobileMenuOpen ? t("nav.closeMenu") : t("nav.openMenu")}
+                onClick={() => setMobileMenuOpen((current) => !current)}
+                pressed={mobileMenuOpen}
+              />
             </>
           ) : null}
+
+          {!loading && !user ? (
+            <div className={styles.authActions}>
+              <ActionLink href="/login" size="sm" variant="ghost">
+                {t("nav.signIn")}
+              </ActionLink>
+              <ActionLink href="/register" size="sm" variant="secondary">
+                {t("nav.register")}
+              </ActionLink>
+            </div>
+          ) : null}
         </div>
-        <NavAuth />
       </div>
     </header>
   );
