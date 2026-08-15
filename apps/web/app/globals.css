@@ -2,6 +2,7 @@
 :root {
   --font-inter: system-ui, sans-serif;
   --font-manrope: system-ui, sans-serif;
+  --app-header-height: 72px;
 
   --space-4: 4px;
   --space-8: 8px;
@@ -2789,6 +2790,214 @@ button:disabled {
 
   .planner-editorial__main {
     padding: 1rem 1rem 5rem;
+  }
+}
+
+/* Desktop planner viewport contract */
+@media (min-width: 1024px) {
+  .planner-editorial {
+    display: grid;
+    grid-template-columns: clamp(15.5rem, 18vw, 18rem) minmax(0, 1fr);
+    height: calc(100dvh - var(--app-header-height));
+    /* The header divider occupies one extra layout pixel beyond its 72px inner box. */
+    margin-top: -1px;
+    min-height: 0;
+    max-height: none;
+    overflow: hidden;
+  }
+
+  .planner-editorial.app-wide {
+    padding: 0;
+  }
+
+  .planner-editorial__sidebar {
+    min-height: 0;
+    width: auto;
+  }
+
+  .planner-editorial__sidebar-head {
+    padding: 1rem 1.25rem 0.75rem;
+  }
+
+  .planner-editorial__sidebar-scroll {
+    min-height: 0;
+    padding: 0 1.25rem 1rem;
+  }
+
+  .planner-editorial__sidebar-foot {
+    padding: 0.75rem 1.25rem;
+  }
+
+  .planner-editorial__main,
+  .planner-editorial__grid,
+  .planner-editorial__day-column,
+  .planner-editorial__day-body {
+    min-height: 0;
+  }
+
+  .planner-editorial__main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0.85rem 1rem 1rem;
+  }
+
+  .planner-editorial__main > section:first-child {
+    align-items: center;
+    display: flex;
+    flex: 0 0 auto;
+    gap: 1rem;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+
+  .planner-editorial__main > section:first-child > div:last-child {
+    align-items: center;
+    display: flex;
+    flex: 0 0 auto;
+    gap: 0.5rem;
+  }
+
+  .planner-editorial__grid {
+    display: grid;
+    flex: 1;
+    gap: 0.65rem;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+
+  .planner-editorial__day-column {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .planner-editorial__day-head {
+    flex: 0 0 auto;
+    padding: 0.45rem;
+  }
+
+  .planner-editorial__day-head .dom {
+    font-size: 1.15rem;
+    margin-top: 0.05rem;
+  }
+
+  .planner-editorial__day-body {
+    display: grid;
+    flex: 1;
+    gap: 0.35rem;
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+    padding: 0.35rem;
+  }
+
+  .planner-drop-target {
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .planner-drop-target::before {
+    color: var(--on-surface-variant);
+    content: "";
+    font-size: 0.5rem;
+    font-weight: 900;
+    left: 0.4rem;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    position: absolute;
+    text-transform: uppercase;
+    top: 0.3rem;
+    z-index: 2;
+  }
+
+  .planner-drop-target[data-slot-index="0"]::before {
+    color: var(--primary-container);
+    content: "Breakfast";
+  }
+
+  .planner-drop-target[data-slot-index="1"]::before {
+    color: var(--tertiary);
+    content: "Lunch";
+  }
+
+  .planner-drop-target[data-slot-index="2"]::before {
+    color: var(--primary);
+    content: "Dinner";
+  }
+
+  .planner-drop-target--filled {
+    padding: 1rem 0.25rem 0.25rem;
+  }
+
+  .planner-slot-empty-trigger {
+    padding-top: 1rem;
+  }
+
+  .planner-slot-recipes {
+    gap: 0.2rem;
+    max-height: 100%;
+  }
+
+  .planner-meal-card {
+    display: grid;
+    grid-template-columns: 2.25rem minmax(0, 1fr);
+    height: 2.25rem;
+    min-height: 0;
+  }
+
+  .planner-meal-card__img {
+    height: 2.25rem;
+    width: 2.25rem;
+  }
+
+  .planner-meal-card__body {
+    align-items: center;
+    display: flex;
+    min-width: 0;
+    padding: 0.25rem 1.55rem 0.25rem 0.4rem;
+  }
+
+  .planner-meal-card__title {
+    font-size: 0.625rem;
+    line-height: 1.15;
+  }
+
+  .planner-meal-card__clear {
+    background: var(--surface-container-lowest);
+    height: 1.4rem;
+    right: 0.18rem;
+    top: 0.42rem;
+    width: 1.4rem;
+  }
+
+  .planner-meal-card__clear:focus-visible {
+    opacity: 1;
+  }
+
+  .planner-slot-action {
+    font-size: 0.6rem;
+    line-height: 1.1;
+    min-height: 1.25rem;
+    padding: 0.2rem 0.4rem;
+  }
+}
+
+@media (max-width: 1023px) {
+  .planner-editorial {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .planner-editorial__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .planner-editorial__day-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-width: 0;
   }
 }
 
