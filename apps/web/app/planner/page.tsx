@@ -30,6 +30,15 @@ import { addRecipeToSlots, removeRecipeFromSlots } from "./plannerModel";
 
 const COL_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+type DayMutation = (slots: MealPlanSlots) => MealPlanSlots;
+
+type DateMutationQueue = {
+  confirmed: MealPlanSlots;
+  operations: DayMutation[];
+  inFlight: boolean;
+  generation: number;
+};
+
 function todayYmd(): string {
   const n = new Date();
   const y = n.getFullYear();
@@ -59,7 +68,8 @@ function PlannerPageContent() {
   const [categoryFilter, setCategoryFilter] = useState<LibraryFilterId>("all");
   const [slotPicker, setSlotPicker] = useState<{ date: string; slot: MealType } | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
-  const mutationVersionByDate = useRef<Record<string, number>>({});
+  const mutationQueuesByDate = useRef<Record<string, DateMutationQueue>>({});
+  const loadGeneration = useRef(0);
 
   const sidebarRecipes = useMemo(() => {
     const q = sideSearch.trim().toLowerCase();
@@ -75,6 +85,9 @@ function PlannerPageContent() {
 
   useEffect(() => {
     let cancelled = false;
+    const generation = loadGeneration.current + 1;
+    loadGeneration.current = generation;
+    mutationQueuesByDate.current = {};
     async function load() {
       setLoading(true);
       setPlanByDate({});
@@ -98,7 +111,20 @@ function PlannerPageContent() {
           dates.forEach((d) => {
             if (!nextPlan[d]) nextPlan[d] = emptyMealPlanSlots();
           });
-          if (!cancelled) setPlanByDate(nextPlan);
+          if (!cancelled && loadGeneration.current === generation) {
+            mutationQueuesByDate.current = Object.fromEntries(
+              dates.map((date) => [
+                date,
+                {
+                  confirmed: nextPlan[date],
+                  operations: [],
+                  inFlight: false,
+                  generation,
+                },
+              ]),
+            );
+            setPlanByDate(nextPlan);
+          }
         }
       } catch {
         if (!cancelled) setRecipes([]);
@@ -138,24 +164,55 @@ function PlannerPageContent() {
     return normalizeMealPlanSlots(updated);
   }
 
-  async function commitDayMutation(
-    date: string,
-    previous: MealPlanSlots,
-    next: MealPlanSlots,
-  ) {
-    const version = (mutationVersionByDate.current[date] ?? 0) + 1;
-    mutationVersionByDate.current[date] = version;
-    setMutationError(null);
-    setPlanByDate((current) => ({ ...current, [date]: next }));
+  function isCurrentQueue(date: string, queue: DateMutationQueue) {
+    return (
+      loadGeneration.current === queue.generation &&
+      mutationQueuesByDate.current[date] === queue
+    );
+  }
+
+  function optimisticSlots(queue: DateMutationQueue) {
+    return queue.operations.reduce(
+      (slots, operation) => operation(slots),
+      queue.confirmed,
+    );
+  }
+
+  function paintQueue(date: string, queue: DateMutationQueue) {
+    if (!isCurrentQueue(date, queue)) return;
+    const slots = optimisticSlots(queue);
+    setPlanByDate((current) => ({ ...current, [date]: slots }));
+  }
+
+  async function runMutationQueue(date: string, queue: DateMutationQueue) {
+    if (queue.inFlight || queue.operations.length === 0 || !isCurrentQueue(date, queue)) return;
+    queue.inFlight = true;
+    const operation = queue.operations[0];
+    const target = operation(queue.confirmed);
     try {
-      const saved = await putDay(date, next);
-      if (mutationVersionByDate.current[date] !== version) return;
-      setPlanByDate((current) => ({ ...current, [date]: saved }));
+      const saved = await putDay(date, target);
+      if (!isCurrentQueue(date, queue)) return;
+      queue.confirmed = saved;
+      queue.operations.shift();
+      queue.inFlight = false;
+      paintQueue(date, queue);
     } catch {
-      if (mutationVersionByDate.current[date] !== version) return;
-      setPlanByDate((current) => ({ ...current, [date]: previous }));
+      if (!isCurrentQueue(date, queue)) return;
+      queue.operations.shift();
+      queue.inFlight = false;
+      paintQueue(date, queue);
       setMutationError(t("planner.saveFailed"));
     }
+    void runMutationQueue(date, queue);
+  }
+
+  function enqueueDayMutation(date: string, operation: DayMutation) {
+    const queue = mutationQueuesByDate.current[date];
+    if (!queue || !isCurrentQueue(date, queue)) return;
+    queue.operations.push(operation);
+    setMutationError(null);
+    paintQueue(date, queue);
+    void runMutationQueue(date, queue);
   }
 
   function handleDragStart(e: React.DragEvent, recipeId: string) {
@@ -196,15 +253,12 @@ function PlannerPageContent() {
 
   async function addRecipeToSlot(date: string, slot: MealType, recipeId: string) {
     const current = planByDate[date] ?? emptyMealPlanSlots();
-    const nextSlots = addRecipeToSlots(current, slot, recipeId);
-    if (nextSlots === current) return;
-    await commitDayMutation(date, current, nextSlots);
+    if (current[slot].includes(recipeId)) return;
+    enqueueDayMutation(date, (slots) => addRecipeToSlots(slots, slot, recipeId));
   }
 
   async function removeMeal(date: string, slot: MealType, recipeId: string) {
-    const current = planByDate[date] ?? emptyMealPlanSlots();
-    const nextSlots = removeRecipeFromSlots(current, slot, recipeId);
-    await commitDayMutation(date, current, nextSlots);
+    enqueueDayMutation(date, (slots) => removeRecipeFromSlots(slots, slot, recipeId));
   }
 
   const recipeById: Record<string, Recipe> = {};
