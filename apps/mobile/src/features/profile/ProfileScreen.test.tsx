@@ -22,6 +22,17 @@ jest.mock("../../lib/i18n", () => ({
 
 beforeEach(() => mockNavigate.mockClear());
 
+test("labels the library sharing switch", async () => {
+  await render(
+    <ProfileScreen
+      navigation={{ navigate: mockNavigate } as never}
+      route={{ key: "profile", name: "Profile" }}
+    />,
+  );
+
+  expect(screen.getByLabelText("account.shareLibrary")).toBeOnTheScreen();
+});
+
 test("opens the development design-system gallery from the account screen", async () => {
   await render(
     <ProfileScreen

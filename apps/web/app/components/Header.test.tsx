@@ -94,7 +94,8 @@ test("preserves sign-in and registration actions for unauthenticated routes", ()
 test("the navigation disclosure owns and precedes the links it reveals in tab order", async () => {
   const user = userEvent.setup();
   render(<Header />);
-  const trigger = screen.getByRole("button", { name: "Open navigation menu" });
+  const trigger = screen.getByLabelText("Open navigation menu");
+  trigger.style.display = "inline-flex";
   const navigation = screen.getByRole("navigation", { name: "Main" });
   const libraryLink = screen.getByRole("link", { name: "Library" });
 

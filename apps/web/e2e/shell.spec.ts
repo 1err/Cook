@@ -22,10 +22,13 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/settings");
 });
 
-test("renders an accessible responsive authenticated shell", async ({ page }) => {
+test("renders an accessible responsive authenticated shell", async ({ page }, testInfo) => {
   await expect(page.getByRole("link", { name: "Add Recipe" })).toBeVisible();
   const navigationMenu = page.getByRole("button", { name: "Open navigation menu" });
-  if (await navigationMenu.isVisible()) {
+  if (testInfo.project.name === "desktop") {
+    await expect(navigationMenu).toBeHidden();
+  } else {
+    await expect(navigationMenu).toBeVisible();
     await navigationMenu.click();
   }
   await expect(page.getByRole("link", { name: "Library" })).toBeVisible();

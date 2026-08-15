@@ -44,6 +44,7 @@ export function ProfileScreen({ navigation }: Props) {
           leading={<Ionicons name="people-outline" size={20} color={colors.primary} />}
           trailing={
             <Switch
+              accessibilityLabel={t("account.shareLibrary")}
               value={user?.is_library_public ?? false}
               onValueChange={(next) => void onToggle(next)}
               disabled={pending || !user}

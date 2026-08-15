@@ -104,7 +104,7 @@
   white-space: nowrap;
 }
 
-.menuButton {
+button.menuButton {
   display: none;
 }
 
@@ -142,7 +142,7 @@
     grid-row: 1;
   }
 
-  .menuButton {
+  button.menuButton {
     display: inline-flex;
     grid-column: 2;
     grid-row: 1;
