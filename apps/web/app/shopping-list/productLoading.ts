@@ -54,7 +54,8 @@ export async function runOrderedProductQueue({
 
   let cursor = 0;
   let done = 0;
-  const workerCount = Math.min(Math.max(1, Math.floor(concurrency)), keys.length);
+  const requestedWorkers = Number.isFinite(concurrency) ? Math.floor(concurrency) : 4;
+  const workerCount = Math.min(Math.max(1, Math.min(requestedWorkers, 4)), keys.length);
 
   async function worker() {
     while (shouldContinue()) {

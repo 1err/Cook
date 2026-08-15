@@ -64,6 +64,52 @@ test("starts in queue order and never exceeds four active loads", async () => {
   expect(peak).toBe(4);
 });
 
+test("clamps an oversized concurrency request to four active loads", async () => {
+  const started: string[] = [];
+  const releases: Array<() => void> = [];
+  const load = vi.fn(async (key: string) => {
+    started.push(key);
+    await new Promise<void>((resolve) => releases.push(resolve));
+    return [product(key)];
+  });
+
+  const promise = runOrderedProductQueue({
+    keys: ["a", "b", "c", "d", "e"],
+    concurrency: 99,
+    load,
+    onState: vi.fn(),
+    onProgress: vi.fn(),
+  });
+
+  await vi.waitFor(() => expect(started).toEqual(["a", "b", "c", "d"]));
+  releases.shift()?.();
+  await vi.waitFor(() => expect(started).toEqual(["a", "b", "c", "d", "e"]));
+  releases.splice(0).forEach((release) => release());
+  await promise;
+});
+
+test("normalizes a non-finite concurrency request to the safe ceiling", async () => {
+  const started: string[] = [];
+  const releases: Array<() => void> = [];
+  const promise = runOrderedProductQueue({
+    keys: ["a", "b", "c", "d", "e"],
+    concurrency: Number.POSITIVE_INFINITY,
+    load: async (key) => {
+      started.push(key);
+      await new Promise<void>((resolve) => releases.push(resolve));
+      return [product(key)];
+    },
+    onState: vi.fn(),
+    onProgress: vi.fn(),
+  });
+
+  await vi.waitFor(() => expect(started).toEqual(["a", "b", "c", "d"]));
+  releases.shift()?.();
+  await vi.waitFor(() => expect(started).toEqual(["a", "b", "c", "d", "e"]));
+  releases.splice(0).forEach((release) => release());
+  await promise;
+});
+
 test("emits one terminal state and progress for each completed lookup", async () => {
   const transitions = new Map<string, ProductLookupState[]>();
   const progress: Array<[number, number]> = [];
