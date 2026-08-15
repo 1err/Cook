@@ -134,6 +134,8 @@
   "planner.closeSlotRecipes": "关闭餐食菜谱",
   "planner.chooseRecipeForSlot": "为 {date} 的 {slot} 选择菜谱",
   "planner.addAnotherRecipeForSlot": "为 {date} 的 {slot} 再添加一道菜谱",
+  "planner.saveFailed": "无法保存你的计划更改。已恢复之前的计划。",
+  "planner.dismissError": "关闭错误",
   "shopping.title": "购物清单",
   "shopping.currentRange": "当前范围",
   "shopping.changeWeek": "切换周次",

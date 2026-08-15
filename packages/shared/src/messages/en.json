@@ -134,6 +134,8 @@
   "planner.closeSlotRecipes": "Close meal recipes",
   "planner.chooseRecipeForSlot": "Choose a recipe for {slot} on {date}",
   "planner.addAnotherRecipeForSlot": "Add another recipe for {slot} on {date}",
+  "planner.saveFailed": "Could not save your planner change. Your previous plan was restored.",
+  "planner.dismissError": "Dismiss error",
   "shopping.title": "Shopping List",
   "shopping.currentRange": "Current range",
   "shopping.changeWeek": "Change week",

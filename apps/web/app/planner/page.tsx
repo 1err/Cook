@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "../lib/api";
@@ -23,6 +23,10 @@ import {
 } from "@cooking/shared";
 import { CATEGORY_LABELS, type LibraryFilterId } from "../lib/recipeCategories";
 import { getRecipeTags } from "../lib/recipeTags";
+import { PlannerRecipeRail } from "./components/PlannerRecipeRail";
+import { PlannerToolbar } from "./components/PlannerToolbar";
+import { PlannerWeekBoard } from "./components/PlannerWeekBoard";
+import { addRecipeToSlots, removeRecipeFromSlots } from "./plannerModel";
 
 const COL_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -54,6 +58,8 @@ function PlannerPageContent() {
   const [sideSearch, setSideSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<LibraryFilterId>("all");
   const [slotPicker, setSlotPicker] = useState<{ date: string; slot: MealType } | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const mutationVersionByDate = useRef<Record<string, number>>({});
 
   const sidebarRecipes = useMemo(() => {
     const q = sideSearch.trim().toLowerCase();
@@ -74,6 +80,7 @@ function PlannerPageContent() {
       setPlanByDate({});
       setSlotPicker(null);
       setDraggingSlot(null);
+      setMutationError(null);
       try {
         const [plansRes, recipesRes] = await Promise.all([
           apiFetch(`/meal-plan?start=${start}&end=${end}`),
@@ -121,18 +128,34 @@ function PlannerPageContent() {
     }
   }, [dates, loading, planByDate, start]);
 
-  async function putDay(date: string, slots: MealPlanSlots) {
+  async function putDay(date: string, slots: MealPlanSlots): Promise<MealPlanSlots> {
     const res = await apiFetch(`/meal-plan/${date}`, {
       method: "PUT",
       body: JSON.stringify(slots),
     });
-    if (!res.ok) return false;
+    if (!res.ok) throw new Error("Failed to save meal plan");
     const updated: MealPlanDay = await res.json();
-    setPlanByDate((prev) => ({
-      ...prev,
-      [date]: normalizeMealPlanSlots(updated),
-    }));
-    return true;
+    return normalizeMealPlanSlots(updated);
+  }
+
+  async function commitDayMutation(
+    date: string,
+    previous: MealPlanSlots,
+    next: MealPlanSlots,
+  ) {
+    const version = (mutationVersionByDate.current[date] ?? 0) + 1;
+    mutationVersionByDate.current[date] = version;
+    setMutationError(null);
+    setPlanByDate((current) => ({ ...current, [date]: next }));
+    try {
+      const saved = await putDay(date, next);
+      if (mutationVersionByDate.current[date] !== version) return;
+      setPlanByDate((current) => ({ ...current, [date]: saved }));
+    } catch {
+      if (mutationVersionByDate.current[date] !== version) return;
+      setPlanByDate((current) => ({ ...current, [date]: previous }));
+      setMutationError(t("planner.saveFailed"));
+    }
   }
 
   function handleDragStart(e: React.DragEvent, recipeId: string) {
@@ -173,27 +196,15 @@ function PlannerPageContent() {
 
   async function addRecipeToSlot(date: string, slot: MealType, recipeId: string) {
     const current = planByDate[date] ?? emptyMealPlanSlots();
-    const nextSlots: MealPlanSlots = {
-      breakfast: [...current.breakfast],
-      lunch: [...current.lunch],
-      dinner: [...current.dinner],
-    };
-    if (nextSlots[slot].includes(recipeId)) return;
-    nextSlots[slot] = [...nextSlots[slot], recipeId];
-    setPlanByDate((prev) => ({ ...prev, [date]: nextSlots }));
-    await putDay(date, nextSlots);
+    const nextSlots = addRecipeToSlots(current, slot, recipeId);
+    if (nextSlots === current) return;
+    await commitDayMutation(date, current, nextSlots);
   }
 
   async function removeMeal(date: string, slot: MealType, recipeId: string) {
     const current = planByDate[date] ?? emptyMealPlanSlots();
-    const nextSlots: MealPlanSlots = {
-      breakfast: [...current.breakfast],
-      lunch: [...current.lunch],
-      dinner: [...current.dinner],
-    };
-    nextSlots[slot] = nextSlots[slot].filter((id) => id !== recipeId);
-    setPlanByDate((prev) => ({ ...prev, [date]: nextSlots }));
-    await putDay(date, nextSlots);
+    const nextSlots = removeRecipeFromSlots(current, slot, recipeId);
+    await commitDayMutation(date, current, nextSlots);
   }
 
   const recipeById: Record<string, Recipe> = {};
@@ -305,198 +316,64 @@ function PlannerPageContent() {
 
   return (
     <div className="planner-editorial app-wide" style={{ maxWidth: "100%" }}>
-      <aside className="planner-editorial__sidebar">
-        <div className="planner-editorial__sidebar-head space-y-4">
-          <div>
-            <h2 className="font-headline m-0 mb-2" style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--on-surface)", letterSpacing: "-0.02em" }}>
-              {t("planner.savedRecipes")}
-            </h2>
-            <p className="m-0 text-sm" style={{ color: "var(--on-surface-variant)" }}>
-              {t("planner.savedRecipesDesc")}
-            </p>
-          </div>
-          {recipeSourceControls}
-        </div>
-        <div className="planner-editorial__sidebar-scroll">{recipeSourceList}</div>
-        <div className="planner-editorial__sidebar-foot">
+      <PlannerRecipeRail
+        controls={
+          <>
+            <div>
+              <h2 className="font-headline m-0 mb-2" style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--on-surface)", letterSpacing: "-0.02em" }}>
+                {t("planner.savedRecipes")}
+              </h2>
+              <p className="m-0 text-sm" style={{ color: "var(--on-surface-variant)" }}>
+                {t("planner.savedRecipesDesc")}
+              </p>
+            </div>
+            {recipeSourceControls}
+          </>
+        }
+        recipes={recipeSourceList}
+        footer={
           <Link href="/import" className="btn-primary font-headline w-full flex items-center justify-center gap-2" style={{ width: "100%", textDecoration: "none" }}>
             <span className="material-symbols-outlined">add</span>
             {t("planner.newRecipe")}
           </Link>
-        </div>
-      </aside>
+        }
+      />
 
       <main className="planner-editorial__main">
-        <section className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-          <div className="min-w-0">
-            <span
-              className="font-headline font-bold text-primary block mb-1 uppercase"
-              style={{ fontSize: "0.75rem", letterSpacing: "0.2em" }}
-            >
-              {formatWeekPlannerKicker(start, end)}
-            </span>
-            <h1
-              className="font-headline m-0 text-on-surface"
-              style={{
-                fontSize: "clamp(2.25rem, 4vw, 3rem)",
-                fontWeight: 800,
-                letterSpacing: "-0.03em",
-                lineHeight: 1.05,
-              }}
-            >
-              {t("planner.title")}
-            </h1>
-            <p className="m-0 mt-2 text-sm max-w-xl" style={{ color: "var(--on-surface-variant)", lineHeight: 1.5 }}>
-              Drag recipes from the sidebar into breakfast, lunch, and dinner.{" "}
-              <Link href={`/shopping-list?week=${currentWeek}`} className="font-bold" style={{ color: "var(--primary)" }}>
-                {t("nav.shoppingList")}
-              </Link>{" "}
-              {t("planner.shoppingListUsesPlan")}
-            </p>
-          </div>
-          <div className="flex gap-2 shrink-0">
-            <button
-              type="button"
-              className="transition-colors border-0 cursor-pointer"
-              style={{
-                padding: "0.5rem",
-                background: "var(--surface-container-low)",
-                borderRadius: "9999px",
-                color: "var(--on-surface-variant)",
-              }}
-              onClick={() => setWeek(prev)}
-              aria-label={t("common.previous")}
-            >
-              <span className="material-symbols-outlined">chevron_left</span>
-            </button>
-            <button
-              type="button"
-              className="transition-colors border-0 cursor-pointer"
-              style={{
-                padding: "0.5rem",
-                background: "var(--surface-container-low)",
-                borderRadius: "9999px",
-                color: "var(--on-surface-variant)",
-              }}
-              onClick={() => setWeek(next)}
-              aria-label={t("common.next")}
-            >
-              <span className="material-symbols-outlined">chevron_right</span>
-            </button>
-          </div>
-        </section>
+        <PlannerToolbar
+          weekRange={formatWeekPlannerKicker(start, end)}
+          shoppingHref={`/shopping-list?week=${currentWeek}`}
+          onPrevious={() => setWeek(prev)}
+          onNext={() => setWeek(next)}
+        />
 
         <div className="planner-mobile-guide">
           <p className="planner-mobile-guide__title font-headline">{t("planner.phoneFriendlyTitle")}</p>
           <p className="planner-mobile-guide__text">{t("planner.phoneFriendlyDesc")}</p>
         </div>
 
-        <div className="planner-editorial__grid">
-          {dates.map((date, dayIndex) => {
-            const isToday = date === today;
-            return (
-              <div key={date} className="flex flex-col gap-4 min-w-0">
-                <div className={`planner-editorial__day-head${isToday ? " is-today" : ""}`}>
-                  <p className="dow font-headline">{COL_SHORT[dayIndex]}</p>
-                  <p className="dom">{dayOfMonth(date)}</p>
-                </div>
-                <div className="planner-editorial__day-body">
-                  {MEAL_PLAN_SLOTS.map((slot, slotIndex) => {
-                    const recipeIds = (planByDate[date] ?? emptyMealPlanSlots())[slot];
-                    const isHighlight = draggingSlot?.date === date && draggingSlot?.slot === slot;
-                    return (
-                      <div key={slot} className="planner-slot-stack">
-                        <span className={`planner-slot-stack__label font-headline ${slot}`}>{slot}</span>
-                        <div
-                          data-date={date}
-                          data-slot-index={String(slotIndex)}
-                          className={`planner-drop-target flex-1${isHighlight ? " is-drag-over" : ""}${recipeIds.length ? " planner-drop-target--filled" : ""}`}
-                          onDragOver={handleDragOver}
-                          onDragLeave={handleDragLeave}
-                          onDrop={handleDrop}
-                        >
-                          {recipeIds.length ? (
-                            <div className="planner-slot-recipes">
-                              {recipeIds.map((recipeId) => {
-                                const recipe = recipeById[recipeId];
-                                if (!recipe) return null;
-                                return (
-                                  <div key={recipeId} className="planner-slot-recipe">
-                                    <button
-                                      type="button"
-                                      className="planner-meal-card w-full h-full"
-                                      onClick={() => openRecipe(recipeId)}
-                                      aria-label={`Open ${recipe.title}`}
-                                    >
-                                      {recipe.thumbnail_url ? (
-                                        <img src={recipe.thumbnail_url} alt="" className="planner-meal-card__img" />
-                                      ) : (
-                                        <div
-                                          className="planner-meal-card__img"
-                                          style={{
-                                            background: "linear-gradient(145deg, var(--primary-fixed), var(--surface-container-high))",
-                                          }}
-                                        />
-                                      )}
-                                      <div className="planner-meal-card__body">
-                                        <p className="planner-meal-card__title font-headline">{recipe.title}</p>
-                                      </div>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="planner-meal-card__clear"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        removeMeal(date, slot, recipeId);
-                                      }}
-                                      aria-label={t("planner.removeMeal")}
-                                    >
-                                      <span className="material-symbols-outlined text-sm">close</span>
-                                    </button>
-                                  </div>
-                                );
-                              })}
-                              <span className="planner-drop-target__hint">{t("planner.dropAnotherRecipe")}</span>
-                              <button
-                                type="button"
-                                className="planner-slot-action planner-slot-action--mobile font-headline"
-                                onClick={() => setSlotPicker({ date, slot })}
-                              >
-                                {t("planner.addAnotherRecipe")}
-                              </button>
-                              <button
-                                type="button"
-                                className="planner-slot-action planner-slot-action--desktop-icon"
-                                onClick={() => setSlotPicker({ date, slot })}
-                                aria-label={`Choose another recipe for ${slot} on ${date}`}
-                              >
-                                <span className="material-symbols-outlined">add</span>
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              className="planner-slot-empty-trigger"
-                              onClick={() => setSlotPicker({ date, slot })}
-                              aria-label={`Choose a recipe for ${slot} on ${date}`}
-                            >
-                              <span className="planner-slot-plus" aria-hidden="true">
-                                <span className="material-symbols-outlined text-2xl opacity-40">add</span>
-                              </span>
-                              <span className="planner-slot-empty-trigger__label planner-slot-action--mobile font-headline">
-                                {t("planner.chooseRecipe")}
-                              </span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {mutationError ? (
+          <div role="status" className="planner-mutation-error">
+            <span>{mutationError}</span>
+            <button type="button" onClick={() => setMutationError(null)}>
+              {t("planner.dismissError")}
+            </button>
+          </div>
+        ) : null}
+
+        <PlannerWeekBoard
+          dates={dates}
+          today={today}
+          planByDate={planByDate}
+          recipesById={recipeById}
+          draggingSlot={draggingSlot}
+          onChoose={(date, slot) => setSlotPicker({ date, slot })}
+          onOpen={openRecipe}
+          onRemove={removeMeal}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        />
 
         {slotPicker ? (
           <div className="planner-mobile-picker" role="dialog" aria-modal="true" aria-label={t("planner.chooseRecipeForMealSlot")}>
