@@ -120,6 +120,39 @@ test("closes overflow with the Close button and restores focus", async () => {
   expect(trigger).toHaveFocus();
 });
 
+test("reopens overflow directly on Close without replaying a stale dialog focus", async () => {
+  const user = userEvent.setup();
+  const focusLabels: string[] = [];
+  const props = { ...slotProps(), recipeIds: ["r1", "r2", "r3", "r4"] };
+  renderSlot(
+    <div
+      onFocusCapture={(event) => {
+        const label = event.target.getAttribute("aria-label");
+        if (label) focusLabels.push(label);
+      }}
+    >
+      <PlannerMealSlot {...props} />
+    </div>,
+  );
+
+  const trigger = screen.getByRole("button", { name: /Show 2 more recipes/ });
+  await user.click(trigger);
+  within(screen.getByRole("dialog"))
+    .getByRole("button", { name: "Remove Three from dinner on 2026-08-10" })
+    .focus();
+  await user.keyboard("{Escape}");
+  expect(trigger).toHaveFocus();
+
+  focusLabels.length = 0;
+  await user.click(trigger);
+  const close = within(screen.getByRole("dialog")).getByRole("button", {
+    name: "Close meal recipes",
+  });
+  await waitFor(() => expect(close).toHaveFocus());
+
+  expect(focusLabels).toEqual(["Close meal recipes"]);
+});
+
 test("closes and rehomes focus when removing overflow removes its trigger", async () => {
   const user = userEvent.setup();
 

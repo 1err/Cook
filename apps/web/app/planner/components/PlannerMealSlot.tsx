@@ -104,6 +104,7 @@ export function PlannerMealSlot({
   const dialogRef = useRef<HTMLDivElement>(null);
   const dialogFocusRef = useRef<{ element: HTMLElement; index: number } | null>(null);
   const closeOverflow = useCallback(() => {
+    dialogFocusRef.current = null;
     setOverflowOpen(false);
     queueMicrotask(() => {
       const trigger = overflowTriggerRef.current;
