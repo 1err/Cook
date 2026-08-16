@@ -21,6 +21,47 @@ PRODUCT = {
 }
 
 
+async def _scrape_extracted_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+    candidates: list[dict[str, str]],
+    enrich: Any,
+) -> list[dict[str, str]]:
+    class Page:
+        async def goto(self, *args: Any, **kwargs: Any) -> None:
+            return None
+
+    class Context:
+        async def new_page(self) -> Page:
+            return Page()
+
+        async def close(self) -> None:
+            return None
+
+    class Browser:
+        async def new_context(self, **kwargs: Any) -> Context:
+            return Context()
+
+    async def fake_browser() -> Browser:
+        return Browser()
+
+    async def no_wait(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    async def extracted(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+        return candidates
+
+    monkeypatch.setattr(store_scraper, "_ensure_shared_browser", fake_browser)
+    monkeypatch.setattr(store_scraper, "_wait_for_weee_results", no_wait)
+    monkeypatch.setattr(store_scraper, "_weee_fetch_search_items_with_retry", extracted)
+    monkeypatch.setattr(store_scraper, "_enrich_weee_products_from_detail_pages", enrich)
+    playwright_module = ModuleType("playwright")
+    async_api_module = ModuleType("playwright.async_api")
+    playwright_module.async_api = async_api_module  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright", playwright_module)
+    monkeypatch.setitem(sys.modules, "playwright.async_api", async_api_module)
+    return await store_scraper._scrape_weee_products("tofu", "en")
+
+
 def test_cache_entry_expires_at_exactly_24_hours():
     now = datetime(2026, 8, 15, 12, tzinfo=timezone.utc)
 
@@ -600,6 +641,8 @@ async def test_invalid_weee_search_payload_raises_typed_failure():
 async def test_extraction_keeps_later_distinct_candidates_for_final_validation(
     monkeypatch: pytest.MonkeyPatch,
 ):
+    enriched_urls: list[str] = []
+    batch_sizes: list[int] = []
     candidates = [
         {
             "href": PRODUCT["url"],
@@ -608,9 +651,15 @@ async def test_extraction_keeps_later_distinct_candidates_for_final_validation(
             "image": PRODUCT["image"],
         },
         {
-            "href": PRODUCT["url"],
-            "name": PRODUCT["name"],
+            "href": PRODUCT["url"] + "?ref=duplicate",
+            "name": "Silken tofu duplicate",
             "price": "$3.49",
+            "image": PRODUCT["image"],
+        },
+        {
+            "href": "https://www.sayweee.com/product/invalid",
+            "name": "x",
+            "price": "$1.00",
             "image": PRODUCT["image"],
         },
         {
@@ -627,42 +676,18 @@ async def test_extraction_keeps_later_distinct_candidates_for_final_validation(
         },
     ]
 
-    class Page:
-        async def goto(self, *args: Any, **kwargs: Any) -> None:
-            return None
+    async def record_enrichment(
+        context: object,
+        base_url: str,
+        products: list[dict[str, str]],
+    ) -> None:
+        batch_sizes.append(len(products))
+        enriched_urls.extend(product["url"] for product in products)
 
-    class Context:
-        async def new_page(self) -> Page:
-            return Page()
+    extracted_products = await _scrape_extracted_candidates(monkeypatch, candidates, record_enrichment)
 
-        async def close(self) -> None:
-            return None
-
-    class Browser:
-        async def new_context(self, **kwargs: Any) -> Context:
-            return Context()
-
-    async def fake_browser() -> Browser:
-        return Browser()
-
-    async def no_wait(*args: Any, **kwargs: Any) -> None:
-        return None
-
-    async def extracted(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
-        return candidates
-
-    monkeypatch.setattr(store_scraper, "_ensure_shared_browser", fake_browser)
-    monkeypatch.setattr(store_scraper, "_wait_for_weee_results", no_wait)
-    monkeypatch.setattr(store_scraper, "_weee_fetch_search_items_with_retry", extracted)
-    monkeypatch.setattr(store_scraper, "_enrich_weee_products_from_detail_pages", no_wait)
-    playwright_module = ModuleType("playwright")
-    async_api_module = ModuleType("playwright.async_api")
-    playwright_module.async_api = async_api_module  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "playwright", playwright_module)
-    monkeypatch.setitem(sys.modules, "playwright.async_api", async_api_module)
-
-    extracted_products = await store_scraper._scrape_weee_products("tofu", "en")
-
+    assert len(enriched_urls) == 3
+    assert batch_sizes == [3]
     assert store_scraper._validate_products(extracted_products) == [
         PRODUCT,
         {
@@ -678,6 +703,69 @@ async def test_extraction_keeps_later_distinct_candidates_for_final_validation(
             "url": "https://www.sayweee.com/product/fried-tofu",
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_pdp_enrichment_stops_after_first_batch_has_three_distinct_products(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    enriched_urls: list[str] = []
+    batch_sizes: list[int] = []
+    candidates = [
+        {
+            "href": f"https://www.sayweee.com/product/tofu-{index}",
+            "name": f"Tofu {index}",
+            "price": "$2.99",
+            "image": PRODUCT["image"],
+        }
+        for index in range(40)
+    ]
+
+    async def record_enrichment(
+        context: object,
+        base_url: str,
+        products: list[dict[str, str]],
+    ) -> None:
+        batch_sizes.append(len(products))
+        enriched_urls.extend(product["url"] for product in products)
+
+    extracted_products = await _scrape_extracted_candidates(monkeypatch, candidates, record_enrichment)
+
+    assert len(enriched_urls) == 3
+    assert batch_sizes == [3]
+    assert len(store_scraper._validate_products(extracted_products)) == 3
+
+
+@pytest.mark.asyncio
+async def test_pdp_enrichment_has_an_explicit_twelve_candidate_budget(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    enriched_urls: list[str] = []
+    batch_sizes: list[int] = []
+    candidates = [
+        {
+            "href": f"https://www.sayweee.com/product/tofu-{index}",
+            "name": f"Tofu {index}",
+            "price": "$2.99",
+            "image": PRODUCT["image"],
+        }
+        for index in range(40)
+    ]
+
+    async def invalidate_enriched_batch(
+        context: object,
+        base_url: str,
+        products: list[dict[str, str]],
+    ) -> None:
+        batch_sizes.append(len(products))
+        enriched_urls.extend(product["url"] for product in products)
+        for product in products:
+            product["name"] = "x"
+
+    await _scrape_extracted_candidates(monkeypatch, candidates, invalidate_enriched_batch)
+
+    assert len(enriched_urls) == 12
+    assert batch_sizes == [3, 3, 3, 3]
 
 
 @pytest.mark.asyncio

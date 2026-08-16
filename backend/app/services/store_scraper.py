@@ -7,7 +7,7 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
-from urllib.parse import quote_plus, urljoin
+from urllib.parse import quote_plus, urljoin, urlsplit, urlunsplit
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +37,8 @@ CACHE_VERSION = "v6"
 SCRAPE_CONCURRENCY = 4
 WEEE_PDP_CONCURRENCY = 3
 WEEE_MAX_ATTEMPTS = 2
+WEEE_ENRICH_BATCH_SIZE = 3
+WEEE_MAX_PDP_CANDIDATES = 12
 CACHE: dict[CacheKey, dict[str, Any]] = {}
 _scrape_semaphore = asyncio.Semaphore(SCRAPE_CONCURRENCY)
 _inflight: dict[CacheKey, asyncio.Task[list[dict[str, str]]]] = {}
@@ -198,6 +200,32 @@ def _normalize_weee_product(
         "image": _normalize_image_url(str(candidate.get("image") or ""), WEEE_BASE_URL),
         "url": url,
     }
+
+
+def _canonical_product_url(url: str) -> str:
+    parsed = urlsplit(_normalize_space(url))
+    path = re.sub(r"/+", "/", parsed.path).rstrip("/") or "/"
+    return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), path, "", ""))
+
+
+def _bounded_pdp_candidates(products: list[dict[str, str]]) -> list[dict[str, str]]:
+    candidates: list[dict[str, str]] = []
+    seen_names: set[str] = set()
+    seen_urls: set[str] = set()
+    for product in products:
+        name = _normalize_space(product.get("name", ""))
+        stable_url = _canonical_product_url(product.get("url", ""))
+        if not _is_valid_name(name) or not stable_url:
+            continue
+        normalized_name = name.casefold()
+        if normalized_name in seen_names or stable_url in seen_urls:
+            continue
+        seen_names.add(normalized_name)
+        seen_urls.add(stable_url)
+        candidates.append(product)
+        if len(candidates) >= WEEE_MAX_PDP_CANDIDATES:
+            break
+    return candidates
 
 
 def _memory_cache_get(cache_key: CacheKey) -> list[dict[str, str]] | None:
@@ -444,17 +472,26 @@ async def _scrape_weee_products(
                 await _wait_for_weee_results(page, cleaned_query, attempt=attempt)
                 raw_items = await _weee_fetch_search_items_with_retry(page, _weee_extract_script())
 
+                extracted_products: list[dict[str, str]] = []
                 for item in raw_items:
                     if not isinstance(item, dict):
                         continue
                     product = _normalize_weee_product(item, prefer_zh=prefer_zh)
                     if product:
-                        products.append(product)
+                        extracted_products.append(product)
 
-                if raw_items and not products:
+                candidates = _bounded_pdp_candidates(extracted_products)
+                if raw_items and not candidates:
                     raise StoreScrapeError("Weee returned an invalid product payload.")
-                if products:
-                    await _enrich_weee_products_from_detail_pages(context, WEEE_BASE_URL, products)
+                for offset in range(0, len(candidates), WEEE_ENRICH_BATCH_SIZE):
+                    batch = candidates[offset : offset + WEEE_ENRICH_BATCH_SIZE]
+                    await _enrich_weee_products_from_detail_pages(context, WEEE_BASE_URL, batch)
+                    products.extend(batch)
+                    try:
+                        if len(_validate_products(products)) >= MAX_RESULTS:
+                            break
+                    except StoreScrapeError:
+                        continue
             finally:
                 await context.close()
         except asyncio.CancelledError:
