@@ -225,3 +225,71 @@ test("cancels expiry revalidation after unmount", async () => {
 
   expect(mockStoreProducts).toHaveBeenCalledTimes(1);
 });
+
+test("week switch resets bulk progress before unresolved workers finish", async () => {
+  mockReadSmartProducts.mockResolvedValue(null);
+  const pending = deferred<StoreProductsResponse>();
+  mockStoreProducts.mockReturnValue(pending.promise);
+  const { result, rerender } = await renderHook(
+    ({ weekStart }: { weekStart: string | null }) =>
+      useStoreProductsCache(weekStart),
+    { initialProps: { weekStart: "2026-08-10" } },
+  );
+
+  await waitFor(() => expect(mockReadSmartProducts).toHaveBeenCalledWith("2026-08-10"));
+  await act(() => {
+    void result.current.loadAll(["Rice"]);
+  });
+  await waitFor(() => {
+    expect(mockStoreProducts).toHaveBeenCalledWith("Rice");
+    expect(result.current.bulkLoading).toEqual({ active: true, done: 0, total: 1 });
+  });
+
+  await rerender({ weekStart: "2026-08-17" });
+
+  await waitFor(() =>
+    expect(result.current.bulkLoading).toEqual({ active: false, done: 0, total: 0 }),
+  );
+  expect(result.current.products.Rice).toBeUndefined();
+
+  await act(async () => {
+    pending.resolve(response([]));
+    await pending.promise;
+  });
+  expect(result.current.bulkLoading).toEqual({ active: false, done: 0, total: 0 });
+  expect(result.current.products.Rice).toBeUndefined();
+});
+
+test("leaving smart mode resets unresolved bulk progress and re-entry is enabled", async () => {
+  mockReadSmartProducts.mockResolvedValue(null);
+  const pending = deferred<StoreProductsResponse>();
+  mockStoreProducts.mockReturnValue(pending.promise);
+  const { result, rerender } = await renderHook(
+    ({ weekStart }: { weekStart: string | null }) =>
+      useStoreProductsCache(weekStart),
+    { initialProps: { weekStart: "2026-08-10" } },
+  );
+
+  await waitFor(() => expect(mockReadSmartProducts).toHaveBeenCalledWith("2026-08-10"));
+  await act(() => {
+    void result.current.loadAll(["Rice"]);
+  });
+  await waitFor(() =>
+    expect(result.current.bulkLoading).toEqual({ active: true, done: 0, total: 1 }),
+  );
+
+  await rerender({ weekStart: null });
+  await waitFor(() =>
+    expect(result.current.bulkLoading).toEqual({ active: false, done: 0, total: 0 }),
+  );
+
+  await rerender({ weekStart: "2026-08-10" });
+  await waitFor(() => expect(mockReadSmartProducts).toHaveBeenCalledTimes(2));
+  expect(result.current.bulkLoading.active).toBe(false);
+
+  await act(async () => {
+    pending.resolve(response([]));
+    await pending.promise;
+  });
+  expect(result.current.bulkLoading).toEqual({ active: false, done: 0, total: 0 });
+});

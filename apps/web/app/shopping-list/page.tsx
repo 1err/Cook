@@ -46,6 +46,14 @@ function smartProductsStorageKey(weekStart: string) {
   return `${SMART_SHOPPING_PRODUCTS_PREFIX}:${weekStart}:weee`;
 }
 
+function writeSessionStorage(key: string, value: string) {
+  try {
+    sessionStorage.setItem(key, value);
+  } catch {
+    // Ephemeral cache writes are best effort; quota/privacy failures must not break shopping.
+  }
+}
+
 const SLOT_ORDER = ["breakfast", "lunch", "dinner"] as const;
 type PlanSlot = (typeof SLOT_ORDER)[number];
 const DOW_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -312,7 +320,7 @@ function ShoppingListPageContent() {
         _ui: { hidden: [...hidden], checked: [...checked] },
         _plannerFingerprint: plannerFingerprint,
       };
-      sessionStorage.setItem(smartListStorageKey(start), JSON.stringify(payload));
+      writeSessionStorage(smartListStorageKey(start), JSON.stringify(payload));
     },
     [start]
   );
@@ -443,7 +451,7 @@ function ShoppingListPageContent() {
       openProductsByIngredient,
       lookupByIngredient,
     );
-    sessionStorage.setItem(smartProductsStorageKey(start), JSON.stringify(payload));
+    writeSessionStorage(smartProductsStorageKey(start), JSON.stringify(payload));
   }, [activeRefinedData, lookupByIngredient, openProductsByIngredient, start]);
 
   useEffect(() => {

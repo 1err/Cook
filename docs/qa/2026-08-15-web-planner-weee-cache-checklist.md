@@ -29,6 +29,7 @@ This is an evidence record, not permission to deploy. Leave every item unchecked
 - [ ] `npm run web:build` passes.
 - [ ] Planner and shell Playwright tests pass, including committed Linux baselines.
 - [ ] `cd backend && .venv/bin/python -W error -m pytest -q` passes.
+- [ ] Backend compatibility tests prove an omitted `store` returns `{products, expires_at}`, explicit legacy `store=weee` returns the matching `StoreProduct[]`, positive expiry comes from the service cache timestamp, and empty modern responses use `expires_at: null`.
 - [ ] The focused Amazon-removal scan has no active product-store matches; the intentional S3 `amazonaws.com` URL remains.
 - [ ] Review confirms this release intentionally requires no database schema change and adds no Alembic migration; do not apply ad-hoc DDL. The existing `store` primary-key field remains in place and active cache rows use `weee`.
 - [ ] The previous stable ECS image SHA/digest and current Vercel production deployment are recorded above before rollout begins.
@@ -47,15 +48,16 @@ Record artifact URLs or paths beside each checked result.
 
 ## Coordinated production rollout
 
-Deploy the backend first. Do not promote the frontend until the backend is stable and its compatibility checks pass. This order keeps the existing frontend compatible while establishing the new Weee-only API boundary before the client stops sending a store selector.
+Deploy the backend first. Do not promote the frontend until the backend is stable and its compatibility checks pass. Backend-first compatibility is intentionally limited: deployed clients that explicitly request `store=weee` keep their legacy array response, while new clients that omit `store` receive expiry metadata. A deployed client that requests Amazon is not compatible with this backend and intentionally receives HTTP 400; confirm no release client still depends on that path before rollout.
 
 ### 1. Deploy and verify the AWS backend
 
 - [ ] From a clean checkout of the reviewed merged SHA, run `bash scripts/deploy-backend.sh`. This builds Linux/amd64 ECR tags `latest` and the git SHA, forces a deployment of `cooking-backend-service` in `cooking-cluster`, waits for ECS stability, and checks the API health endpoint.
 - [ ] Record the returned ECS deployment identifier and deployed immutable image SHA/digest above; confirm running tasks use that image.
 - [ ] `GET https://api.chef-world.com/health` returns HTTP 200 with `{"status":"ok"}` on repeated checks after ECS reports stable.
-- [ ] An authenticated `GET /store-products?query=rice` succeeds, and explicit legacy `store=weee` also succeeds.
-- [ ] An authenticated `GET /store-products?query=rice&store=amazon` returns HTTP 400.
+- [ ] An authenticated `GET /store-products?query=rice` returns a JSON object with `products` and `expires_at`; a positive result has a future ISO-8601 expiry and an empty result has `expires_at: null`.
+- [ ] An authenticated `GET /store-products?query=rice&store=weee` returns the legacy JSON array, and its product rows match the omitted-store response's `products` for the same fresh lookup.
+- [ ] Authenticated requests with `store=amazon` and an unknown explicit store return HTTP 400 before scraper/service work; this is intentional incompatibility, not a backend-first compatibility claim.
 - [ ] Backend logs show no startup, database, scheduler, scraper, or uncaught request errors during the smoke window.
 
 If any backend check fails, stop before Vercel promotion. Restore the recorded previous ECR SHA tag as `latest`, force a new ECS deployment, wait for `aws ecs wait services-stable`, recheck `/health`, and record the rollback deployment identifier and reason under **Exceptions and rollback evidence**.
@@ -93,7 +95,7 @@ If the web smoke fails while backend checks remain healthy, immediately promote 
 - [ ] The recipe rail and every add/remove/open/overflow workflow pass in production.
 - [ ] Common and newly cached Weee ingredients meet the expected first/second request behavior.
 - [ ] Strict 24-hour expiry, single-flight, warmer failure isolation, and the four-live-scrape ceiling have automated or production evidence.
-- [ ] `store=amazon` returns HTTP 400 and no Amazon store selector exists on web or iOS.
+- [ ] Legacy explicit Weee clients receive arrays, omitted-store clients receive authoritative expiry metadata, `store=amazon`/unknown return HTTP 400, and no Amazon store selector exists on web or iOS.
 - [ ] No rollback was required, or rollback evidence below shows service restoration.
 
 ## Exceptions and rollback evidence

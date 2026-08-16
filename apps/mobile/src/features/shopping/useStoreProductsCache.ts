@@ -211,6 +211,7 @@ export function useStoreProductsCache(weekStart: string | null) {
   useEffect(() => {
     const generation = generationRef.current + 1;
     generationRef.current = generation;
+    setBulkLoading({ active: false, done: 0, total: 0 });
     for (const entry of expiryTimersRef.current.values()) {
       clearTimeout(entry.timer);
     }

@@ -222,10 +222,17 @@ test("stores only canonical terminal states and strips technical errors", () => 
   });
 });
 
-test("marks hydrated positives for backend revalidation without publishing them", () => {
+test("revalidates stored positives and every open key without a retained success", () => {
   const hydrated = parseProductLookupStorage(
     JSON.stringify({
-      open: { Rice: true, " rice ": true },
+      open: {
+        Rice: true,
+        " rice ": true,
+        Waiting: true,
+        Queued: true,
+        Missing: true,
+        Legacy: true,
+      },
       lookup: {
         Rice: {
           status: "success",
@@ -234,14 +241,26 @@ test("marks hydrated positives for backend revalidation without publishing them"
         },
         " rice ": { status: "error", error: "old technical detail" },
         Waiting: { status: "loading" },
+        Queued: { status: "queued" },
+        Legacy: {
+          status: "success",
+          products: [product("Legacy")],
+        },
+        Closed: { status: "empty", products: [] },
       },
     }),
   );
 
   expect(hydrated).toEqual({
-    open: { rice: true },
-    lookup: {},
-    revalidate: ["rice"],
+    open: {
+      rice: true,
+      waiting: true,
+      queued: true,
+      missing: true,
+      legacy: true,
+    },
+    lookup: { closed: { status: "empty", products: [] } },
+    revalidate: ["rice", "legacy", "waiting", "queued", "missing"],
   });
 });
 

@@ -77,6 +77,16 @@ function stubSessionStorage() {
   return values;
 }
 
+function stubThrowingSessionStorage(values: Map<string, string>) {
+  vi.stubGlobal("sessionStorage", {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: () => {
+      throw new DOMException("Storage quota exceeded", "QuotaExceededError");
+    },
+    removeItem: (key: string) => values.delete(key),
+  });
+}
+
 beforeEach(() => {
   mockUseRouter.mockReturnValue({ push: vi.fn() });
   mockUseSearchParams.mockReturnValue(new URLSearchParams("week=2026-08-10"));
@@ -220,6 +230,99 @@ test("revalidates a hydrated positive before displaying any stored product", asy
 
   expect(await screen.findByText("Fresh rice")).toBeVisible();
   expect(screen.queryByText("Stored rice")).not.toBeInTheDocument();
+});
+
+test("reload requeues an open product panel whose persisted lookup is missing", async () => {
+  const storage = stubSessionStorage();
+  storage.set(
+    "smartShoppingList:2026-08-10",
+    JSON.stringify({
+      remove: [],
+      likely_pantry: [],
+      purchase_items: [
+        { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+      ],
+      _ui: { hidden: [], checked: [] },
+    }),
+  );
+  storage.set(
+    "smartShoppingProducts:2026-08-10:weee",
+    JSON.stringify({
+      open: { rice: true },
+      lookup: {},
+    }),
+  );
+
+  const freshResponse = deferredResponse();
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/shopping-list?")) {
+      return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+    }
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
+    if (path === "/recipes") return Promise.resolve(jsonResponse([]));
+    if (path === "/store-products?query=rice") return freshResponse.promise;
+    throw new Error(`Unexpected request: ${path}`);
+  });
+
+  render(<ShoppingListPage />);
+
+  expect(await screen.findByText("Finding matches on Weee…")).toBeVisible();
+  expect(mockApiFetch).toHaveBeenCalledWith("/store-products?query=rice");
+
+  freshResponse.resolve(
+    productResponse([
+      {
+        name: "Fresh rice",
+        price: "$2.99",
+        image: "",
+        url: "https://www.sayweee.com/product/rice",
+      },
+    ]),
+  );
+  expect(await screen.findByText("Fresh rice")).toBeVisible();
+});
+
+test("continues rendering and loading products when sessionStorage writes throw", async () => {
+  const storage = new Map<string, string>();
+  storage.set(
+    "smartShoppingList:2026-08-10",
+    JSON.stringify({
+      remove: [],
+      likely_pantry: [],
+      purchase_items: [
+        { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+      ],
+      _ui: { hidden: [], checked: [] },
+    }),
+  );
+  stubThrowingSessionStorage(storage);
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/shopping-list?")) {
+      return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+    }
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
+    if (path === "/recipes") return Promise.resolve(jsonResponse([]));
+    if (path === "/store-products?query=Rice") {
+      return Promise.resolve(
+        productResponse([
+          {
+            name: "Fresh rice",
+            price: "$2.99",
+            image: "",
+            url: "https://www.sayweee.com/product/rice",
+          },
+        ]),
+      );
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+
+  const user = userEvent.setup();
+  render(<ShoppingListPage />);
+  await user.click((await screen.findAllByRole("button", { name: "View products" }))[0]);
+
+  expect(await screen.findByText("Fresh rice")).toBeVisible();
+  expect(screen.getByRole("button", { name: /Load top picks from Weee/ })).toBeEnabled();
 });
 
 test("clears a displayed result and revalidates at the exact backend expiry", async () => {

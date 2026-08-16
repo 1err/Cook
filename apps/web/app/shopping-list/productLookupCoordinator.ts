@@ -261,6 +261,13 @@ export function parseProductLookupStorage(
       }
       seen.add(key);
       revalidate.push(key);
+    }
+    for (const [key, open] of Object.entries(stored.open)) {
+      if (!open || seen.has(key)) continue;
+      seen.add(key);
+      revalidate.push(key);
+    }
+    for (const key of revalidate) {
       delete stored.lookup[key];
     }
     return { ...stored, revalidate };

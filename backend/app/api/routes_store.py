@@ -1,7 +1,7 @@
 """
 Store product lookup route.
 
-Returns a small list of live product results from supported stores.
+Returns current Weee results with an explicit legacy response shape for old clients.
 """
 from datetime import datetime, timedelta
 
@@ -32,24 +32,29 @@ class StoreProductsResponse(BaseModel):
     expires_at: datetime | None
 
 
-@router.get("/store-products", response_model=StoreProductsResponse)
+StoreProductsRouteResponse = StoreProductsResponse | list[StoreProduct]
+
+
+@router.get("/store-products", response_model=StoreProductsRouteResponse)
 async def store_products(
     query: str = Query(..., min_length=1),
-    store: str | None = Query(default="weee"),
+    store: str | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
     current_user: UserModel = Depends(get_current_user),
-):
-    """Return products plus the authoritative expiry of any positive result."""
+) -> StoreProductsRouteResponse:
+    """Return expiry metadata by default or the legacy array for explicit Weee clients."""
     _ = current_user
 
-    normalized_store = (store or "weee").strip().lower()
-    if normalized_store != "weee":
+    if store is not None and store.strip().lower() != "weee":
         raise HTTPException(status_code=400, detail="Unsupported store. Use weee.")
 
     result = await fetch_store_products_with_metadata(query, session=session)
+    products = [StoreProduct.model_validate(product) for product in result.products]
+    if store is not None:
+        return products
     expires_at = (
         result.cached_at + timedelta(seconds=CACHE_TTL_SECONDS)
         if result.cached_at is not None
         else None
     )
-    return StoreProductsResponse(products=result.products, expires_at=expires_at)
+    return StoreProductsResponse(products=products, expires_at=expires_at)
