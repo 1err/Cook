@@ -54,6 +54,14 @@ function writeSessionStorage(key: string, value: string) {
   }
 }
 
+function removeSessionStorage(key: string) {
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    // Keep React state usable when privacy settings deny ephemeral storage access.
+  }
+}
+
 const SLOT_ORDER = ["breakfast", "lunch", "dinner"] as const;
 type PlanSlot = (typeof SLOT_ORDER)[number];
 const DOW_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -326,7 +334,7 @@ function ShoppingListPageContent() {
   );
 
   const clearStoredProductResults = useCallback(() => {
-    sessionStorage.removeItem(smartProductsStorageKey(start));
+    removeSessionStorage(smartProductsStorageKey(start));
   }, [start]);
 
   const currentPlannerFingerprint = useMemo(
@@ -582,7 +590,7 @@ function ShoppingListPageContent() {
   }
 
   function handleBackToOriginalList() {
-    sessionStorage.removeItem(smartListStorageKey(start));
+    removeSessionStorage(smartListStorageKey(start));
     clearStoredProductResults();
     setRefinedData(null);
     setSmartWeekStart(null);

@@ -38,3 +38,13 @@ The authoritative exact expiry boundary, URL validation, v7 isolation, Weee-only
 The QA checklist now states the two response shapes and their smoke evidence separately. Its backend-first claim is deliberately narrow: legacy explicit Weee clients are compatible; Amazon or unknown-store clients are not and must receive HTTP 400. `CLAUDE.md` describes the same API and the web reload/storage behavior.
 
 The final commit SHA and clean worktree status are recorded by the coordinating handoff from fresh post-commit `git rev-parse HEAD` and `git status --short --branch` output.
+
+## Final Fix Round 2 — best-effort web removal
+
+Starting commit: `574ea4431a89fbdfc1986b7167aee40e029d7541`
+
+The two web shopping `sessionStorage.removeItem` paths now share a best-effort removal helper, matching the existing write behavior without changing either storage key. Back to original clears React smart-list/product state even when both removals raise `SecurityError`. Successful smart-list preparation also continues through product-cache reset and is not misreported as a refine failure.
+
+TDD RED reproduced both defects: Back to original emitted an unhandled `SecurityError` and left Smart mode mounted; successful preparation surfaced `Something went wrong` when its product-cache removal failed. Focused GREEN passed both new regressions and the complete page lookup suite (`7/7`).
+
+Proportional verification passed: full web `14` files / `78` tests, web `tsc --noEmit`, and `git diff --check`. Vitest emitted only the existing empty `--localstorage-file` warning. This helper-only change affects no markup, styles, browser layout, or snapshots, so browser/baseline reruns were not warranted.

@@ -239,8 +239,8 @@ OpenAI prompts + calls live in `backend/app/extract.py` (recipe extraction) and 
 
 `/shopping-list/refine` only fires when the user clicks **Prepare smart shopping list**. The shopping page persists three keys per week:
 
-- `smartShoppingList:{weekMonday}` — refined payload + `_ui.{hidden,checked}` + `_plannerFingerprint` (`sessionStorage`); writes are best effort when quota/privacy settings deny storage
-- `smartShoppingProducts:{weekMonday}:weee` — Weee product picks with authoritative expiry (`sessionStorage`); open panels without a retained positive are requeued on reload, and writes are best effort
+- `smartShoppingList:{weekMonday}` — refined payload + `_ui.{hidden,checked}` + `_plannerFingerprint` (`sessionStorage`); writes and removals are best effort when quota/privacy settings deny storage
+- `smartShoppingProducts:{weekMonday}:weee` — Weee product picks with authoritative expiry (`sessionStorage`); open panels without a retained positive are requeued on reload, and writes/removals are best effort
 - `plannerWeekFingerprint:{weekMonday}` — written by planner; shopping page compares against `_plannerFingerprint` to mark the smart list **stale** when the planner changed afterward (`localStorage`)
 
 Don’t add automatic refine triggers — token cost is intentional.

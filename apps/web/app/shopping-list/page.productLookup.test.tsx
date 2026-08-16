@@ -34,6 +34,8 @@ vi.mock("../lib/i18n", () => ({
       "shopping.retryProducts": "Retry",
       "shopping.seeListing": "See listing",
       "shopping.viewOnStore": "View on {store}",
+      "shopping.smartMode": "Smart mode",
+      "shopping.backToOriginalList": "Back to original list",
     };
     return (messages[key] ?? key).replace(
       /\{(\w+)\}/g,
@@ -84,6 +86,16 @@ function stubThrowingSessionStorage(values: Map<string, string>) {
       throw new DOMException("Storage quota exceeded", "QuotaExceededError");
     },
     removeItem: (key: string) => values.delete(key),
+  });
+}
+
+function stubRemoveThrowingSessionStorage(values: Map<string, string>) {
+  vi.stubGlobal("sessionStorage", {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: () => {
+      throw new DOMException("Storage access denied", "SecurityError");
+    },
   });
 }
 
@@ -323,6 +335,81 @@ test("continues rendering and loading products when sessionStorage writes throw"
 
   expect(await screen.findByText("Fresh rice")).toBeVisible();
   expect(screen.getByRole("button", { name: /Load top picks from Weee/ })).toBeEnabled();
+});
+
+test("back to original still clears React state when sessionStorage removal throws", async () => {
+  const storage = new Map<string, string>();
+  storage.set(
+    "smartShoppingList:2026-08-10",
+    JSON.stringify({
+      remove: [],
+      likely_pantry: [],
+      purchase_items: [
+        { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+      ],
+      _ui: { hidden: [], checked: [] },
+    }),
+  );
+  stubRemoveThrowingSessionStorage(storage);
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/shopping-list?")) {
+      return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+    }
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
+    if (path === "/recipes") return Promise.resolve(jsonResponse([]));
+    throw new Error(`Unexpected request: ${path}`);
+  });
+
+  const user = userEvent.setup();
+  render(<ShoppingListPage />);
+  expect(await screen.findByText("Smart mode")).toBeVisible();
+
+  await user.click(screen.getByRole("button", { name: /Back to original list/ }));
+
+  expect(screen.queryByText("Smart mode")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Prepare smart shopping list" })).toBeEnabled();
+});
+
+test("successful smart-list preparation survives a sessionStorage removal error", async () => {
+  const storage = new Map<string, string>();
+  stubRemoveThrowingSessionStorage(storage);
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/shopping-list?")) {
+      return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+    }
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
+    if (path === "/recipes") return Promise.resolve(jsonResponse([]));
+    if (path === "/shopping-list/refine") {
+      return Promise.resolve(
+        jsonResponse({
+          remove: [],
+          likely_pantry: [],
+          purchase_items: [
+            { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+          ],
+        }),
+      );
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+
+  const user = userEvent.setup();
+  const { rerender } = render(<ShoppingListPage />);
+  await user.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
+
+  expect(await screen.findByText("Smart mode")).toBeVisible();
+  const persisted = storage.get("smartShoppingList:2026-08-10");
+  expect(persisted).toBeTruthy();
+  expect(JSON.parse(persisted ?? "{}").purchase_items).toEqual([
+    { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+  ]);
+
+  mockUseSearchParams.mockReturnValue(new URLSearchParams("week=2026-08-17"));
+  rerender(<ShoppingListPage />);
+  expect(await screen.findByRole("button", { name: "Prepare smart shopping list" })).toBeEnabled();
+  expect(
+    screen.queryByText(/Storage access denied|Something went wrong/),
+  ).not.toBeInTheDocument();
 });
 
 test("clears a displayed result and revalidates at the exact backend expiry", async () => {
