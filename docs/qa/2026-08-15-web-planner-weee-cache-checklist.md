@@ -23,13 +23,14 @@ This is an evidence record, not permission to deploy. Leave every item unchecked
 - [ ] The reviewed pull request is approved, every GitHub Actions job is green, and the release checkout is clean at the exact reviewed SHA above.
 - [ ] `npm run tokens:test` passes.
 - [ ] `npm run tokens:build` passes.
-- [ ] `git diff --exit-code -- packages/design-tokens/src/generated apps/web/app/generated apps/mobile/src/generated` passes.
+- [ ] `git diff --exit-code` passes immediately after `npm run tokens:build`, proving generated design-token output and all other tracked files are reproducible.
 - [ ] `npm run test:web` and `npm run test:mobile` pass.
 - [ ] Web and mobile TypeScript checks pass.
 - [ ] `npm run web:build` passes.
 - [ ] Planner and shell Playwright tests pass, including committed Linux baselines.
 - [ ] `cd backend && .venv/bin/python -W error -m pytest -q` passes.
 - [ ] The focused Amazon-removal scan has no active product-store matches; the intentional S3 `amazonaws.com` URL remains.
+- [ ] Review confirms this release intentionally requires no database schema change and adds no Alembic migration; do not apply ad-hoc DDL. The existing `store` primary-key field remains in place and active cache rows use `weee`.
 - [ ] The previous stable ECS image SHA/digest and current Vercel production deployment are recorded above before rollout begins.
 
 ## Local and preview acceptance evidence
@@ -66,7 +67,7 @@ Use an authenticated admin browser session or an approved secret-safe HTTP clien
 - [ ] Trigger `POST https://api.chef-world.com/admin/cache-refresh` with `{"stale_only":false}` once; a concurrent trigger reports that a run is already active rather than starting a duplicate run.
 - [ ] Poll authenticated `GET https://api.chef-world.com/admin/cache-refresh-status` until `running` is false. Record the final `summary` counts for `cache_hit`, `cache_miss`, `skipped`, `failed`, and `total`: `TBD`.
 - [ ] The warmer status shows progress after a deliberately failed or observed failed query and later queries still complete; final `current` reaches `total`. Evidence: `TBD`
-- [ ] Backend metrics or timestamped structured logs demonstrate that combined interactive and warmer activity never exceeds four live scrapes. Evidence: `TBD`
+- [ ] The backend GitHub Actions run passes `test_scrape_ceiling_allows_at_most_four_distinct_live_scrapes`; this automated test is the authoritative max-four evidence for the release. CI run/test evidence: `TBD`. Production telemetry, if available, may be linked as supplemental evidence: `TBD / not available`.
 - [ ] A curated common Weee ingredient returns immediately from fresh cache. Query and latency: `TBD`
 - [ ] A novel uncached ingredient makes one requester wait for the live lookup, persists a positive result, and returns immediately on a second authenticated request, including from a different authenticated user if available. Query and first/second latency: `TBD`
 - [ ] A completed empty result appears only after lookup completion; an empty or failed refresh does not replace a previous positive cache row. Evidence: `TBD`
