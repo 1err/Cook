@@ -13,7 +13,7 @@ function product(name: string): StoreProduct {
     name,
     price: "$1",
     image: "",
-    url: `https://example.test/${encodeURIComponent(name)}`,
+    url: `https://www.sayweee.com/product/${encodeURIComponent(name)}`,
   };
 }
 
@@ -200,7 +200,7 @@ test("stores only canonical terminal states and strips technical errors", () => 
   });
 });
 
-test("hydrates aliases into one canonical panel and prefers a positive result", () => {
+test("marks hydrated positives for backend revalidation without publishing them", () => {
   const hydrated = parseProductLookupStorage(
     JSON.stringify({
       open: { Rice: true, " rice ": true },
@@ -214,6 +214,7 @@ test("hydrates aliases into one canonical panel and prefers a positive result", 
 
   expect(hydrated).toEqual({
     open: { rice: true },
-    lookup: { rice: { status: "success", products: [product("Rice")] } },
+    lookup: {},
+    revalidate: ["rice"],
   });
 });

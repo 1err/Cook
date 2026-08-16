@@ -251,7 +251,7 @@ Don’t add automatic refine triggers — token cost is intentional.
 
 ### Store-product lookup has three layers
 
-`GET /store-products?query=&store=`: in-memory `CACHE` (in `store_scraper.py`) → Postgres `cached_store_products` (`CACHE_TTL_SECONDS = 86400`, `CACHE_VERSION = "v6"`) → live Playwright scrape. Queries are normalized in `prepare_store_query` (lowercased, banned modifiers like `新鲜` / `切块` stripped, quantity fragments removed). Weee uses zh locale + zh search URL when query has CJK; Amazon is en-only. Detail-page enrichment fills better names/images. **Cache rows are shared across all users**: a fresh scrape from one user becomes an instant L2 hit for everyone else.
+`GET /store-products?query=&store=`: in-memory `CACHE` (in `store_scraper.py`) → Postgres `cached_store_products` (`CACHE_TTL_SECONDS = 86400`, `CACHE_VERSION = "v7"`) → live Playwright scrape. Queries are normalized in `prepare_store_query` (lowercased, banned modifiers like `新鲜` / `切块` stripped, quantity fragments removed). Weee uses zh locale + zh search URL when query has CJK. Product links must be HTTPS URLs on `sayweee.com` or one of its subdomains before PDP navigation or cache/live output; v7 makes older unvalidated rows inert. Detail-page enrichment fills better names/images. **Cache rows are shared across all users**: a fresh scrape from one user becomes an instant L2 hit for everyone else.
 
 `backend/app/jobs/cache_warmer.py` runs the configured query catalog (`cache_warmer_queries.py::ALL_QUERIES`, ~200 entries) on startup (**stale-only**, won’t re-scrape fresh rows) and every 24h via APScheduler (**force_refresh=True**). Admins drive it from `/preview` via `/admin/cache-refresh*`.
 

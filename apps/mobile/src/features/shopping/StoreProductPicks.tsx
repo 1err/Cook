@@ -3,7 +3,7 @@ import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "r
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import type { StoreProduct } from "@cooking/api-client";
-import { WEEE_STORE_LABEL } from "@cooking/shared";
+import { WEEE_STORE_LABEL, isSafeWeeeProductUrl } from "@cooking/shared";
 import { Button } from "../../components";
 import { colors, radii, spacing, typography } from "../../theme";
 
@@ -45,9 +45,18 @@ export function StoreProductPicks({
       </View>
     );
   }
+  const safeProducts = products.filter((product) => isSafeWeeeProductUrl(product.url));
+  if (safeProducts.length === 0) {
+    return (
+      <View style={styles.errorWrap}>
+        <Text style={styles.errorText}>We couldn't verify these Weee links.</Text>
+        <Button title="Retry" onPress={onRetry} variant="ghost" />
+      </View>
+    );
+  }
   return (
     <View style={styles.list}>
-      {products.map((product) => (
+      {safeProducts.map((product) => (
         <View key={`${product.url}-${product.name}`} style={styles.row}>
           {product.image ? (
             <Image source={{ uri: product.image }} style={styles.image} contentFit="cover" />

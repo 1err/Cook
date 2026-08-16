@@ -50,10 +50,29 @@ test("links successful product results to Weee", async () => {
     <StoreProductPicks
       loading={false}
       error={null}
-      products={[{ name: "Silken tofu", price: "$2.99", image: "", url: "https://www.sayweee.com" }]}
+      products={[{ name: "Silken tofu", price: "$2.99", image: "", url: "https://www.sayweee.com/product/tofu" }]}
       onRetry={jest.fn()}
     />,
   );
 
   expect(screen.getByText("View on Weee")).toBeOnTheScreen();
+});
+
+test.each([
+  "http://www.sayweee.com/product/tofu",
+  "https://sayweee.com.evil.test/product/tofu",
+  "https://user@sayweee.com/product/tofu",
+  "https://sayweee.com:444/product/tofu",
+])("does not offer navigation to an unsafe product URL: %s", async (url) => {
+  await render(
+    <StoreProductPicks
+      loading={false}
+      error={null}
+      products={[{ name: "Unsafe tofu", price: "$1", image: "", url }]}
+      onRetry={jest.fn()}
+    />,
+  );
+
+  expect(screen.queryByText("View on Weee")).not.toBeOnTheScreen();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeOnTheScreen();
 });

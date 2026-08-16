@@ -1,4 +1,5 @@
 import type { StoreProduct } from "@cooking/api-client";
+import { isSafeWeeeProductUrl } from "@cooking/shared";
 import type { ProductLookupState } from "./productLoading";
 
 const PRODUCT_LOOKUP_CONCURRENCY = 4;
@@ -6,6 +7,10 @@ const PRODUCT_LOOKUP_CONCURRENCY = 4;
 export type ProductLookupStorage = {
   open: Record<string, boolean>;
   lookup: Record<string, ProductLookupState>;
+};
+
+export type HydratedProductLookupStorage = ProductLookupStorage & {
+  revalidate: string[];
 };
 
 type ProductLookupCoordinatorOptions = {
@@ -38,7 +43,8 @@ export function isStoreProduct(row: unknown): row is StoreProduct {
     typeof maybe.name === "string" &&
     typeof maybe.price === "string" &&
     typeof maybe.image === "string" &&
-    typeof maybe.url === "string"
+    typeof maybe.url === "string" &&
+    isSafeWeeeProductUrl(maybe.url)
   );
 }
 
@@ -171,7 +177,7 @@ export function buildProductLookupStorage(
   return { open, lookup };
 }
 
-export function parseProductLookupStorage(raw: string): ProductLookupStorage | null {
+export function parseProductLookupStorage(raw: string): HydratedProductLookupStorage | null {
   try {
     const parsed = JSON.parse(raw) as {
       open?: Record<string, unknown>;
@@ -180,7 +186,21 @@ export function parseProductLookupStorage(raw: string): ProductLookupStorage | n
     if (!parsed || typeof parsed !== "object") return null;
     if (!parsed.open || typeof parsed.open !== "object") return null;
     if (!parsed.lookup || typeof parsed.lookup !== "object") return null;
-    return buildProductLookupStorage(parsed.open, parsed.lookup);
+    const stored = buildProductLookupStorage(parsed.open, parsed.lookup);
+    const revalidate: string[] = [];
+    const seen = new Set<string>();
+    for (const [rawKey, rawState] of Object.entries(parsed.lookup)) {
+      const key = canonicalIngredientKey(rawKey);
+      if (!key || seen.has(key) || !rawState || typeof rawState !== "object") continue;
+      const state = rawState as ProductLookupState;
+      if (state.status !== "success" || !Array.isArray(state.products) || !state.products.length) {
+        continue;
+      }
+      seen.add(key);
+      revalidate.push(key);
+      delete stored.lookup[key];
+    }
+    return { ...stored, revalidate };
   } catch {
     return null;
   }

@@ -6,6 +6,7 @@ import logging
 import re
 import time
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from typing import Any, Literal
 from urllib.parse import quote_plus, urljoin, urlsplit, urlunsplit
 
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import repo_store_cache
 from app.db import session as db_session
+from app.core.store_products import normalize_weee_product_url
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +34,7 @@ class StoreScrapeError(RuntimeError):
 MAX_RESULTS = 3
 PLAYWRIGHT_TIMEOUT_MS = 15000
 CACHE_TTL_SECONDS = 86400
-CACHE_VERSION = "v6"
+CACHE_VERSION = "v7"
 SCRAPE_CONCURRENCY = 4
 WEEE_PDP_CONCURRENCY = 3
 WEEE_MAX_ATTEMPTS = 2
@@ -171,8 +173,8 @@ def _normalize_weee_product(
     if not href:
         return None
 
-    url = urljoin(WEEE_BASE_URL, href)
-    if "/product/" not in url.lower():
+    url = normalize_weee_product_url(href, base_url=WEEE_BASE_URL)
+    if url is None:
         return None
 
     text = _normalize_space(str(candidate.get("text") or ""))
@@ -202,7 +204,10 @@ def _normalize_weee_product(
 
 
 def _canonical_product_url(url: str) -> str:
-    parsed = urlsplit(_normalize_space(url))
+    safe_url = normalize_weee_product_url(_normalize_space(url))
+    if safe_url is None:
+        return ""
+    parsed = urlsplit(safe_url)
     path = re.sub(r"/+", "/", parsed.path).rstrip("/") or "/"
     return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), path, "", ""))
 
@@ -236,7 +241,15 @@ def _memory_cache_get(cache_key: CacheKey) -> list[dict[str, str]] | None:
         CACHE.pop(cache_key, None)
         return None
     data = cached.get("data")
-    return data if isinstance(data, list) else None
+    if not isinstance(data, list):
+        CACHE.pop(cache_key, None)
+        return None
+    try:
+        products = _validate_products(data)
+    except StoreScrapeError:
+        CACHE.pop(cache_key, None)
+        return None
+    return products or None
 
 
 def _memory_cache_set(
@@ -331,8 +344,12 @@ async def _enrich_weee_products_from_detail_pages(
         detail_page = None
         async with semaphore:
             try:
+                safe_url = normalize_weee_product_url(product.get("url", ""))
+                if safe_url is None:
+                    return
+                product["url"] = safe_url
                 detail_page = await context.new_page()
-                await detail_page.goto(product["url"], wait_until="domcontentloaded", timeout=PLAYWRIGHT_TIMEOUT_MS)
+                await detail_page.goto(safe_url, wait_until="domcontentloaded", timeout=PLAYWRIGHT_TIMEOUT_MS)
                 try:
                     await detail_page.wait_for_selector("meta[property='og:title']", timeout=8000)
                 except Exception:
@@ -532,8 +549,9 @@ def _validate_products(raw_products: object) -> list[dict[str, str]]:
         values = tuple(raw.get(field) for field in ("name", "price", "image", "url"))
         if not all(isinstance(value, str) for value in values):
             continue
-        name, price, image, url = (_normalize_space(value) for value in values)
-        if not _is_valid_name(name) or "/product/" not in url.lower():
+        name, price, image, raw_url = (_normalize_space(value) for value in values)
+        url = normalize_weee_product_url(raw_url)
+        if not _is_valid_name(name) or url is None:
             continue
         normalized_name = name.casefold()
         if normalized_name in seen_names or url in seen_urls:
@@ -602,6 +620,7 @@ async def _persist_positive_result(
     cleaned_query: str,
     language: str,
     products: list[dict[str, str]],
+    cached_at: datetime,
 ) -> None:
     maker = db_session.async_session_maker
     if maker is None:
@@ -615,6 +634,7 @@ async def _persist_positive_result(
                 language=language,
                 cache_version=CACHE_VERSION,
                 data=products,
+                updated_at=cached_at,
             )
             await write_session.commit()
         except BaseException:
@@ -675,8 +695,9 @@ async def fetch_store_products(
                 if not products:
                     _log_event("scrape_empty", cache_key, started_at=started_at)
                     return []
-                await _persist_positive_result(cleaned_query, language, products)
-                _memory_cache_set(cache_key, products)
+                cached_at = datetime.fromtimestamp(time.time(), tz=timezone.utc)
+                await _persist_positive_result(cleaned_query, language, products, cached_at)
+                _memory_cache_set(cache_key, products, timestamp=cached_at.timestamp())
                 _log_event("scrape_success", cache_key, started_at=started_at)
                 return products
         except asyncio.CancelledError:

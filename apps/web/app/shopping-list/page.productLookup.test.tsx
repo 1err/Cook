@@ -144,3 +144,68 @@ test("manual and bulk aliases share one request under the global four-request ce
   );
   expect(peak).toBe(4);
 });
+
+test("revalidates a hydrated positive before displaying any stored product", async () => {
+  const storage = stubSessionStorage();
+  storage.set(
+    "smartShoppingList:2026-08-10",
+    JSON.stringify({
+      remove: [],
+      likely_pantry: [],
+      purchase_items: [
+        { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+      ],
+      _ui: { hidden: [], checked: [] },
+    }),
+  );
+  storage.set(
+    "smartShoppingProducts:2026-08-10:weee",
+    JSON.stringify({
+      open: { rice: true },
+      lookup: {
+        rice: {
+          status: "success",
+          products: [
+            {
+              name: "Stored rice",
+              price: "$0.01",
+              image: "",
+              url: "https://sayweee.com.evil.test/product/rice",
+            },
+          ],
+        },
+      },
+    }),
+  );
+
+  const freshResponse = deferredResponse();
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/shopping-list?")) {
+      return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+    }
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
+    if (path === "/recipes") return Promise.resolve(jsonResponse([]));
+    if (path === "/store-products?query=rice") return freshResponse.promise;
+    throw new Error(`Unexpected request: ${path}`);
+  });
+
+  render(<ShoppingListPage />);
+
+  expect(await screen.findByText("Finding matches on Weee…")).toBeVisible();
+  expect(screen.queryByText("Stored rice")).not.toBeInTheDocument();
+  expect(mockApiFetch).toHaveBeenCalledWith("/store-products?query=rice");
+
+  freshResponse.resolve(
+    jsonResponse([
+      {
+        name: "Fresh rice",
+        price: "$2.99",
+        image: "",
+        url: "https://www.sayweee.com/product/rice",
+      },
+    ]),
+  );
+
+  expect(await screen.findByText("Fresh rice")).toBeVisible();
+  expect(screen.queryByText("Stored rice")).not.toBeInTheDocument();
+});

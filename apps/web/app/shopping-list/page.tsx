@@ -361,10 +361,14 @@ function ShoppingListPageContent() {
       setLookupByIngredient(parsed.lookup);
       setBulkLoadingProducts(false);
       setBulkLoadProgress(null);
+      const generation = productLoadGenerationRef.current;
+      for (const key of parsed.revalidate) {
+        void productLookupCoordinator.request(key, generation);
+      }
     } catch {
       clearProductResults();
     }
-  }, [activeRefinedData, start]);
+  }, [activeRefinedData, productLookupCoordinator, start]);
 
   useEffect(() => {
     if (!activeRefinedData) return;

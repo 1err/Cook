@@ -318,6 +318,63 @@ async def test_positive_live_scrape_is_committed_before_result_and_memory_are_pu
 
 
 @pytest.mark.asyncio
+async def test_delayed_commit_keeps_postgresql_and_memory_on_one_absolute_expiry(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    clock = {"seconds": 1_000_000.0}
+    cached_at_values: list[datetime] = []
+
+    class WriteSession:
+        async def commit(self) -> None:
+            clock["seconds"] += 300
+
+        async def rollback(self) -> None:
+            raise AssertionError("a successful writer must not roll back")
+
+    class SessionContext:
+        async def __aenter__(self) -> WriteSession:
+            return WriteSession()
+
+        async def __aexit__(self, *args: Any) -> None:
+            return None
+
+    async def scrape_live(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+        return [PRODUCT]
+
+    async def capture_upsert(session: object, **kwargs: Any) -> None:
+        cached_at_values.append(kwargs["updated_at"])
+
+    monkeypatch.setattr(store_scraper.time, "time", lambda: clock["seconds"])
+    monkeypatch.setattr(store_scraper, "_scrape_weee_products", scrape_live)
+    monkeypatch.setattr(db_session, "async_session_maker", lambda: SessionContext())
+    monkeypatch.setattr(repo_store_cache, "upsert_cached_store_products", capture_upsert)
+
+    assert await store_scraper.fetch_store_products("silken tofu", force_refresh=True) == [PRODUCT]
+
+    cache_key = ("weee", "en", store_scraper.CACHE_VERSION, "silken tofu")
+    assert len(cached_at_values) == 1
+    cached_at = cached_at_values[0]
+    assert cached_at == datetime.fromtimestamp(1_000_000.0, tz=timezone.utc)
+    assert store_scraper.CACHE[cache_key]["timestamp"] == cached_at.timestamp()
+
+    clock["seconds"] = 1_000_000.0 + 86399
+    assert is_cache_entry_fresh(
+        cached_at,
+        datetime.fromtimestamp(clock["seconds"], tz=timezone.utc),
+        store_scraper.CACHE_TTL_SECONDS,
+    )
+    assert store_scraper._memory_cache_get(cache_key) == [PRODUCT]
+
+    clock["seconds"] = 1_000_000.0 + 86400
+    assert not is_cache_entry_fresh(
+        cached_at,
+        datetime.fromtimestamp(clock["seconds"], tz=timezone.utc),
+        store_scraper.CACHE_TTL_SECONDS,
+    )
+    assert store_scraper._memory_cache_get(cache_key) is None
+
+
+@pytest.mark.asyncio
 async def test_failed_independent_writer_rolls_back_closes_and_allows_retry(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -625,6 +682,150 @@ async def test_products_are_validated_deduplicated_and_truncated_before_persiste
 
 
 @pytest.mark.asyncio
+async def test_old_unvalidated_cache_version_is_inert(monkeypatch: pytest.MonkeyPatch):
+    old_product = {**PRODUCT, "name": "Old tofu", "price": "$0.01"}
+    fresh_product = {**PRODUCT, "name": "Fresh tofu", "price": "$3.99"}
+    store_scraper.CACHE[("weee", "en", "v6", "tofu")] = {
+        "data": [old_product],
+        "timestamp": 1_000_000.0,
+    }
+    cache_versions: list[str] = []
+
+    async def database_miss(*args: Any, **kwargs: Any) -> None:
+        cache_versions.append(kwargs["cache_version"])
+        return None
+
+    async def scrape_live(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+        return [fresh_product]
+
+    async def persist_positive(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(store_scraper.time, "time", lambda: 1_000_001.0)
+    monkeypatch.setattr(repo_store_cache, "get_cached_store_products_with_metadata", database_miss)
+    monkeypatch.setattr(store_scraper, "_scrape_weee_products", scrape_live)
+    monkeypatch.setattr(store_scraper, "_persist_positive_result", persist_positive)
+
+    result = await store_scraper.fetch_store_products("tofu", session=object())
+
+    assert result == [fresh_product]
+    assert cache_versions == ["v7"]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://www.sayweee.com/product/tofu",
+        "https://sayweee.com.evil.test/product/tofu",
+        "https://evil-sayweee.com/product/tofu",
+        "https://user@sayweee.com/product/tofu",
+        "https://sayweee.com:444/product/tofu",
+    ],
+)
+def test_live_product_validation_rejects_unsafe_navigation_urls(url: str):
+    with pytest.raises(store_scraper.StoreScrapeError, match="no valid products"):
+        store_scraper._validate_products([{**PRODUCT, "url": url}])
+
+
+def test_live_product_validation_accepts_exact_and_subdomain_weee_hosts_case_insensitively():
+    products = [
+        {**PRODUCT, "url": "https://SAYWEEE.COM/product/tofu"},
+        {
+            **PRODUCT,
+            "name": "Firm tofu",
+            "url": "https://shop.sayweee.com/product/firm-tofu",
+        },
+    ]
+
+    assert store_scraper._validate_products(products) == [
+        {**PRODUCT, "url": "https://sayweee.com/product/tofu"},
+        {
+            **PRODUCT,
+            "name": "Firm tofu",
+            "url": "https://shop.sayweee.com/product/firm-tofu",
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_pdp_enrichment_never_navigates_to_an_unsafe_product_url():
+    navigated: list[str] = []
+
+    class Page:
+        async def goto(self, url: str, **kwargs: Any) -> None:
+            navigated.append(url)
+
+        async def wait_for_selector(self, *args: Any, **kwargs: Any) -> None:
+            return None
+
+        async def evaluate(self, *args: Any, **kwargs: Any) -> dict[str, str]:
+            return {}
+
+        async def close(self) -> None:
+            return None
+
+    class Context:
+        async def new_page(self) -> Page:
+            return Page()
+
+    await store_scraper._enrich_weee_products_from_detail_pages(
+        Context(),
+        store_scraper.WEEE_BASE_URL,
+        [
+            {**PRODUCT, "url": "https://sayweee.com.evil.test/product/tofu"},
+            PRODUCT.copy(),
+        ],
+    )
+
+    assert navigated == [PRODUCT["url"]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://www.sayweee.com/product/tofu",
+        "https://sayweee.com.evil.test/product/tofu",
+        "https://user@sayweee.com/product/tofu",
+        "https://sayweee.com:444/product/tofu",
+    ],
+)
+async def test_database_cache_read_rejects_unsafe_product_urls(
+    monkeypatch: pytest.MonkeyPatch,
+    url: str,
+):
+    now = datetime(2026, 8, 16, 12, tzinfo=timezone.utc)
+    row = SimpleNamespace(data=[{**PRODUCT, "url": url}], updated_at=now)
+
+    class ScalarResult:
+        def scalars(self) -> "ScalarResult":
+            return self
+
+        def one_or_none(self) -> SimpleNamespace:
+            return row
+
+    class Session:
+        async def execute(self, *args: Any, **kwargs: Any) -> ScalarResult:
+            return ScalarResult()
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            return now
+
+    monkeypatch.setattr(repo_store_cache, "datetime", FrozenDateTime)
+
+    assert await repo_store_cache.get_cached_store_products(
+        Session(),  # type: ignore[arg-type]
+        query="tofu",
+        store="weee",
+        language="en",
+        cache_version="v7",
+        max_age_seconds=86400,
+    ) is None
+
+
+@pytest.mark.asyncio
 async def test_invalid_weee_search_payload_raises_typed_failure():
     class Page:
         async def evaluate(self, script: str) -> dict[str, str]:
@@ -866,6 +1067,7 @@ async def test_empty_upsert_preserves_an_existing_positive_database_entry():
         language="en",
         cache_version="v6",
         data=[],
+        updated_at=datetime(2026, 8, 16, 12, tzinfo=timezone.utc),
     )
 
     assert row.data == [PRODUCT]

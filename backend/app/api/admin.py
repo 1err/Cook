@@ -96,7 +96,7 @@ def _row_to_preview_entry(row: object) -> CachePreviewEntry:
         language=getattr(row, "language"),
         updated_at=getattr(row, "updated_at"),
         is_warm_query=query in ALL_QUERIES,
-        data=getattr(row, "data") or [],
+        data=repo_store_cache.normalize_cached_store_products(getattr(row, "data")) or [],
     )
 
 

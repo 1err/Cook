@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import CachedStoreProductModel
+from app.core.store_products import normalize_weee_product_url
 
 
 @dataclass(frozen=True)
@@ -29,25 +30,28 @@ def is_cache_entry_fresh(
     return now - updated_at < timedelta(seconds=max_age_seconds)
 
 
-def _normalize_products(data: object) -> list[dict[str, str]] | None:
+def normalize_cached_store_products(data: object) -> list[dict[str, str]] | None:
     if not isinstance(data, list):
         return None
     products: list[dict[str, str]] = []
     for row in data:
         if not isinstance(row, dict):
-            return None
+            continue
         name = row.get("name")
         price = row.get("price")
         image = row.get("image")
         url = row.get("url")
         if not all(isinstance(value, str) for value in (name, price, image, url)):
-            return None
+            continue
+        safe_url = normalize_weee_product_url(url)
+        if safe_url is None:
+            continue
         products.append(
             {
                 "name": name,
                 "price": price,
                 "image": image,
-                "url": url,
+                "url": safe_url,
             }
         )
     return products
@@ -109,7 +113,7 @@ async def get_cached_store_products_with_metadata(
         max_age_seconds,
     ):
         return None
-    products = _normalize_products(row.data)
+    products = normalize_cached_store_products(row.data)
     return CachedStoreProducts(products=products, updated_at=updated_at) if products else None
 
 
@@ -147,7 +151,7 @@ async def list_cached_store_product_entries(
     if cache_version is not None:
         stmt = stmt.where(CachedStoreProductModel.cache_version == cache_version)
     if updated_before is not None:
-        stmt = stmt.where(CachedStoreProductModel.updated_at < updated_before)
+        stmt = stmt.where(CachedStoreProductModel.updated_at <= updated_before)
     stmt = stmt.order_by(
         CachedStoreProductModel.updated_at.desc(),
         CachedStoreProductModel.query.asc(),
@@ -174,7 +178,7 @@ async def count_cached_store_product_entries(
     if cache_version is not None:
         stmt = stmt.where(CachedStoreProductModel.cache_version == cache_version)
     if updated_before is not None:
-        stmt = stmt.where(CachedStoreProductModel.updated_at < updated_before)
+        stmt = stmt.where(CachedStoreProductModel.updated_at <= updated_before)
     result = await session.execute(stmt)
     return int(result.scalar_one())
 
@@ -187,6 +191,7 @@ async def upsert_cached_store_products(
     language: str,
     cache_version: str,
     data: list[dict[str, str]],
+    updated_at: datetime,
 ) -> None:
     result = await session.execute(
         select(CachedStoreProductModel).where(
@@ -197,7 +202,7 @@ async def upsert_cached_store_products(
         )
     )
     row = result.scalars().one_or_none()
-    normalized = _normalize_products(data)
+    normalized = normalize_cached_store_products(data)
     if not normalized:
         return
     seen: set[str] = set()
@@ -216,9 +221,10 @@ async def upsert_cached_store_products(
             language=language,
             cache_version=cache_version,
             data=normalized,
+            updated_at=updated_at,
         )
         session.add(row)
     else:
         row.data = normalized
-        row.updated_at = datetime.now(timezone.utc)
+        row.updated_at = updated_at
     await session.flush()

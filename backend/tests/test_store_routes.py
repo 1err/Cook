@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
 
@@ -130,6 +131,84 @@ async def test_repository_list_and_count_apply_the_requested_store_filter():
         compiled = statement.compile()
         assert "cached_store_products.store" in str(compiled)
         assert "weee" in compiled.params.values()
+
+
+@pytest.mark.asyncio
+async def test_repository_stale_filters_include_the_exact_24_hour_boundary():
+    statements: list[Any] = []
+    cutoff = datetime(2026, 8, 15, 12, tzinfo=timezone.utc)
+
+    class Result:
+        def scalars(self) -> "Result":
+            return self
+
+        def all(self) -> list[Any]:
+            return []
+
+        def scalar_one(self) -> int:
+            return 0
+
+    class Session:
+        async def execute(self, statement: Any) -> Result:
+            statements.append(statement)
+            return Result()
+
+    session = Session()
+    await repo_store_cache.list_cached_store_product_entries(
+        session,  # type: ignore[arg-type]
+        updated_before=cutoff,
+    )
+    await repo_store_cache.count_cached_store_product_entries(
+        session,  # type: ignore[arg-type]
+        updated_before=cutoff,
+    )
+
+    assert len(statements) == 2
+    for statement in statements:
+        assert "cached_store_products.updated_at <=" in str(statement.compile())
+
+
+@pytest.mark.asyncio
+async def test_admin_preview_uses_the_exact_24_hour_cutoff(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    now = datetime(2026, 8, 16, 12, tzinfo=timezone.utc)
+    expected_cutoff = now - timedelta(seconds=admin.CACHE_TTL_SECONDS)
+    list_calls: list[dict[str, Any]] = []
+    count_calls: list[dict[str, Any]] = []
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            return now
+
+    async def list_entries(session: object, **kwargs: Any) -> list[SimpleNamespace]:
+        list_calls.append(kwargs)
+        return []
+
+    async def count_entries(session: object, **kwargs: Any) -> int:
+        count_calls.append(kwargs)
+        return 0
+
+    monkeypatch.setattr(admin, "datetime", FrozenDateTime)
+    monkeypatch.setattr(admin.repo_store_cache, "list_cached_store_product_entries", list_entries)
+    monkeypatch.setattr(admin.repo_store_cache, "count_cached_store_product_entries", count_entries)
+
+    await admin.cache_preview(
+        stale_only=True,
+        limit=100,
+        offset=0,
+        session=object(),  # type: ignore[arg-type]
+        current_user=object(),  # type: ignore[arg-type]
+    )
+
+    stale_cutoffs = [
+        call["updated_before"]
+        for call in [*list_calls, *count_calls]
+        if call.get("updated_before") is not None
+    ]
+    assert stale_cutoffs
+    assert all(cutoff == expected_cutoff for cutoff in stale_cutoffs)
 
 
 @pytest.mark.asyncio

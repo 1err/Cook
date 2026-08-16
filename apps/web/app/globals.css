@@ -3966,6 +3966,12 @@ button:disabled {
   padding: 0.5rem 0;
 }
 
+.shop-bento-products__status--loading {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
 .shop-bento-product-card {
   display: flex;
   align-items: flex-start;

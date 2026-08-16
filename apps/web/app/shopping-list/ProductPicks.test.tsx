@@ -25,9 +25,13 @@ test.each([
   ["queued", "Waiting to load from Weee…"],
   ["loading", "Finding matches on Weee…"],
 ] as const)("renders %s without the empty message", (status, message) => {
-  renderPicks(<ProductPicks state={{ status }} onRetry={vi.fn()} />);
+  const { container } = renderPicks(
+    <ProductPicks state={{ status }} onRetry={vi.fn()} />,
+  );
 
   expect(screen.getByText(message)).toBeVisible();
+  expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
+  expect(container.querySelector(".shop-bulk-loading-banner__spinner")).toBeInTheDocument();
   expect(screen.queryByText("No products found on Weee")).not.toBeInTheDocument();
 });
 
@@ -60,4 +64,24 @@ test("renders the localized Chinese failure", async () => {
   renderPicks(<ProductPicks state={{ status: "error" }} onRetry={vi.fn()} />);
 
   expect(await screen.findByText("无法从 Weee 加载商品。")).toBeVisible();
+});
+
+test.each([
+  "http://www.sayweee.com/product/tofu",
+  "https://sayweee.com.evil.test/product/tofu",
+  "https://user@sayweee.com/product/tofu",
+  "https://sayweee.com:444/product/tofu",
+])("does not expose an unsafe product navigation target: %s", (url) => {
+  renderPicks(
+    <ProductPicks
+      state={{
+        status: "success",
+        products: [{ name: "Unsafe tofu", price: "$1", image: "", url }],
+      }}
+      onRetry={vi.fn()}
+    />,
+  );
+
+  expect(screen.queryByRole("link", { name: "View on Weee" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeVisible();
 });

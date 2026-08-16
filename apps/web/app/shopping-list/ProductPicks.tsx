@@ -1,4 +1,4 @@
-import { WEEE_STORE_LABEL } from "@cooking/shared";
+import { WEEE_STORE_LABEL, isSafeWeeeProductUrl } from "@cooking/shared";
 import { useT } from "../lib/i18n";
 import type { ProductLookupState } from "./productLoading";
 
@@ -10,20 +10,23 @@ type ProductPicksProps = {
 export function ProductPicks({ state, onRetry }: ProductPicksProps) {
   const t = useT();
 
+  const loadingStatus = (message: string) => (
+    <div
+      className="shop-bento-products__status shop-bento-products__status--loading"
+      role="status"
+      aria-live="polite"
+    >
+      <span className="shop-bulk-loading-banner__spinner" aria-hidden />
+      <span>{message}</span>
+    </div>
+  );
+
   if (state.status === "idle") return null;
   if (state.status === "queued") {
-    return (
-      <p className="shop-bento-products__status">
-        {t("shopping.waitingProducts")}
-      </p>
-    );
+    return loadingStatus(t("shopping.waitingProducts"));
   }
   if (state.status === "loading") {
-    return (
-      <p className="shop-bento-products__status">
-        {t("shopping.findingProducts")}
-      </p>
-    );
+    return loadingStatus(t("shopping.findingProducts"));
   }
   if (state.status === "error" || state.status === "empty") {
     const message =
@@ -44,9 +47,27 @@ export function ProductPicks({ state, onRetry }: ProductPicksProps) {
     );
   }
 
+  const safeProducts = (state.products ?? []).filter((product) =>
+    isSafeWeeeProductUrl(product.url),
+  );
+  if (!safeProducts.length) {
+    return (
+      <div className="shop-bento-products__status">
+        <p style={{ margin: 0 }}>{t("shopping.productLoadFailed")}</p>
+        <button
+          type="button"
+          className="shop-bento-products__toggle font-headline"
+          onClick={onRetry}
+        >
+          {t("shopping.retryProducts")}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <>
-      {(state.products ?? []).slice(0, 3).map((product) => (
+      {safeProducts.slice(0, 3).map((product) => (
         <div key={product.url} className="shop-bento-product-card">
           {product.image ? (
             <img src={product.image} alt={product.name} loading="lazy" />

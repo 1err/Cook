@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { StoreProduct } from "@cooking/api-client";
+import { isSafeWeeeProductUrl } from "@cooking/shared";
 import { useApiClient, type ApiClient } from "../../lib/api";
 import {
   readSmartProducts,
@@ -32,14 +33,23 @@ const emptyMaps = () => ({
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
-    case "hydrate":
+    case "hydrate": {
+      const positiveKeys = Object.entries(action.payload.products)
+        .filter(([, products]) => products.length > 0)
+        .map(([key]) => key);
       return {
         ...state,
         open: action.payload.open,
-        products: action.payload.products,
-        loading: {},
-        errors: action.payload.errors,
+        products: Object.fromEntries(
+          Object.entries(action.payload.products).filter(([, products]) => products.length === 0),
+        ),
+        loading: Object.fromEntries(positiveKeys.map((key) => [key, true])),
+        errors: {
+          ...action.payload.errors,
+          ...Object.fromEntries(positiveKeys.map((key) => [key, null])),
+        },
       };
+    }
     case "clear":
       return { ...state, ...emptyMaps() };
     case "setOpen":
@@ -83,7 +93,8 @@ async function fetchProducts(apiClient: ApiClient, query: string): Promise<Store
         typeof row.name === "string" &&
         typeof row.price === "string" &&
         typeof row.image === "string" &&
-        typeof row.url === "string",
+        typeof row.url === "string" &&
+        isSafeWeeeProductUrl(row.url),
     )
     .slice(0, 3);
 }
@@ -115,13 +126,40 @@ export function useStoreProductsCache(weekStart: string | null) {
     void (async () => {
       const cached = await readSmartProducts(weekStart);
       if (cancelled) return;
-      if (cached) dispatch({ type: "hydrate", payload: cached });
-      else dispatch({ type: "clear" });
+      if (!cached) {
+        dispatch({ type: "clear" });
+        return;
+      }
+      dispatch({ type: "hydrate", payload: cached });
+      const queue = Object.entries(cached.products)
+        .filter(([, products]) => products.length > 0)
+        .map(([key]) => key);
+      async function worker() {
+        while (!cancelled) {
+          const key = queue.shift();
+          if (!key) return;
+          try {
+            const products = await fetchProducts(apiClient, key);
+            if (!cancelled) dispatch({ type: "loadSucceeded", key, products });
+          } catch (error) {
+            if (!cancelled) {
+              dispatch({
+                type: "loadFailed",
+                key,
+                error: error instanceof Error ? error.message : "Failed to load products",
+              });
+            }
+          }
+        }
+      }
+      await Promise.all(
+        Array.from({ length: Math.min(BULK_LOAD_CONCURRENCY, queue.length) }, worker),
+      );
     })();
     return () => {
       cancelled = true;
     };
-  }, [weekStart]);
+  }, [apiClient, weekStart]);
 
   // Persist on every change.
   useEffect(() => {

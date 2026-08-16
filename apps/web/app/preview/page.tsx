@@ -6,6 +6,7 @@ import { RequireAuth } from "../components/RequireAuth";
 import { useAuth } from "../lib/auth";
 import { apiFetch } from "../lib/api";
 import { isAdminUser } from "../lib/admin";
+import { isStaleUpdatedAt } from "./cacheFreshness";
 
 type CachedProduct = {
   name: string;
@@ -96,13 +97,6 @@ function formatRelativeTime(value: string | null): string {
   if (Math.abs(diffHours) < 24) return `${diffHours}h ago`;
   const diffDays = Math.round(diffHours / 24);
   return `${diffDays}d ago`;
-}
-
-function isStaleUpdatedAt(value: string | null, ttlMs: number): boolean {
-  if (!value) return true;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return true;
-  return Date.now() - date.getTime() > ttlMs;
 }
 
 function ProductInline({ product }: { product: CachedProduct }) {
@@ -359,7 +353,7 @@ function PreviewPageContent() {
               onChange={(event) => setRefreshStaleOnly(event.target.checked)}
               disabled={refreshStatus?.running}
             />
-            Only refresh stale (&gt;24h)
+            Only refresh stale (≥24h)
           </label>
           <label style={checkboxLabelStyle}>
             <input
