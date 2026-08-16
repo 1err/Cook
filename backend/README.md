@@ -28,6 +28,22 @@ alembic upgrade head
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+## Tests
+
+CI uses Python 3.12 and installs both the runtime and development requirement sets before running pytest:
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt -r requirements-dev.txt
+.venv/bin/python -m pytest -q
+```
+
+Run the same commands from `backend/`. For the stricter local release gate, promote every unfiltered Python warning to an error:
+
+```bash
+.venv/bin/python -W error -m pytest -q
+```
+
 ## Docker
 
 From repo root. Backend requires Postgres; use the postgres profile so the database is running:
