@@ -11,6 +11,7 @@ export type PlannerWeekBoardProps = {
   planByDate: Record<string, MealPlanSlots | undefined>;
   recipesById: Record<string, Recipe | undefined>;
   draggingSlot: { date: string; slot: MealType } | null;
+  mutationsDisabled?: boolean;
   onChoose: (date: string, slot: MealType) => void;
   onOpen: (recipeId: string) => void;
   onRemove: (date: string, slot: MealType, recipeId: string) => void;
@@ -29,6 +30,7 @@ export function PlannerWeekBoard({
   planByDate,
   recipesById,
   draggingSlot,
+  mutationsDisabled = false,
   onChoose,
   onOpen,
   onRemove,
@@ -53,6 +55,7 @@ export function PlannerWeekBoard({
                 recipeIds={(planByDate[date] ?? emptyMealPlanSlots())[slot]}
                 recipesById={recipesById}
                 isDragOver={draggingSlot?.date === date && draggingSlot.slot === slot}
+                mutationsDisabled={mutationsDisabled}
                 onChoose={() => onChoose(date, slot)}
                 onOpen={onOpen}
                 onRemove={(recipeId) => onRemove(date, slot, recipeId)}

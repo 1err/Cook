@@ -103,14 +103,31 @@ test("keeps the full planner in one desktop viewport and preserves every planner
   test.skip(testInfo.project.name !== "desktop", "The fixed viewport contract runs in the desktop project.");
   await expect(page.getByTestId("planner-day-column")).toHaveCount(7);
   await expect(page.getByTestId("planner-meal-slot")).toHaveCount(21);
+  const outOfViewport = await page
+    .locator(".planner-editorial__day-head, [data-testid='planner-meal-slot']")
+    .evaluateAll((elements) =>
+      elements.flatMap((element, index) => {
+        const rect = element.getBoundingClientRect();
+        return rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth
+          ? []
+          : [{ index, top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left }];
+      }),
+    );
+  expect(outOfViewport).toEqual([]);
   const viewportMetrics = await page.evaluate(() => ({
     documentHeight: document.documentElement.scrollHeight,
+    documentWidth: document.documentElement.scrollWidth,
     headerHeight: document.querySelector("header")?.getBoundingClientRect().height,
     plannerHeight: document.querySelector(".planner-editorial")?.getBoundingClientRect().height,
     viewportHeight: window.innerHeight,
+    viewportWidth: window.innerWidth,
   }));
+  expect(viewportMetrics.headerHeight).toBe(72);
   expect(viewportMetrics.documentHeight, JSON.stringify(viewportMetrics)).toBeLessThanOrEqual(
     viewportMetrics.viewportHeight,
+  );
+  expect(viewportMetrics.documentWidth, JSON.stringify(viewportMetrics)).toBeLessThanOrEqual(
+    viewportMetrics.viewportWidth,
   );
   expect(
     await page
@@ -193,6 +210,9 @@ test("keeps phone and tablet planners stacked, scrollable, and picker-friendly",
   await expect(page.getByText("Phone-friendly planning")).toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight),
+  ).toBe(true);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
   ).toBe(true);
 
   const [firstDay, secondDay] = await page.getByTestId("planner-day-column").evaluateAll((days) =>

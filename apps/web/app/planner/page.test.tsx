@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -39,6 +39,10 @@ const messages: Record<string, string> = {
   "planner.closeRecipePicker": "Close recipe picker",
   "planner.filterAria": "Filter planner recipes by tag",
   "planner.importRecipes": "Import recipes",
+  "planner.loadFailed": "Could not load this week's saved plan. Planner changes are disabled to protect existing meals.",
+  "planner.mealBreakfast": "breakfast",
+  "planner.mealLunch": "lunch",
+  "planner.mealDinner": "dinner",
   "planner.newRecipe": "New recipe",
   "planner.noRecipesMatch": "No recipes match the current search or filter.",
   "planner.openRecipe": "Open {title} for {slot} on {date}",
@@ -48,6 +52,7 @@ const messages: Record<string, string> = {
   "planner.savedRecipes": "Your saved recipes",
   "planner.savedRecipesDesc": "Drag recipes into your week.",
   "planner.saveFailed": "Could not save your planner change. Your previous plan was restored.",
+  "planner.retryLoad": "Retry loading plan",
   "planner.searchAria": "Search recipes for planner",
   "planner.searchLibrary": "Search library...",
   "planner.shoppingListUsesPlan": "Shopping list uses this week's plan.",
@@ -110,10 +115,14 @@ function mockDeferredPlannerWrites(putResponses: DeferredResponse[]) {
   return requests;
 }
 
-async function addDinnerRecipe(user: ReturnType<typeof userEvent.setup>, title: string) {
+async function addDinnerRecipe(
+  user: ReturnType<typeof userEvent.setup>,
+  title: string,
+  date = "2026-08-10",
+) {
   await user.click(
     await screen.findByRole("button", {
-      name: /^(Choose a recipe|Add another recipe) for dinner on 2026-08-10$/,
+      name: new RegExp(`^(Choose a recipe|Add another recipe) for dinner on ${date}$`),
     }),
   );
   const picker = await screen.findByRole("dialog", { name: "Choose recipe for meal slot" });
@@ -254,42 +263,143 @@ test("keeps a later queued recipe when the preceding write fails", async () => {
   });
 });
 
-test("creates an empty day and saves an optimistic recipe when the plan read fails", async () => {
-  const saved = deferredResponse();
+test("settles writes for separate dates independently when the earlier date later fails", async () => {
+  const dateA = deferredResponse();
+  const dateB = deferredResponse();
   const requests: Array<{ date: string; slots: { breakfast: string[]; lunch: string[]; dinner: string[] } }> = [];
   mockApiFetch.mockImplementation((path: string, options?: RequestInit) => {
-    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse({ detail: "read failed" }, 500));
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
     if (path === "/recipes") {
-      return Promise.resolve(jsonResponse([{ id: "recipe-1", title: "Test recipe", ingredients: [] }]));
+      return Promise.resolve(
+        jsonResponse([
+          { id: "recipe-1", title: "First recipe", ingredients: [] },
+          { id: "recipe-2", title: "Second recipe", ingredients: [] },
+        ]),
+      );
     }
-    if (path === "/meal-plan/2026-08-10" && options?.method === "PUT") {
+    if (path.startsWith("/meal-plan/") && options?.method === "PUT") {
       requests.push({
         date: path.slice("/meal-plan/".length),
         slots: JSON.parse(String(options.body)),
       });
-      return saved.promise;
+      return path.endsWith("2026-08-10") ? dateA.promise : dateB.promise;
     }
     throw new Error(`Unexpected request: ${path}`);
   });
   const user = userEvent.setup();
   render(<PlannerPage />);
 
-  await user.click(
-    await screen.findByRole("button", {
-      name: "Choose a recipe for dinner on 2026-08-10",
-    }),
-  );
-  const picker = await screen.findByRole("dialog", { name: "Choose recipe for meal slot" });
-  await user.click(within(picker).getByRole("button", { name: "Add" }));
+  await addDinnerRecipe(user, "First recipe", "2026-08-10");
+  await addDinnerRecipe(user, "Second recipe", "2026-08-11");
 
-  expect(await screen.findByRole("button", { name: /Open Test recipe/ })).toBeVisible();
   expect(requests).toEqual([
     { date: "2026-08-10", slots: { breakfast: [], lunch: [], dinner: ["recipe-1"] } },
+    { date: "2026-08-11", slots: { breakfast: [], lunch: [], dinner: ["recipe-2"] } },
   ]);
-
-  saved.resolve(mealPlanResponse("2026-08-10", ["recipe-1"]));
+  dateB.resolve(mealPlanResponse("2026-08-11", ["recipe-2"]));
   await waitFor(() => {
-    expect(screen.getByRole("button", { name: /Open Test recipe/ })).toBeVisible();
-    expect(requests).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /Open Second recipe.*2026-08-11/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /Open First recipe.*2026-08-10/ })).toBeVisible();
+  });
+
+  dateA.resolve(jsonResponse({ detail: "date A failed" }, 500));
+  await waitFor(() => {
+    expect(screen.queryByRole("button", { name: /Open First recipe.*2026-08-10/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open Second recipe.*2026-08-11/ })).toBeVisible();
+  });
+});
+
+test("blocks mutations after a failed plan read until retry restores authoritative state", async () => {
+  let planReadCount = 0;
+  const requests: Array<{ date: string; slots: { breakfast: string[]; lunch: string[]; dinner: string[] } }> = [];
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+    if (path.startsWith("/meal-plan?")) {
+      planReadCount += 1;
+      return Promise.resolve(
+        planReadCount === 1
+          ? jsonResponse({ detail: "read failed" }, 500)
+          : jsonResponse([{ date: "2026-08-10", breakfast: [], lunch: [], dinner: ["recipe-2"] }]),
+      );
+    }
+    if (path === "/recipes") {
+      return Promise.resolve(
+        jsonResponse([
+          { id: "recipe-1", title: "First recipe", ingredients: [] },
+          { id: "recipe-2", title: "Persisted recipe", ingredients: [] },
+        ]),
+      );
+    }
+    if (path === "/meal-plan/2026-08-10" && options?.method === "PUT") {
+      const slots = JSON.parse(String(options.body));
+      requests.push({ date: "2026-08-10", slots });
+      return Promise.resolve(jsonResponse({ date: "2026-08-10", ...slots }));
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  const user = userEvent.setup();
+  render(<PlannerPage />);
+
+  const choose = await screen.findByRole("button", {
+    name: "Choose a recipe for dinner on 2026-08-10",
+  });
+  expect(choose).toBeDisabled();
+  await user.click(choose);
+  const dinnerSlot = screen.getAllByTestId("planner-meal-slot").find(
+    (slot) => slot.dataset.date === "2026-08-10" && slot.dataset.slotIndex === "2",
+  );
+  expect(dinnerSlot).toBeDefined();
+  fireEvent.drop(dinnerSlot as HTMLElement, {
+    dataTransfer: { getData: () => "recipe-1" },
+  });
+  expect(requests).toEqual([]);
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Could not load this week's saved plan. Planner changes are disabled to protect existing meals.",
+  );
+
+  await user.click(screen.getByRole("button", { name: "Retry loading plan" }));
+  expect(
+    await screen.findByRole("button", { name: /Open Persisted recipe.*2026-08-10/ }),
+  ).toBeVisible();
+  await addDinnerRecipe(user, "First recipe", "2026-08-10");
+
+  await waitFor(() => {
+    expect(requests).toEqual([
+      {
+        date: "2026-08-10",
+        slots: { breakfast: [], lunch: [], dinner: ["recipe-2", "recipe-1"] },
+      },
+    ]);
+  });
+});
+
+test("offers the same protected retry when the plan request rejects", async () => {
+  let planReadCount = 0;
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/meal-plan?")) {
+      planReadCount += 1;
+      return planReadCount === 1
+        ? Promise.reject(new Error("network unavailable"))
+        : Promise.resolve(jsonResponse([]));
+    }
+    if (path === "/recipes") {
+      return Promise.resolve(jsonResponse([{ id: "recipe-1", title: "First recipe", ingredients: [] }]));
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  const user = userEvent.setup();
+  render(<PlannerPage />);
+
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "Could not load this week's saved plan. Planner changes are disabled to protect existing meals.",
+  );
+  expect(
+    screen.getByRole("button", { name: "Choose a recipe for dinner on 2026-08-10" }),
+  ).toBeDisabled();
+
+  await user.click(screen.getByRole("button", { name: "Retry loading plan" }));
+  await waitFor(() => {
+    expect(
+      screen.getByRole("button", { name: "Choose a recipe for dinner on 2026-08-10" }),
+    ).toBeEnabled();
   });
 });

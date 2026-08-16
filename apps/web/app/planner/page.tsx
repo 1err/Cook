@@ -27,6 +27,7 @@ import { PlannerRecipeRail } from "./components/PlannerRecipeRail";
 import { PlannerToolbar } from "./components/PlannerToolbar";
 import { PlannerWeekBoard } from "./components/PlannerWeekBoard";
 import { addRecipeToSlots, removeRecipeFromSlots } from "./plannerModel";
+import { PLANNER_MEAL_LABEL_KEYS } from "./plannerMessages";
 
 const COL_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -68,6 +69,8 @@ function PlannerPageContent() {
   const [categoryFilter, setCategoryFilter] = useState<LibraryFilterId>("all");
   const [slotPicker, setSlotPicker] = useState<{ date: string; slot: MealType } | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [planLoadFailed, setPlanLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const mutationQueuesByDate = useRef<Record<string, DateMutationQueue>>({});
   const loadGeneration = useRef(0);
 
@@ -94,23 +97,34 @@ function PlannerPageContent() {
       setSlotPicker(null);
       setDraggingSlot(null);
       setMutationError(null);
+      setPlanLoadFailed(false);
       try {
-        const [plansRes, recipesRes] = await Promise.all([
+        const [plansResult, recipesResult] = await Promise.allSettled([
           apiFetch(`/meal-plan?start=${start}&end=${end}`),
           apiFetch("/recipes"),
         ]);
-        if (!recipesRes.ok) throw new Error("Failed to load recipes");
-        const recs: Recipe[] = await recipesRes.json();
-        if (!cancelled) setRecipes(recs);
         const nextPlan: Record<string, MealPlanSlots> = Object.fromEntries(
           dates.map((date) => [date, emptyMealPlanSlots()]),
         );
-        if (plansRes.ok) {
-          const plans: MealPlanDay[] = await plansRes.json();
-          plans.forEach((p) => {
-            nextPlan[p.date] = normalizeMealPlanSlots(p);
-          });
+        if (plansResult.status === "rejected" || !plansResult.value.ok) {
+          if (!cancelled && loadGeneration.current === generation) {
+            mutationQueuesByDate.current = {};
+            setPlanByDate(nextPlan);
+            setPlanLoadFailed(true);
+          }
+          return;
         }
+        if (recipesResult.status === "rejected" || !recipesResult.value.ok) {
+          throw new Error("Failed to load recipes");
+        }
+        const [plans, recs]: [MealPlanDay[], Recipe[]] = await Promise.all([
+          plansResult.value.json(),
+          recipesResult.value.json(),
+        ]);
+        if (!cancelled) setRecipes(recs);
+        plans.forEach((p) => {
+          nextPlan[p.date] = normalizeMealPlanSlots(p);
+        });
         if (!cancelled && loadGeneration.current === generation) {
           mutationQueuesByDate.current = Object.fromEntries(
             dates.map((date) => [
@@ -135,10 +149,10 @@ function PlannerPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [start, end, dates.join(",")]);
+  }, [start, end, dates.join(","), loadAttempt]);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || planLoadFailed) return;
     const plansForFingerprint: MealPlanDay[] = dates.map((date) => ({
       date,
       ...(planByDate[date] ?? emptyMealPlanSlots()),
@@ -151,7 +165,7 @@ function PlannerPageContent() {
     } catch {
       // ignore storage failures
     }
-  }, [dates, loading, planByDate, start]);
+  }, [dates, loading, planByDate, planLoadFailed, start]);
 
   async function putDay(date: string, slots: MealPlanSlots): Promise<MealPlanSlots> {
     const res = await apiFetch(`/meal-plan/${date}`, {
@@ -215,11 +229,13 @@ function PlannerPageContent() {
   }
 
   function handleDragStart(e: React.DragEvent, recipeId: string) {
+    if (planLoadFailed) return;
     e.dataTransfer.setData("recipeId", recipeId);
     e.dataTransfer.effectAllowed = "copy";
   }
 
   function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (planLoadFailed) return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = "copy";
@@ -239,6 +255,7 @@ function PlannerPageContent() {
     e.preventDefault();
     e.stopPropagation();
     setDraggingSlot(null);
+    if (planLoadFailed) return;
     const date = e.currentTarget.dataset.date;
     const slotIndexRaw = e.currentTarget.dataset.slotIndex;
     if (date === undefined || slotIndexRaw === undefined) return;
@@ -251,12 +268,14 @@ function PlannerPageContent() {
   }
 
   async function addRecipeToSlot(date: string, slot: MealType, recipeId: string) {
+    if (planLoadFailed) return;
     const current = planByDate[date] ?? emptyMealPlanSlots();
     if (current[slot].includes(recipeId)) return;
     enqueueDayMutation(date, (slots) => addRecipeToSlots(slots, slot, recipeId));
   }
 
   async function removeMeal(date: string, slot: MealType, recipeId: string) {
+    if (planLoadFailed) return;
     enqueueDayMutation(date, (slots) => removeRecipeFromSlots(slots, slot, recipeId));
   }
 
@@ -283,6 +302,7 @@ function PlannerPageContent() {
     const short = index >= 0 ? COL_SHORT[index] : slotPicker.date;
     return `${short} ${dayOfMonth(slotPicker.date)}`;
   }, [dates, slotPicker]);
+  const slotPickerMealLabel = slotPicker ? t(PLANNER_MEAL_LABEL_KEYS[slotPicker.slot]) : "";
 
   if (loading) return <p className="planner-muted app-wide">{t("common.loading")}</p>;
 
@@ -322,8 +342,8 @@ function PlannerPageContent() {
     sidebarRecipes.map((r) => (
       <div key={r.id} className="planner-source-card">
         <div
-          draggable
-          onDragStart={(e) => handleDragStart(e, r.id)}
+          draggable={!planLoadFailed}
+          onDragStart={planLoadFailed ? undefined : (e) => handleDragStart(e, r.id)}
           className="planner-drag-card"
         >
           <div className="planner-drag-card__thumb">
@@ -414,13 +434,25 @@ function PlannerPageContent() {
           </div>
         ) : null}
 
+        {planLoadFailed ? (
+          <div role="status" className="planner-mutation-error">
+            <span>{t("planner.loadFailed")}</span>
+            <button type="button" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>
+              {t("planner.retryLoad")}
+            </button>
+          </div>
+        ) : null}
+
         <PlannerWeekBoard
           dates={dates}
           today={today}
           planByDate={planByDate}
           recipesById={recipeById}
           draggingSlot={draggingSlot}
-          onChoose={(date, slot) => setSlotPicker({ date, slot })}
+          mutationsDisabled={planLoadFailed}
+          onChoose={(date, slot) => {
+            if (!planLoadFailed) setSlotPicker({ date, slot });
+          }}
           onOpen={openRecipe}
           onRemove={removeMeal}
           onDragOver={handleDragOver}
@@ -441,7 +473,7 @@ function PlannerPageContent() {
                 <div>
                   <p className="planner-mobile-picker__kicker font-headline">{slotPickerDayLabel}</p>
                   <h2 className="planner-mobile-picker__title font-headline">
-                    {t("planner.addToSlot", { slot: slotPicker.slot })}
+                    {t("planner.addToSlot", { slot: slotPickerMealLabel })}
                   </h2>
                 </div>
                 <button

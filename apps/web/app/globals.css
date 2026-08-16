@@ -3,6 +3,7 @@
   --font-inter: system-ui, sans-serif;
   --font-manrope: system-ui, sans-serif;
   --app-header-height: 72px;
+  --app-header-divider-height: 1px;
 
   --space-4: 4px;
   --space-8: 8px;
@@ -2145,7 +2146,7 @@ button:disabled {
 .planner-editorial {
   display: flex;
   flex-direction: column;
-  min-height: calc(100dvh - 4.5rem);
+  min-height: calc(100dvh - var(--app-header-height));
   width: 100%;
   max-width: 100%;
   margin: 0;
@@ -2169,8 +2170,8 @@ button:disabled {
   .planner-editorial {
     flex-direction: row;
     align-items: stretch;
-    min-height: calc(100dvh - 4.5rem);
-    max-height: calc(100dvh - 4.5rem);
+    min-height: calc(100dvh - var(--app-header-height));
+    max-height: calc(100dvh - var(--app-header-height));
   }
 }
 
@@ -2401,6 +2402,10 @@ button:disabled {
 
 .planner-slot-empty-trigger__label {
   pointer-events: none;
+}
+
+.planner-slot-meal-label {
+  display: none;
 }
 
 .planner-drop-target {
@@ -2799,8 +2804,6 @@ button:disabled {
     display: grid;
     grid-template-columns: clamp(15.5rem, 18vw, 18rem) minmax(0, 1fr);
     height: calc(100dvh - var(--app-header-height));
-    /* The header divider occupies one extra layout pixel beyond its 72px inner box. */
-    margin-top: -1px;
     min-height: 0;
     max-height: none;
     overflow: hidden;
@@ -2896,9 +2899,9 @@ button:disabled {
     position: relative;
   }
 
-  .planner-drop-target::before {
+  .planner-slot-meal-label {
     color: var(--on-surface-variant);
-    content: "";
+    display: block;
     font-size: 0.5rem;
     font-weight: 900;
     left: 0.4rem;
@@ -2910,19 +2913,16 @@ button:disabled {
     z-index: 2;
   }
 
-  .planner-drop-target[data-slot-index="0"]::before {
+  .planner-slot-meal-label.breakfast {
     color: var(--primary-container);
-    content: "Breakfast";
   }
 
-  .planner-drop-target[data-slot-index="1"]::before {
+  .planner-slot-meal-label.lunch {
     color: var(--tertiary);
-    content: "Lunch";
   }
 
-  .planner-drop-target[data-slot-index="2"]::before {
+  .planner-slot-meal-label.dinner {
     color: var(--primary);
-    content: "Dinner";
   }
 
   .planner-drop-target--filled {

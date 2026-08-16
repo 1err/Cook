@@ -4,7 +4,7 @@ import { emptyMealPlanSlots } from "@cooking/shared";
 import { I18nProvider } from "../../lib/i18n";
 import { PlannerWeekBoard } from "./PlannerWeekBoard";
 
-test("renders all seven days and 21 accessible meal slots", () => {
+test("renders seven named days with a semantic control for every meal", () => {
   const dates = Array.from({ length: 7 }, (_, index) => `2026-08-${String(10 + index).padStart(2, "0")}`);
   const planByDate = Object.fromEntries(dates.map((date) => [date, emptyMealPlanSlots()]));
   render(
@@ -24,10 +24,13 @@ test("renders all seven days and 21 accessible meal slots", () => {
       />
     </I18nProvider>,
   );
-  const dayColumns = screen.getAllByTestId("planner-day-column");
-  expect(dayColumns).toHaveLength(7);
-  dayColumns.forEach((column) => {
-    expect(column).toHaveClass("flex", "flex-col", "gap-4", "min-w-0");
-  });
-  expect(screen.getAllByTestId("planner-meal-slot")).toHaveLength(21);
+  expect(screen.getByText("Mon")).toBeVisible();
+  expect(screen.getByText("Sun")).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Choose a recipe for breakfast on 2026-08-10" }),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Choose a recipe for dinner on 2026-08-16" }),
+  ).toBeVisible();
+  expect(screen.getAllByRole("button", { name: /Choose a recipe for/ })).toHaveLength(21);
 });

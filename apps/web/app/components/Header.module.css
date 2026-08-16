@@ -1,6 +1,7 @@
 .header {
   background: var(--cw-color-canvas);
-  border-bottom: 1px solid var(--cw-color-divider);
+  border-bottom: var(--app-header-divider-height) solid var(--cw-color-divider);
+  min-height: var(--app-header-height);
   position: sticky;
   top: 0;
   z-index: 50;
@@ -12,7 +13,7 @@
   gap: var(--cw-space-6);
   margin: 0 auto;
   max-width: 1200px;
-  min-height: 72px;
+  min-height: calc(var(--app-header-height) - var(--app-header-divider-height));
   padding: var(--cw-space-3) var(--cw-space-6);
 }
 
