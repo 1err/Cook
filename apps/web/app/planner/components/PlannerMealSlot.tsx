@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { MEAL_PLAN_SLOTS, type MealType, type Recipe } from "@cooking/shared";
 import { useT } from "../../lib/i18n";
 import { MAX_VISIBLE_SLOT_RECIPES, splitSlotRecipeIds } from "../plannerModel";
@@ -21,6 +21,13 @@ export type PlannerMealSlotProps = {
   onDrop: React.DragEventHandler<HTMLDivElement>;
 };
 
+const DIALOG_CONTROL_SELECTOR =
+  'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function dialogControls(dialog: HTMLDivElement | null) {
+  return Array.from(dialog?.querySelectorAll<HTMLElement>(DIALOG_CONTROL_SELECTOR) ?? []);
+}
+
 function useDialogKeyboard(
   overflowOpen: boolean,
   closeOverflow: () => void,
@@ -29,9 +36,7 @@ function useDialogKeyboard(
   useEffect(() => {
     if (!overflowOpen) return;
     queueMicrotask(() => {
-      dialogRef.current?.querySelector<HTMLElement>(
-        'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      )?.focus();
+      dialogControls(dialogRef.current)[0]?.focus();
     });
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -40,11 +45,7 @@ function useDialogKeyboard(
         return;
       }
       if (event.key !== "Tab") return;
-      const controls = Array.from(
-        dialogRef.current?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      );
+      const controls = dialogControls(dialogRef.current);
       const first = controls[0];
       const last = controls.at(-1);
       if (!first || !last) return;
@@ -101,6 +102,7 @@ export function PlannerMealSlot({
   const addAnotherRef = useRef<HTMLButtonElement>(null);
   const overflowTriggerRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const dialogFocusRef = useRef<{ element: HTMLElement; index: number } | null>(null);
   const closeOverflow = useCallback(() => {
     setOverflowOpen(false);
     queueMicrotask(() => {
@@ -118,8 +120,17 @@ export function PlannerMealSlot({
   const dialogRecipes = recipeIds.map((recipeId) => ({ recipeId, recipe: recipesById[recipeId] })).filter(
     (entry): entry is { recipeId: string; recipe: Recipe } => Boolean(entry.recipe),
   );
+  const dialogRecipeFingerprint = dialogRecipes.map(({ recipeId }) => recipeId).join("\u0000");
 
   useDialogKeyboard(overflowOpen, closeOverflow, dialogRef);
+
+  useLayoutEffect(() => {
+    if (!overflowOpen) return;
+    const focusSnapshot = dialogFocusRef.current;
+    if (!focusSnapshot || focusSnapshot.element.isConnected) return;
+    const controls = dialogControls(dialogRef.current);
+    controls[Math.min(focusSnapshot.index, controls.length - 1)]?.focus();
+  }, [dialogRecipeFingerprint, overflowOpen]);
 
   useEffect(() => {
     if (overflowOpen && overflow.length === 0) closeOverflow();
@@ -198,7 +209,28 @@ export function PlannerMealSlot({
       {overflowOpen ? (
         <div className="planner-mobile-picker" onPointerDown={closeOverflow}>
           <div className="planner-mobile-picker__backdrop" aria-hidden="true" />
-          <div ref={dialogRef} className="planner-mobile-picker__sheet" role="dialog" aria-modal="true" aria-label={t("planner.slotRecipes", { slot: slotHeading, date })} onPointerDown={(event) => event.stopPropagation()}>
+          <div
+            ref={dialogRef}
+            className="planner-mobile-picker__sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("planner.slotRecipes", { slot: slotHeading, date })}
+            onPointerDown={(event) => event.stopPropagation()}
+            onFocusCapture={(event) => {
+              const element = event.target;
+              if (!(element instanceof HTMLElement)) return;
+              dialogFocusRef.current = {
+                element,
+                index: dialogControls(event.currentTarget).indexOf(element),
+              };
+            }}
+            onBlurCapture={(event) => {
+              const nextElement = event.relatedTarget;
+              if (!(nextElement instanceof Node) || !event.currentTarget.contains(nextElement)) {
+                dialogFocusRef.current = null;
+              }
+            }}
+          >
             <div className="planner-mobile-picker__head">
               <h2 className="planner-mobile-picker__title font-headline">{t("planner.slotRecipes", { slot: slotHeading, date })}</h2>
               <button type="button" className="planner-mobile-picker__close" onClick={closeOverflow} aria-label={t("planner.closeSlotRecipes")}>

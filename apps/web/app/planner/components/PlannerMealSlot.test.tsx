@@ -7,7 +7,7 @@ import { I18nProvider } from "../../lib/i18n";
 import { PlannerMealSlot } from "./PlannerMealSlot";
 
 const recipes: Record<string, Recipe> = Object.fromEntries(
-  ["One", "Two", "Three"].map((title, index) => [
+  ["One", "Two", "Three", "Four"].map((title, index) => [
     `r${index + 1}`,
     { id: `r${index + 1}`, title, ingredients: [] },
   ]),
@@ -146,6 +146,59 @@ test("closes and rehomes focus when removing overflow removes its trigger", asyn
   expect(
     screen.getByRole("button", { name: "Add another recipe for dinner on 2026-08-10" }),
   ).toHaveFocus();
+});
+
+test("rehomes focus inside an open overflow dialog when the focused recipe row is removed", async () => {
+  const user = userEvent.setup();
+
+  function RemovingSlot() {
+    const [recipeIds, setRecipeIds] = useState(["r1", "r2", "r3", "r4"]);
+    return (
+      <PlannerMealSlot
+        {...slotProps()}
+        recipeIds={recipeIds}
+        onRemove={(recipeId) => setRecipeIds((current) => current.filter((id) => id !== recipeId))}
+      />
+    );
+  }
+
+  renderSlot(<RemovingSlot />);
+  await user.click(screen.getByRole("button", { name: /Show 2 more recipes/ }));
+  const dialog = screen.getByRole("dialog");
+  await user.click(
+    within(dialog).getByRole("button", {
+      name: "Remove Three from dinner on 2026-08-10",
+    }),
+  );
+
+  expect(dialog).toBeVisible();
+  const nextRemove = within(dialog).getByRole("button", {
+    name: "Remove Four from dinner on 2026-08-10",
+  });
+  await waitFor(() => expect(nextRemove).toHaveFocus());
+
+  await user.tab();
+  expect(within(dialog).getByRole("button", { name: "Close meal recipes" })).toHaveFocus();
+  await user.tab({ shift: true });
+  expect(nextRemove).toHaveFocus();
+});
+
+test("preserves dialog focus when a recipe change does not remove the active control", async () => {
+  const user = userEvent.setup();
+  const props = { ...slotProps(), recipeIds: ["r1", "r2", "r3", "r4"] };
+  const view = renderSlot(<PlannerMealSlot {...props} />);
+
+  await user.click(screen.getByRole("button", { name: /Show 2 more recipes/ }));
+  const close = screen.getByRole("button", { name: "Close meal recipes" });
+  expect(close).toHaveFocus();
+
+  view.rerender(
+    <I18nProvider>
+      <PlannerMealSlot {...props} recipeIds={["r1", "r2", "r4"]} />
+    </I18nProvider>,
+  );
+
+  expect(close).toHaveFocus();
 });
 
 test("traps Tab and Shift+Tab inside the overflow dialog", async () => {
