@@ -36,3 +36,36 @@ The Weee-only contract, grocery layout/order, web/backend ceiling of four, warme
 - `npm run web:lint` was not a usable non-interactive gate because the repository has no ESLint configuration and `next lint` opened its first-run configuration prompt; `next build` completed its built-in lint/type phase.
 
 The final commit SHA and clean worktree status are reported from `git rev-parse HEAD` and `git status --short --branch` after committing this report and all scoped changes.
+
+## Final Fix Round 2
+
+Starting commit: `ac233c76930860ef3e9b6c6f1733a1a7c43baf3c`
+
+### Corrections
+
+1. The public product route now returns `{products, expires_at}`. Positive-result expiry is calculated from the service result's actual cache-entry timestamp, so memory hits, PostgreSQL hits, fresh writes, and single-flight followers all expose the same authoritative cache lifetime. Empty live results explicitly return `expires_at: null`; admin and warmer callers keep the list-returning service wrapper.
+2. `StoreProductsResponse` is shared through `@cooking/api-client`. Web and mobile reject positive responses whose expiry is missing, malformed, or at/past the absolute boundary, and they continue to reject unsafe Weee URLs.
+3. Web success state and `sessionStorage` carry the authoritative expiry. Every displayed result gets an exact-boundary timer; at expiry it is replaced by queued/loading state before a backend revalidation. Timers are keyed by expiry and generation, removed with their state, and cleared on reset/unmount.
+4. Mobile persisted positives carry the same authoritative expiry and are valid only while `expires_at > now`. Displayed positives are removed and force-revalidated at the exact boundary. Timer callbacks and fetch publication are generation-guarded, single-flight per key, and cleaned up on key removal, week change, and unmount.
+5. Mobile hydration queues the union of stored positive keys and all `open=true` keys. Thus an open panel with missing, empty, expired, malformed, or legacy product state always retries instead of remaining a permanent spinner.
+6. Scoped `CLAUDE.md` product/API/storage statements now describe the implemented Weee-only behavior rather than Weee/Amazon.
+
+The Round 1 URL validation, `v7` cache isolation, exact 24-hour backend staleness, shared write timestamp, queued/loading accessibility treatment, grocery layout/order, maximum concurrency ceilings, cancellation, and positive-only backend persistence remain intact.
+
+### TDD evidence
+
+- Backend RED: new service/route tests failed because no metadata-returning service or response contract existed. Focused GREEN: `49 passed`, including controlled memory, age-86,399 PostgreSQL, delayed live-commit, and explicit empty-response cases.
+- Web RED: object responses were treated as invalid arrays, persisted success lacked expiry, and no boundary timer existed. Focused GREEN: `20 passed`, including missing/invalid/exact-expiry parsing and a fake-clock one-second boundary revalidation with no stale display.
+- Mobile RED: the hook did not understand response metadata, an open key without products was not queued, and no expiry timer existed. Focused GREEN: `6 passed`, including persisted exact-boundary rejection, open-without-positive hydration, exact timer behavior, and unmount cleanup.
+
+### Round 2 release verification
+
+- Full web: `14` files, `66` tests passed. The pre-existing Vitest/Node empty `--localstorage-file` runner warning remains the only warning.
+- Full mobile: `11` suites, `25` tests passed.
+- Full backend with warnings escalated and only dependency deprecations allowlisted: `52 passed`.
+- Web and mobile TypeScript (`tsc --noEmit`): passed.
+- Web production build: passed; the restricted environment again skipped Google Fonts stylesheet optimization after the download failed.
+- Design-token test/build: passed with no generated drift.
+- Backend `compileall`, Weee/Amazon scope scan, concurrency/version scan, intentional S3 `amazonaws.com` check, and `git diff --check`: passed.
+
+No push, merge, deploy, migration, infrastructure, or external-state action was performed.

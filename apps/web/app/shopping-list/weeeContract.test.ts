@@ -6,7 +6,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 test("requests Weee products without a store selector", async () => {
   const fetchMock = vi.fn().mockResolvedValue(
-    new Response(JSON.stringify([]), {
+    new Response(JSON.stringify({ products: [], expires_at: null }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     }),
@@ -18,7 +18,10 @@ test("requests Weee products without a store selector", async () => {
     auth: { kind: "cookie" },
   });
 
-  await client.shopping.storeProducts("silken tofu");
+  await expect(client.shopping.storeProducts("silken tofu")).resolves.toEqual({
+    products: [],
+    expires_at: null,
+  });
 
   expect(fetchMock).toHaveBeenCalledWith(
     "https://api.example.test/store-products?query=silken%20tofu",

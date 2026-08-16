@@ -1,4 +1,4 @@
-import type { StoreProduct } from "@cooking/api-client";
+import type { StoreProduct, StoreProductsResponse } from "@cooking/api-client";
 import { isSafeWeeeProductUrl } from "@cooking/shared";
 import type { ProductLookupState } from "./productLoading";
 
@@ -14,7 +14,7 @@ export type HydratedProductLookupStorage = ProductLookupStorage & {
 };
 
 type ProductLookupCoordinatorOptions = {
-  load: (query: string) => Promise<StoreProduct[]>;
+  load: (query: string) => Promise<StoreProductsResponse>;
   shouldPublish: (generation: number) => boolean;
   onState: (
     canonicalKey: string,
@@ -48,6 +48,39 @@ export function isStoreProduct(row: unknown): row is StoreProduct {
   );
 }
 
+function parseAuthoritativeExpiry(value: unknown, nowMs: number): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string") throw new Error("Invalid product expiry");
+  if (!/T.*(?:Z|[+-]\d{2}:\d{2})$/i.test(value)) {
+    throw new Error("Invalid product expiry");
+  }
+  const expiresAtMs = Date.parse(value);
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) {
+    throw new Error("Expired product response");
+  }
+  return value;
+}
+
+export function parseStoreProductsResponse(
+  value: unknown,
+  nowMs = Date.now(),
+): StoreProductsResponse {
+  if (!value || typeof value !== "object") throw new Error("Invalid product response");
+  const response = value as Partial<StoreProductsResponse>;
+  if (!Array.isArray(response.products)) throw new Error("Invalid product response");
+  if (!("expires_at" in response)) throw new Error("Invalid product expiry");
+  const products = response.products.filter(isStoreProduct).slice(0, 3);
+  if (!products.length) {
+    if (response.products.length === 0 && response.expires_at !== null) {
+      throw new Error("Invalid product expiry");
+    }
+    return { products: [], expires_at: null };
+  }
+  const expiresAt = parseAuthoritativeExpiry(response.expires_at, nowMs);
+  if (expiresAt === null) throw new Error("Invalid product expiry");
+  return { products, expires_at: expiresAt };
+}
+
 export function createProductLookupCoordinator({
   load,
   shouldPublish,
@@ -77,13 +110,25 @@ export function createProductLookupCoordinator({
     Promise.resolve()
       .then(() => load(entry.query))
       .then(
-        (products) =>
+        (value) => {
+          let response: StoreProductsResponse;
+          try {
+            response = parseStoreProductsResponse(value);
+          } catch {
+            finish(entry, { status: "error" });
+            return;
+          }
           finish(
             entry,
-            products.length
-              ? { status: "success", products }
+            response.products.length && response.expires_at
+              ? {
+                  status: "success",
+                  products: response.products,
+                  expiresAt: response.expires_at,
+                }
               : { status: "empty", products: [] },
-          ),
+          );
+        },
         () => finish(entry, { status: "error" }),
       );
   }
@@ -136,18 +181,32 @@ function terminalPriority(state: ProductLookupState): number {
   return 0;
 }
 
-function sanitizeTerminalState(value: unknown): ProductLookupState | null {
+function sanitizeTerminalState(
+  value: unknown,
+  nowMs = Date.now(),
+): ProductLookupState | null {
   if (!value || typeof value !== "object") return null;
   const state = value as ProductLookupState;
   if (state.status === "success") {
     if (
       !Array.isArray(state.products) ||
       !state.products.length ||
-      !state.products.every(isStoreProduct)
+      !state.products.every(isStoreProduct) ||
+      typeof state.expiresAt !== "string"
     ) {
       return null;
     }
-    return { status: "success", products: state.products.slice(0, 3) };
+    try {
+      const expiresAt = parseAuthoritativeExpiry(state.expiresAt, nowMs);
+      if (expiresAt === null) return null;
+      return {
+        status: "success",
+        products: state.products.slice(0, 3),
+        expiresAt,
+      };
+    } catch {
+      return null;
+    }
   }
   if (state.status === "empty") return { status: "empty", products: [] };
   if (state.status === "error") return { status: "error" };
@@ -157,6 +216,7 @@ function sanitizeTerminalState(value: unknown): ProductLookupState | null {
 export function buildProductLookupStorage(
   openInput: Record<string, unknown>,
   lookupInput: Record<string, unknown>,
+  nowMs = Date.now(),
 ): ProductLookupStorage {
   const open: Record<string, boolean> = {};
   for (const [rawKey, value] of Object.entries(openInput)) {
@@ -167,7 +227,7 @@ export function buildProductLookupStorage(
   const lookup: Record<string, ProductLookupState> = {};
   for (const [rawKey, value] of Object.entries(lookupInput)) {
     const key = canonicalIngredientKey(rawKey);
-    const state = sanitizeTerminalState(value);
+    const state = sanitizeTerminalState(value, nowMs);
     if (!key || !state) continue;
     const existing = lookup[key];
     if (!existing || terminalPriority(state) > terminalPriority(existing)) {
@@ -177,7 +237,10 @@ export function buildProductLookupStorage(
   return { open, lookup };
 }
 
-export function parseProductLookupStorage(raw: string): HydratedProductLookupStorage | null {
+export function parseProductLookupStorage(
+  raw: string,
+  nowMs = Date.now(),
+): HydratedProductLookupStorage | null {
   try {
     const parsed = JSON.parse(raw) as {
       open?: Record<string, unknown>;
@@ -186,7 +249,7 @@ export function parseProductLookupStorage(raw: string): HydratedProductLookupSto
     if (!parsed || typeof parsed !== "object") return null;
     if (!parsed.open || typeof parsed.open !== "object") return null;
     if (!parsed.lookup || typeof parsed.lookup !== "object") return null;
-    const stored = buildProductLookupStorage(parsed.open, parsed.lookup);
+    const stored = buildProductLookupStorage(parsed.open, parsed.lookup, nowMs);
     const revalidate: string[] = [];
     const seen = new Set<string>();
     for (const [rawKey, rawState] of Object.entries(parsed.lookup)) {

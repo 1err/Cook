@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import type { StoreProduct } from "@cooking/api-client";
+import type { StoreProductsResponse } from "@cooking/api-client";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
 import { useI18n, useT } from "../lib/i18n";
@@ -31,7 +31,7 @@ import {
   buildProductLookupStorage,
   canonicalIngredientKey,
   createProductLookupCoordinator,
-  isStoreProduct,
+  parseStoreProductsResponse,
   parseProductLookupStorage,
 } from "./productLookupCoordinator";
 
@@ -126,12 +126,11 @@ interface SmartStored extends RefineResponse {
   _plannerFingerprint?: string;
 }
 
-async function loadProduct(key: string): Promise<StoreProduct[]> {
+async function loadProduct(key: string): Promise<StoreProductsResponse> {
   const res = await apiFetch(`/store-products?query=${encodeURIComponent(key)}`);
   if (!res.ok) throw new Error("Failed to load products");
   const data: unknown = await res.json();
-  if (!Array.isArray(data)) throw new Error("Failed to load products");
-  return data.filter(isStoreProduct).slice(0, 3);
+  return parseStoreProductsResponse(data);
 }
 
 function bentoIconWrapClass(cat: GroceryCategory): string {
@@ -198,6 +197,18 @@ function ShoppingListPageContent() {
   const [openProductsByIngredient, setOpenProductsByIngredient] = useState<Record<string, boolean>>({});
   const [lookupByIngredient, setLookupByIngredient] = useState<Record<string, ProductLookupState>>({});
   const productLoadGenerationRef = useRef(0);
+  const lookupByIngredientRef = useRef(lookupByIngredient);
+  lookupByIngredientRef.current = lookupByIngredient;
+  const productExpiryTimersRef = useRef(
+    new Map<
+      string,
+      {
+        expiresAt: string;
+        generation: number;
+        timer: ReturnType<typeof setTimeout>;
+      }
+    >(),
+  );
   const productLookupCoordinatorRef = useRef<ReturnType<
     typeof createProductLookupCoordinator
   > | null>(null);
@@ -226,6 +237,10 @@ function ShoppingListPageContent() {
 
   function clearProductResults() {
     productLoadGenerationRef.current += 1;
+    for (const entry of productExpiryTimersRef.current.values()) {
+      clearTimeout(entry.timer);
+    }
+    productExpiryTimersRef.current.clear();
     setOpenProductsByIngredient({});
     setLookupByIngredient({});
     setBulkLoadingProducts(false);
@@ -235,8 +250,60 @@ function ShoppingListPageContent() {
   useEffect(() => {
     return () => {
       productLoadGenerationRef.current += 1;
+      for (const entry of productExpiryTimersRef.current.values()) {
+        clearTimeout(entry.timer);
+      }
+      productExpiryTimersRef.current.clear();
     };
   }, []);
+
+  useEffect(() => {
+    const timers = productExpiryTimersRef.current;
+    const activeSuccessKeys = new Set<string>();
+
+    for (const [key, state] of Object.entries(lookupByIngredient)) {
+      if (state.status !== "success" || !state.expiresAt) continue;
+      activeSuccessKeys.add(key);
+      const generation = productLoadGenerationRef.current;
+      const existing = timers.get(key);
+      if (
+        existing?.expiresAt === state.expiresAt &&
+        existing.generation === generation
+      ) {
+        continue;
+      }
+      if (existing) clearTimeout(existing.timer);
+
+      const expiresAtMs = Date.parse(state.expiresAt);
+      const fireAtExpiry = () => {
+        const remaining = expiresAtMs - Date.now();
+        if (remaining > 0) {
+          const current = timers.get(key);
+          if (!current || current.expiresAt !== state.expiresAt) return;
+          current.timer = setTimeout(fireAtExpiry, remaining);
+          return;
+        }
+        timers.delete(key);
+        const current = lookupByIngredientRef.current[key];
+        if (
+          productLoadGenerationRef.current !== generation ||
+          current?.status !== "success" ||
+          current.expiresAt !== state.expiresAt
+        ) {
+          return;
+        }
+        void productLookupCoordinator.request(key, generation);
+      };
+      const timer = setTimeout(fireAtExpiry, Math.max(0, expiresAtMs - Date.now()));
+      timers.set(key, { expiresAt: state.expiresAt, generation, timer });
+    }
+
+    for (const [key, entry] of timers) {
+      if (activeSuccessKeys.has(key)) continue;
+      clearTimeout(entry.timer);
+      timers.delete(key);
+    }
+  }, [lookupByIngredient, productLookupCoordinator]);
 
   const persistSmart = useCallback(
     (data: RefineResponse, hidden: Set<number>, checked: Set<number>, plannerFingerprint: string) => {

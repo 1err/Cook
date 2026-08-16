@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Product summary
 
-A personal cooking assistant. Each user has an account and a private library of recipes. They populate the library by either (a) pasting a written transcript or (b) submitting a YouTube video link (captions only — there is no audio/Whisper path). They then assign recipes to days of the week in the planner (breakfast / lunch / dinner slots). The shopping list page aggregates ingredients across the planned week and can produce a "smart" grouped grocery list via an LLM call, plus suggested store products from Weee or Amazon backed by a multi-layer cache.
+A personal cooking assistant. Each user has an account and a private library of recipes. They populate the library by either (a) pasting a written transcript or (b) submitting a YouTube video link (captions only — there is no audio/Whisper path). They then assign recipes to days of the week in the planner (breakfast / lunch / dinner slots). The shopping list page aggregates ingredients across the planned week and can produce a "smart" grouped grocery list via an LLM call, plus suggested store products from Weee backed by a multi-layer cache.
 
 The cache is shared across all users: when one user triggers a fresh scrape, every subsequent user gets the cached row instantly. A background warmer keeps the most common queries hot.
 
@@ -213,7 +213,7 @@ Mounted in `backend/app/main.py`. All routes except `/auth/{register,login,logou
 | PUT | `/meal-plan/{date}` | Body accepts `{breakfast,lunch,dinner: string[]}` **or** legacy `{recipe_ids: string[]}` (normalized into dinner slot) |
 | GET | `/shopping-list?start=&end=` | Aggregates ingredients across week's meal plans |
 | POST | `/shopping-list/refine` | LLM grocery list. Stateless. Body `{items: [{name,quantity}]}`. Returns `{remove: [], likely_pantry: [], purchase_items: [...]}` — `remove`/`likely_pantry` are always empty (legacy contract; staples come back inside `purchase_items` with `category: "Pantry & Dry Goods"`) |
-| GET | `/store-products?query=&store=weee\|amazon` | In-memory L1 → Postgres L2 → Playwright scrape |
+| GET | `/store-products?query=&store=weee` | In-memory L1 → Postgres L2 → Playwright scrape |
 | GET | `/admin/cache-preview` | Paginated cached rows, warm-set classification |
 | POST | `/admin/cache-refresh` | `{stale_only: bool}` — kicks the warmer task |
 | GET | `/admin/cache-refresh-status` | Background task progress |
@@ -240,7 +240,7 @@ OpenAI prompts + calls live in `backend/app/extract.py` (recipe extraction) and 
 `/shopping-list/refine` only fires when the user clicks **Prepare smart shopping list**. The shopping page persists three keys per week:
 
 - `smartShoppingList:{weekMonday}` — refined payload + `_ui.{hidden,checked}` + `_plannerFingerprint` (`sessionStorage`)
-- `smartShoppingProducts:{weekMonday}:{store}` — store-product picks per `weee`/`amazon` (`sessionStorage`)
+- `smartShoppingProducts:{weekMonday}:weee` — Weee product picks (`sessionStorage`)
 - `plannerWeekFingerprint:{weekMonday}` — written by planner; shopping page compares against `_plannerFingerprint` to mark the smart list **stale** when the planner changed afterward (`localStorage`)
 
 Don’t add automatic refine triggers — token cost is intentional.

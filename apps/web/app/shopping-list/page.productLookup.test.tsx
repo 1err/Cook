@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -49,6 +49,16 @@ function jsonResponse(body: unknown) {
   });
 }
 
+function productResponse(
+  products: unknown[],
+  expiresAt = new Date(Date.now() + 86_400_000).toISOString(),
+) {
+  return jsonResponse({
+    products,
+    expires_at: products.length ? expiresAt : null,
+  });
+}
+
 function deferredResponse() {
   let resolve!: (response: Response) => void;
   const promise = new Promise<Response>((done) => {
@@ -74,6 +84,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -132,11 +143,11 @@ test("manual and bulk aliases share one request under the global four-request ce
   expect(peak).toBe(4);
   expect(started.filter((name) => name.trim().toLocaleLowerCase() === "rice")).toHaveLength(1);
 
-  pending.get("Rice")?.resolve(jsonResponse([{ name: "Rice", price: "$1", image: "", url: "https://example.test/rice" }]));
+  pending.get("Rice")?.resolve(productResponse([{ name: "Rice", price: "$1", image: "", url: "https://www.sayweee.com/product/rice" }]));
   await waitFor(() => expect(started).toEqual(["Rice", "Beans", "Milk", "Eggs", "Flour"]));
   for (const [query, response] of pending) {
     if (query !== "Rice") {
-      response.resolve(jsonResponse([{ name: query, price: "$1", image: "", url: `https://example.test/${query}` }]));
+      response.resolve(productResponse([{ name: query, price: "$1", image: "", url: `https://www.sayweee.com/product/${query}` }]));
     }
   }
   await waitFor(() =>
@@ -165,6 +176,7 @@ test("revalidates a hydrated positive before displaying any stored product", asy
       lookup: {
         rice: {
           status: "success",
+          expiresAt: "2099-01-01T00:00:00.000Z",
           products: [
             {
               name: "Stored rice",
@@ -196,7 +208,7 @@ test("revalidates a hydrated positive before displaying any stored product", asy
   expect(mockApiFetch).toHaveBeenCalledWith("/store-products?query=rice");
 
   freshResponse.resolve(
-    jsonResponse([
+    productResponse([
       {
         name: "Fresh rice",
         price: "$2.99",
@@ -208,4 +220,81 @@ test("revalidates a hydrated positive before displaying any stored product", asy
 
   expect(await screen.findByText("Fresh rice")).toBeVisible();
   expect(screen.queryByText("Stored rice")).not.toBeInTheDocument();
+});
+
+test("clears a displayed result and revalidates at the exact backend expiry", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-08-15T12:00:00.000Z"));
+  const storage = stubSessionStorage();
+  storage.set(
+    "smartShoppingList:2026-08-10",
+    JSON.stringify({
+      remove: [],
+      likely_pantry: [],
+      purchase_items: [
+        { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+      ],
+      _ui: { hidden: [], checked: [] },
+    }),
+  );
+
+  const revalidation = deferredResponse();
+  let productCalls = 0;
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/shopping-list?")) {
+      return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+    }
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
+    if (path === "/recipes") return Promise.resolve(jsonResponse([]));
+    if (path.startsWith("/store-products?query=")) {
+      productCalls += 1;
+      if (productCalls === 1) {
+        return Promise.resolve(
+          productResponse(
+            [
+              {
+                name: "Fresh rice",
+                price: "$2.99",
+                image: "",
+                url: "https://www.sayweee.com/product/rice",
+              },
+            ],
+            "2026-08-15T12:00:01.000Z",
+          ),
+        );
+      }
+      return revalidation.promise;
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+
+  render(<ShoppingListPage />);
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  const viewButton = screen.getAllByRole("button", { name: "View products" })[0];
+  fireEvent.click(viewButton);
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  expect(screen.getByText("Fresh rice")).toBeVisible();
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(999);
+  });
+  expect(screen.getByText("Fresh rice")).toBeVisible();
+  expect(productCalls).toBe(1);
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(screen.queryByText("Fresh rice")).not.toBeInTheDocument();
+  expect(screen.getByText("Finding matches on Weee…")).toBeVisible();
+  expect(productCalls).toBe(2);
+
+  vi.useRealTimers();
 });

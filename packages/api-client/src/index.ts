@@ -18,6 +18,10 @@ export type RefineResult = {
 };
 
 export type StoreProduct = { name: string; price: string; image: string; url: string };
+export type StoreProductsResponse = {
+  products: StoreProduct[];
+  expires_at: string | null;
+};
 
 export type ParseLinkPayload = {
   url: string;
@@ -151,7 +155,7 @@ export function createApiClient(options: ApiClientOptions) {
           body: JSON.stringify({ items }),
         }),
       storeProducts: (query: string) =>
-        json<StoreProduct[]>(`/store-products?query=${encodeURIComponent(query)}`),
+        json<StoreProductsResponse>(`/store-products?query=${encodeURIComponent(query)}`),
     },
     admin: {
       cachePreview: (params: URLSearchParams) => json(`/admin/cache-preview?${params.toString()}`),

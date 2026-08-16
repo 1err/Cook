@@ -6,6 +6,7 @@ import logging
 import re
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal
 from urllib.parse import quote_plus, urljoin, urlsplit, urlunsplit
@@ -27,6 +28,12 @@ StoreName = Literal["weee"]
 CacheKey = tuple[StoreName, str, str, str]
 
 
+@dataclass(frozen=True)
+class StoreProductsResult:
+    products: list[dict[str, str]]
+    cached_at: datetime | None
+
+
 class StoreScrapeError(RuntimeError):
     """A Weee request failed before producing a trustworthy result."""
 
@@ -42,7 +49,7 @@ WEEE_ENRICH_BATCH_SIZE = 3
 WEEE_MAX_PDP_CANDIDATES = 12
 CACHE: dict[CacheKey, dict[str, Any]] = {}
 _scrape_semaphore = asyncio.Semaphore(SCRAPE_CONCURRENCY)
-_inflight: dict[CacheKey, asyncio.Task[list[dict[str, str]]]] = {}
+_inflight: dict[CacheKey, asyncio.Task[StoreProductsResult]] = {}
 _inflight_lock = asyncio.Lock()
 
 WEEE_BASE_URL = "https://www.sayweee.com"
@@ -232,7 +239,7 @@ def _bounded_pdp_candidates(products: list[dict[str, str]]) -> list[dict[str, st
     return candidates
 
 
-def _memory_cache_get(cache_key: CacheKey) -> list[dict[str, str]] | None:
+def _memory_cache_get_with_metadata(cache_key: CacheKey) -> StoreProductsResult | None:
     cached = CACHE.get(cache_key)
     if not cached:
         return None
@@ -249,7 +256,15 @@ def _memory_cache_get(cache_key: CacheKey) -> list[dict[str, str]] | None:
     except StoreScrapeError:
         CACHE.pop(cache_key, None)
         return None
-    return products or None
+    if not products:
+        return None
+    cached_at = datetime.fromtimestamp(float(cached["timestamp"]), tz=timezone.utc)
+    return StoreProductsResult(products=products, cached_at=cached_at)
+
+
+def _memory_cache_get(cache_key: CacheKey) -> list[dict[str, str]] | None:
+    entry = _memory_cache_get_with_metadata(cache_key)
+    return entry.products if entry is not None else None
 
 
 def _memory_cache_set(
@@ -588,7 +603,7 @@ def _log_event(
     logger.info("store_cache.%s", event, extra=extra)
 
 
-def _clear_completed_flight(cache_key: CacheKey, task: asyncio.Task[list[dict[str, str]]]) -> None:
+def _clear_completed_flight(cache_key: CacheKey, task: asyncio.Task[StoreProductsResult]) -> None:
     if _inflight.get(cache_key) is task:
         _inflight.pop(cache_key, None)
     if not task.cancelled():
@@ -597,8 +612,8 @@ def _clear_completed_flight(cache_key: CacheKey, task: asyncio.Task[list[dict[st
 
 async def _join_or_start_scrape(
     cache_key: CacheKey,
-    operation: Callable[[], Awaitable[list[dict[str, str]]]],
-) -> list[dict[str, str]]:
+    operation: Callable[[], Awaitable[StoreProductsResult]],
+) -> StoreProductsResult:
     wait_started_at = time.perf_counter()
     joined_existing = False
     async with _inflight_lock:
@@ -642,21 +657,21 @@ async def _persist_positive_result(
             raise
 
 
-async def fetch_store_products(
+async def fetch_store_products_with_metadata(
     query: str,
     session: AsyncSession | None = None,
     *,
     force_refresh: bool = False,
-) -> list[dict[str, str]]:
+) -> StoreProductsResult:
     lookup_started_at = time.perf_counter()
     prepared = prepare_store_query(query)
     if prepared is None:
-        return []
+        return StoreProductsResult(products=[], cached_at=None)
     cleaned_query, language = prepared
     cache_key: CacheKey = ("weee", language, CACHE_VERSION, cleaned_query)
 
     if not force_refresh:
-        memory_cached = _memory_cache_get(cache_key)
+        memory_cached = _memory_cache_get_with_metadata(cache_key)
         if memory_cached is not None:
             _log_event("memory_hit", cache_key, started_at=lookup_started_at)
             return memory_cached
@@ -677,16 +692,19 @@ async def fetch_store_products(
                     timestamp=db_cached.updated_at.timestamp(),
                 )
                 _log_event("postgres_hit", cache_key, started_at=lookup_started_at)
-                return db_cached.products
+                return StoreProductsResult(
+                    products=db_cached.products,
+                    cached_at=db_cached.updated_at,
+                )
 
-            memory_cached = _memory_cache_get(cache_key)
+            memory_cached = _memory_cache_get_with_metadata(cache_key)
             if memory_cached is not None:
                 _log_event("memory_hit", cache_key, started_at=lookup_started_at)
                 return memory_cached
 
     _log_event("cache_miss", cache_key, started_at=lookup_started_at)
 
-    async def scrape_and_persist() -> list[dict[str, str]]:
+    async def scrape_and_persist() -> StoreProductsResult:
         started_at = time.perf_counter()
         try:
             async with _scrape_semaphore:
@@ -694,12 +712,12 @@ async def fetch_store_products(
                 products = _validate_products(raw_products)
                 if not products:
                     _log_event("scrape_empty", cache_key, started_at=started_at)
-                    return []
+                    return StoreProductsResult(products=[], cached_at=None)
                 cached_at = datetime.fromtimestamp(time.time(), tz=timezone.utc)
                 await _persist_positive_result(cleaned_query, language, products, cached_at)
                 _memory_cache_set(cache_key, products, timestamp=cached_at.timestamp())
                 _log_event("scrape_success", cache_key, started_at=started_at)
-                return products
+                return StoreProductsResult(products=products, cached_at=cached_at)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -707,3 +725,17 @@ async def fetch_store_products(
             raise
 
     return await _join_or_start_scrape(cache_key, scrape_and_persist)
+
+
+async def fetch_store_products(
+    query: str,
+    session: AsyncSession | None = None,
+    *,
+    force_refresh: bool = False,
+) -> list[dict[str, str]]:
+    result = await fetch_store_products_with_metadata(
+        query,
+        session=session,
+        force_refresh=force_refresh,
+    )
+    return result.products

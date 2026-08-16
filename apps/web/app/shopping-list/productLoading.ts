@@ -1,4 +1,4 @@
-import type { StoreProduct } from "@cooking/api-client";
+import type { StoreProduct, StoreProductsResponse } from "@cooking/api-client";
 import type { GroceryCategory } from "@cooking/shared";
 
 export type ProductLookupStatus = "idle" | "queued" | "loading" | "success" | "empty" | "error";
@@ -6,6 +6,7 @@ export type ProductLookupStatus = "idle" | "queued" | "loading" | "success" | "e
 export type ProductLookupState = {
   status: ProductLookupStatus;
   products?: StoreProduct[];
+  expiresAt?: string;
   error?: string;
 };
 
@@ -44,7 +45,7 @@ export async function runOrderedProductQueue({
   concurrency = 4,
 }: {
   keys: string[];
-  load: (key: string) => Promise<StoreProduct[]>;
+  load: (key: string) => Promise<StoreProductsResponse>;
   onState: (key: string, state: ProductLookupState) => void;
   onProgress: (done: number, total: number) => void;
   shouldContinue?: () => boolean;
@@ -65,8 +66,17 @@ export async function runOrderedProductQueue({
       const key = keys[index];
       onState(key, { status: "loading" });
       try {
-        const products = await load(key);
-        onState(key, products.length ? { status: "success", products } : { status: "empty", products: [] });
+        const result = await load(key);
+        onState(
+          key,
+          result.products.length && result.expires_at
+            ? {
+                status: "success",
+                products: result.products,
+                expiresAt: result.expires_at,
+              }
+            : { status: "empty", products: [] },
+        );
       } catch (error) {
         onState(key, {
           status: "error",

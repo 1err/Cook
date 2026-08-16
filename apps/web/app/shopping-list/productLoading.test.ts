@@ -12,6 +12,11 @@ const product = (name: string) => ({
   url: `https://example.test/${name}`,
 });
 
+const result = (name: string) => ({
+  products: [product(name)],
+  expires_at: "2099-01-01T00:00:00.000Z",
+});
+
 test("builds the queue from rendered groups without changing the layout", () => {
   const queue = buildVisualProductQueue([
     {
@@ -45,7 +50,7 @@ test("starts in queue order and never exceeds four active loads", async () => {
     peak = Math.max(peak, active);
     await new Promise<void>((resolve) => releases.push(resolve));
     active -= 1;
-    return [product(key)];
+    return result(key);
   });
 
   const promise = runOrderedProductQueue({
@@ -70,7 +75,7 @@ test("clamps an oversized concurrency request to four active loads", async () =>
   const load = vi.fn(async (key: string) => {
     started.push(key);
     await new Promise<void>((resolve) => releases.push(resolve));
-    return [product(key)];
+    return result(key);
   });
 
   const promise = runOrderedProductQueue({
@@ -97,7 +102,7 @@ test("normalizes a non-finite concurrency request to the safe ceiling", async ()
     load: async (key) => {
       started.push(key);
       await new Promise<void>((resolve) => releases.push(resolve));
-      return [product(key)];
+      return result(key);
     },
     onState: vi.fn(),
     onProgress: vi.fn(),
@@ -117,8 +122,8 @@ test("emits one terminal state and progress for each completed lookup", async ()
   await runOrderedProductQueue({
     keys: ["ready", "none", "broken"],
     load: async (key) => {
-      if (key === "ready") return [product(key)];
-      if (key === "none") return [];
+      if (key === "ready") return result(key);
+      if (key === "none") return { products: [], expires_at: null };
       throw new Error("Network unavailable");
     },
     onState: (key, state) => {
@@ -130,7 +135,11 @@ test("emits one terminal state and progress for each completed lookup", async ()
   expect(transitions.get("ready")).toEqual([
     { status: "queued" },
     { status: "loading" },
-    { status: "success", products: [product("ready")] },
+    {
+      status: "success",
+      products: [product("ready")],
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    },
   ]);
   expect(transitions.get("none")).toEqual([
     { status: "queued" },
@@ -152,7 +161,7 @@ test("stops before a new lookup when cancelled without corrupting queued state",
   const transitions = new Map<string, ProductLookupState[]>();
   const load = vi.fn(async (key: string) => {
     continueLoading = false;
-    return [product(key)];
+    return result(key);
   });
 
   await runOrderedProductQueue({

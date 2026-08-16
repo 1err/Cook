@@ -1,4 +1,5 @@
-import type { StoreProduct } from "@cooking/api-client";
+import type { StoreProduct, StoreProductsResponse } from "@cooking/api-client";
+import { isSafeWeeeProductUrl } from "@cooking/shared";
 import { ephemeral, json } from "../../lib/storage";
 
 export const SMART_SHOPPING_LIST_PREFIX = "smartShoppingList";
@@ -27,7 +28,7 @@ export interface SmartStored extends RefineResponse {
 
 export interface SmartProductsStored {
   open: Record<string, boolean>;
-  products: Record<string, StoreProduct[]>;
+  products: Record<string, StoreProductsResponse>;
   errors: Record<string, string | null>;
 }
 
@@ -52,7 +53,30 @@ export function parseSmartStored(parsed: unknown): ParsedSmartList | null {
   };
 }
 
-export function parseSmartProductsStored(parsed: unknown): SmartProductsStored | null {
+function isStoredProduct(row: unknown): row is StoreProduct {
+  if (!row || typeof row !== "object") return false;
+  const product = row as Partial<StoreProduct>;
+  return (
+    typeof product.name === "string" &&
+    typeof product.price === "string" &&
+    typeof product.image === "string" &&
+    typeof product.url === "string" &&
+    isSafeWeeeProductUrl(product.url)
+  );
+}
+
+function validFutureExpiry(value: unknown, nowMs: number): value is string {
+  if (typeof value !== "string" || !/T.*(?:Z|[+-]\d{2}:\d{2})$/i.test(value)) {
+    return false;
+  }
+  const expiresAtMs = Date.parse(value);
+  return Number.isFinite(expiresAtMs) && expiresAtMs > nowMs;
+}
+
+export function parseSmartProductsStored(
+  parsed: unknown,
+  nowMs = Date.now(),
+): SmartProductsStored | null {
   if (!parsed || typeof parsed !== "object") return null;
   const stored = parsed as SmartProductsStored;
   if (!stored.open || typeof stored.open !== "object") return null;
@@ -63,20 +87,17 @@ export function parseSmartProductsStored(parsed: unknown): SmartProductsStored |
       Object.entries(stored.open).filter(([, value]) => typeof value === "boolean"),
     ),
     products: Object.fromEntries(
-      Object.entries(stored.products).filter(
-        ([, value]) =>
-          Array.isArray(value) &&
-          value.every(
-            (row) =>
-              row &&
-              typeof row === "object" &&
-              typeof row.name === "string" &&
-              typeof row.price === "string" &&
-              typeof row.image === "string" &&
-              typeof row.url === "string",
-          ),
-      ),
-    ) as Record<string, StoreProduct[]>,
+      Object.entries(stored.products).filter(([, value]) => {
+        if (!value || typeof value !== "object") return false;
+        const response = value as Partial<StoreProductsResponse>;
+        return (
+          Array.isArray(response.products) &&
+          response.products.length > 0 &&
+          response.products.every(isStoredProduct) &&
+          validFutureExpiry(response.expires_at, nowMs)
+        );
+      }),
+    ) as Record<string, StoreProductsResponse>,
     errors: Object.fromEntries(
       Object.entries(stored.errors).filter(
         ([, value]) => value === null || typeof value === "string",

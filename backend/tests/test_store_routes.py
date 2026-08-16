@@ -26,11 +26,13 @@ async def test_store_products_accepts_only_the_weee_default_and_legacy_value(
     session = object()
     calls: list[tuple[str, object | None]] = []
 
-    async def fetch(query: str, session: object | None = None) -> list[dict[str, str]]:
-        calls.append((query, session))
-        return [PRODUCT]
+    cached_at = datetime(2026, 8, 15, 12, tzinfo=timezone.utc)
 
-    monkeypatch.setattr(routes_store, "fetch_store_products", fetch)
+    async def fetch(query: str, session: object | None = None) -> SimpleNamespace:
+        calls.append((query, session))
+        return SimpleNamespace(products=[PRODUCT], cached_at=cached_at)
+
+    monkeypatch.setattr(routes_store, "fetch_store_products_with_metadata", fetch)
 
     result = await routes_store.store_products(
         query="silken tofu",
@@ -39,7 +41,8 @@ async def test_store_products_accepts_only_the_weee_default_and_legacy_value(
         current_user=object(),  # type: ignore[arg-type]
     )
 
-    assert result == [PRODUCT]
+    assert result.products == [routes_store.StoreProduct(**PRODUCT)]
+    assert result.expires_at == cached_at + timedelta(seconds=86400)
     assert calls == [("silken tofu", session)]
 
 
@@ -52,7 +55,7 @@ async def test_store_products_rejects_amazon_before_fetching(monkeypatch: pytest
         fetch_calls += 1
         return []
 
-    monkeypatch.setattr(routes_store, "fetch_store_products", unexpected_fetch)
+    monkeypatch.setattr(routes_store, "fetch_store_products_with_metadata", unexpected_fetch)
 
     with pytest.raises(HTTPException) as exc_info:
         await routes_store.store_products(
@@ -65,6 +68,26 @@ async def test_store_products_rejects_amazon_before_fetching(monkeypatch: pytest
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "Unsupported store. Use weee."
     assert fetch_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_store_products_empty_response_has_an_explicit_null_expiry(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def fetch(*args: Any, **kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(products=[], cached_at=None)
+
+    monkeypatch.setattr(routes_store, "fetch_store_products_with_metadata", fetch)
+
+    result = await routes_store.store_products(
+        query="no result",
+        store="weee",
+        session=object(),  # type: ignore[arg-type]
+        current_user=object(),  # type: ignore[arg-type]
+    )
+
+    assert result.products == []
+    assert result.expires_at is None
 
 
 @pytest.mark.asyncio

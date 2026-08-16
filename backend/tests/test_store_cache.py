@@ -122,6 +122,26 @@ async def test_fresh_memory_hit_skips_database_and_scrape(monkeypatch: pytest.Mo
 
 
 @pytest.mark.asyncio
+async def test_memory_hit_metadata_uses_the_cache_entry_timestamp(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    cached_at = datetime(2026, 8, 15, 12, tzinfo=timezone.utc)
+    clock = {"seconds": cached_at.timestamp() + 120}
+    cache_key = ("weee", "en", store_scraper.CACHE_VERSION, "silken tofu")
+    store_scraper._memory_cache_set(cache_key, [PRODUCT], timestamp=cached_at.timestamp())
+
+    monkeypatch.setattr(store_scraper.time, "time", lambda: clock["seconds"])
+
+    result = await store_scraper.fetch_store_products_with_metadata(
+        "silken tofu",
+        session=object(),
+    )
+
+    assert result.products == [PRODUCT]
+    assert result.cached_at == cached_at
+
+
+@pytest.mark.asyncio
 async def test_fresh_postgresql_hit_repopulates_memory_and_skips_scrape(monkeypatch: pytest.MonkeyPatch):
     database_calls = 0
 
@@ -142,6 +162,32 @@ async def test_fresh_postgresql_hit_repopulates_memory_and_skips_scrape(monkeypa
     assert first == [PRODUCT]
     assert second == [PRODUCT]
     assert database_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_postgresql_hit_metadata_uses_the_row_timestamp(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    now = datetime(2026, 8, 15, 12, tzinfo=timezone.utc)
+    cached_at = now - timedelta(seconds=86399)
+
+    async def fresh_database(*args: Any, **kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(products=[PRODUCT], updated_at=cached_at)
+
+    monkeypatch.setattr(
+        repo_store_cache,
+        "get_cached_store_products_with_metadata",
+        fresh_database,
+    )
+    monkeypatch.setattr(store_scraper.time, "time", lambda: now.timestamp())
+
+    result = await store_scraper.fetch_store_products_with_metadata(
+        "silken tofu",
+        session=object(),
+    )
+
+    assert result.products == [PRODUCT]
+    assert result.cached_at == cached_at
 
 
 @pytest.mark.asyncio
@@ -372,6 +418,46 @@ async def test_delayed_commit_keeps_postgresql_and_memory_on_one_absolute_expiry
         store_scraper.CACHE_TTL_SECONDS,
     )
     assert store_scraper._memory_cache_get(cache_key) is None
+
+
+@pytest.mark.asyncio
+async def test_live_result_metadata_uses_the_precommit_cache_timestamp(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    clock = {"seconds": 1_000_000.0}
+
+    class WriteSession:
+        async def commit(self) -> None:
+            clock["seconds"] += 300
+
+        async def rollback(self) -> None:
+            raise AssertionError("a successful writer must not roll back")
+
+    class SessionContext:
+        async def __aenter__(self) -> WriteSession:
+            return WriteSession()
+
+        async def __aexit__(self, *args: Any) -> None:
+            return None
+
+    async def scrape_live(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+        return [PRODUCT]
+
+    async def capture_upsert(session: object, **kwargs: Any) -> None:
+        assert kwargs["updated_at"] == datetime.fromtimestamp(1_000_000.0, tz=timezone.utc)
+
+    monkeypatch.setattr(store_scraper.time, "time", lambda: clock["seconds"])
+    monkeypatch.setattr(store_scraper, "_scrape_weee_products", scrape_live)
+    monkeypatch.setattr(db_session, "async_session_maker", lambda: SessionContext())
+    monkeypatch.setattr(repo_store_cache, "upsert_cached_store_products", capture_upsert)
+
+    result = await store_scraper.fetch_store_products_with_metadata(
+        "silken tofu",
+        force_refresh=True,
+    )
+
+    assert result.products == [PRODUCT]
+    assert result.cached_at == datetime.fromtimestamp(1_000_000.0, tz=timezone.utc)
 
 
 @pytest.mark.asyncio
