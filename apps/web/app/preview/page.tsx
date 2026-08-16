@@ -16,6 +16,7 @@ type CachedProduct = {
 
 type CachePreviewEntry = {
   query: string;
+  store: string;
   language: string;
   updated_at: string | null;
   is_warm_query: boolean;
@@ -49,6 +50,7 @@ type CacheRefreshStatus = {
     cache_hit?: number;
     cache_miss?: number;
     skipped?: number;
+    failed?: number;
     total?: number;
   } | null;
 };
@@ -69,8 +71,8 @@ const DEFAULT_PREVIEW: CachePreviewResponse = {
   stale_only: false,
 };
 
-function rowKey(entry: Pick<CachePreviewEntry, "query" | "language">): string {
-  return `${entry.query}::${entry.language}`;
+function rowKey(entry: Pick<CachePreviewEntry, "query" | "store" | "language">): string {
+  return `${entry.store}::${entry.query}::${entry.language}`;
 }
 
 function formatUpdatedAt(value: string | null): string {
@@ -225,7 +227,7 @@ function PreviewPageContent() {
     setSuccess(
       `Cache refresh finished. Hits: ${refreshStatus.summary.cache_hit ?? 0}, scraped: ${
         refreshStatus.summary.cache_miss ?? 0
-      }, skipped: ${refreshStatus.summary.skipped ?? 0}.`
+      }, skipped: ${refreshStatus.summary.skipped ?? 0}, failed: ${refreshStatus.summary.failed ?? 0}.`
     );
   }, [loadEntries, offset, pageSize, refreshStatus, showStaleOnly]);
 
@@ -344,7 +346,7 @@ function PreviewPageContent() {
                 : refreshStatus.summary
                   ? `Last run: hits ${refreshStatus.summary.cache_hit ?? 0}, scraped ${
                       refreshStatus.summary.cache_miss ?? 0
-                    }, skipped ${refreshStatus.summary.skipped ?? 0}.`
+                    }, skipped ${refreshStatus.summary.skipped ?? 0}, failed ${refreshStatus.summary.failed ?? 0}.`
                   : "No refresh running."}
             </p>
           ) : null}

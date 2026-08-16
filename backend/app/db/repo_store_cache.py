@@ -135,12 +135,15 @@ async def get_cached_store_product_entry(
 async def list_cached_store_product_entries(
     session: AsyncSession,
     *,
+    store: str | None = None,
     cache_version: str | None = None,
     updated_before: datetime | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[CachedStoreProductModel]:
     stmt = select(CachedStoreProductModel)
+    if store is not None:
+        stmt = stmt.where(CachedStoreProductModel.store == store)
     if cache_version is not None:
         stmt = stmt.where(CachedStoreProductModel.cache_version == cache_version)
     if updated_before is not None:
@@ -161,10 +164,13 @@ async def list_cached_store_product_entries(
 async def count_cached_store_product_entries(
     session: AsyncSession,
     *,
+    store: str | None = None,
     cache_version: str | None = None,
     updated_before: datetime | None = None,
 ) -> int:
     stmt = select(func.count()).select_from(CachedStoreProductModel)
+    if store is not None:
+        stmt = stmt.where(CachedStoreProductModel.store == store)
     if cache_version is not None:
         stmt = stmt.where(CachedStoreProductModel.cache_version == cache_version)
     if updated_before is not None:

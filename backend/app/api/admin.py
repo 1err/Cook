@@ -19,7 +19,6 @@ from app.jobs.cache_warmer_queries import ALL_QUERIES
 from app.services.store_scraper import (
     CACHE_TTL_SECONDS,
     CACHE_VERSION,
-    SUPPORTED_STORES,
     fetch_store_products,
     prepare_store_query,
 )
@@ -77,7 +76,6 @@ class CachePreviewResponse(BaseModel):
 
 class CacheRefreshOneBody(BaseModel):
     query: str = Field(..., min_length=1)
-    store: str = Field(default="weee", min_length=1)
 
 
 class CacheRefreshBody(BaseModel):
@@ -114,6 +112,7 @@ async def cache_preview(
     stale_cutoff = datetime.now(timezone.utc) - timedelta(seconds=CACHE_TTL_SECONDS) if stale_only else None
     rows = await repo_store_cache.list_cached_store_product_entries(
         session,
+        store="weee",
         cache_version=CACHE_VERSION,
         updated_before=stale_cutoff,
         limit=limit,
@@ -122,20 +121,24 @@ async def cache_preview(
     items = [_row_to_preview_entry(row) for row in rows]
     total_cached_queries = await repo_store_cache.count_cached_store_product_entries(
         session,
+        store="weee",
         cache_version=CACHE_VERSION,
     )
     total_matching_queries = await repo_store_cache.count_cached_store_product_entries(
         session,
+        store="weee",
         cache_version=CACHE_VERSION,
         updated_before=stale_cutoff,
     )
     cached_rows = await repo_store_cache.list_cached_store_product_entries(
         session,
+        store="weee",
         cache_version=CACHE_VERSION,
     )
     cached_items = [_row_to_preview_entry(row) for row in cached_rows]
     matching_rows = cached_rows if stale_cutoff is None else await repo_store_cache.list_cached_store_product_entries(
         session,
+        store="weee",
         cache_version=CACHE_VERSION,
         updated_before=stale_cutoff,
     )
@@ -185,20 +188,16 @@ async def cache_refresh_one(
     current_user: UserModel = Depends(require_admin),
 ):
     _ = current_user
-    normalized_store = (body.store or "").strip().lower()
-    if normalized_store not in SUPPORTED_STORES:
-        allowed = ", ".join(SUPPORTED_STORES)
-        raise HTTPException(status_code=400, detail=f"Unsupported store. Use one of: {allowed}.")
-    prepared = prepare_store_query(body.query, normalized_store)
+    prepared = prepare_store_query(body.query)
     if prepared is None:
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
     cleaned_query, language = prepared
-    data = await fetch_store_products(body.query, normalized_store, session=session, force_refresh=True)
+    data = await fetch_store_products(body.query, session=session, force_refresh=True)
     await session.commit()
     row = await repo_store_cache.get_cached_store_product_entry(
         session,
         query=cleaned_query,
-        store=normalized_store,
+        store="weee",
         language=language,
         cache_version=CACHE_VERSION,
     )
@@ -206,8 +205,9 @@ async def cache_refresh_one(
         return _row_to_preview_entry(row)
     return CachePreviewEntry(
         query=cleaned_query,
-        store=normalized_store,
+        store="weee",
         language=language,
         updated_at=datetime.now(timezone.utc),
+        is_warm_query=cleaned_query in ALL_QUERIES,
         data=data,
     )

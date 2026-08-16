@@ -31,7 +31,6 @@ class StoreScrapeError(RuntimeError):
 
 MAX_RESULTS = 3
 PLAYWRIGHT_TIMEOUT_MS = 15000
-SUPPORTED_STORES: tuple[StoreName, ...] = ("weee",)
 CACHE_TTL_SECONDS = 86400
 CACHE_VERSION = "v6"
 SCRAPE_CONCURRENCY = 4

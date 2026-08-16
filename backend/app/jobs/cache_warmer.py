@@ -19,7 +19,7 @@ from app.services.store_scraper import CACHE_TTL_SECONDS, CACHE_VERSION, fetch_s
 
 logger = logging.getLogger(__name__)
 
-WarmStatus = Literal["skipped", "cache_hit", "cache_miss"]
+WarmStatus = Literal["skipped", "cache_hit", "cache_miss", "failed"]
 ProgressCallback = Callable[[int, int, str, WarmStatus], None | Awaitable[None]]
 
 _scheduler: AsyncIOScheduler | None = None
@@ -39,10 +39,9 @@ _warmer_status: dict[str, Any] = {
 async def warm_cache_query(
     query: str,
     *,
-    store: str = DEFAULT_STORE,
     force_refresh: bool = False,
 ) -> tuple[WarmStatus, list[dict[str, str]]]:
-    prepared = prepare_store_query(query, store)
+    prepared = prepare_store_query(query)
     if prepared is None:
         return "skipped", []
     cleaned_query, language = prepared
@@ -53,28 +52,33 @@ async def warm_cache_query(
             cached = await repo_store_cache.get_cached_store_products(
                 session,
                 query=cleaned_query,
-                store=store,
+                store=DEFAULT_STORE,
                 language=language,
                 cache_version=CACHE_VERSION,
                 max_age_seconds=CACHE_TTL_SECONDS,
             )
             if cached is not None:
                 return "cache_hit", cached
-        products = await fetch_store_products(query, store, session=session, force_refresh=force_refresh)
+        products = await fetch_store_products(query, session=session, force_refresh=force_refresh)
         await session.commit()
         return "cache_miss", products
 
 
 async def run_cache_warmer(
     *,
-    store: str = DEFAULT_STORE,
     force_refresh: bool = False,
     progress_callback: ProgressCallback | None = None,
 ) -> dict[str, int]:
     async with _warmer_lock:
         started_at = time.perf_counter()
         logger.info("cache warmer started")
-        summary = {"cache_hit": 0, "cache_miss": 0, "skipped": 0, "total": len(ALL_QUERIES)}
+        summary = {
+            "cache_hit": 0,
+            "cache_miss": 0,
+            "skipped": 0,
+            "failed": 0,
+            "total": len(ALL_QUERIES),
+        }
         semaphore = asyncio.Semaphore(PRECOMPUTE_CONCURRENCY)
         completed = 0
         _warmer_status.update(
@@ -92,7 +96,11 @@ async def run_cache_warmer(
         async def warm(index: int, query: str) -> None:
             nonlocal completed
             async with semaphore:
-                status, _ = await warm_cache_query(query, store=store, force_refresh=force_refresh)
+                try:
+                    status, _ = await warm_cache_query(query, force_refresh=force_refresh)
+                except Exception:
+                    logger.exception("cache warmer query failed", extra={"query": query})
+                    status = "failed"
                 summary[status] += 1
                 completed += 1
                 _warmer_status.update(
@@ -111,11 +119,12 @@ async def run_cache_warmer(
             await asyncio.gather(*(warm(index, query) for index, query in enumerate(ALL_QUERIES, start=1)))
             elapsed = time.perf_counter() - started_at
             logger.info(
-                "cache warmer finished in %.2f seconds (hits=%s misses=%s skipped=%s total=%s)",
+                "cache warmer finished in %.2f seconds (hits=%s misses=%s skipped=%s failed=%s total=%s)",
                 elapsed,
                 summary["cache_hit"],
                 summary["cache_miss"],
                 summary["skipped"],
+                summary["failed"],
                 summary["total"],
             )
             _warmer_status.update({"running": False, "summary": summary.copy()})
