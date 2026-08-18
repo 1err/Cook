@@ -247,6 +247,52 @@ test("keeps the full planner in one desktop viewport contract and preserves ever
   await expect(page.getByRole("button", { name: /Show .* more recipe/ })).toHaveCount(0);
   await expect(page.getByRole("dialog", { name: "Breakfast recipes for 2026-08-11" })).toHaveCount(0);
 
+  await page
+    .getByRole("button", { name: "Choose a recipe for breakfast on 2026-08-12" })
+    .click();
+  const pickerForGeometry = page.getByRole("dialog", { name: "Choose recipe for meal slot" });
+  const pickerGeometry = await pickerForGeometry.evaluate((dialog) => {
+    const sheet = dialog.querySelector<HTMLElement>(".planner-mobile-picker__sheet")!;
+    const list = dialog.querySelector<HTMLElement>(".planner-mobile-picker__list")!;
+    const cards = Array.from(list.querySelectorAll<HTMLElement>(".planner-source-card"));
+    const columns = getComputedStyle(list).gridTemplateColumns
+      .split(" ")
+      .filter((column) => column !== "none").length;
+
+    return {
+      cardMetrics: cards.map((card) => {
+        const media = card.querySelector<HTMLElement>(".planner-drag-card__thumb")!;
+        const title = card.querySelector<HTMLElement>(".planner-drag-card__title")!;
+        const lineHeight = Number.parseFloat(getComputedStyle(title).lineHeight);
+        const mediaRect = media.getBoundingClientRect();
+
+        return {
+          addActions: Array.from(card.querySelectorAll("button")).filter(
+            (button) => button.textContent?.trim() === "Add",
+          ).length,
+          mediaHeight: mediaRect.height,
+          mediaRatio: mediaRect.width / mediaRect.height,
+          titleHeight: title.getBoundingClientRect().height,
+          titleLineHeight: lineHeight,
+        };
+      }),
+      columns,
+      sheetWidth: sheet.getBoundingClientRect().width,
+      viewportWidth: window.innerWidth,
+    };
+  });
+  expect(pickerGeometry.columns).toBe(3);
+  expect(pickerGeometry.sheetWidth).toBeLessThanOrEqual(
+    Math.min(50 * 16, pickerGeometry.viewportWidth - 3 * 16) + 1,
+  );
+  expect(pickerGeometry.cardMetrics).not.toHaveLength(0);
+  for (const card of pickerGeometry.cardMetrics) {
+    expect(Math.abs(card.mediaRatio - 16 / 9)).toBeLessThanOrEqual(1 / card.mediaHeight);
+    expect(card.titleHeight).toBeLessThanOrEqual(card.titleLineHeight * 2 + 1);
+    expect(card.addActions).toBe(1);
+  }
+  await pickerForGeometry.locator(".planner-mobile-picker__close").click();
+
   await expect(page).toHaveScreenshot("planner.png", {
     animations: "disabled",
     fullPage: true,
@@ -334,6 +380,20 @@ test("keeps phone and tablet planners stacked, scrollable, and picker-friendly",
     .click();
   const picker = page.getByRole("dialog", { name: "Choose recipe for meal slot" });
   await expect(picker).toBeVisible();
+  const pickerLayout = await picker.evaluate((dialog) => {
+    const sheet = dialog.querySelector<HTMLElement>(".planner-mobile-picker__sheet")!;
+    const list = dialog.querySelector<HTMLElement>(".planner-mobile-picker__list")!;
+    const sheetRect = sheet.getBoundingClientRect();
+
+    return {
+      bottomDelta: Math.abs(window.innerHeight - sheetRect.bottom),
+      display: getComputedStyle(list).display,
+      flexDirection: getComputedStyle(list).flexDirection,
+    };
+  });
+  expect(pickerLayout.display).toBe("flex");
+  expect(pickerLayout.flexDirection).toBe("column");
+  expect(pickerLayout.bottomDelta).toBeLessThanOrEqual(1);
   const addRequest = page.waitForRequest(
     (request) => request.method() === "PUT" && request.url().endsWith("/meal-plan/2026-08-12"),
   );

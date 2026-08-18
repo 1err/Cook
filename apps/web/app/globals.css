@@ -2834,9 +2834,40 @@ button:disabled {
   }
 
   .planner-mobile-picker__sheet {
-    width: min(42rem, 100%);
+    width: min(50rem, calc(100vw - 3rem));
     max-height: min(85dvh, 46rem);
     border-radius: 1.5rem;
+  }
+
+  .planner-mobile-picker__list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .planner-mobile-picker__list .planner-source-card--picker {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .planner-mobile-picker__list .planner-source-card--picker .planner-drag-card {
+    align-items: stretch;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .planner-mobile-picker__list .planner-drag-card__thumb {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    height: auto;
+  }
+
+  .planner-mobile-picker__list .planner-source-card--picker .planner-drag-card__body {
+    justify-content: flex-start;
+  }
+
+  .planner-mobile-picker__list .planner-source-card--picker .planner-source-card__add {
+    align-self: stretch;
   }
 }
 

@@ -158,6 +158,39 @@ test("omits the sidebar New recipe footer action", async () => {
   expect(document.querySelector(".planner-editorial__sidebar-foot")).not.toBeInTheDocument();
 });
 
+test("keeps Add actions and recipe media in the open recipe picker, not the recipe rail", async () => {
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
+    if (path === "/recipes") {
+      return Promise.resolve(
+        jsonResponse([
+          {
+            id: "recipe-1",
+            title: "Recipe with a thumbnail",
+            thumbnail_url: "https://images.example.test/recipe.jpg",
+            ingredients: [],
+          },
+          { id: "recipe-2", title: "Recipe with a placeholder", ingredients: [] },
+        ]),
+      );
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  const user = userEvent.setup();
+  render(<PlannerPage />);
+
+  await user.click(
+    await screen.findByRole("button", {
+      name: "Choose a recipe for dinner on 2026-08-10",
+    }),
+  );
+  const dialog = await screen.findByRole("dialog", { name: /Choose recipe/ });
+
+  expect(within(dialog).getAllByRole("button", { name: "Add" })).toHaveLength(2);
+  expect(within(screen.getByRole("complementary")).queryByRole("button", { name: "Add" })).not.toBeInTheDocument();
+  expect(within(dialog).getAllByRole("img", { hidden: true }).length).toBeGreaterThan(0);
+});
+
 test("restores the prior plan and reports an error when an optimistic meal-plan write fails", async () => {
   const user = userEvent.setup();
   render(<PlannerPage />);

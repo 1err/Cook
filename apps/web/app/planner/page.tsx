@@ -338,54 +338,65 @@ function PlannerPageContent() {
     </>
   );
 
-  const recipeSourceList = sidebarRecipes.length > 0 ? (
-    sidebarRecipes.map((r) => (
-      <div key={r.id} className="planner-source-card">
-        <div
-          draggable={!planLoadFailed}
-          onDragStart={planLoadFailed ? undefined : (e) => handleDragStart(e, r.id)}
-          className="planner-drag-card"
-        >
-          <div className="planner-drag-card__thumb">
-            {r.thumbnail_url ? <img src={r.thumbnail_url} alt="" /> : null}
+  function renderRecipeSourceList(mode: "rail" | "picker") {
+    return sidebarRecipes.length > 0 ? (
+      sidebarRecipes.map((r) => (
+        <div key={r.id} className={`planner-source-card planner-source-card--${mode}`}>
+          <div
+            draggable={mode === "rail" && !planLoadFailed}
+            onDragStart={
+              mode === "rail" && !planLoadFailed ? (e) => handleDragStart(e, r.id) : undefined
+            }
+            className="planner-drag-card"
+          >
+            <div className="planner-drag-card__thumb">
+              {r.thumbnail_url ? <img src={r.thumbnail_url} alt={r.title} /> : null}
+            </div>
+            <div className="planner-drag-card__body">
+              <h4 className="planner-drag-card__title font-headline">{r.title}</h4>
+              {(() => {
+                const tags = getRecipeTags(r);
+                if (tags.length === 0) return null;
+                return (
+                  <p className="planner-drag-card__meta">
+                    {tags
+                      .slice(0, 2)
+                      .map((tag) => CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " "))
+                      .join(" • ")}
+                  </p>
+                );
+              })()}
+            </div>
           </div>
-          <div className="planner-drag-card__body">
-            <h4 className="planner-drag-card__title font-headline">{r.title}</h4>
-            {(() => {
-              const tags = getRecipeTags(r);
-              if (tags.length === 0) return null;
-              return (
-                <p className="planner-drag-card__meta">
-                  {tags
-                    .slice(0, 2)
-                    .map((tag) => CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " "))
-                    .join(" • ")}
-                </p>
-              );
-            })()}
-          </div>
+          {mode === "picker" ? (
+            <button
+              type="button"
+              className="planner-source-card__add font-headline"
+              onClick={() => handlePickerSelect(r.id)}
+            >
+              {t("common.add")}
+            </button>
+          ) : null}
         </div>
-        {slotPicker ? (
-          <button type="button" className="planner-source-card__add font-headline" onClick={() => handlePickerSelect(r.id)}>
-            {t("common.add")}
-          </button>
-        ) : null}
-      </div>
-    ))
-  ) : (
-    <p className="planner-source-empty">
-      {recipes.length === 0 ? (
-        <>
-          <Link href="/import" className="font-bold">
-                {t("planner.importRecipes")}
-          </Link>{" "}
-              {t("planner.planYourWeek")}
-        </>
-      ) : (
-            t("planner.noRecipesMatch")
-      )}
-    </p>
-  );
+      ))
+    ) : (
+      <p className="planner-source-empty">
+        {recipes.length === 0 ? (
+          <>
+            <Link href="/import" className="font-bold">
+              {t("planner.importRecipes")}
+            </Link>{" "}
+            {t("planner.planYourWeek")}
+          </>
+        ) : (
+          t("planner.noRecipesMatch")
+        )}
+      </p>
+    );
+  }
+
+  const railRecipeSourceList = renderRecipeSourceList("rail");
+  const pickerRecipeSourceList = renderRecipeSourceList("picker");
 
   return (
     <div className="planner-editorial app-wide">
@@ -412,7 +423,7 @@ function PlannerPageContent() {
             {recipeSourceControls}
           </>
         }
-        recipes={recipeSourceList}
+        recipes={railRecipeSourceList}
       />
 
       <main className="planner-editorial__main">
@@ -482,7 +493,7 @@ function PlannerPageContent() {
                 </button>
               </div>
               <div className="planner-mobile-picker__controls">{recipeSourceControls}</div>
-              <div className="planner-mobile-picker__list">{recipeSourceList}</div>
+              <div className="planner-mobile-picker__list">{pickerRecipeSourceList}</div>
             </div>
           </div>
         ) : null}
