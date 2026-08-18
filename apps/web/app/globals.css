@@ -1,7 +1,7 @@
 /* Editorial / Stitch-inspired tokens — warm minimal, terracotta accent */
 :root {
-  --font-inter: system-ui, sans-serif;
-  --font-manrope: system-ui, sans-serif;
+  --font-inter: "Inter";
+  --font-manrope: "Inter";
   --app-header-height: 72px;
   --app-header-divider-height: 1px;
 
@@ -282,8 +282,7 @@ button:disabled {
 
 @media (max-width: 639px) {
   .app-container,
-  .app-wide,
-  .shop-page--wide {
+  .app-wide {
     padding-left: 1.25rem;
     padding-right: 1.25rem;
   }
@@ -3034,19 +3033,26 @@ button:disabled {
 
 /* —— Smart shopping (stitch/smart_shopping_list_integrated_actions.html) —— */
 .shop-page--wide {
-  max-width: 96rem;
+  max-width: 70rem;
   margin: 0 auto;
   padding-left: var(--space-24);
   padding-right: var(--space-24);
   padding-bottom: calc(var(--space-32) + 5rem);
 }
 
+@media (max-width: 639px) {
+  .shop-page--wide {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+}
+
 /* —— Shopping list: pre-smart confirmation (Stitch / editorial) —— */
 .shop-confirm-title {
-  margin: 0 0 0.75rem;
-  font-size: clamp(2.25rem, 4vw, 3.25rem);
+  margin: 0 0 0.35rem;
+  font-size: clamp(1.85rem, 4vw, 2.35rem);
   font-weight: 800;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.035em;
   color: var(--on-surface);
   line-height: 1.05;
 }
@@ -3080,6 +3086,7 @@ button:disabled {
   justify-content: center;
   color: var(--primary);
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .shop-confirm-week__kicker {
@@ -3109,16 +3116,22 @@ button:disabled {
 
 @media (max-width: 639px) {
   .shop-confirm-week {
+    align-items: stretch;
+    flex-direction: column;
     padding: 1rem;
   }
 
   .shop-confirm-week__actions {
-    width: 100%;
+    flex: 0 1 auto;
     justify-content: space-between;
+    max-width: none;
+    width: auto;
   }
 }
 
 .shop-confirm-week__nav {
+  width: 2.4rem;
+  height: 2.4rem;
   border: none;
   background: var(--surface-container-lowest);
   border-radius: 9999px;
@@ -3128,6 +3141,8 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
@@ -3182,6 +3197,10 @@ button:disabled {
   z-index: 1;
   display: grid;
   gap: 2.5rem;
+}
+
+.shop-confirm-hero__grid > * {
+  min-width: 0;
 }
 
 @media (min-width: 768px) {
@@ -3316,7 +3335,7 @@ button:disabled {
 
 .shop-confirm-aside__title {
   margin: 0 0 1.25rem;
-  font-size: clamp(1.65rem, 3vw, 2rem);
+  font-size: clamp(1.35rem, 2.5vw, 1.65rem);
   font-weight: 800;
   color: var(--on-surface);
   line-height: 1.2;
@@ -3328,6 +3347,12 @@ button:disabled {
   grid-template-columns: 1fr 1fr;
   gap: 1.25rem 1.5rem;
   margin-bottom: 2rem;
+}
+
+@media (max-width: 639px) {
+  .shop-confirm-stats {
+    grid-template-columns: 1fr;
+  }
 }
 
 .shop-confirm-stat {
@@ -3652,16 +3677,16 @@ button:disabled {
 }
 
 .shop-smart-hero__title {
-  margin: 0.15rem 0 0;
-  font-size: clamp(1.65rem, 4vw, 2.65rem);
-  font-weight: 900;
-  letter-spacing: -0.03em;
+  margin: 0 0 0.35rem;
+  font-size: clamp(1.85rem, 4vw, 2.35rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
   color: #fff;
   line-height: 1.05;
 }
 
 .shop-smart-hero__sub {
-  margin: 0.35rem 0 0;
+  margin: 0;
   color: rgba(255, 255, 255, 0.82);
   font-weight: 500;
   font-size: 0.9rem;
