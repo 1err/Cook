@@ -131,6 +131,7 @@
   "planner.openRecipe": "Open {title} for {slot} on {date}",
   "planner.removeRecipeFromSlot": "Remove {title} from {slot} on {date}",
   "planner.slotRecipes": "{slot} recipes for {date}",
+  "planner.moreRecipeCue": "{count} more",
   "planner.scrollForMoreRecipe": "Scroll for {count} more",
   "planner.scrollForMoreRecipes": "Scroll for {count} more",
   "planner.chooseRecipeForSlot": "Choose a recipe for {slot} on {date}",

@@ -91,6 +91,9 @@ export function PlannerMealSlot({
         { count: overflowCount },
       )
     : "";
+  const overflowVisualMessage = overflowCount
+    ? t("planner.moreRecipeCue", { count: overflowCount })
+    : "";
 
   useLayoutEffect(() => {
     const pending = pendingRemoveFocusRef.current;
@@ -161,7 +164,10 @@ export function PlannerMealSlot({
               <span className="planner-slot-overflow-cue__icon" aria-hidden="true">
                 ↓
               </span>
-              <span id={overflowCueId}>{overflowMessage}</span>
+              <span>{overflowVisualMessage}</span>
+              <span id={overflowCueId} hidden>
+                {overflowMessage}
+              </span>
             </p>
           ) : null}
           <button

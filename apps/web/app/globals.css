@@ -2480,11 +2480,13 @@ button:disabled {
   align-self: center;
   background: color-mix(in srgb, var(--primary-container) 36%, var(--surface-container-lowest));
   border-radius: 9999px;
+  box-sizing: border-box;
   color: var(--primary);
   font-size: 0.625rem;
   font-weight: 800;
   line-height: 1.1;
   margin: 0;
+  max-width: 100%;
   padding: 0.2rem 0.5rem;
   white-space: nowrap;
 }

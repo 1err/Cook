@@ -156,7 +156,7 @@ test("keeps the full planner in one desktop viewport and preserves every planner
   const recipeList = breakfastSlot.getByRole("region", {
     name: "Breakfast recipes for 2026-08-10",
   });
-  const overflowCue = breakfastSlot.getByText("Scroll for 1 more", { exact: true });
+  const overflowCue = breakfastSlot.getByText("1 more", { exact: true });
   await expect(overflowCue).toBeVisible();
   await expect(recipeList).toHaveAccessibleDescription("Scroll for 1 more");
   await expect(
@@ -300,6 +300,49 @@ test("keeps phone and tablet planners stacked, scrollable, and picker-friendly",
       name: "Open Recipe 01 with a descriptive two-line title for breakfast on 2026-08-11",
     }),
   ).toBeVisible();
+});
+
+test("keeps the Chinese overflow cue fully inside a narrow desktop meal slot", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "The narrow slot geometry contract runs in the desktop project.");
+  await page.getByRole("button", { name: "Account for planner@example.com" }).click();
+  await page.getByRole("button", { name: "中文" }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh");
+
+  const breakfastSlot = page.locator('[data-date="2026-08-10"][data-slot-index="0"]');
+  const cue = breakfastSlot.locator(".planner-slot-overflow-cue");
+  const visibleCueMessage = cue.getByText("另 1 道", { exact: true });
+  const recipeList = breakfastSlot.getByRole("region", {
+    name: "2026-08-10 的早餐菜谱",
+  });
+
+  await expect(cue).toBeVisible();
+  await expect(cue).toContainText("↓");
+  await expect(visibleCueMessage).toBeVisible();
+  await expect(recipeList).toHaveAccessibleDescription("滚动查看另外 1 道菜谱");
+
+  const cueMetrics = await cue.evaluate((element) => {
+    const cueRect = element.getBoundingClientRect();
+    const slotRect = element.closest<HTMLElement>("[data-testid='planner-meal-slot']")
+      ?.getBoundingClientRect();
+
+    return {
+      cueLeft: cueRect.left,
+      cueRight: cueRect.right,
+      cueWidth: cueRect.width,
+      cueContentFits: element.scrollWidth <= element.clientWidth,
+      documentHasHorizontalOverflow:
+        document.documentElement.scrollWidth > window.innerWidth,
+      slotLeft: slotRect?.left ?? 0,
+      slotRight: slotRect?.right ?? 0,
+      slotWidth: slotRect?.width ?? 0,
+    };
+  });
+
+  expect(cueMetrics.cueLeft).toBeGreaterThanOrEqual(cueMetrics.slotLeft - 0.5);
+  expect(cueMetrics.cueRight).toBeLessThanOrEqual(cueMetrics.slotRight + 0.5);
+  expect(cueMetrics.cueWidth).toBeLessThanOrEqual(cueMetrics.slotWidth + 0.5);
+  expect(cueMetrics.cueContentFits).toBe(true);
+  expect(cueMetrics.documentHasHorizontalOverflow).toBe(false);
 });
 
 test("supports keyboard traversal through desktop slot controls and the in-slot recipe list", async ({ page }, testInfo) => {

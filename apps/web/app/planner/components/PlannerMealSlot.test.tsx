@@ -80,7 +80,8 @@ test("keeps a fourth recipe in a keyboard-reachable in-slot scroll region", () =
 test("shows a visible singular overflow cue that describes the scrollable recipe region", () => {
   renderSlot(<PlannerMealSlot {...slotProps()} recipeIds={["r1", "r2", "r3", "r4"]} />);
 
-  expect(screen.getByText("Scroll for 1 more")).toBeVisible();
+  expect(screen.getByText("1 more")).toBeVisible();
+  expect(screen.getByText("Scroll for 1 more")).not.toBeVisible();
   expect(
     screen.getByRole("region", { name: "Dinner recipes for 2026-08-10" }),
   ).toHaveAccessibleDescription("Scroll for 1 more");
@@ -90,14 +91,14 @@ test("updates and removes the overflow cue as parent recipe data changes", () =>
   const props = { ...slotProps(), recipeIds: ["r1", "r2", "r3", "r4", "r5"] };
   const view = renderSlot(<PlannerMealSlot {...props} />);
 
-  expect(screen.getByText("Scroll for 2 more")).toBeVisible();
+  expect(screen.getByText("2 more")).toBeVisible();
 
   view.rerender(
     <I18nProvider>
       <PlannerMealSlot {...props} recipeIds={["r1", "r2", "r3", "r4"]} />
     </I18nProvider>,
   );
-  expect(screen.getByText("Scroll for 1 more")).toBeVisible();
+  expect(screen.getByText("1 more")).toBeVisible();
 
   view.rerender(
     <I18nProvider>
@@ -209,7 +210,8 @@ test("localizes the recipe overflow cue in Chinese", async () => {
   localStorage.setItem("cooking-ui-language", "zh");
   renderSlot(<PlannerMealSlot {...slotProps()} recipeIds={["r1", "r2", "r3", "r4"]} />);
 
-  expect(await screen.findByText("滚动查看另外 1 道菜谱")).toBeVisible();
+  expect(await screen.findByText("另 1 道")).toBeVisible();
+  expect(screen.getByText("滚动查看另外 1 道菜谱")).not.toBeVisible();
   expect(
     screen.getByRole("region", { name: "2026-08-10 的晚餐菜谱" }),
   ).toHaveAccessibleDescription("滚动查看另外 1 道菜谱");
