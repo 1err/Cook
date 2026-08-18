@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Recipe } from "@cooking/shared";
@@ -6,7 +6,7 @@ import { I18nProvider } from "../../lib/i18n";
 import { PlannerMealSlot } from "./PlannerMealSlot";
 
 const recipes: Record<string, Recipe> = Object.fromEntries(
-  ["One", "Two", "Three", "Four"].map((title, index) => [
+  ["One", "Two", "Three", "Four", "Five"].map((title, index) => [
     `r${index + 1}`,
     { id: `r${index + 1}`, title, ingredients: [] },
   ]),
@@ -77,6 +77,39 @@ test("keeps a fourth recipe in a keyboard-reachable in-slot scroll region", () =
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
+test("shows a visible singular overflow cue that describes the scrollable recipe region", () => {
+  renderSlot(<PlannerMealSlot {...slotProps()} recipeIds={["r1", "r2", "r3", "r4"]} />);
+
+  expect(screen.getByText("Scroll for 1 more")).toBeVisible();
+  expect(
+    screen.getByRole("region", { name: "Dinner recipes for 2026-08-10" }),
+  ).toHaveAccessibleDescription("Scroll for 1 more");
+});
+
+test("updates and removes the overflow cue as parent recipe data changes", () => {
+  const props = { ...slotProps(), recipeIds: ["r1", "r2", "r3", "r4", "r5"] };
+  const view = renderSlot(<PlannerMealSlot {...props} />);
+
+  expect(screen.getByText("Scroll for 2 more")).toBeVisible();
+
+  view.rerender(
+    <I18nProvider>
+      <PlannerMealSlot {...props} recipeIds={["r1", "r2", "r3", "r4"]} />
+    </I18nProvider>,
+  );
+  expect(screen.getByText("Scroll for 1 more")).toBeVisible();
+
+  view.rerender(
+    <I18nProvider>
+      <PlannerMealSlot {...props} recipeIds={["r1", "r2", "r3"]} />
+    </I18nProvider>,
+  );
+  expect(screen.queryByText(/Scroll for \d+ more/)).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("region", { name: "Dinner recipes for 2026-08-10" }),
+  ).not.toHaveAccessibleDescription();
+});
+
 test("forwards visible recipe, add, and drag callbacks", async () => {
   const user = userEvent.setup();
   const props = slotProps();
@@ -96,6 +129,58 @@ test("forwards visible recipe, add, and drag callbacks", async () => {
   expect(props.onDragOver).toHaveBeenCalledTimes(1);
   expect(props.onDragLeave).toHaveBeenCalledTimes(1);
   expect(props.onDrop).toHaveBeenCalledTimes(1);
+});
+
+test("rehomes focus to the previous remove control after the third of three recipes is removed", async () => {
+  const user = userEvent.setup();
+  const props = slotProps();
+  const view = renderSlot(<PlannerMealSlot {...props} />);
+
+  const removeThree = screen.getByRole("button", {
+    name: "Remove Three from dinner on 2026-08-10",
+  });
+  await user.click(removeThree);
+  expect(removeThree).toHaveFocus();
+
+  view.rerender(
+    <I18nProvider>
+      <PlannerMealSlot {...props} recipeIds={["r1", "r2"]} />
+    </I18nProvider>,
+  );
+
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", {
+        name: "Remove Two from dinner on 2026-08-10",
+      }),
+    ).toHaveFocus(),
+  );
+});
+
+test("rehomes focus to the next remove control after an asynchronous parent removes the third of four recipes", async () => {
+  const user = userEvent.setup();
+  const props = { ...slotProps(), recipeIds: ["r1", "r2", "r3", "r4"] };
+  const view = renderSlot(<PlannerMealSlot {...props} />);
+
+  const removeThree = screen.getByRole("button", {
+    name: "Remove Three from dinner on 2026-08-10",
+  });
+  await user.click(removeThree);
+  expect(removeThree).toHaveFocus();
+
+  view.rerender(
+    <I18nProvider>
+      <PlannerMealSlot {...props} recipeIds={["r1", "r2", "r4"]} />
+    </I18nProvider>,
+  );
+
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", {
+        name: "Remove Four from dinner on 2026-08-10",
+      }),
+    ).toHaveFocus(),
+  );
 });
 
 test("uses a date-and-meal-specific accessible name for the empty add control", async () => {
@@ -118,4 +203,14 @@ test("localizes visible meal text and contextual controls in Chinese", async () 
   expect(
     screen.getByRole("button", { name: "打开 2026-08-10 晚餐的 Three" }),
   ).toBeVisible();
+});
+
+test("localizes the recipe overflow cue in Chinese", async () => {
+  localStorage.setItem("cooking-ui-language", "zh");
+  renderSlot(<PlannerMealSlot {...slotProps()} recipeIds={["r1", "r2", "r3", "r4"]} />);
+
+  expect(await screen.findByText("滚动查看另外 1 道菜谱")).toBeVisible();
+  expect(
+    screen.getByRole("region", { name: "2026-08-10 的晚餐菜谱" }),
+  ).toHaveAccessibleDescription("滚动查看另外 1 道菜谱");
 });

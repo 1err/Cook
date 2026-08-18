@@ -131,6 +131,8 @@
   "planner.openRecipe": "Open {title} for {slot} on {date}",
   "planner.removeRecipeFromSlot": "Remove {title} from {slot} on {date}",
   "planner.slotRecipes": "{slot} recipes for {date}",
+  "planner.scrollForMoreRecipe": "Scroll for {count} more",
+  "planner.scrollForMoreRecipes": "Scroll for {count} more",
   "planner.chooseRecipeForSlot": "Choose a recipe for {slot} on {date}",
   "planner.addAnotherRecipeForSlot": "Add another recipe for {slot} on {date}",
   "planner.saveFailed": "Could not save your planner change. Your previous plan was restored.",

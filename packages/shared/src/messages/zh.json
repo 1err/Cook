@@ -131,6 +131,8 @@
   "planner.openRecipe": "打开 {date} {slot}的 {title}",
   "planner.removeRecipeFromSlot": "从 {date} 的{slot}中移除 {title}",
   "planner.slotRecipes": "{date} 的{slot}菜谱",
+  "planner.scrollForMoreRecipe": "滚动查看另外 {count} 道菜谱",
+  "planner.scrollForMoreRecipes": "滚动查看另外 {count} 道菜谱",
   "planner.chooseRecipeForSlot": "为 {date} 的{slot}选择菜谱",
   "planner.addAnotherRecipeForSlot": "为 {date} 的{slot}再添加一道菜谱",
   "planner.saveFailed": "无法保存你的计划更改。已恢复之前的计划。",

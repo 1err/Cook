@@ -2476,6 +2476,23 @@ button:disabled {
   outline-offset: 2px;
 }
 
+.planner-slot-overflow-cue {
+  align-self: center;
+  background: color-mix(in srgb, var(--primary-container) 36%, var(--surface-container-lowest));
+  border-radius: 9999px;
+  color: var(--primary);
+  font-size: 0.625rem;
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 0;
+  padding: 0.2rem 0.5rem;
+  white-space: nowrap;
+}
+
+.planner-slot-overflow-cue__icon {
+  margin-right: 0.25rem;
+}
+
 .planner-slot-recipe {
   position: relative;
 }
@@ -2964,6 +2981,7 @@ button:disabled {
   }
 
   .planner-slot-recipes__scroll {
+    flex-shrink: 0;
     gap: 0.2rem;
     max-height: 7.15rem;
     scrollbar-gutter: stable;
@@ -3009,6 +3027,11 @@ button:disabled {
     line-height: 1.1;
     min-height: 1.25rem;
     padding: 0.2rem 0.4rem;
+  }
+
+  .planner-slot-overflow-cue {
+    font-size: 0.55rem;
+    padding: 0.15rem 0.4rem;
   }
 }
 

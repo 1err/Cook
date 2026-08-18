@@ -156,6 +156,14 @@ test("keeps the full planner in one desktop viewport and preserves every planner
   const recipeList = breakfastSlot.getByRole("region", {
     name: "Breakfast recipes for 2026-08-10",
   });
+  const overflowCue = breakfastSlot.getByText("Scroll for 1 more", { exact: true });
+  await expect(overflowCue).toBeVisible();
+  await expect(recipeList).toHaveAccessibleDescription("Scroll for 1 more");
+  await expect(
+    breakfastSlot.getByRole("button", {
+      name: "Add another recipe for breakfast on 2026-08-10",
+    }),
+  ).toBeVisible();
   await expect(
     recipeList.getByRole("button", {
       name: "Open Recipe 03 with a descriptive two-line title for breakfast on 2026-08-10",
@@ -208,6 +216,13 @@ test("keeps the full planner in one desktop viewport and preserves every planner
     "recipe-03",
     "recipe-04",
   ]);
+  await expect(
+    breakfastSlot.getByRole("button", {
+      name: "Remove Recipe 02 with a descriptive two-line title from breakfast on 2026-08-10",
+    }),
+  ).toBeFocused();
+  await expect(overflowCue).toHaveCount(0);
+  await expect(recipeList).not.toHaveAttribute("aria-describedby");
 
   await page
     .getByRole("button", { name: "Choose a recipe for breakfast on 2026-08-11" })

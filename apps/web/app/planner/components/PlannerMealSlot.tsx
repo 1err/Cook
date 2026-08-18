@@ -1,5 +1,6 @@
 "use client";
 
+import { useId, useLayoutEffect, useRef } from "react";
 import { MEAL_PLAN_SLOTS, type MealType, type Recipe } from "@cooking/shared";
 import { useT } from "../../lib/i18n";
 import { PLANNER_MEAL_LABEL_KEYS } from "../plannerMessages";
@@ -76,6 +77,32 @@ export function PlannerMealSlot({
     .filter(
       (entry): entry is { recipeId: string; recipe: Recipe } => Boolean(entry.recipe),
     );
+  const pendingRemoveFocusRef = useRef<{ recipeId: string; index: number } | null>(null);
+  const removeButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const addRecipeRef = useRef<HTMLButtonElement>(null);
+  const overflowCueId = useId();
+  const slotRecipeFingerprint = slotRecipes.map(({ recipeId }) => recipeId).join("\u0000");
+  const overflowCount = Math.max(0, slotRecipes.length - 3);
+  const overflowMessage = overflowCount
+    ? t(
+        overflowCount === 1
+          ? "planner.scrollForMoreRecipe"
+          : "planner.scrollForMoreRecipes",
+        { count: overflowCount },
+      )
+    : "";
+
+  useLayoutEffect(() => {
+    const pending = pendingRemoveFocusRef.current;
+    if (!pending || slotRecipes.some(({ recipeId }) => recipeId === pending.recipeId)) return;
+
+    const nextRecipe = slotRecipes[pending.index] ?? slotRecipes[pending.index - 1];
+    const target = nextRecipe
+      ? removeButtonRefs.current.get(nextRecipe.recipeId)
+      : addRecipeRef.current;
+    target?.focus();
+    pendingRemoveFocusRef.current = null;
+  }, [slotRecipeFingerprint, slotRecipes]);
 
   return (
     <div
@@ -95,9 +122,10 @@ export function PlannerMealSlot({
             className="planner-slot-recipes__scroll"
             role="region"
             aria-label={t("planner.slotRecipes", { slot: slotHeading, date })}
+            aria-describedby={overflowCount ? overflowCueId : undefined}
             tabIndex={slotRecipes.length > 3 ? 0 : undefined}
           >
-            {slotRecipes.map(({ recipeId, recipe }) => (
+            {slotRecipes.map(({ recipeId, recipe }, index) => (
               <div key={recipeId} className="planner-slot-recipe">
                 <RecipeTile
                   recipe={recipe}
@@ -106,9 +134,16 @@ export function PlannerMealSlot({
                   onOpen={() => onOpen(recipeId)}
                 />
                 <button
+                  ref={(button) => {
+                    if (button) removeButtonRefs.current.set(recipeId, button);
+                    else removeButtonRefs.current.delete(recipeId);
+                  }}
                   type="button"
                   className="planner-meal-card__clear"
-                  onClick={() => onRemove(recipeId)}
+                  onClick={() => {
+                    pendingRemoveFocusRef.current = { recipeId, index };
+                    onRemove(recipeId);
+                  }}
                   disabled={mutationsDisabled}
                   aria-label={t("planner.removeRecipeFromSlot", {
                     title: recipe.title,
@@ -121,7 +156,16 @@ export function PlannerMealSlot({
               </div>
             ))}
           </div>
+          {overflowCount ? (
+            <p className="planner-slot-overflow-cue font-headline">
+              <span className="planner-slot-overflow-cue__icon" aria-hidden="true">
+                ↓
+              </span>
+              <span id={overflowCueId}>{overflowMessage}</span>
+            </p>
+          ) : null}
           <button
+            ref={addRecipeRef}
             type="button"
             className="planner-slot-action font-headline"
             onClick={onChoose}
@@ -133,6 +177,7 @@ export function PlannerMealSlot({
         </div>
       ) : (
         <button
+          ref={addRecipeRef}
           type="button"
           className="planner-slot-empty-trigger"
           onClick={onChoose}
