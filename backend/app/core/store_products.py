@@ -19,7 +19,8 @@ def normalize_weee_product_url(raw: str, *, base_url: str | None = None) -> str 
         return None
     if parsed.scheme.lower() != "https":
         return None
-    if hostname != "sayweee.com" and not hostname.endswith(".sayweee.com"):
+    official_hosts = ("sayweee.com", "weee.com")
+    if not any(hostname == host or hostname.endswith(f".{host}") for host in official_hosts):
         return None
     if parsed.username or parsed.password:
         return None

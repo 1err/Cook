@@ -833,6 +833,42 @@ def test_live_product_validation_accepts_exact_and_subdomain_weee_hosts_case_ins
     ]
 
 
+def test_live_product_validation_accepts_current_official_weee_domain():
+    product = {
+        **PRODUCT,
+        "url": "https://WWW.WEEE.COM/en/product/Dutch-Farms-Grade-A-Jumbo-Eggs/108411?trace_id=release-probe",
+    }
+
+    assert store_scraper._validate_products([product]) == [
+        {
+            **PRODUCT,
+            "url": "https://www.weee.com/en/product/Dutch-Farms-Grade-A-Jumbo-Eggs/108411?trace_id=release-probe",
+        }
+    ]
+
+
+def test_weee_site_title_strips_current_pipe_suffix():
+    assert (
+        store_scraper._parse_weee_site_title("Dutch Farms Grade A Jumbo Eggs | Weee!")
+        == "Dutch Farms Grade A Jumbo Eggs"
+    )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://www.weee.com/en/product/tofu/1",
+        "https://weee.com.evil.test/en/product/tofu/1",
+        "https://evil-weee.com/en/product/tofu/1",
+        "https://user@weee.com/en/product/tofu/1",
+        "https://weee.com:444/en/product/tofu/1",
+    ],
+)
+def test_live_product_validation_rejects_current_domain_lookalikes(url: str):
+    with pytest.raises(store_scraper.StoreScrapeError, match="no valid products"):
+        store_scraper._validate_products([{**PRODUCT, "url": url}])
+
+
 @pytest.mark.asyncio
 async def test_pdp_enrichment_never_navigates_to_an_unsafe_product_url():
     navigated: list[str] = []

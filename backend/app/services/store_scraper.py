@@ -128,10 +128,10 @@ def _extract_weee_search_card_title_block(text: str) -> str:
 
 
 def _parse_weee_site_title(raw: str) -> str:
-    """Strip trailing ' - Weee!' / site suffix from og:title or document.title."""
+    """Strip Weee's dash or pipe site suffix from og:title or document.title."""
     n = _normalize_space(raw)
-    n = re.sub(r"\s*[-–—]\s*Weee!?\s*$", "", n, flags=re.IGNORECASE)
-    n = re.sub(r"^\s*Weee!?\s*[-–—]\s*", "", n, flags=re.IGNORECASE)
+    n = re.sub(r"\s*[-–—|]\s*Weee!?\s*$", "", n, flags=re.IGNORECASE)
+    n = re.sub(r"^\s*Weee!?\s*[-–—|]\s*", "", n, flags=re.IGNORECASE)
     return _normalize_space(n)
 
 
