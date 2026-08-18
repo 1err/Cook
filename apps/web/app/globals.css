@@ -2148,8 +2148,8 @@ button:disabled {
   flex-direction: column;
   min-height: calc(100dvh - var(--app-header-height));
   width: 100%;
-  max-width: 100%;
-  margin: 0;
+  max-width: 70rem;
+  margin: 0 auto;
   /* Do not set padding here — .app-wide supplies horizontal page gutters; padding:0 was canceling them */
 }
 
@@ -2269,6 +2269,15 @@ button:disabled {
   color: var(--on-surface-variant);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.planner-page-title {
+  color: var(--on-surface);
+  font-size: clamp(1.85rem, 4vw, 2.35rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  margin: 0;
 }
 
 .planner-editorial__sidebar-head .planner-filter-bar {
@@ -2448,7 +2457,24 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  min-height: 0;
   width: 100%;
+}
+
+.planner-slot-recipes__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: calc(27rem + 0.7rem);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.planner-slot-recipes__scroll:focus-visible {
+  border-radius: var(--radius-md);
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 .planner-slot-recipe {
@@ -2938,23 +2964,28 @@ button:disabled {
     max-height: 100%;
   }
 
+  .planner-slot-recipes__scroll {
+    gap: 0.2rem;
+    max-height: 7.15rem;
+    scrollbar-gutter: stable;
+  }
+
   .planner-meal-card {
     display: grid;
-    grid-template-columns: 2.25rem minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     height: 2.25rem;
     min-height: 0;
   }
 
   .planner-meal-card__img {
-    height: 2.25rem;
-    width: 2.25rem;
+    display: none;
   }
 
   .planner-meal-card__body {
     align-items: center;
     display: flex;
     min-width: 0;
-    padding: 0.25rem 1.55rem 0.25rem 0.4rem;
+    padding: 0.25rem 1.55rem 0.25rem 0.45rem;
   }
 
   .planner-meal-card__title {

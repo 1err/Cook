@@ -388,7 +388,7 @@ function PlannerPageContent() {
   );
 
   return (
-    <div className="planner-editorial app-wide" style={{ maxWidth: "100%" }}>
+    <div className="planner-editorial app-wide">
       <PlannerRecipeRail
         controls={
           <>
@@ -404,12 +404,6 @@ function PlannerPageContent() {
           </>
         }
         recipes={recipeSourceList}
-        footer={
-          <Link href="/import" className="btn-primary font-headline w-full flex items-center justify-center gap-2" style={{ width: "100%", textDecoration: "none" }}>
-            <span className="material-symbols-outlined">add</span>
-            {t("planner.newRecipe")}
-          </Link>
-        }
       />
 
       <main className="planner-editorial__main">

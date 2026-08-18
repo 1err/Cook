@@ -43,7 +43,6 @@ const messages: Record<string, string> = {
   "planner.mealBreakfast": "breakfast",
   "planner.mealLunch": "lunch",
   "planner.mealDinner": "dinner",
-  "planner.newRecipe": "New recipe",
   "planner.noRecipesMatch": "No recipes match the current search or filter.",
   "planner.openRecipe": "Open {title} for {slot} on {date}",
   "planner.phoneFriendlyDesc": "Tap any meal slot to choose from your saved recipes.",
@@ -150,6 +149,14 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+test("omits the sidebar New recipe footer action", async () => {
+  render(<PlannerPage />);
+
+  await screen.findByRole("heading", { name: "Weekly planner" });
+  expect(screen.queryByRole("link", { name: /New recipe/ })).not.toBeInTheDocument();
+  expect(document.querySelector(".planner-editorial__sidebar-foot")).not.toBeInTheDocument();
+});
 
 test("restores the prior plan and reports an error when an optimistic meal-plan write fails", async () => {
   const user = userEvent.setup();

@@ -1,14 +1,5 @@
 import type { MealPlanSlots, MealType } from "@cooking/shared";
 
-export const MAX_VISIBLE_SLOT_RECIPES = 2;
-
-export function splitSlotRecipeIds(recipeIds: readonly string[]) {
-  return {
-    visible: recipeIds.slice(0, MAX_VISIBLE_SLOT_RECIPES),
-    overflow: recipeIds.slice(MAX_VISIBLE_SLOT_RECIPES),
-  };
-}
-
 function cloneSlots(slots: MealPlanSlots): MealPlanSlots {
   return {
     breakfast: [...slots.breakfast],

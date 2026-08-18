@@ -22,15 +22,7 @@ export function PlannerToolbar({ weekRange, shoppingHref, onPrevious, onNext }: 
         >
           {weekRange}
         </span>
-        <h1
-          className="font-headline m-0 text-on-surface"
-          style={{
-            fontSize: "clamp(2.25rem, 4vw, 3rem)",
-            fontWeight: 800,
-            letterSpacing: "-0.03em",
-            lineHeight: 1.05,
-          }}
-        >
+        <h1 className="planner-page-title font-headline">
           {t("planner.title")}
         </h1>
       </div>

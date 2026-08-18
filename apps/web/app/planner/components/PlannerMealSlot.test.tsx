@@ -1,6 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Recipe } from "@cooking/shared";
 import { I18nProvider } from "../../lib/i18n";
@@ -50,15 +49,32 @@ function slotProps() {
   };
 }
 
-test("renders two compact recipes and an accessible overflow count", () => {
+test("renders three compact recipes directly without an overflow trigger or dialog", () => {
   renderSlot(<PlannerMealSlot {...slotProps()} />);
 
   expect(screen.getByRole("button", { name: "Open One for dinner on 2026-08-10" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Open Two for dinner on 2026-08-10" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Open Three for dinner on 2026-08-10" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Remove One from dinner on 2026-08-10" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Add another recipe for dinner on 2026-08-10" })).toBeVisible();
-  expect(screen.queryByRole("button", { name: "Open Three for dinner on 2026-08-10" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Show 1 more recipe for dinner on 2026-08-10" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: /Show .* more recipe/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("keeps a fourth recipe in a keyboard-reachable in-slot scroll region", () => {
+  renderSlot(<PlannerMealSlot {...slotProps()} recipeIds={["r1", "r2", "r3", "r4"]} />);
+
+  const recipeList = screen.getByRole("region", {
+    name: "Dinner recipes for 2026-08-10",
+  });
+  expect(recipeList).toHaveAttribute("tabindex", "0");
+  expect(
+    within(recipeList).getByRole("button", {
+      name: "Open Four for dinner on 2026-08-10",
+    }),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Show .* more recipe/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 test("forwards visible recipe, add, and drag callbacks", async () => {
@@ -91,174 +107,15 @@ test("uses a date-and-meal-specific accessible name for the empty add control", 
   expect(props.onChoose).toHaveBeenCalledTimes(1);
 });
 
-test("closes overflow with Escape and restores focus", async () => {
-  const user = userEvent.setup();
-  renderSlot(<PlannerMealSlot {...slotProps()} />);
-
-  const trigger = screen.getByRole("button", { name: /Show 1 more recipe/ });
-  await user.click(trigger);
-  const dialog = screen.getByRole("dialog", { name: "Dinner recipes for 2026-08-10" });
-  expect(dialog).toBeVisible();
-  expect(within(dialog).getByRole("button", { name: "Open Three for dinner on 2026-08-10" })).toBeVisible();
-  expect(within(dialog).getByRole("button", { name: "Remove Three from dinner on 2026-08-10" })).toBeVisible();
-  expect(screen.getByRole("button", { name: "Close meal recipes" })).toHaveFocus();
-  await user.keyboard("{Escape}");
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(trigger).toHaveFocus();
-});
-
-test("closes overflow with the Close button and restores focus", async () => {
-  const user = userEvent.setup();
-  renderSlot(<PlannerMealSlot {...slotProps()} />);
-
-  const trigger = screen.getByRole("button", { name: /Show 1 more recipe/ });
-  await user.click(trigger);
-  const dialog = screen.getByRole("dialog");
-  await user.click(within(dialog).getByRole("button", { name: "Close meal recipes" }));
-
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(trigger).toHaveFocus();
-});
-
-test("reopens overflow directly on Close without replaying a stale dialog focus", async () => {
-  const user = userEvent.setup();
-  const focusLabels: string[] = [];
-  const props = { ...slotProps(), recipeIds: ["r1", "r2", "r3", "r4"] };
-  renderSlot(
-    <div
-      onFocusCapture={(event) => {
-        const label = event.target.getAttribute("aria-label");
-        if (label) focusLabels.push(label);
-      }}
-    >
-      <PlannerMealSlot {...props} />
-    </div>,
-  );
-
-  const trigger = screen.getByRole("button", { name: /Show 2 more recipes/ });
-  await user.click(trigger);
-  within(screen.getByRole("dialog"))
-    .getByRole("button", { name: "Remove Three from dinner on 2026-08-10" })
-    .focus();
-  await user.keyboard("{Escape}");
-  expect(trigger).toHaveFocus();
-
-  focusLabels.length = 0;
-  await user.click(trigger);
-  const close = within(screen.getByRole("dialog")).getByRole("button", {
-    name: "Close meal recipes",
-  });
-  await waitFor(() => expect(close).toHaveFocus());
-
-  expect(focusLabels).toEqual(["Close meal recipes"]);
-});
-
-test("closes and rehomes focus when removing overflow removes its trigger", async () => {
-  const user = userEvent.setup();
-
-  function RemovingSlot() {
-    const [recipeIds, setRecipeIds] = useState(["r1", "r2", "r3"]);
-    return (
-      <PlannerMealSlot
-        {...slotProps()}
-        recipeIds={recipeIds}
-        onRemove={(recipeId) => setRecipeIds((current) => current.filter((id) => id !== recipeId))}
-      />
-    );
-  }
-
-  renderSlot(<RemovingSlot />);
-  await user.click(screen.getByRole("button", { name: /Show 1 more recipe/ }));
-  await user.click(
-    within(screen.getByRole("dialog")).getByRole("button", {
-      name: "Remove Three from dinner on 2026-08-10",
-    }),
-  );
-
-  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-  expect(
-    screen.getByRole("button", { name: "Add another recipe for dinner on 2026-08-10" }),
-  ).toHaveFocus();
-});
-
-test("rehomes focus inside an open overflow dialog when the focused recipe row is removed", async () => {
-  const user = userEvent.setup();
-
-  function RemovingSlot() {
-    const [recipeIds, setRecipeIds] = useState(["r1", "r2", "r3", "r4"]);
-    return (
-      <PlannerMealSlot
-        {...slotProps()}
-        recipeIds={recipeIds}
-        onRemove={(recipeId) => setRecipeIds((current) => current.filter((id) => id !== recipeId))}
-      />
-    );
-  }
-
-  renderSlot(<RemovingSlot />);
-  await user.click(screen.getByRole("button", { name: /Show 2 more recipes/ }));
-  const dialog = screen.getByRole("dialog");
-  await user.click(
-    within(dialog).getByRole("button", {
-      name: "Remove Three from dinner on 2026-08-10",
-    }),
-  );
-
-  expect(dialog).toBeVisible();
-  const nextRemove = within(dialog).getByRole("button", {
-    name: "Remove Four from dinner on 2026-08-10",
-  });
-  await waitFor(() => expect(nextRemove).toHaveFocus());
-
-  await user.tab();
-  expect(within(dialog).getByRole("button", { name: "Close meal recipes" })).toHaveFocus();
-  await user.tab({ shift: true });
-  expect(nextRemove).toHaveFocus();
-});
-
-test("preserves dialog focus when a recipe change does not remove the active control", async () => {
-  const user = userEvent.setup();
-  const props = { ...slotProps(), recipeIds: ["r1", "r2", "r3", "r4"] };
-  const view = renderSlot(<PlannerMealSlot {...props} />);
-
-  await user.click(screen.getByRole("button", { name: /Show 2 more recipes/ }));
-  const close = screen.getByRole("button", { name: "Close meal recipes" });
-  expect(close).toHaveFocus();
-
-  view.rerender(
-    <I18nProvider>
-      <PlannerMealSlot {...props} recipeIds={["r1", "r2", "r4"]} />
-    </I18nProvider>,
-  );
-
-  expect(close).toHaveFocus();
-});
-
-test("traps Tab and Shift+Tab inside the overflow dialog", async () => {
-  const user = userEvent.setup();
-  renderSlot(<PlannerMealSlot {...slotProps()} />);
-
-  await user.click(screen.getByRole("button", { name: /Show 1 more recipe/ }));
-  const dialog = screen.getByRole("dialog");
-  const buttons = within(dialog).getAllByRole("button");
-  expect(buttons[0]).toHaveFocus();
-  await user.tab({ shift: true });
-  expect(buttons.at(-1)).toHaveFocus();
-  buttons.at(-1)?.focus();
-  await user.tab();
-  expect(buttons[0]).toHaveFocus();
-});
-
-test("localizes visible meal text, overflow count, and contextual controls in Chinese", async () => {
+test("localizes visible meal text and contextual controls in Chinese", async () => {
   localStorage.setItem("cooking-ui-language", "zh");
   renderSlot(<PlannerMealSlot {...slotProps()} />);
 
   expect(await screen.findByText("晚餐")).toBeVisible();
-  expect(screen.getByText("另有 1 道")).toBeVisible();
   expect(
     screen.getByRole("button", { name: "打开 2026-08-10 晚餐的 One" }),
   ).toBeVisible();
   expect(
-    screen.getByRole("button", { name: "显示 2026-08-10 晚餐的另外 1 道菜谱" }),
+    screen.getByRole("button", { name: "打开 2026-08-10 晚餐的 Three" }),
   ).toBeVisible();
 });
