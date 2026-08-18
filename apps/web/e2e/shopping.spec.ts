@@ -111,6 +111,40 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/shopping-list?week=2026-08-10");
 });
 
+test("loads local Inter faces for every requested Shopping weight", async ({ page }) => {
+  const loadedFaces = await page.evaluate(async () => {
+    const requestedWeights = ["500", "800", "900"];
+    const probes = requestedWeights.map((weight) => {
+      const probe = document.createElement("span");
+      probe.textContent = `Inter ${weight}`;
+      probe.style.cssText = `font-family: Inter; font-size: 16px; font-weight: ${weight}`;
+      document.body.append(probe);
+      return probe;
+    });
+
+    await Promise.all(
+      requestedWeights.map((weight) => document.fonts.load(`${weight} 16px Inter`, "Chef World")),
+    );
+    await document.fonts.ready;
+
+    const interFaces = Array.from(document.fonts).filter(
+      (face) => face.family.replace(/["']/g, "") === "Inter",
+    );
+    const availability = requestedWeights.map((weight) => ({
+      loaded: interFaces.some((face) => face.weight === weight && face.status === "loaded"),
+      weight,
+    }));
+    probes.forEach((probe) => probe.remove());
+    return availability;
+  });
+
+  expect(loadedFaces).toEqual([
+    { loaded: true, weight: "500" },
+    { loaded: true, weight: "800" },
+    { loaded: true, weight: "900" },
+  ]);
+});
+
 test("keeps confirmation and smart shopping restrained at every viewport", async ({ page }, testInfo) => {
   const expectedTitleSize = libraryTitleSizeByProject[
     testInfo.project.name as keyof typeof libraryTitleSizeByProject
