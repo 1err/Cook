@@ -73,6 +73,10 @@ function PlannerPageContent() {
   const [loadAttempt, setLoadAttempt] = useState(0);
   const mutationQueuesByDate = useRef<Record<string, DateMutationQueue>>({});
   const loadGeneration = useRef(0);
+  const pickerDialogRef = useRef<HTMLDivElement>(null);
+  const pickerTriggerRef = useRef<HTMLElement | null>(null);
+  const pickerFallbackRef = useRef<HTMLElement | null>(null);
+  const pickerWasOpenRef = useRef(false);
 
   const sidebarRecipes = useMemo(() => {
     const q = sideSearch.trim().toLowerCase();
@@ -293,8 +297,77 @@ function PlannerPageContent() {
   async function handlePickerSelect(recipeId: string) {
     if (!slotPicker) return;
     await addRecipeToSlot(slotPicker.date, slotPicker.slot, recipeId);
+    closeRecipePicker();
+  }
+
+  function closeRecipePicker() {
     setSlotPicker(null);
   }
+
+  function openRecipePicker(date: string, slot: MealType) {
+    if (planLoadFailed) return;
+    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const slotIndex = String(MEAL_PLAN_SLOTS.indexOf(slot));
+    const fallback = trigger?.closest<HTMLElement>("[data-testid='planner-meal-slot']")
+      ?? Array.from(document.querySelectorAll<HTMLElement>("[data-testid='planner-meal-slot']")).find(
+        (candidate) => candidate.dataset.date === date && candidate.dataset.slotIndex === slotIndex,
+      )
+      ?? null;
+    pickerTriggerRef.current = trigger;
+    pickerFallbackRef.current = fallback;
+    setSlotPicker({ date, slot });
+  }
+
+  useEffect(() => {
+    if (!slotPicker) {
+      if (!pickerWasOpenRef.current) return;
+      pickerWasOpenRef.current = false;
+      const trigger = pickerTriggerRef.current;
+      const fallback = pickerFallbackRef.current;
+      const target = trigger?.isConnected ? trigger : fallback?.isConnected ? fallback : null;
+      target?.focus();
+      pickerTriggerRef.current = null;
+      pickerFallbackRef.current = null;
+      return;
+    }
+
+    pickerWasOpenRef.current = true;
+    const dialog = pickerDialogRef.current;
+    const sheet = dialog?.querySelector<HTMLElement>(".planner-mobile-picker__sheet");
+    const close = dialog?.querySelector<HTMLButtonElement>(".planner-mobile-picker__close");
+    if (!dialog || !sheet || !close) return;
+
+    const getFocusable = () => Array.from(
+      sheet.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      ),
+    );
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeRecipePicker();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const focusable = getFocusable();
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !sheet.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !sheet.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    close.focus();
+    dialog.addEventListener("keydown", handleKeyDown);
+    return () => dialog.removeEventListener("keydown", handleKeyDown);
+  }, [slotPicker]);
 
   const slotPickerDayLabel = useMemo(() => {
     if (!slotPicker) return "";
@@ -356,13 +429,14 @@ function PlannerPageContent() {
               <h4 className="planner-drag-card__title font-headline">{r.title}</h4>
               {(() => {
                 const tags = getRecipeTags(r);
-                if (tags.length === 0) return null;
                 return (
                   <p className="planner-drag-card__meta">
-                    {tags
-                      .slice(0, 2)
-                      .map((tag) => CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " "))
-                      .join(" • ")}
+                    {tags.length > 0
+                      ? tags
+                          .slice(0, 2)
+                          .map((tag) => CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " "))
+                          .join(" • ")
+                      : t("recipe.ingredientsCount", { count: r.ingredients.length })}
                   </p>
                 );
               })()}
@@ -373,6 +447,7 @@ function PlannerPageContent() {
               type="button"
               className="planner-source-card__add font-headline"
               onClick={() => handlePickerSelect(r.id)}
+              aria-label={`${t("common.add")} ${r.title}`}
             >
               {t("common.add")}
             </button>
@@ -458,7 +533,7 @@ function PlannerPageContent() {
           draggingSlot={draggingSlot}
           mutationsDisabled={planLoadFailed}
           onChoose={(date, slot) => {
-            if (!planLoadFailed) setSlotPicker({ date, slot });
+            openRecipePicker(date, slot);
           }}
           onOpen={openRecipe}
           onRemove={removeMeal}
@@ -468,12 +543,18 @@ function PlannerPageContent() {
         />
 
         {slotPicker ? (
-          <div className="planner-mobile-picker" role="dialog" aria-modal="true" aria-label={t("planner.chooseRecipeForMealSlot")}>
+          <div
+            ref={pickerDialogRef}
+            className="planner-mobile-picker"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("planner.chooseRecipeForMealSlot")}
+          >
             <button
               type="button"
               className="planner-mobile-picker__backdrop"
               aria-label={t("planner.closeRecipePicker")}
-              onClick={() => setSlotPicker(null)}
+              onClick={closeRecipePicker}
             />
             <div className="planner-mobile-picker__sheet">
               <div className="planner-mobile-picker__head">
@@ -486,10 +567,13 @@ function PlannerPageContent() {
                 <button
                   type="button"
                   className="planner-mobile-picker__close"
-                  onClick={() => setSlotPicker(null)}
+                  onClick={closeRecipePicker}
                   aria-label={t("planner.closeRecipePicker")}
                 >
-                  <span className="material-symbols-outlined">close</span>
+                  <span className="material-symbols-outlined" aria-hidden="true">close</span>
+                  <span className="planner-mobile-picker__close-label">
+                    {t("planner.closeRecipePicker")}
+                  </span>
                 </button>
               </div>
               <div className="planner-mobile-picker__controls">{recipeSourceControls}</div>

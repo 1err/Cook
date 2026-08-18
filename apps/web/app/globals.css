@@ -2756,6 +2756,7 @@ button:disabled {
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  pointer-events: none;
 }
 
 .planner-mobile-picker__backdrop {
@@ -2763,6 +2764,7 @@ button:disabled {
   inset: 0;
   border: none;
   background: rgba(0, 0, 0, 0.28);
+  pointer-events: auto;
 }
 
 .planner-mobile-picker__sheet {
@@ -2776,6 +2778,7 @@ button:disabled {
   box-shadow: var(--kitchen-glow-lg);
   display: flex;
   flex-direction: column;
+  pointer-events: auto;
 }
 
 .planner-mobile-picker__head {
@@ -2810,6 +2813,10 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.planner-mobile-picker__close-label {
+  display: none;
 }
 
 .planner-mobile-picker__controls {
@@ -2851,6 +2858,7 @@ button:disabled {
 
   .planner-mobile-picker__list .planner-source-card--picker .planner-drag-card {
     align-items: stretch;
+    cursor: default;
     flex: 1;
     flex-direction: column;
     gap: 0.55rem;
@@ -2868,6 +2876,18 @@ button:disabled {
 
   .planner-mobile-picker__list .planner-source-card--picker .planner-source-card__add {
     align-self: stretch;
+  }
+
+  .planner-mobile-picker__close {
+    gap: 0.35rem;
+    padding: 0 0.85rem;
+    width: auto;
+  }
+
+  .planner-mobile-picker__close-label {
+    display: inline;
+    font-size: 0.78rem;
+    font-weight: 800;
   }
 }
 

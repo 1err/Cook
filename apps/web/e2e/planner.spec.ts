@@ -11,6 +11,9 @@ const weekDates = [
   "2026-08-16",
 ];
 
+const inlineRecipeThumbnail =
+  "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNjAgOTAiPjxyZWN0IHdpZHRoPSIxNjAiIGhlaWdodD0iOTAiIHJ4PSIxMiIgZmlsbD0iI2I5NWYzZCIvPjxjaXJjbGUgY3g9IjgwIiBjeT0iNDUiIHI9IjI4IiBmaWxsPSIjZjdkYmM5Ii8+PHBhdGggZD0iTTU2IDQ1aDQ4IiBzdHJva2U9IiM2ZDM1MjQiIHN0cm9rZS13aWR0aD0iOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PC9zdmc+";
+
 const recipes = Array.from({ length: 24 }, (_, index) => {
   const number = String(index + 1).padStart(2, "0");
 
@@ -18,7 +21,7 @@ const recipes = Array.from({ length: 24 }, (_, index) => {
     id: `recipe-${number}`,
     title: `Recipe ${number} with a descriptive two-line title`,
     source_url: null,
-    thumbnail_url: null,
+    thumbnail_url: index === 0 ? inlineRecipeThumbnail : null,
     ingredients: [{ name: `Ingredient ${number}`, quantity: "1 cup" }],
     raw_extraction_text: null,
     library_tags: index % 2 === 0 ? ["weeknight"] : ["main_dish"],
@@ -247,10 +250,34 @@ test("keeps the full planner in one desktop viewport contract and preserves ever
   await expect(page.getByRole("button", { name: /Show .* more recipe/ })).toHaveCount(0);
   await expect(page.getByRole("dialog", { name: "Breakfast recipes for 2026-08-11" })).toHaveCount(0);
 
-  await page
-    .getByRole("button", { name: "Choose a recipe for breakfast on 2026-08-12" })
-    .click();
+  const pickerTrigger = page.getByRole("button", {
+    name: "Choose a recipe for breakfast on 2026-08-12",
+  });
+  await pickerTrigger.click();
   const pickerForGeometry = page.getByRole("dialog", { name: "Choose recipe for meal slot" });
+  const pickerClose = pickerForGeometry.locator(".planner-mobile-picker__close");
+  await expect(pickerClose).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(
+    pickerForGeometry.getByRole("button", {
+      name: "Add Recipe 24 with a descriptive two-line title",
+    }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(pickerClose).toBeFocused();
+  await expect(pickerForGeometry.locator(".planner-mobile-picker__close-label")).toBeVisible();
+
+  await pickerClose.click();
+  await expect(pickerForGeometry).toBeHidden();
+  await expect(pickerTrigger).toBeFocused();
+
+  await pickerTrigger.click();
+  await expect(pickerForGeometry.locator(".planner-mobile-picker__close")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(pickerForGeometry).toBeHidden();
+  await expect(pickerTrigger).toBeFocused();
+
+  await pickerTrigger.click();
   const pickerGeometry = await pickerForGeometry.evaluate((dialog) => {
     const sheet = dialog.querySelector<HTMLElement>(".planner-mobile-picker__sheet")!;
     const list = dialog.querySelector<HTMLElement>(".planner-mobile-picker__list")!;
@@ -272,6 +299,7 @@ test("keeps the full planner in one desktop viewport contract and preserves ever
           ).length,
           mediaHeight: mediaRect.height,
           mediaRatio: mediaRect.width / mediaRect.height,
+          pickerCursor: getComputedStyle(card.querySelector<HTMLElement>(".planner-drag-card")!).cursor,
           titleHeight: title.getBoundingClientRect().height,
           titleLineHeight: lineHeight,
         };
@@ -290,8 +318,40 @@ test("keeps the full planner in one desktop viewport contract and preserves ever
     expect(Math.abs(card.mediaRatio - 16 / 9)).toBeLessThanOrEqual(1 / card.mediaHeight);
     expect(card.titleHeight).toBeLessThanOrEqual(card.titleLineHeight * 2 + 1);
     expect(card.addActions).toBe(1);
+    expect(card.pickerCursor).toBe("default");
   }
-  await pickerForGeometry.locator(".planner-mobile-picker__close").click();
+  await expect(page.locator(".planner-editorial__sidebar .planner-drag-card").first()).toHaveCSS(
+    "cursor",
+    "grab",
+  );
+  const thumbnailCard = pickerForGeometry.locator(".planner-source-card", {
+    hasText: "Recipe 01 with a descriptive two-line title",
+  });
+  const thumbnailImage = thumbnailCard.getByRole("img", {
+    name: "Recipe 01 with a descriptive two-line title",
+  });
+  await expect(thumbnailImage).toHaveAttribute("src", inlineRecipeThumbnail);
+  await expect.poll(() =>
+    thumbnailImage.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0),
+  ).toBe(true);
+  const railThumbnailImage = page
+    .locator(".planner-editorial__sidebar")
+    .getByRole("img", { name: "Recipe 01 with a descriptive two-line title" });
+  await expect.poll(() =>
+    railThumbnailImage.evaluate(
+      (image: HTMLImageElement) => image.complete && image.naturalWidth > 0,
+    ),
+  ).toBe(true);
+  const placeholderCard = pickerForGeometry.locator(".planner-source-card", {
+    hasText: "Recipe 02 with a descriptive two-line title",
+  });
+  await expect(placeholderCard.locator(".planner-drag-card__thumb")).toBeVisible();
+  await expect(placeholderCard.locator(".planner-drag-card__thumb img")).toHaveCount(0);
+  await pickerForGeometry.locator(".planner-mobile-picker__backdrop").click({
+    position: { x: 20, y: 100 },
+  });
+  await expect(pickerForGeometry).toBeHidden();
+  await expect(pickerTrigger).toBeFocused();
 
   await expect(page).toHaveScreenshot("planner.png", {
     animations: "disabled",
@@ -322,10 +382,15 @@ test("keeps the full planner in one desktop viewport contract and preserves ever
   const addRequest = page.waitForRequest(
     (request) => request.method() === "PUT" && request.url().endsWith("/meal-plan/2026-08-12"),
   );
-  await picker.getByRole("button", { name: "Add", exact: true }).first().click();
+  await picker
+    .getByRole("button", { name: "Add Recipe 01 with a descriptive two-line title" })
+    .click();
   expect((await addRequest).postDataJSON().breakfast).toEqual(["recipe-01"]);
+  const selectedSlot = page.locator('[data-date="2026-08-12"][data-slot-index="0"]');
+  await expect(selectedSlot).toBeFocused();
+  await expect(selectedSlot).toHaveAttribute("tabindex", "-1");
   await expect(
-    page.locator('[data-date="2026-08-12"][data-slot-index="0"]').getByRole("button", {
+    selectedSlot.getByRole("button", {
       name: "Open Recipe 01 with a descriptive two-line title for breakfast on 2026-08-12",
     }),
   ).toBeVisible();
@@ -394,10 +459,13 @@ test("keeps phone and tablet planners stacked, scrollable, and picker-friendly",
   expect(pickerLayout.display).toBe("flex");
   expect(pickerLayout.flexDirection).toBe("column");
   expect(pickerLayout.bottomDelta).toBeLessThanOrEqual(1);
+  await expect(picker.locator(".planner-mobile-picker__close-label")).toBeHidden();
   const addRequest = page.waitForRequest(
     (request) => request.method() === "PUT" && request.url().endsWith("/meal-plan/2026-08-12"),
   );
-  await picker.getByRole("button", { name: "Add", exact: true }).first().click();
+  await picker
+    .getByRole("button", { name: "Add Recipe 01 with a descriptive two-line title" })
+    .click();
   expect((await addRequest).postDataJSON().breakfast).toEqual(["recipe-01"]);
   await expect(picker).toBeHidden();
   await expect(
@@ -405,6 +473,29 @@ test("keeps phone and tablet planners stacked, scrollable, and picker-friendly",
       name: "Open Recipe 01 with a descriptive two-line title for breakfast on 2026-08-12",
     }),
   ).toBeVisible();
+});
+
+test("preserves the stacked-to-desktop planner boundary at 1023 and 1024 pixels", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "The exact breakpoint contract runs in the desktop project.");
+
+  await page.setViewportSize({ width: 1023, height: 800 });
+  await expect(page.locator(".planner-editorial__sidebar")).toBeHidden();
+  const stackedMetrics = await page.locator(".planner-editorial__grid").evaluate((grid) => ({
+    columns: getComputedStyle(grid).gridTemplateColumns.split(" ").length,
+    hasHorizontalOverflow: document.documentElement.scrollWidth > window.innerWidth,
+    hasVerticalScroll: document.documentElement.scrollHeight > window.innerHeight,
+  }));
+  expect(stackedMetrics.columns).toBe(1);
+  expect(stackedMetrics.hasVerticalScroll).toBe(true);
+  expect(stackedMetrics.hasHorizontalOverflow).toBe(false);
+
+  await page.setViewportSize({ width: 1024, height: 800 });
+  await expect(page.locator(".planner-editorial__sidebar")).toBeVisible();
+  expect(
+    await page
+      .locator(".planner-editorial__grid")
+      .evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(" ").length),
+  ).toBe(7);
 });
 
 test("keeps the Chinese overflow cue fully inside a narrow desktop meal slot", async ({ page }, testInfo) => {

@@ -57,6 +57,7 @@ const messages: Record<string, string> = {
   "planner.shoppingListUsesPlan": "Shopping list uses this week's plan.",
   "planner.sortedAZ": "Sorted A-Z",
   "planner.title": "Weekly planner",
+  "recipe.ingredientsCount": "{count} ingredients",
 };
 
 function t(key: string, vars?: Record<string, string | number>) {
@@ -127,7 +128,9 @@ async function addDinnerRecipe(
   const picker = await screen.findByRole("dialog", { name: "Choose recipe for meal slot" });
   const recipeCard = within(picker).getByText(title).closest(".planner-source-card");
   expect(recipeCard).not.toBeNull();
-  await user.click(within(recipeCard as HTMLElement).getByRole("button", { name: "Add" }));
+  await user.click(
+    within(recipeCard as HTMLElement).getByRole("button", { name: `Add ${title}` }),
+  );
 }
 
 beforeEach(() => {
@@ -186,9 +189,77 @@ test("keeps Add actions and recipe media in the open recipe picker, not the reci
   );
   const dialog = await screen.findByRole("dialog", { name: /Choose recipe/ });
 
-  expect(within(dialog).getAllByRole("button", { name: "Add" })).toHaveLength(2);
-  expect(within(screen.getByRole("complementary")).queryByRole("button", { name: "Add" })).not.toBeInTheDocument();
+  expect(within(dialog).getAllByRole("button", { name: /^Add Recipe/ })).toHaveLength(2);
+  expect(within(dialog).getByRole("button", { name: "Add Recipe with a thumbnail" })).toBeVisible();
+  expect(within(dialog).getByRole("button", { name: "Add Recipe with a placeholder" })).toBeVisible();
+  expect(within(screen.getByRole("complementary")).queryByRole("button", { name: /^Add / })).not.toBeInTheDocument();
   expect(within(dialog).getAllByRole("img", { hidden: true }).length).toBeGreaterThan(0);
+  expect(within(dialog).getAllByText("0 ingredients")).toHaveLength(2);
+});
+
+test("contains picker focus and restores it after Escape, Close, and backdrop dismissal", async () => {
+  const user = userEvent.setup();
+  render(<PlannerPage />);
+  const trigger = await screen.findByRole("button", {
+    name: "Choose a recipe for dinner on 2026-08-10",
+  });
+
+  await user.click(trigger);
+  let dialog = await screen.findByRole("dialog", { name: /Choose recipe/ });
+  let close = within(dialog).getAllByRole("button", { name: "Close recipe picker" })[1];
+  await waitFor(() => expect(close).toHaveFocus());
+  await user.tab({ shift: true });
+  expect(within(dialog).getByRole("button", { name: "Add Test recipe" })).toHaveFocus();
+  await user.tab();
+  expect(close).toHaveFocus();
+
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: /Choose recipe/ })).not.toBeInTheDocument());
+  expect(trigger).toHaveFocus();
+
+  await user.click(trigger);
+  dialog = await screen.findByRole("dialog", { name: /Choose recipe/ });
+  close = within(dialog).getAllByRole("button", { name: "Close recipe picker" })[1];
+  await user.click(close);
+  await waitFor(() => expect(trigger).toHaveFocus());
+
+  await user.click(trigger);
+  dialog = await screen.findByRole("dialog", { name: /Choose recipe/ });
+  await user.click(dialog.querySelector(".planner-mobile-picker__backdrop") as HTMLButtonElement);
+  await waitFor(() => expect(trigger).toHaveFocus());
+});
+
+test("restores picker focus to the meal-slot fallback when selection replaces its trigger", async () => {
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
+    if (path === "/recipes") {
+      return Promise.resolve(
+        jsonResponse([{ id: "recipe-1", title: "Test recipe", ingredients: [] }]),
+      );
+    }
+    if (path === "/meal-plan/2026-08-10" && options?.method === "PUT") {
+      const slots = JSON.parse(String(options.body));
+      return Promise.resolve(jsonResponse({ date: "2026-08-10", ...slots }));
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  const user = userEvent.setup();
+  render(<PlannerPage />);
+  const trigger = await screen.findByRole("button", {
+    name: "Choose a recipe for dinner on 2026-08-10",
+  });
+
+  await user.click(trigger);
+  const dialog = await screen.findByRole("dialog", { name: /Choose recipe/ });
+  await user.click(within(dialog).getByRole("button", { name: "Add Test recipe" }));
+
+  const slot = screen.getAllByTestId("planner-meal-slot").find(
+    (candidate) => candidate.dataset.date === "2026-08-10" && candidate.dataset.slotIndex === "2",
+  );
+  expect(slot).toBeDefined();
+  await waitFor(() => expect(slot).toHaveFocus());
+  expect(slot).toHaveAttribute("tabindex", "-1");
+  expect(trigger).not.toBeInTheDocument();
 });
 
 test("restores the prior plan and reports an error when an optimistic meal-plan write fails", async () => {
@@ -201,7 +272,7 @@ test("restores the prior plan and reports an error when an optimistic meal-plan 
     }),
   );
   const picker = await screen.findByRole("dialog", { name: "Choose recipe for meal slot" });
-  await user.click(within(picker).getByRole("button", { name: "Add" }));
+  await user.click(within(picker).getByRole("button", { name: "Add Test recipe" }));
 
   expect(
     await screen.findByRole("button", {

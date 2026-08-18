@@ -116,6 +116,7 @@ export function PlannerMealSlot({
       data-testid="planner-meal-slot"
       data-date={date}
       data-slot-index={String(MEAL_PLAN_SLOTS.indexOf(slot))}
+      tabIndex={-1}
       aria-disabled={mutationsDisabled || undefined}
       className={`planner-drop-target flex-1${isDragOver ? " is-drag-over" : ""}${recipeIds.length ? " planner-drop-target--filled" : ""}`}
       onDragOver={onDragOver}
