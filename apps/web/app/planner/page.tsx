@@ -389,6 +389,15 @@ function PlannerPageContent() {
 
   return (
     <div className="planner-editorial app-wide">
+      <div className="planner-editorial__toolbar-shell">
+        <PlannerToolbar
+          weekRange={formatWeekPlannerKicker(start, end)}
+          shoppingHref={`/shopping-list?week=${currentWeek}`}
+          onPrevious={() => setWeek(prev)}
+          onNext={() => setWeek(next)}
+        />
+      </div>
+
       <PlannerRecipeRail
         controls={
           <>
@@ -407,13 +416,6 @@ function PlannerPageContent() {
       />
 
       <main className="planner-editorial__main">
-        <PlannerToolbar
-          weekRange={formatWeekPlannerKicker(start, end)}
-          shoppingHref={`/shopping-list?week=${currentWeek}`}
-          onPrevious={() => setWeek(prev)}
-          onNext={() => setWeek(next)}
-        />
-
         <div className="planner-mobile-guide">
           <p className="planner-mobile-guide__title font-headline">{t("planner.phoneFriendlyTitle")}</p>
           <p className="planner-mobile-guide__text">{t("planner.phoneFriendlyDesc")}</p>

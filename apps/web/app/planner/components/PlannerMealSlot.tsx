@@ -39,6 +39,7 @@ function RecipeTile({
       className="planner-meal-card w-full h-full"
       onClick={onOpen}
       aria-label={t("planner.openRecipe", { title: recipe.title, slot: slotLabel, date })}
+      title={recipe.title}
     >
       {recipe.thumbnail_url ? (
         <img src={recipe.thumbnail_url} alt="" className="planner-meal-card__img" />
@@ -94,6 +95,9 @@ export function PlannerMealSlot({
   const overflowVisualMessage = overflowCount
     ? t("planner.moreRecipeCue", { count: overflowCount })
     : "";
+  const recipeLayout = slotRecipes.length > 3
+    ? "overflow"
+    : (["one", "two", "three"][slotRecipes.length - 1] ?? "one");
 
   useLayoutEffect(() => {
     const pending = pendingRemoveFocusRef.current;
@@ -123,6 +127,7 @@ export function PlannerMealSlot({
         <div className="planner-slot-recipes">
           <div
             className="planner-slot-recipes__scroll"
+            data-recipe-layout={recipeLayout}
             role="region"
             aria-label={t("planner.slotRecipes", { slot: slotHeading, date })}
             aria-describedby={overflowCount ? overflowCueId : undefined}

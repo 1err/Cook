@@ -2214,16 +2214,24 @@ button:disabled {
   border-top: 1px solid color-mix(in srgb, var(--outline-variant) 22%, transparent);
 }
 
+.planner-editorial__toolbar-shell {
+  padding: 1.5rem 1rem 0;
+}
+
 .planner-editorial__main {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  padding: 1.5rem 1rem 5rem;
+  padding: 0 1rem 5rem;
 }
 
 @media (min-width: 768px) {
+  .planner-editorial__toolbar-shell {
+    padding: 2rem 2.5rem 0;
+  }
+
   .planner-editorial__main {
-    padding: 2rem 2.5rem 5rem;
+    padding: 0 2.5rem 5rem;
   }
 }
 
@@ -2837,8 +2845,12 @@ button:disabled {
     cursor: default;
   }
 
+  .planner-editorial__toolbar-shell {
+    padding: 1rem 1rem 0;
+  }
+
   .planner-editorial__main {
-    padding: 1rem 1rem 5rem;
+    padding: 0 1rem 5rem;
   }
 }
 
@@ -2846,7 +2858,8 @@ button:disabled {
 @media (min-width: 1024px) {
   .planner-editorial {
     display: grid;
-    grid-template-columns: clamp(15.5rem, 18vw, 18rem) minmax(0, 1fr);
+    grid-template-columns: clamp(13rem, 17vw, 14rem) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     height: calc(100dvh - var(--app-header-height));
     min-height: 0;
     max-height: none;
@@ -2857,8 +2870,33 @@ button:disabled {
     padding: 0;
   }
 
+  .planner-editorial__toolbar-shell {
+    grid-column: 1 / -1;
+    padding: 0.85rem 1rem 0;
+  }
+
+  .planner-editorial__toolbar-shell > section {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+
+  .planner-editorial__toolbar-shell > section > div:last-child {
+    align-items: center;
+    display: flex;
+    flex: 0 0 auto;
+    gap: 0.5rem;
+  }
+
   .planner-editorial__sidebar {
+    border: 1px solid color-mix(in srgb, var(--outline-variant) 30%, transparent);
+    border-radius: var(--radius-lg);
+    grid-column: 1;
+    grid-row: 2;
     min-height: 0;
+    overflow: hidden;
     width: auto;
   }
 
@@ -2885,24 +2923,10 @@ button:disabled {
   .planner-editorial__main {
     display: flex;
     flex-direction: column;
+    grid-column: 2;
+    grid-row: 2;
     overflow: hidden;
-    padding: 0.85rem 1rem 1rem;
-  }
-
-  .planner-editorial__main > section:first-child {
-    align-items: center;
-    display: flex;
-    flex: 0 0 auto;
-    gap: 1rem;
-    justify-content: space-between;
-    margin-bottom: 0.75rem;
-  }
-
-  .planner-editorial__main > section:first-child > div:last-child {
-    align-items: center;
-    display: flex;
-    flex: 0 0 auto;
-    gap: 0.5rem;
+    padding: 0 1rem;
   }
 
   .planner-editorial__grid {
@@ -2978,21 +3002,39 @@ button:disabled {
   }
 
   .planner-slot-recipes {
+    flex: 1 1 auto;
     gap: 0.2rem;
-    max-height: 100%;
+    max-height: none;
   }
 
   .planner-slot-recipes__scroll {
-    flex-shrink: 0;
+    flex: 1 1 auto;
     gap: 0.2rem;
-    max-height: 7.15rem;
+    max-height: none;
     scrollbar-gutter: stable;
+  }
+
+  .planner-slot-recipes__scroll[data-recipe-layout="one"] .planner-slot-recipe {
+    flex: 1 1 100%;
+  }
+
+  .planner-slot-recipes__scroll[data-recipe-layout="two"] .planner-slot-recipe {
+    flex: 1 1 calc((100% - 0.2rem) / 2);
+  }
+
+  .planner-slot-recipes__scroll[data-recipe-layout="three"] .planner-slot-recipe,
+  .planner-slot-recipes__scroll[data-recipe-layout="overflow"] .planner-slot-recipe {
+    flex: 0 0 calc((100% - 0.4rem) / 3);
+  }
+
+  .planner-slot-recipe {
+    min-height: 0;
   }
 
   .planner-meal-card {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    height: 2.25rem;
+    height: 100%;
     min-height: 0;
   }
 
@@ -3010,6 +3052,16 @@ button:disabled {
   .planner-meal-card__title {
     font-size: 0.625rem;
     line-height: 1.15;
+  }
+
+  .planner-slot-recipes__scroll[data-recipe-layout="two"] .planner-meal-card__title,
+  .planner-slot-recipes__scroll[data-recipe-layout="three"] .planner-meal-card__title,
+  .planner-slot-recipes__scroll[data-recipe-layout="overflow"] .planner-meal-card__title {
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .planner-meal-card__clear {

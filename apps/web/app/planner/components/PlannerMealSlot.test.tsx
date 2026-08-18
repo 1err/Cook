@@ -61,6 +61,34 @@ test("renders three compact recipes directly without an overflow trigger or dial
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
+test("marks one recipe with the one-row layout and exposes its complete title", () => {
+  renderSlot(<PlannerMealSlot {...slotProps()} recipeIds={["r1"]} />);
+
+  expect(screen.getByRole("region")).toHaveAttribute("data-recipe-layout", "one");
+  expect(screen.getByRole("button", { name: /Open One/ })).toHaveAttribute("title", "One");
+});
+
+test("marks two recipes with the two-row layout and exposes their complete titles", () => {
+  renderSlot(<PlannerMealSlot {...slotProps()} recipeIds={["r1", "r2"]} />);
+
+  expect(screen.getByRole("region")).toHaveAttribute("data-recipe-layout", "two");
+  expect(screen.getByRole("button", { name: /Open One/ })).toHaveAttribute("title", "One");
+});
+
+test("marks three recipes with the three-row layout and exposes their complete titles", () => {
+  renderSlot(<PlannerMealSlot {...slotProps()} />);
+
+  expect(screen.getByRole("region")).toHaveAttribute("data-recipe-layout", "three");
+  expect(screen.getByRole("button", { name: /Open One/ })).toHaveAttribute("title", "One");
+});
+
+test("marks four recipes with the overflow layout and exposes their complete titles", () => {
+  renderSlot(<PlannerMealSlot {...slotProps()} recipeIds={["r1", "r2", "r3", "r4"]} />);
+
+  expect(screen.getByRole("region")).toHaveAttribute("data-recipe-layout", "overflow");
+  expect(screen.getByRole("button", { name: /Open One/ })).toHaveAttribute("title", "One");
+});
+
 test("keeps a fourth recipe in a keyboard-reachable in-slot scroll region", () => {
   renderSlot(<PlannerMealSlot {...slotProps()} recipeIds={["r1", "r2", "r3", "r4"]} />);
 
