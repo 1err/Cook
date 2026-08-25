@@ -103,6 +103,13 @@ class RecipeStep(BaseModel):
     action_type: Optional[str] = None
     image_url: Optional[str] = None
 
+    @field_validator("id", "duration_source", "attention_type", "action_type", mode="before")
+    @classmethod
+    def _coerce_metadata_to_string(cls, v: object) -> Optional[str]:
+        if v is None or isinstance(v, str):
+            return v
+        return str(v)
+
     @field_validator("text", mode="before")
     @classmethod
     def _trim_text(cls, v: object) -> str:
@@ -134,6 +141,16 @@ class RecipeStep(BaseModel):
             return None  # field is Optional; non-string inputs are silently dropped
         s = v.strip()
         return s or None
+
+
+def _parse_recipe_step_rows(v: object) -> list[dict[str, object]]:
+    """Prepare legacy rows and existing models for nested Pydantic validation."""
+    if isinstance(v, list):
+        v = [
+            item.model_dump(exclude_unset=True) if isinstance(item, RecipeStep) else item
+            for item in v
+        ]
+    return parse_step_rows(v)
 
 
 def coerce_steps(v: object, total_time_minutes: object = None) -> list[RecipeStep]:
@@ -195,7 +212,9 @@ class RecipeCreate(BaseModel):
     catalog_source_recipe_id: Optional[str] = None
     description: Optional[str] = None
     total_time_minutes: Optional[int] = None
-    steps: Annotated[list[RecipeStep], BeforeValidator(parse_step_rows)] = Field(default_factory=list)
+    steps: Annotated[list[RecipeStep], BeforeValidator(_parse_recipe_step_rows)] = Field(
+        default_factory=list
+    )
     tips: list[str] = Field(default_factory=list)
     equipment: list[str] = Field(default_factory=list)
 

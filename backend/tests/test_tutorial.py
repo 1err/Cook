@@ -7,7 +7,7 @@ import pytest
 from pydantic import TypeAdapter
 
 from app.api._types import StepList
-from app.models import Recipe
+from app.models import Recipe, RecipeStep
 from app.tutorial import normalize_step_payloads, parse_step_rows
 
 
@@ -51,6 +51,43 @@ def test_user_duration_accepts_one_second():
     ).steps[0]
 
     assert step.duration_seconds == 1
+
+
+def test_recipe_normalizes_an_already_instantiated_step_and_preserves_image_url():
+    recipe = make_recipe(
+        steps=[
+            RecipeStep(
+                text="Stir",
+                duration_seconds=1,
+                duration_source="user",
+                image_url=" https://example.com/stir.jpg ",
+            )
+        ]
+    )
+
+    assert len(recipe.steps) == 1
+    assert recipe.steps[0].duration_seconds == 1
+    assert recipe.steps[0].image_url == "https://example.com/stir.jpg"
+
+
+def test_recipe_repairs_non_string_metadata_before_nested_validation():
+    step = make_recipe(
+        steps=[
+            {
+                "text": "Stir",
+                "id": 12,
+                "duration_seconds": 60,
+                "duration_source": 12,
+                "attention_type": 12,
+                "action_type": 12,
+            }
+        ]
+    ).steps[0]
+
+    assert UUID(step.id)
+    assert step.duration_source == "fallback"
+    assert step.attention_type == "hands_on"
+    assert step.action_type == "other"
 
 
 def test_recipe_derives_missing_total_time_from_normalized_steps():
