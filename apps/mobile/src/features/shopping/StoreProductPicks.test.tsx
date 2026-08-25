@@ -58,6 +58,24 @@ test("links successful product results to Weee", async () => {
   expect(screen.getByText("View on Weee")).toBeOnTheScreen();
 });
 
+test("keeps each product as its own accessible vertical result", async () => {
+  await render(
+    <StoreProductPicks
+      loading={false}
+      error={null}
+      products={[
+        { name: "Idaho potatoes", price: "$1.99", image: "", url: "https://www.sayweee.com/product/idaho" },
+        { name: "Golden potatoes", price: "$5.49", image: "", url: "https://www.sayweee.com/product/golden" },
+        { name: "Red yam", price: "$4.99", image: "", url: "https://www.sayweee.com/product/yam" },
+      ]}
+      onRetry={jest.fn()}
+    />,
+  );
+
+  expect(screen.getAllByRole("link")).toHaveLength(3);
+  expect(screen.getByLabelText("View Idaho potatoes on Weee")).toBeOnTheScreen();
+});
+
 test.each([
   "http://www.sayweee.com/product/tofu",
   "https://sayweee.com.evil.test/product/tofu",

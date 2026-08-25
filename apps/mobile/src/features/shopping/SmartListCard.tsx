@@ -1,12 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
 import type { StoreProduct } from "@cooking/api-client";
-import {
-  CATEGORY_MATERIAL_ICONS,
-  getDisplayCategory,
-  type GroceryCategory,
-} from "@cooking/shared";
+import { getDisplayCategory, type GroceryCategory } from "@cooking/shared";
 import { Card } from "../../components";
 import { colors, spacing, typography } from "../../theme";
 import type { PurchaseItem } from "./storage";
@@ -27,16 +22,6 @@ type SmartListCardProps = {
   onTogglePanel: (name: string) => void;
   onRetryProducts: (name: string) => void;
 };
-
-const ICON_SAFE_FALLBACK = "shopping-cart";
-
-function iconNameFor(category: GroceryCategory): keyof typeof MaterialIcons.glyphMap {
-  const mapped = CATEGORY_MATERIAL_ICONS[category];
-  if (mapped && mapped in MaterialIcons.glyphMap) {
-    return mapped as keyof typeof MaterialIcons.glyphMap;
-  }
-  return ICON_SAFE_FALLBACK as keyof typeof MaterialIcons.glyphMap;
-}
 
 export function SmartListCard({
   category,
@@ -80,9 +65,6 @@ export function SmartListCard({
   return (
     <Card style={styles.card}>
       <View style={styles.header}>
-        <View style={styles.iconWrap}>
-          <MaterialIcons name={iconNameFor(category)} size={18} color={colors.primary} />
-        </View>
         <Text style={styles.title}>{getDisplayCategory(category, category, "en")}</Text>
         <Text style={styles.count}>
           {remaining} to buy{got > 0 ? ` · ${got} have` : ""}
@@ -115,15 +97,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.divider,
     marginBottom: spacing.xs,
   },
-  iconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.primaryFixed,
-  },
-  title: { ...typography.headline, color: colors.onSurface, flex: 1 },
+  title: { ...typography.title3, color: colors.onSurface, flex: 1 },
   count: { ...typography.caption, color: colors.onSurfaceVariant, fontWeight: "600" },
   body: {},
   alreadyHaveSection: {
