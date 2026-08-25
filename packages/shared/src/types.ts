@@ -1,3 +1,9 @@
+import type {
+  RecipeActionType,
+  RecipeAttentionType,
+  RecipeDurationSource,
+} from "./recipeTutorial";
+
 export type RecipeTagSlug =
   | "chinese"
   | "japanese"
@@ -39,8 +45,12 @@ export interface IngredientItem {
 }
 
 export interface RecipeStep {
+  id?: string;
   text: string;
   duration_seconds?: number | null;
+  duration_source?: RecipeDurationSource | null;
+  attention_type?: RecipeAttentionType | null;
+  action_type?: RecipeActionType | null;
   image_url?: string | null;
 }
 
