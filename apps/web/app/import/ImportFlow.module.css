@@ -1,0 +1,174 @@
+.sourcePanel {
+  max-width: 52rem;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-card);
+  background: var(--cw-color-surface);
+  box-shadow: 0 12px 34px rgb(47 38 33 / 6%);
+}
+
+.sourceTabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--cw-color-divider);
+}
+
+.sourceTabs button {
+  position: relative;
+  padding: 0 1.2rem 0.8rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--cw-color-muted-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 750;
+}
+
+.sourceTabs button[aria-selected="true"] {
+  color: var(--cw-color-ink);
+}
+
+.sourceTabs button[aria-selected="true"]::after {
+  position: absolute;
+  right: 1.2rem;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: var(--cw-color-action);
+  content: "";
+}
+
+.field {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.field label,
+.tagPicker legend {
+  color: var(--cw-color-ink);
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-field);
+  outline: 0;
+  background: var(--cw-color-canvas);
+  color: var(--cw-color-ink);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.field input:focus,
+.field textarea:focus {
+  border-color: var(--cw-color-action);
+}
+
+.field small {
+  color: var(--cw-color-muted-ink);
+  font-size: 0.78rem;
+}
+
+.optionalToggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1.25rem;
+  padding: 0.9rem 0;
+  border: 0;
+  border-top: 1px solid var(--cw-color-divider);
+  border-bottom: 1px solid var(--cw-color-divider);
+  background: transparent;
+  color: var(--cw-color-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 750;
+}
+
+.optionalDetails {
+  display: grid;
+  gap: 1.25rem;
+  padding-top: 1.25rem;
+}
+
+.tagPicker {
+  display: grid;
+  gap: 0.9rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.tagPicker p {
+  margin: 0 0 0.45rem;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tagPicker > div > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.tagPicker button {
+  padding: 0.42rem 0.65rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-round);
+  background: var(--cw-color-surface);
+  color: var(--cw-color-muted-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.tagPicker button[aria-pressed="true"] {
+  border-color: var(--cw-color-action);
+  background: color-mix(in srgb, var(--cw-color-action) 9%, var(--cw-color-surface));
+  color: var(--cw-color-action);
+}
+
+.sourceActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1.5rem;
+}
+
+.sourceActions button,
+.saveButton {
+  min-height: 2.85rem;
+  padding: 0.7rem 1.3rem;
+  border: 1px solid var(--cw-color-action);
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-action);
+  color: var(--cw-color-on-action);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 750;
+}
+
+.sourceActions button:disabled,
+.saveButton:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.error {
+  margin: 1rem 0 0;
+  color: var(--cw-color-error);
+  font-size: 0.88rem;
+}
