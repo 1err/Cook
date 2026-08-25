@@ -19,8 +19,24 @@ const draftRecipe = {
   description: "A savory weeknight braise.",
   total_time_minutes: 40,
   steps: [
-    { text: "Sear the tofu until golden.", duration_seconds: 480, image_url: null },
-    { text: "Add the sauce and braise until glossy.", duration_seconds: 720, image_url: null },
+    {
+      id: "66ccce3a-1274-4ea2-a99b-ff092f3761d1",
+      text: "Sear the tofu until golden.",
+      duration_seconds: 480,
+      duration_source: "estimated",
+      attention_type: "passive",
+      action_type: "simmer",
+      image_url: null,
+    },
+    {
+      id: "3f0f7a65-4c82-4d25-a0a5-23e1a3eabf69",
+      text: "Add the sauce and braise until glossy.",
+      duration_seconds: 720,
+      duration_source: "stated",
+      attention_type: "hands_on",
+      action_type: "sear",
+      image_url: null,
+    },
   ],
   tips: ["Drain the tofu well."],
   equipment: ["Skillet"],
@@ -55,7 +71,7 @@ async function installImportFixtures(page: Page) {
       return;
     }
     if (pathname === "/recipes" && request.method() === "POST") {
-      await fulfillJson(route, { ...draftRecipe, id: "saved-1" });
+      await fulfillJson(route, { ...request.postDataJSON(), id: "saved-1" });
       return;
     }
     await route.abort();
@@ -85,6 +101,16 @@ test("keeps Source focused, then saves the streamlined Review draft", async ({ p
   await expect(page.getByText(/Errors stay local/i)).toHaveCount(0);
   await expect(page.getByLabel("Ingredient 1 amount")).toHaveValue("1 block");
   await expect(page.getByLabel("Ingredient 1", { exact: true })).toHaveValue("Firm tofu");
+  await expect(page.getByText("AI estimated", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Passive" }).first()).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByLabel("Step 1 illustration")).toHaveValue("simmer");
+
+  await page.getByLabel("Step 1 minutes").fill("9");
+  await page.getByRole("button", { name: "Hands-on" }).first().click();
+  await page.getByLabel("Step 1 illustration").selectOption("boil");
 
   if (testInfo.project.name === "desktop") {
     await expect(page).toHaveScreenshot("import-review.png", {
@@ -93,6 +119,30 @@ test("keeps Source focused, then saves the streamlined Review draft", async ({ p
     });
   }
 
+  const saveRequest = page.waitForRequest(
+    (request) => request.method() === "POST" && new URL(request.url()).pathname === "/recipes",
+  );
   await page.getByRole("button", { name: "Save recipe" }).click();
+  const saved = (await saveRequest).postDataJSON();
+  expect(saved.steps).toEqual([
+    {
+      id: "66ccce3a-1274-4ea2-a99b-ff092f3761d1",
+      text: "Sear the tofu until golden.",
+      duration_seconds: 540,
+      duration_source: "user",
+      attention_type: "hands_on",
+      action_type: "boil",
+      image_url: null,
+    },
+    {
+      id: "3f0f7a65-4c82-4d25-a0a5-23e1a3eabf69",
+      text: "Add the sauce and braise until glossy.",
+      duration_seconds: 720,
+      duration_source: "stated",
+      attention_type: "hands_on",
+      action_type: "sear",
+      image_url: null,
+    },
+  ]);
   await expect(page).toHaveURL(/\/recipe\/saved-1$/);
 });
