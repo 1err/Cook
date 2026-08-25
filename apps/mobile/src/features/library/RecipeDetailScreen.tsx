@@ -14,10 +14,17 @@ import { Ionicons } from "@expo/vector-icons";
 import type { CompositeScreenProps } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
-import { type Recipe, formatIngredientQuantity, formatStepDuration } from "@cooking/shared";
+import {
+  formatIngredientQuantity,
+  formatRecipeStepMetadata,
+  RECIPE_ACTION_MESSAGE_KEYS,
+  type Recipe,
+} from "@cooking/shared";
 import { useApiClient } from "../../lib/api";
-import { EmptyState, IconButton } from "../../components";
+import { Button, EmptyState, IconButton } from "../../components";
+import { RecipeStepVisual } from "../../components/RecipeStepIllustration";
 import { resolveImageUrl } from "../../lib/imageUrl";
+import { useT } from "../../lib/i18n";
 import { colors, radii, spacing, typography } from "../../theme";
 import { haptics } from "../../lib/haptics";
 import type {
@@ -49,6 +56,7 @@ function extractApiMessage(raw: string): string {
 
 export function RecipeDetailScreen({ navigation, route }: Props) {
   const apiClient = useApiClient();
+  const t = useT();
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -225,7 +233,9 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
         <View style={styles.metaCard}>
           {typeof recipe.total_time_minutes === "number" ? (
             <View style={styles.totalTimeChip}>
-              <Text style={styles.totalTimeText}>⏱ {recipe.total_time_minutes} min</Text>
+              <Text style={styles.totalTimeText}>
+                {t("recipe.totalTime")} · {recipe.total_time_minutes} {t("recipe.totalTime.minutesSuffix")}
+              </Text>
             </View>
           ) : null}
           <View style={styles.metaRow}>
@@ -271,36 +281,43 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
           </View>
         ) : null}
 
-        {(recipe.steps ?? []).length > 0 ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Steps</Text>
-            {recipe.steps!.map((step, index) => {
-              const duration =
-                step.duration_seconds && step.duration_seconds > 0
-                  ? formatStepDuration(step.duration_seconds)
-                  : "";
+        <View style={styles.card}>
+          <View style={styles.tutorialHeader}>
+            <Text style={styles.sectionTitle}>{t("recipe.steps")}</Text>
+            <Button
+              title={t("recipe.tutorial.edit")}
+              onPress={() => navigation.navigate("RecipeEdit", {
+                recipeId: recipe.id,
+                focus: "tutorial",
+              })}
+              variant="ghost"
+            />
+          </View>
+          {(recipe.steps ?? []).length === 0 ? (
+            <Text style={styles.subtle}>{t("recipe.tutorial.noSteps")}</Text>
+          ) : (
+            recipe.steps!.map((step, index) => {
+              const actionType = step.action_type ?? "other";
+              const action = t(RECIPE_ACTION_MESSAGE_KEYS[actionType]);
               return (
-                <View key={index} style={styles.step}>
+                <View key={step.id ?? `legacy-step-${index}`} style={styles.step}>
                   <View style={styles.stepHeader}>
-                    <Text style={styles.stepIndex}>{index + 1}.</Text>
-                    {duration ? (
-                      <Text style={styles.stepChip}>⏱ {duration}</Text>
-                    ) : null}
+                    <Text style={styles.stepIndex}>{index + 1}</Text>
+                    <Text style={styles.stepMetadata}>{formatRecipeStepMetadata(step, t)}</Text>
                   </View>
                   <Text style={styles.stepText}>{step.text}</Text>
-                  {step.image_url ? (
-                    <Image
-                      source={{ uri: resolveImageUrl(step.image_url) ?? step.image_url }}
-                      style={styles.stepImage}
-                      contentFit="cover"
-                      transition={200}
+                  <View style={styles.stepVisual}>
+                    <RecipeStepVisual
+                      step={step}
+                      imageTitle={t("recipe.tutorial.stepImageAlt", { step: index + 1 })}
+                      illustrationTitle={t("recipe.tutorial.illustrationLabel", { action })}
                     />
-                  ) : null}
+                  </View>
                 </View>
               );
-            })}
-          </View>
-        ) : null}
+            })
+          )}
+        </View>
 
         {(recipe.tips ?? []).length > 0 ? (
           <View style={[styles.card, styles.tipsCard]}>
@@ -359,6 +376,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radii.lg,
   },
+  tutorialHeader: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
   tipsCard: { borderLeftWidth: 4, borderLeftColor: colors.accent, backgroundColor: colors.tipsCallout },
   sectionTitle: { ...typography.title3, color: colors.onSurface, marginBottom: spacing.sm },
   description: { ...typography.body, color: colors.onSurfaceVariant, fontStyle: "italic", marginTop: spacing.md, textAlign: "center" },
@@ -376,16 +400,9 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     overflow: "hidden",
   },
-  stepChip: {
-    ...typography.caption,
-    color: colors.accent,
-    backgroundColor: colors.accentSoft,
-    paddingVertical: 2,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.sm,
-  },
+  stepMetadata: { ...typography.caption, color: colors.onSurfaceVariant, flex: 1 },
   stepText: { ...typography.body, color: colors.onSurface, marginTop: spacing.xs },
-  stepImage: { width: "100%", height: 220, borderRadius: radii.md, marginTop: spacing.sm },
+  stepVisual: { marginTop: spacing.sm },
   list: { gap: spacing.sm },
   ingredient: { flexDirection: "row", alignItems: "flex-start", paddingVertical: spacing.xs },
   bullet: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent, marginTop: 9, marginRight: spacing.md },

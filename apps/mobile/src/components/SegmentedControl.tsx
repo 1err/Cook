@@ -12,6 +12,7 @@ export type SegmentedControlProps<T extends string> = {
   value: T;
   options: readonly SegmentedOption<T>[];
   onChange: (value: T) => void;
+  disabled?: boolean;
 };
 
 export function SegmentedControl<T extends string>({
@@ -19,6 +20,7 @@ export function SegmentedControl<T extends string>({
   value,
   options,
   onChange,
+  disabled = false,
 }: SegmentedControlProps<T>) {
   return (
     <View>
@@ -31,12 +33,14 @@ export function SegmentedControl<T extends string>({
               key={option.value}
               accessibilityRole="button"
               accessibilityLabel={option.label}
-              accessibilityState={{ selected }}
+              accessibilityState={{ disabled, selected }}
+              disabled={disabled}
               onPress={() => onChange(option.value)}
               style={({ pressed }) => [
                 styles.option,
                 selected ? styles.selectedOption : styles.unselectedOption,
                 pressed && styles.pressedOption,
+                disabled && styles.disabled,
               ]}
             >
               <Text style={[styles.optionLabel, selected ? styles.selectedLabel : styles.unselectedLabel]}>
@@ -81,6 +85,7 @@ const styles = StyleSheet.create({
   pressedOption: {
     opacity: 0.8,
   },
+  disabled: { opacity: 0.5 },
   optionLabel: typography.subhead,
   selectedLabel: {
     color: colors.ink,

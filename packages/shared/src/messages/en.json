@@ -129,6 +129,7 @@
   "recipe.tutorial.editor.durationSeconds": "Step {step} seconds",
   "recipe.tutorial.editor.durationInvalid": "Enter a duration from 1 second to 24 hours.",
   "recipe.tutorial.editor.illustrationLabel": "Step {step} illustration",
+  "recipe.tutorial.editor.illustrationOptions": "Step {step} illustration options",
   "recipe.tutorial.editor.moveUp": "Move step {step} up",
   "recipe.tutorial.editor.moveDown": "Move step {step} down",
   "recipe.tutorial.editor.remove": "Remove step {step}",

@@ -129,6 +129,7 @@
   "recipe.tutorial.editor.durationSeconds": "步骤 {step} 秒",
   "recipe.tutorial.editor.durationInvalid": "请输入 1 秒至 24 小时的时长。",
   "recipe.tutorial.editor.illustrationLabel": "步骤 {step} 插图",
+  "recipe.tutorial.editor.illustrationOptions": "步骤 {step} 插图选项",
   "recipe.tutorial.editor.moveUp": "将步骤 {step} 上移",
   "recipe.tutorial.editor.moveDown": "将步骤 {step} 下移",
   "recipe.tutorial.editor.remove": "删除步骤 {step}",
