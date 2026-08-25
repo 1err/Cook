@@ -45,7 +45,7 @@ export interface IngredientItem {
 }
 
 export interface RecipeStep {
-  id?: string;
+  id?: string | null;
   text: string;
   duration_seconds?: number | null;
   duration_source?: RecipeDurationSource | null;

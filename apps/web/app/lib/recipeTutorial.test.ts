@@ -10,6 +10,7 @@ import {
   createRecipeStep,
   formatRecipeStepMetadata,
   getRecipeActionIllustration,
+  type RecipeStep,
 } from "@cooking/shared";
 
 const translateEnglish = (
@@ -74,6 +75,14 @@ describe("recipe tutorial contract", () => {
       attention_type: "hands_on",
       action_type: "other",
     });
+  });
+
+  test("accepts a null legacy ID while canonical factory IDs stay strings", () => {
+    const legacyStep: RecipeStep = { id: null, text: "Legacy instruction" };
+    const canonicalId: string = createRecipeStep().id;
+
+    expect(legacyStep.id).toBeNull();
+    expect(typeof canonicalId).toBe("string");
   });
 
   test("formats canonical duration, provenance, and attention metadata", () => {
