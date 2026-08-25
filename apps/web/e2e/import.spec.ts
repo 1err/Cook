@@ -55,6 +55,8 @@ async function fulfillJson(route: Route, body: unknown) {
 }
 
 async function installImportFixtures(page: Page) {
+  let savedRecipe: Record<string, unknown> | null = null;
+
   await page.route("http://localhost:8000/**", async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
@@ -71,7 +73,15 @@ async function installImportFixtures(page: Page) {
       return;
     }
     if (pathname === "/recipes" && request.method() === "POST") {
-      await fulfillJson(route, { ...request.postDataJSON(), id: "saved-1" });
+      savedRecipe = {
+        ...(request.postDataJSON() as Record<string, unknown>),
+        id: "saved-1",
+      };
+      await fulfillJson(route, savedRecipe);
+      return;
+    }
+    if (pathname === "/recipes/saved-1" && request.method() === "GET" && savedRecipe) {
+      await fulfillJson(route, savedRecipe);
       return;
     }
     await route.abort();
@@ -145,4 +155,7 @@ test("keeps Source focused, then saves the streamlined Review draft", async ({ p
     },
   ]);
   await expect(page).toHaveURL(/\/recipe\/saved-1$/);
+  await expect(page.getByRole("heading", { name: "Braised tofu" })).toBeVisible();
+  await expect(page.getByText("Sear the tofu until golden.")).toBeVisible();
+  await expect(page.getByText("About 9 min · Adjusted · Hands-on")).toBeVisible();
 });

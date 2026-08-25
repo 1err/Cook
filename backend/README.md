@@ -62,10 +62,10 @@ Focused tutorial timing and persistence checks:
 
 ## Docker
 
-From repo root. Backend requires Postgres; use the postgres profile so the database is running:
+From repo root. Backend requires the Compose `postgres` service to be running:
 
 ```bash
-docker compose --profile postgres up -d postgres
+docker compose up -d postgres
 docker compose run --rm backend alembic upgrade head   # first time or after schema change
 docker compose up backend
 ```
@@ -73,7 +73,7 @@ docker compose up backend
 Or bring everything up (including postgres) with:
 
 ```bash
-docker compose --profile postgres up --build
+docker compose up --build
 ```
 
 ## Image uploads

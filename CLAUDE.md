@@ -154,7 +154,7 @@ Requires Python 3.11, 3.12, or 3.13 (3.14 is not supported — pydantic-core Rus
 ```bash
 cd backend
 python3.12 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 playwright install chromium    # store scraper uses Playwright
 
 cp .env.example .env
@@ -163,6 +163,7 @@ cp .env.example .env
 
 alembic upgrade head           # apply migrations
 python run.py                  # uvicorn on :8000 with reload
+.venv/bin/python -m pytest -q  # full backend pytest suite
 ```
 
 `AUTH_SECRET` must be ≥16 characters (`backend/app/core/security.py::_get_secret`) — auth endpoints raise at runtime otherwise. The `.env.example` placeholder must be replaced.
@@ -424,7 +425,7 @@ These are tracked here — not in commit messages — so each session can pick t
 - **`@react-navigation` v6 → v7 (deferred):** mobile is on `@react-navigation/native@^6.1.18`, `@react-navigation/native-stack@^6.11.0`, `@react-navigation/bottom-tabs@^6.6.1`. v7 is the current line; v6 still works on RN 0.81 + React 19 but won't get new features. Bump as a separate focused session — types tighten between v6 and v7 and most `ParamList` definitions need a sweep.
 - **Smoke-test the mobile app on real hardware:** the SDK 54 upgrade unblocks Expo Go on a physical phone (App Store Expo Go is SDK 54-only). Before leaning on this for daily testing, run a full pass on a phone over LAN to confirm planner bottom-sheet animations, smart-list reorder, and image upload all work under the New Architecture (Reanimated v4). The simulator passed but the bottom-sheet is the highest-risk area under New Arch.
 - **`@gorhom/bottom-sheet` was force-bumped 5.1.1 → 5.2.13** during the SDK 54 upgrade (auto-resolved during `expo install --fix`). Watch for animation regressions over a few days; if anything feels off in the planner picker, that's the place to look.
-- **i18n parity for mobile:** the web app strings are in `packages/shared/src/messages/{en,zh}.json` and surfaced via `useT()` from `apps/web/app/lib/i18n.tsx`. Mobile is currently English-only — when Chinese parity is needed, lift the `I18nProvider` / `useT()` hooks into a small `apps/mobile/src/lib/i18n.tsx` (or a shared `packages/shared-react/`) and gate language toggle in Profile. Defer until product asks for it.
+- **Remaining mobile i18n coverage:** mobile already has `apps/mobile/src/lib/i18n.tsx` with `I18nProvider` / `useT()`, persists `cooking-ui-language`, and exposes the English/Chinese toggle in Profile. Tutorial, navigation, and core account surfaces use the shared message catalog, but some legacy/development-only mobile strings remain hard-coded. Migrate those strings to `useT()` as their screens are touched.
 - **EAS submit credentials:** `apps/mobile/eas.json::submit.production.ios` has `REPLACE_WITH_*` placeholders for `appleId`, `ascAppId`, and `appleTeamId`. Fill these in before the first `eas submit -p ios`.
 
 ## Updating this file
