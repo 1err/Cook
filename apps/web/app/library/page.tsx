@@ -7,16 +7,12 @@ import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
 import { useT } from "../lib/i18n";
 import { RecipeCard } from "../components/RecipeCard";
+import { PageHeader, PageShell } from "../components/PageShell";
 import { CATEGORY_LABELS, type LibraryFilterId, type RecipeTagSlug } from "../lib/recipeCategories";
 import { getRecipeTags } from "../lib/recipeTags";
 import { TagFilterPopover } from "../components/TagFilterPopover";
 import type { Recipe } from "../types";
-
-function ingredientPreview(recipe: Recipe, fallback: string, maxLength = 72): string {
-  const parts = recipe.ingredients.slice(0, 4).map((i) => i.name).filter(Boolean);
-  const text = parts.join(", ") || fallback;
-  return text.length > maxLength ? text.slice(0, maxLength).trim() + "…" : text;
-}
+import styles from "./LibraryPage.module.css";
 
 function LibraryPageContent() {
   const searchParams = useSearchParams();
@@ -32,49 +28,55 @@ function LibraryPageContent() {
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const t = useT();
 
-  const fetchRecipes = async () => {
-    try {
-      const [mineRes, publicRes] = await Promise.all([
-        apiFetch("/recipes"),
-        apiFetch("/recipes/catalog"),
-      ]);
-      if (!mineRes.ok) throw new Error("Failed to load recipes");
-      const data = await mineRes.json();
-      const publicData = publicRes.ok ? await publicRes.json() : [];
-      setRecipes(data);
-      setPublicRecipes(Array.isArray(publicData) ? publicData : []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    let active = true;
+    async function fetchRecipes() {
+      try {
+        const [mineRes, publicRes] = await Promise.all([
+          apiFetch("/recipes"),
+          apiFetch("/recipes/catalog"),
+        ]);
+        if (!mineRes.ok) throw new Error("Failed to load recipes");
+        const data = await mineRes.json();
+        const publicData = publicRes.ok ? await publicRes.json() : [];
+        if (!active) return;
+        setRecipes(data);
+        setPublicRecipes(Array.isArray(publicData) ? publicData : []);
+      } catch (caught) {
+        if (active) setError(caught instanceof Error ? caught.message : "Failed to load");
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
     fetchRecipes();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const filteredMine = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const query = search.trim().toLowerCase();
     return [...recipes]
       .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
-      .filter((r) => {
-        const tags = getRecipeTags(r);
-        if (mineFilters.length > 0 && !mineFilters.every((tag) => tags.includes(tag))) return false;
-        if (q && !r.title.toLowerCase().includes(q)) return false;
-        return true;
+      .filter((recipe) => {
+        const tags = getRecipeTags(recipe);
+        return !(
+          (mineFilters.length > 0 && !mineFilters.every((tag) => tags.includes(tag))) ||
+          (query && !recipe.title.toLowerCase().includes(query))
+        );
       });
   }, [mineFilters, recipes, search]);
 
   const filteredPublic = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const query = search.trim().toLowerCase();
     return [...publicRecipes]
       .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
-      .filter((r) => {
-        const tags = getRecipeTags(r);
-        if (publicFilter !== "all" && !tags.includes(publicFilter)) return false;
-        if (q && !r.title.toLowerCase().includes(q)) return false;
-        return true;
+      .filter((recipe) => {
+        const tags = getRecipeTags(recipe);
+        return !(
+          (publicFilter !== "all" && !tags.includes(publicFilter)) ||
+          (query && !recipe.title.toLowerCase().includes(query))
+        );
       });
   }, [publicFilter, publicRecipes, search]);
 
@@ -83,10 +85,6 @@ function LibraryPageContent() {
     if (mineFilters.length === 1) return CATEGORY_LABELS[mineFilters[0]];
     return `${mineFilters.length} tags`;
   }, [mineFilters]);
-
-  function toggleMineFilter(tag: RecipeTagSlug) {
-    setMineFilters((prev) => (prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]));
-  }
 
   const savedPublicIds = useMemo(() => {
     const ids = new Set<string>();
@@ -97,234 +95,152 @@ function LibraryPageContent() {
     return ids;
   }, [recipes]);
 
+  function toggleMineFilter(tag: RecipeTagSlug) {
+    setMineFilters((current) =>
+      current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag],
+    );
+  }
+
   async function handleCopyPublicRecipe(recipeId: string) {
     setCopyingId(recipeId);
     setError(null);
     try {
-      const res = await apiFetch(`/recipes/catalog/${recipeId}/copy`, { method: "POST" });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Could not add recipe");
-      }
-      const recipe: Recipe = await res.json();
-      setRecipes((prev) => (prev.some((row) => row.id === recipe.id) ? prev : [...prev, recipe]));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not add recipe");
+      const response = await apiFetch(`/recipes/catalog/${recipeId}/copy`, { method: "POST" });
+      if (!response.ok) throw new Error((await response.text()) || "Could not add recipe");
+      const recipe: Recipe = await response.json();
+      setRecipes((current) =>
+        current.some((row) => row.id === recipe.id) ? current : [...current, recipe],
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not add recipe");
     } finally {
       setCopyingId(null);
     }
   }
 
-  if (loading) return <p style={mutedStyle}>{t("common.loading")}</p>;
-  if (error && recipes.length === 0 && publicRecipes.length === 0) return <p style={errorStyle}>{error}</p>;
-
   const activeList = view === "mine" ? filteredMine : filteredPublic;
 
   return (
     <>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "1rem",
-          flexWrap: "wrap",
-        }}
-      >
-        <h1 className="library-page-title font-headline" style={{ margin: 0 }}>
-          {t("library.title")}
-        </h1>
-        <Link
-          href="/library/friends"
-          aria-label="Find a friend's library"
-          title="Search for a friend's shared library"
-          className="font-headline"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            padding: "0.55rem 1.1rem",
-            borderRadius: "var(--radius-full, 999px)",
-            background: "var(--primary, #9a442d)",
-            color: "#fff",
-            textDecoration: "none",
-            fontSize: "0.9rem",
-            fontWeight: 700,
-            boxShadow: "var(--kitchen-glow, 0 2px 6px rgba(0,0,0,0.08))",
-          }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
-            <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-          Find a friend
-        </Link>
-      </div>
+      <PageHeader title={t("library.title")} />
 
-      <div className="library-chip-row" role="tablist" aria-label={t("library.views")} style={{ marginBottom: "1rem", marginTop: "1rem" }}>
+      <div className={styles.tabs} role="tablist" aria-label={t("library.views")}>
         <button
           type="button"
-          className={`library-chip ${view === "mine" ? "library-chip--active" : "library-chip--idle"}`}
+          role="tab"
+          aria-selected={view === "mine"}
+          className={styles.tab}
           onClick={() => setView("mine")}
         >
           {t("library.myLibrary")}
         </button>
         <button
           type="button"
-          className={`library-chip ${view === "public" ? "library-chip--active" : "library-chip--idle"}`}
+          role="tab"
+          aria-selected={view === "public"}
+          className={styles.tab}
           onClick={() => setView("public")}
         >
           {t("library.publicLibrary")}
         </button>
+        <Link href="/library/friends" role="tab" aria-selected={false} className={styles.tab}>
+          Friends
+        </Link>
       </div>
 
-      <p style={{ ...mutedStyle, marginTop: 0, marginBottom: "1.25rem", maxWidth: "42rem", lineHeight: 1.5 }}>
-        {view === "mine"
-          ? t("library.myLibraryDesc")
-          : t("library.publicLibraryDesc")}
-      </p>
+      <div className={styles.toolbar}>
+        <label className={styles.search}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-3-3" strokeLinecap="round" />
+          </svg>
+          <span className={styles.visuallyHidden}>{t("library.searchAria")}</span>
+          <input
+            type="search"
+            placeholder={t("library.searchPlaceholder")}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
 
-      {error ? <p style={{ ...errorStyle, marginTop: 0 }}>{error}</p> : null}
-
-      <div className="library-search-wrap">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-          <circle cx="11" cy="11" r="7" />
-          <path d="M20 20l-3-3" strokeLinecap="round" />
-        </svg>
-        <input
-          type="search"
-          className="library-search-input"
-          placeholder={t("library.searchPlaceholder")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          aria-label={t("library.searchAria")}
-        />
-      </div>
-
-      <div className="library-filter-bar">
         {view === "mine" ? (
-          <>
-            <TagFilterPopover
-              values={mineFilters}
-              onToggleValue={toggleMineFilter}
-              onClear={() => setMineFilters([])}
-              ariaLabel={t("library.filterAria")}
-              triggerLabel={mineFilterLabel}
-            />
-            {mineFilters.length > 0 ? (
-              <button
-                type="button"
-                className="library-filter-reset font-headline"
-                onClick={() => setMineFilters([])}
-              >
-                {t("library.clearFilter")}
-              </button>
-            ) : null}
-          </>
+          <TagFilterPopover
+            values={mineFilters}
+            onToggleValue={toggleMineFilter}
+            onClear={() => setMineFilters([])}
+            ariaLabel={t("library.filterAria")}
+            triggerLabel={mineFilterLabel}
+          />
         ) : (
-          <>
-            <TagFilterPopover
-              value={publicFilter}
-              onChange={setPublicFilter}
-              ariaLabel={t("library.filterAria")}
-            />
-            {publicFilter !== "all" ? (
-              <button
-                type="button"
-                className="library-filter-reset font-headline"
-                onClick={() => setPublicFilter("all")}
-              >
-                {t("library.clearFilter")}
-              </button>
-            ) : null}
-          </>
+          <TagFilterPopover
+            value={publicFilter}
+            onChange={setPublicFilter}
+            ariaLabel={t("library.filterAria")}
+          />
         )}
       </div>
 
-      {activeList.length === 0 ? (
-        <div style={emptyStyle}>
-          <p style={{ margin: 0, fontWeight: 700, color: "var(--on-surface)", fontSize: "1.05rem" }}>
+      {error ? <p className={styles.error} role="alert">{error}</p> : null}
+
+      {loading ? (
+        <p className={styles.status}>{t("common.loading")}</p>
+      ) : activeList.length === 0 ? (
+        <div className={styles.empty}>
+          <p>
             {view === "mine"
-              ? (recipes.length === 0 ? t("library.yourShelfReady") : t("common.noMatches"))
+              ? recipes.length === 0
+                ? t("library.yourShelfReady")
+                : t("common.noMatches")
               : publicRecipes.length === 0
                 ? t("library.publicShelfEmpty")
                 : t("common.noMatches")}
           </p>
-          <p style={{ margin: "0.5rem 0 0", fontSize: "0.9rem", lineHeight: 1.5 }}>
-            {view === "mine"
-              ? recipes.length === 0
-                ? t("library.importRecipePrompt")
-                : t("library.tryAnotherFilter")
-              : publicRecipes.length === 0
-                ? t("library.publicShelfEmptyDesc")
-                : t("library.tryAnotherFilter")}
-          </p>
-          {view === "mine" && recipes.length === 0 && (
-            <Link href="/import" style={linkStyle}>
-              {t("library.importRecipe")} →
-            </Link>
-          )}
+          {view === "mine" && recipes.length === 0 ? (
+            <Link href="/import">{t("library.importRecipe")} →</Link>
+          ) : null}
         </div>
       ) : view === "mine" ? (
-        <ul className="libraryGrid">
-          {filteredMine.map((r) => (
-            <RecipeCard key={r.id} recipe={r} isHighlighted={highlightId === r.id} />
+        <ul className={styles.grid}>
+          {filteredMine.map((recipe) => (
+            <RecipeCard key={recipe.id} recipe={recipe} isHighlighted={highlightId === recipe.id} />
           ))}
         </ul>
       ) : (
-        <ul className="libraryGrid">
+        <ul className={styles.grid}>
           {filteredPublic.map((recipe) => {
             const alreadyAdded = savedPublicIds.has(recipe.id);
-            const preview = ingredientPreview(recipe, t("library.readyToAdd"));
+            const tags = getRecipeTags(recipe).slice(0, 2);
             return (
-              <li key={recipe.id} className="recipe-card-stitch">
-                <div className="recipe-card-stitch__media">
+              <li key={recipe.id} className={styles.publicCard}>
+                <div className={`${styles.publicMedia} ${recipe.thumbnail_url ? "" : styles.publicMediaPlaceholder}`}>
                   {recipe.thumbnail_url ? (
-                    <>
-                      <img src={recipe.thumbnail_url} alt="" className="recipe-card-stitch__img recipe-card-stitch__img--bg" />
-                      <div className="recipe-card-stitch__img-frame">
-                        <img src={recipe.thumbnail_url} alt="" className="recipe-card-stitch__img recipe-card-stitch__img--full" />
-                      </div>
-                    </>
+                    <img src={recipe.thumbnail_url} alt="" />
                   ) : (
-                    <div className="recipe-card-stitch__placeholder recipeCardPlaceholder">
-                      <span className="font-headline recipe-card-stitch__placeholder-text">Recipe</span>
-                    </div>
+                    <span className="cw-display" aria-hidden>CW</span>
                   )}
                 </div>
-                <div className="recipe-card-stitch__meta" style={{ paddingTop: 0 }}>
-                  <div className="recipe-card-stitch__meta-left" style={{ width: "100%" }}>
-                    <h2 className="font-headline recipe-card-stitch__title">{recipe.title}</h2>
-                    <p className="recipe-card-stitch__sub" title={preview}>
-                      {preview}
-                    </p>
-                    {(() => {
-                      const tags = getRecipeTags(recipe);
-                      if (tags.length === 0) return null;
-                      return (
-                        <div className="recipe-card-stitch__tag-row">
-                          {tags.slice(0, 3).map((tag) => (
-                            <span key={tag} className="recipe-card-stitch__tag-mini font-headline">
-                              {CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}
-                            </span>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      style={{ marginTop: "0.9rem", width: "100%", justifyContent: "center" }}
-                      onClick={() => handleCopyPublicRecipe(recipe.id)}
-                      disabled={alreadyAdded || copyingId === recipe.id}
-                    >
-                      {alreadyAdded
-                        ? t("library.inYourLibrary")
-                        : copyingId === recipe.id
-                          ? t("library.adding")
-                          : t("library.addToMyLibrary")}
-                    </button>
-                  </div>
+                <div className={styles.publicBody}>
+                  <h2 className="cw-display">{recipe.title}</h2>
+                  {recipe.total_time_minutes ? <p>{recipe.total_time_minutes} min</p> : null}
+                  {tags.length ? (
+                    <div className={styles.publicTags}>
+                      {tags.map((tag) => (
+                        <span key={tag}>{CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    className={styles.addButton}
+                    onClick={() => handleCopyPublicRecipe(recipe.id)}
+                    disabled={alreadyAdded || copyingId === recipe.id}
+                  >
+                    {alreadyAdded
+                      ? t("library.inYourLibrary")
+                      : copyingId === recipe.id
+                        ? t("library.adding")
+                        : t("library.addToMyLibrary")}
+                  </button>
                 </div>
               </li>
             );
@@ -338,36 +254,11 @@ function LibraryPageContent() {
 export default function LibraryPage() {
   return (
     <RequireAuth>
-      <div className="app-container" style={{ position: "relative" }}>
-        <Suspense fallback={<p style={mutedStyle}>Loading...</p>}>
+      <PageShell>
+        <Suspense fallback={<p className={styles.status}>Loading...</p>}>
           <LibraryPageContent />
         </Suspense>
-      </div>
+      </PageShell>
     </RequireAuth>
   );
 }
-
-const mutedStyle: React.CSSProperties = {
-  color: "var(--muted)",
-  fontSize: "var(--font-body)",
-};
-
-const emptyStyle: React.CSSProperties = {
-  padding: "var(--space-40) var(--space-32)",
-  background: "var(--surface-container-low)",
-  borderRadius: "var(--radius-card)",
-  textAlign: "center",
-  color: "var(--on-surface-variant)",
-  boxShadow: "var(--kitchen-glow)",
-};
-
-const linkStyle: React.CSSProperties = {
-  display: "inline-block",
-  marginTop: "1rem",
-  color: "var(--primary)",
-  fontWeight: 700,
-};
-
-const errorStyle: React.CSSProperties = {
-  color: "#c62828",
-};

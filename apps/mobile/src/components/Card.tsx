@@ -33,15 +33,17 @@ export function Card({ children, onPress, onLongPress, style, elevated = true }:
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.white,
-    borderRadius: radii.xl,
+    borderRadius: radii.lg,
     padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
   elevated: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    elevation: 2,
+    shadowColor: colors.ink,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   pressed: {
     opacity: 0.94,

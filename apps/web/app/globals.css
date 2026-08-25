@@ -2379,6 +2379,12 @@ button:disabled {
   cursor: pointer;
 }
 
+.planner-source-card__add:disabled {
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  cursor: default;
+}
+
 .planner-source-empty {
   margin: 0;
   font-size: 0.875rem;

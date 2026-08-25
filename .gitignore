@@ -8,6 +8,8 @@ __pycache__/
 # Build / runtime
 .next/
 out/
+test-results/
+playwright-report/
 *.db
 cooking.db
 backend/uploads/

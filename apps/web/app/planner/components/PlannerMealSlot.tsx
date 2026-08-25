@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { MEAL_PLAN_SLOTS, type MealType, type Recipe } from "@cooking/shared";
 import { useT } from "../../lib/i18n";
 import { PLANNER_MEAL_LABEL_KEYS } from "../plannerMessages";
@@ -13,6 +13,7 @@ export type PlannerMealSlotProps = {
   isDragOver: boolean;
   mutationsDisabled?: boolean;
   onChoose: () => void;
+  onManage: () => void;
   onOpen: (recipeId: string) => void;
   onRemove: (recipeId: string) => void;
   onDragOver: React.DragEventHandler<HTMLDivElement>;
@@ -44,10 +45,7 @@ function RecipeTile({
       {recipe.thumbnail_url ? (
         <img src={recipe.thumbnail_url} alt="" className="planner-meal-card__img" />
       ) : (
-        <div
-          className="planner-meal-card__img"
-          style={{ background: "linear-gradient(145deg, var(--primary-fixed), var(--surface-container-high))" }}
-        />
+        <div className="planner-meal-card__img planner-meal-card__img--placeholder" />
       )}
       <div className="planner-meal-card__body">
         <p className="planner-meal-card__title font-headline">{recipe.title}</p>
@@ -64,6 +62,7 @@ export function PlannerMealSlot({
   isDragOver,
   mutationsDisabled = false,
   onChoose,
+  onManage,
   onOpen,
   onRemove,
   onDragOver,
@@ -81,20 +80,9 @@ export function PlannerMealSlot({
   const pendingRemoveFocusRef = useRef<{ recipeId: string; index: number } | null>(null);
   const removeButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const addRecipeRef = useRef<HTMLButtonElement>(null);
-  const overflowCueId = useId();
   const slotRecipeFingerprint = slotRecipes.map(({ recipeId }) => recipeId).join("\u0000");
-  const overflowCount = Math.max(0, slotRecipes.length - 3);
-  const overflowMessage = overflowCount
-    ? t(
-        overflowCount === 1
-          ? "planner.scrollForMoreRecipe"
-          : "planner.scrollForMoreRecipes",
-        { count: overflowCount },
-      )
-    : "";
-  const overflowVisualMessage = overflowCount
-    ? t("planner.moreRecipeCue", { count: overflowCount })
-    : "";
+  const hasOverflow = slotRecipes.length > 3;
+  const visibleRecipes = hasOverflow ? slotRecipes.slice(0, 2) : slotRecipes;
   const recipeLayout = slotRecipes.length > 3
     ? "overflow"
     : (["one", "two", "three"][slotRecipes.length - 1] ?? "one");
@@ -131,10 +119,8 @@ export function PlannerMealSlot({
             data-recipe-layout={recipeLayout}
             role="region"
             aria-label={t("planner.slotRecipes", { slot: slotHeading, date })}
-            aria-describedby={overflowCount ? overflowCueId : undefined}
-            tabIndex={slotRecipes.length > 3 ? 0 : undefined}
           >
-            {slotRecipes.map(({ recipeId, recipe }, index) => (
+            {visibleRecipes.map(({ recipeId, recipe }, index) => (
               <div key={recipeId} className="planner-slot-recipe">
                 <RecipeTile
                   recipe={recipe}
@@ -165,16 +151,19 @@ export function PlannerMealSlot({
               </div>
             ))}
           </div>
-          {overflowCount ? (
-            <p className="planner-slot-overflow-cue font-headline">
-              <span className="planner-slot-overflow-cue__icon" aria-hidden="true">
-                ↓
-              </span>
-              <span>{overflowVisualMessage}</span>
-              <span id={overflowCueId} hidden>
-                {overflowMessage}
-              </span>
-            </p>
+          {hasOverflow ? (
+            <button
+              type="button"
+              className="planner-slot-overflow-cue font-headline"
+              onClick={onManage}
+              aria-label={t("planner.viewAllRecipesForSlot", {
+                count: slotRecipes.length,
+                slot: slotLabel,
+                date,
+              })}
+            >
+              {t("planner.viewAllRecipes", { count: slotRecipes.length })}
+            </button>
           ) : null}
           <button
             ref={addRecipeRef}

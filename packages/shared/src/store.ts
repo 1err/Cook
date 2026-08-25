@@ -5,8 +5,9 @@ export function isSafeWeeeProductUrl(value: string): boolean {
   try {
     const url = new URL(value);
     const hostname = url.hostname.toLocaleLowerCase();
-    const isWeeeHost =
-      hostname === "sayweee.com" || hostname.endsWith(".sayweee.com");
+    const isWeeeHost = ["sayweee.com", "weee.com"].some(
+      (officialHost) => hostname === officialHost || hostname.endsWith(`.${officialHost}`),
+    );
     return (
       url.protocol === "https:" &&
       isWeeeHost &&

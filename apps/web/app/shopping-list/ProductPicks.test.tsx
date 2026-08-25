@@ -66,6 +66,27 @@ test("renders the localized Chinese failure", async () => {
   expect(await screen.findByText("无法从 Weee 加载商品。")).toBeVisible();
 });
 
+test("renders store choices as complete vertical product rows", () => {
+  renderPicks(
+    <ProductPicks
+      state={{
+        status: "success",
+        products: [
+          { name: "Idaho potatoes", price: "$1.99", image: "https://example.com/potato.jpg", url: "https://www.sayweee.com/product/potato" },
+          { name: "Golden potatoes", price: "$5.49", image: "https://example.com/gold.jpg", url: "https://www.sayweee.com/product/gold" },
+          { name: "Red yam", price: "$4.99", image: "https://example.com/yam.jpg", url: "https://www.sayweee.com/product/yam" },
+        ],
+      }}
+      onRetry={vi.fn()}
+    />,
+  );
+
+  expect(screen.getAllByTestId("store-product-row")).toHaveLength(3);
+  expect(screen.getByRole("img", { name: "Idaho potatoes" })).toBeVisible();
+  expect(screen.getByText("$1.99")).toBeVisible();
+  expect(screen.getAllByRole("link", { name: "View on Weee" })).toHaveLength(3);
+});
+
 test.each([
   "http://www.sayweee.com/product/tofu",
   "https://sayweee.com.evil.test/product/tofu",

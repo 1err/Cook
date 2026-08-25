@@ -1,0 +1,566 @@
+.productList {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.75rem 0 0.2rem 2.8rem;
+}
+
+.productRow {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--cw-color-divider) 65%, transparent);
+  border-radius: var(--cw-radius-field);
+  background: var(--cw-color-subtle-surface);
+  grid-template-columns: 4.4rem minmax(0, 1fr);
+}
+
+.productRow > img,
+.productPlaceholder {
+  width: 4.4rem;
+  height: 4.4rem;
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-surface);
+  object-fit: contain;
+}
+
+.productPlaceholder {
+  display: grid;
+  place-items: center;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.productCopy {
+  display: grid;
+  min-width: 0;
+  gap: 0.2rem;
+}
+
+.productCopy p,
+.productCopy strong {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.productCopy p {
+  font-size: 0.9rem;
+}
+
+.productCopy strong {
+  color: var(--cw-color-action);
+  font-size: 0.85rem;
+}
+
+.productCopy a,
+.productStatus button,
+.productToggle {
+  width: max-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cw-color-action);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.77rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.productStatus {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0.6rem 0 0 2.8rem;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.8rem;
+}
+
+.productStatus p {
+  margin: 0;
+}
+
+.category {
+  break-inside: avoid;
+  overflow: visible;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-card);
+  background: var(--cw-color-surface);
+}
+
+.categoryHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--cw-color-divider);
+}
+
+.categoryHeader h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.categoryHeader span {
+  color: var(--cw-color-muted-ink);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.itemBlock {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--cw-color-divider);
+}
+
+.itemBlock:last-child {
+  border-bottom: 0;
+}
+
+.itemBlock.checked {
+  background: color-mix(in srgb, var(--cw-color-subtle-surface) 62%, var(--cw-color-surface));
+}
+
+.itemRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.itemRow > label {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: flex-start;
+  gap: 0.75rem;
+  cursor: pointer;
+}
+
+.itemRow input {
+  width: 1.2rem;
+  height: 1.2rem;
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+  accent-color: var(--cw-color-action);
+}
+
+.itemRow label > span {
+  display: grid;
+  min-width: 0;
+  gap: 0.2rem;
+}
+
+.itemRow strong {
+  color: var(--cw-color-ink);
+  font-size: 0.92rem;
+}
+
+.checked .itemRow strong {
+  color: var(--cw-color-muted-ink);
+  text-decoration: line-through;
+}
+
+.itemRow small {
+  color: var(--cw-color-muted-ink);
+  font-size: 0.78rem;
+}
+
+.itemMenu {
+  position: relative;
+}
+
+.itemMenu > button {
+  padding: 0.1rem 0.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--cw-color-muted-ink);
+  cursor: pointer;
+  letter-spacing: 0.08em;
+}
+
+.menuPopover {
+  position: absolute;
+  top: 1.6rem;
+  right: 0;
+  z-index: 5;
+  min-width: 9rem;
+  padding: 0.35rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-surface);
+  box-shadow: 0 12px 24px rgb(47 38 33 / 12%);
+}
+
+.menuPopover button {
+  width: 100%;
+  padding: 0.55rem;
+  border: 0;
+  background: transparent;
+  color: var(--cw-color-error);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+}
+
+.productToggle {
+  margin: 0.45rem 0 0 2rem;
+}
+
+.smartBar {
+  display: grid;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--cw-color-divider);
+  border-left: 3px solid var(--cw-color-sage);
+  border-radius: var(--cw-radius-field);
+  background: var(--cw-color-surface);
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.smartSummary {
+  display: grid;
+  align-items: baseline;
+  gap: 0 0.45rem;
+  grid-template-columns: auto auto;
+}
+
+.smartSummary span {
+  grid-column: 1 / -1;
+  color: var(--cw-color-sage);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.smartSummary strong {
+  color: var(--cw-color-ink);
+  font-family: var(--cw-type-display-family), var(--cw-type-display-fallback);
+  font-size: 1.65rem;
+}
+
+.smartSummary small {
+  color: var(--cw-color-muted-ink);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.smartActions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.smartActions button {
+  min-height: 2.35rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-surface);
+  color: var(--cw-color-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.smartActions button:not(.backButton):last-of-type {
+  border-color: var(--cw-color-action);
+  background: var(--cw-color-action);
+  color: var(--cw-color-on-action);
+}
+
+.smartActions .backButton {
+  color: var(--cw-color-action);
+}
+
+.bulkStatus {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.78rem;
+}
+
+.weekBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-field);
+  background: var(--cw-color-surface);
+}
+
+.weekBar > div:first-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.weekBar > div:first-child span {
+  color: var(--cw-color-muted-ink);
+  font-size: 0.65rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.weekBar strong {
+  font-size: 0.9rem;
+}
+
+.weekBar > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.weekBar button,
+.weekBar a {
+  display: grid;
+  min-width: 2.3rem;
+  min-height: 2.3rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  place-items: center;
+  background: var(--cw-color-surface);
+  color: var(--cw-color-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.categoryGrid {
+  columns: 2;
+  column-gap: 1.25rem;
+}
+
+.categoryGrid > section {
+  width: 100%;
+  margin-bottom: 1.25rem;
+}
+
+.preparePanel {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-card);
+  background: var(--cw-color-surface);
+  grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 0.65fr);
+}
+
+.plannedMeals,
+.prepareAction {
+  padding: clamp(1.2rem, 3vw, 2rem);
+}
+
+.plannedMeals {
+  border-right: 1px solid var(--cw-color-divider);
+}
+
+.plannedMeals > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.plannedMeals h2,
+.prepareAction h2 {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.plannedMeals header span,
+.plannedMeals > p {
+  color: var(--cw-color-muted-ink);
+  font-size: 0.78rem;
+}
+
+.mealList {
+  display: grid;
+}
+
+.mealList a {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.72rem 0;
+  border-bottom: 1px solid var(--cw-color-divider);
+  color: inherit;
+  text-decoration: none;
+}
+
+.mealList a strong {
+  overflow: hidden;
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mealList a span {
+  flex: 0 0 auto;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.72rem;
+}
+
+.mealList > button {
+  width: max-content;
+  margin-top: 0.75rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cw-color-action);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.prepareAction {
+  display: flex;
+  flex-direction: column;
+  background: var(--cw-color-subtle-surface);
+}
+
+.prepareAction dl {
+  display: grid;
+  gap: 0.7rem;
+  margin: 1.5rem 0;
+}
+
+.prepareAction dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--cw-color-divider);
+}
+
+.prepareAction dt {
+  color: var(--cw-color-muted-ink);
+  font-size: 0.82rem;
+}
+
+.prepareAction dd {
+  margin: 0;
+  font-weight: 800;
+}
+
+.prepareAction > button {
+  min-height: 2.8rem;
+  margin-top: auto;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--cw-color-action);
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-action);
+  color: var(--cw-color-on-action);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.prepareAction > button:disabled {
+  opacity: 0.55;
+}
+
+.empty {
+  display: grid;
+  min-height: 15rem;
+  gap: 0.8rem;
+  place-content: center;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-card);
+  background: var(--cw-color-surface);
+  text-align: center;
+}
+
+.empty a {
+  color: var(--cw-color-action);
+  font-size: 0.85rem;
+  font-weight: 750;
+}
+
+.removed {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-field);
+  background: var(--cw-color-surface);
+}
+
+.removed summary {
+  cursor: pointer;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.removed ul {
+  margin: 0.8rem 0 0;
+  padding-left: 1.2rem;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.82rem;
+}
+
+.error {
+  color: var(--cw-color-error);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 540px) {
+  .productList {
+    padding-left: 0;
+  }
+
+  .productStatus {
+    margin-left: 0;
+  }
+
+  .productRow {
+    grid-template-columns: 4.2rem minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 840px) {
+  .categoryGrid {
+    columns: 1;
+  }
+
+  .preparePanel {
+    grid-template-columns: 1fr;
+  }
+
+  .plannedMeals {
+    border-right: 0;
+    border-bottom: 1px solid var(--cw-color-divider);
+  }
+
+  .smartBar {
+    grid-template-columns: 1fr;
+  }
+
+  .smartActions {
+    justify-content: flex-start;
+  }
+}

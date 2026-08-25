@@ -74,6 +74,8 @@ export function StoreProductPicks({
               onPress={() => {
                 void Linking.openURL(product.url);
               }}
+              accessibilityRole="link"
+              accessibilityLabel={`View ${product.name} on ${WEEE_STORE_LABEL}`}
               style={({ pressed }) => [styles.linkBtn, pressed && styles.pressed]}
             >
               <Text style={styles.linkBtnText}>View on {WEEE_STORE_LABEL}</Text>
@@ -95,19 +97,21 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     backgroundColor: colors.surfaceContainerLow,
-    borderRadius: radii.md,
-    padding: spacing.sm,
+    borderRadius: radii.lg,
+    padding: spacing.md,
     gap: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
   image: {
-    width: 60,
-    height: 60,
-    borderRadius: radii.sm,
+    width: 72,
+    height: 72,
+    borderRadius: radii.md,
     backgroundColor: colors.surfaceContainerHigh,
   },
   imagePlaceholder: { alignItems: "center", justifyContent: "center" },
   body: { flex: 1, gap: 2 },
-  name: { ...typography.subhead, color: colors.onSurface },
+  name: { ...typography.callout, color: colors.onSurface },
   price: { ...typography.subhead, color: colors.primary, fontWeight: "600" },
   linkBtn: {
     flexDirection: "row",

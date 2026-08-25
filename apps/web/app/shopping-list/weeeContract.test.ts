@@ -34,6 +34,8 @@ test.each([
   "https://WWW.SAYWEEE.COM/product/tofu",
   "https://shop.sayweee.com/product/tofu",
   "https://sayweee.com:443/product/tofu",
+  "https://www.weee.com/en/product/Dutch-Farms-Grade-A-Jumbo-Eggs/108411",
+  "https://shop.weee.com/zh/product/tofu/100",
 ])("accepts a safe Weee product URL: %s", (url) => {
   expect(isSafeWeeeProductUrl(url)).toBe(true);
 });
@@ -45,6 +47,8 @@ test.each([
   "https://user@sayweee.com/product/tofu",
   "https://sayweee.com:444/product/tofu",
   "https://sayweee.com/search?query=tofu",
+  "https://weee.com.evil.test/en/product/tofu/1",
+  "https://evil-weee.com/en/product/tofu/1",
 ])("rejects an unsafe Weee product URL: %s", (url) => {
   expect(isSafeWeeeProductUrl(url)).toBe(false);
 });

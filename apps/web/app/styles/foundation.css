@@ -1,3 +1,8 @@
+:root {
+  --cw-shell-max: 80rem;
+  --cw-shell-gutter: clamp(1rem, 2vw, 2rem);
+}
+
 body {
   background: var(--cw-color-canvas);
   color: var(--cw-color-ink);
@@ -5,8 +10,8 @@ body {
 }
 
 .cw-display {
-  font-family: "Source Serif 4", "Iowan Old Style", "Songti SC", ui-serif, Georgia, serif;
-  font-weight: 600;
+  font-family: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
+  font-weight: 700;
 }
 
 ::selection {

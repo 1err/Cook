@@ -1,22 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { formatIngredientQuantity, formatStepDuration } from "@cooking/shared";
-import { apiFetch } from "../../lib/api";
+import { PageShell } from "../../components/PageShell";
 import { RequireAuth } from "../../components/RequireAuth";
+import { apiFetch } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { CATEGORY_LABELS } from "../../lib/recipeCategories";
 import { getRecipeTags } from "../../lib/recipeTags";
 import type { Recipe } from "../../types";
-
-function splitTitleAccent(title: string): { lead: string; accent: string } {
-  const t = title.trim();
-  const idx = t.lastIndexOf(" ");
-  if (idx <= 0) return { lead: t, accent: "" };
-  return { lead: t.slice(0, idx), accent: t.slice(idx + 1) };
-}
+import styles from "./RecipeDetail.module.css";
 
 function RecipeDetailContent() {
   const params = useParams();
@@ -33,29 +28,27 @@ function RecipeDetailContent() {
     let cancelled = false;
     async function load() {
       try {
-        const res = await apiFetch(`/recipes/${id}`);
-        if (!res.ok) throw new Error(t("recipe.recipe"));
-        const data: Recipe = await res.json();
-        if (!cancelled) setRecipe(data);
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : t("common.loading"));
+        const response = await apiFetch(`/recipes/${id}`);
+        if (!response.ok) throw new Error(t("recipe.recipe"));
+        if (!cancelled) setRecipe(await response.json());
+      } catch (caught) {
+        if (!cancelled) setError(caught instanceof Error ? caught.message : t("common.loading"));
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
-    load();
+    void load();
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, t]);
 
   async function handleDelete() {
-    if (!id || !recipe) return;
-    if (!confirm(t("recipe.deleteConfirm", { title: recipe.title }))) return;
+    if (!id || !recipe || !confirm(t("recipe.deleteConfirm", { title: recipe.title }))) return;
     setDeleting(true);
     try {
-      const res = await apiFetch(`/recipes/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(t("recipe.deleteRecipe"));
+      const response = await apiFetch(`/recipes/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error(t("recipe.deleteRecipe"));
       router.push("/library");
     } catch {
       setError(t("recipe.deleteRecipe"));
@@ -64,190 +57,123 @@ function RecipeDetailContent() {
     }
   }
 
-  const blurb = useMemo(() => {
-    if (!recipe?.raw_extraction_text) return null;
-    const line = recipe.raw_extraction_text.split(/\n+/).map((s) => s.trim()).find(Boolean);
-    if (!line || line.length < 12) return null;
-    return line.length > 220 ? `${line.slice(0, 217)}…` : line;
-  }, [recipe]);
-
-  if (loading) {
-    return (
-      <p style={{ color: "var(--muted)", padding: "var(--space-24)" }} className="recipe-editorial">
-        {t("common.loading")}
-      </p>
-    );
-  }
-  if (error && !recipe) {
-    return (
-      <p style={{ color: "#c62828", padding: "var(--space-24)" }} className="recipe-editorial">
-        {error}
-      </p>
-    );
-  }
+  if (loading) return <PageShell><p className={styles.status}>{t("common.loading")}</p></PageShell>;
+  if (error && !recipe) return <PageShell><p className={styles.error}>{error}</p></PageShell>;
   if (!recipe) return null;
 
-  const ingredientRows = recipe.ingredients.filter((i) => (i.name || "").trim().length > 0);
+  const ingredients = recipe.ingredients.filter((ingredient) => ingredient.name?.trim());
   const tags = getRecipeTags(recipe);
-  const { lead, accent } = splitTitleAccent(recipe.title);
 
   return (
-    <article className="recipe-editorial">
-      <div className="recipe-editorial__topbar">
-        <Link href="/library" className="font-headline recipe-detail-back">
-          ← {t("nav.library")}
-        </Link>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-          <Link href={`/library/${id}`} className="btn-primary" style={{ padding: "0.55rem 1.15rem", minHeight: 44, fontSize: "0.9rem" }}>
-            {t("common.edit")}
-          </Link>
-          <button
-            type="button"
-            className="font-headline recipe-editorial__ghostbtn"
-            onClick={handleDelete}
-            disabled={deleting}
-          >
-            {deleting ? t("recipe.deleting") : t("common.delete")}
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <p style={{ color: "#c62828", marginTop: "0.5rem", fontSize: "var(--font-body)" }}>{error}</p>
-      )}
-
-      <div className="recipe-editorial__hero-img">
-        {recipe.thumbnail_url ? (
-          <img src={recipe.thumbnail_url} alt="" />
-        ) : (
-          <div className="recipe-editorial__hero-fallback" />
-        )}
-      </div>
-
-      <header className="recipe-editorial__header">
-        <div className="recipe-editorial__pills">
-          {tags.map((tag) => (
-            <span key={tag} className="recipe-editorial__pill recipe-editorial__pill--tertiary font-headline">
-              {CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}
-            </span>
-          ))}
-        </div>
-        <h1 className="recipe-editorial__title font-headline">
-          {lead}
-          {accent ? (
-            <>
-              {" "}
-              <span className="recipe-editorial__accent">{accent}</span>
-            </>
-          ) : null}
-        </h1>
-        {blurb && <p className="recipe-editorial__blurb">{blurb}</p>}
-        {recipe.description && <p className="recipe-description">{recipe.description}</p>}
-      </header>
-
-      <div className="recipe-editorial__body">
-        <aside className="recipe-rail">
-          <div className="recipe-rail__meta">
-            {typeof recipe.total_time_minutes === "number" && (
-              <div className="recipe-total-time-chip">
-                <span>⏱</span>
-                <span>{recipe.total_time_minutes} {t("recipe.totalTime.minutesSuffix")}</span>
-              </div>
-            )}
-            <div className="recipe-rail__metarow">
-              <span className="recipe-rail__metalabel font-headline">{t("recipe.tags")}</span>
-              <span className="recipe-rail__metaval">{tags.length ? tags.slice(0, 2).map((tag) => CATEGORY_LABELS[tag]).join(", ") : t("recipe.recipe")}</span>
-            </div>
-            <div className="recipe-rail__metarow">
-              <span className="recipe-rail__metalabel font-headline">{t("common.ingredients")}</span>
-              <span className="recipe-rail__metaval">{ingredientRows.length}</span>
-            </div>
-            <div className="recipe-rail__metarow">
-              <span className="recipe-rail__metalabel font-headline">{t("common.source")}</span>
-              <span className="recipe-rail__metaval">{recipe.source_url ? t("common.imported") : t("common.library")}</span>
-            </div>
+    <PageShell>
+      <article>
+        <div className={styles.topbar}>
+          <Link href="/library" className={styles.back}>← {t("nav.library")}</Link>
+          <div className={styles.actions}>
+            <Link href={`/library/${id}`} className={styles.primaryAction}>{t("common.edit")}</Link>
+            <button type="button" onClick={handleDelete} disabled={deleting}>
+              {deleting ? t("recipe.deleting") : t("common.delete")}
+            </button>
           </div>
+        </div>
 
-          <div className="recipe-editorial-ingredients">
-            <h2 className="font-headline">{t("common.ingredients")}</h2>
-            {ingredientRows.length === 0 ? (
-              <p style={{ color: "var(--muted)", textAlign: "center" }}>{t("recipe.noIngredients")}</p>
+        {error ? <p className={styles.error} role="alert">{error}</p> : null}
+
+        <div className={styles.hero}>
+          <div className={styles.heroMedia}>
+            {recipe.thumbnail_url ? (
+              <img src={recipe.thumbnail_url} alt="" />
             ) : (
-              ingredientRows.map((ing, idx) => (
-                <div key={idx} className="recipe-editorial-ing-row">
-                  <p className="recipe-editorial-ing-name font-headline">{ing.name?.trim()}</p>
-                  <p className="recipe-editorial-ing-qty">{formatIngredientQuantity(ing) || "—"}</p>
-                </div>
-              ))
+              <span className="cw-display" aria-hidden>CW</span>
             )}
           </div>
+          <header className={styles.recipeHeader}>
+            {tags.length ? (
+              <div className={styles.tags}>
+                {tags.map((tag) => (
+                  <span key={tag}>{CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}</span>
+                ))}
+              </div>
+            ) : null}
+            <h1 className="cw-display">{recipe.title}</h1>
+            {recipe.description ? <p>{recipe.description}</p> : null}
+            {typeof recipe.total_time_minutes === "number" ? (
+              <dl className={styles.meta}>
+                <div>
+                  <dt>{t("recipe.totalTime")}</dt>
+                  <dd>{recipe.total_time_minutes} min</dd>
+                </div>
+              </dl>
+            ) : null}
+          </header>
+        </div>
 
-          {(recipe.equipment ?? []).length > 0 && (
-            <section className="recipe-equipment">
-              <h3>{t("recipe.equipment")}</h3>
-              <ul>{recipe.equipment!.map((e, i) => <li key={i}>{e}</li>)}</ul>
-            </section>
-          )}
-        </aside>
-
-        <div className="recipe-main">
-          {(recipe.steps ?? []).length > 0 && (
-            <section className="recipe-steps">
-              <h3>{t("recipe.steps")}</h3>
-              <ol>
-                {recipe.steps!.map((s, i) => (
-                  <li key={i} className="recipe-step">
-                    <div className="recipe-step__header">
-                      <span className="recipe-step__index">{i + 1}</span>
-                      {s.duration_seconds && s.duration_seconds > 0 && (
-                        <span className="recipe-step__chip">⏱ {formatStepDuration(s.duration_seconds)}</span>
-                      )}
-                    </div>
-                    <p className="recipe-step__text">{s.text}</p>
-                    {s.image_url && <img src={s.image_url} alt="" className="recipe-step__image" />}
+        <div className={styles.content}>
+          <aside className={styles.ingredients}>
+            <h2 className="cw-display">{t("common.ingredients")}</h2>
+            {ingredients.length ? (
+              <ul>
+                {ingredients.map((ingredient, index) => (
+                  <li key={`${ingredient.name}-${index}`}>
+                    <span>{ingredient.name?.trim()}</span>
+                    <strong>{formatIngredientQuantity(ingredient) || "—"}</strong>
                   </li>
                 ))}
-              </ol>
-            </section>
-          )}
+              </ul>
+            ) : (
+              <p>{t("recipe.noIngredients")}</p>
+            )}
 
-          {(recipe.tips ?? []).length > 0 && (
-            <section className="recipe-tips">
-              <h3>{t("recipe.tips")}</h3>
-              <ul>{recipe.tips!.map((tp, i) => <li key={i}>{tp}</li>)}</ul>
-            </section>
-          )}
+            {(recipe.equipment ?? []).length ? (
+              <section className={styles.equipment}>
+                <h3>{t("recipe.equipment")}</h3>
+                <ul>{recipe.equipment!.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>
+              </section>
+            ) : null}
+          </aside>
 
-          {(recipe.steps ?? []).length === 0 && (recipe.tips ?? []).length === 0 && (
-            <p className="recipe-main__empty" style={{ color: "var(--muted)" }}>{t("recipe.recipe")}</p>
-          )}
+          <div className={styles.method}>
+            <section>
+              <h2 className="cw-display">{t("recipe.steps")}</h2>
+              {(recipe.steps ?? []).length ? (
+                <ol>
+                  {recipe.steps!.map((step, index) => (
+                    <li key={`${step.text}-${index}`}>
+                      <span className={styles.stepNumber}>{index + 1}</span>
+                      <div>
+                        {step.duration_seconds && step.duration_seconds > 0 ? (
+                          <small>{formatStepDuration(step.duration_seconds)}</small>
+                        ) : null}
+                        <p>{step.text}</p>
+                        {step.image_url ? <img src={step.image_url} alt="" /> : null}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className={styles.status}>{t("recipe.recipe")}</p>
+              )}
+            </section>
+
+            {(recipe.tips ?? []).length ? (
+              <section className={styles.tips}>
+                <h3>{t("recipe.tips")}</h3>
+                <ul>{recipe.tips!.map((tip, index) => <li key={`${tip}-${index}`}>{tip}</li>)}</ul>
+              </section>
+            ) : null}
+          </div>
         </div>
-      </div>
 
-      <div className="recipe-editorial__footer">
-        <Link href={`/library/${id}`} className="btn-primary" style={{ textDecoration: "none", display: "inline-flex" }}>
-          {t("recipe.editRecipe")}
-        </Link>
-        <Link href={`/planner`} className="font-headline recipe-editorial__ghostbtn" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
-          {t("recipe.mealPlanner")}
-        </Link>
-      </div>
-
-      {recipe.source_url && (
-        <p style={{ margin: "2.5rem 0 0", textAlign: "center", fontSize: "0.9rem" }}>
-          <a href={recipe.source_url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 700 }}>
-            {t("recipe.originalVideo")} →
+        {recipe.source_url ? (
+          <a className={styles.source} href={recipe.source_url} target="_blank" rel="noopener noreferrer">
+            {t("recipe.originalVideo")} ↗
           </a>
-        </p>
-      )}
-    </article>
+        ) : null}
+      </article>
+    </PageShell>
   );
 }
 
 export default function RecipeDetailPage() {
-  return (
-    <RequireAuth>
-      <RecipeDetailContent />
-    </RequireAuth>
-  );
+  return <RequireAuth><RecipeDetailContent /></RequireAuth>;
 }

@@ -158,6 +158,7 @@ export function ImportModalScreen({ navigation }: Props) {
         onCancel={() => dispatch({ type: "backToInput" })}
         saveLabel="Save recipe"
         cancelLabel="Back to import"
+        allowImageEditing={false}
       />
     );
   }

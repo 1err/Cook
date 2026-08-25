@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
+import { PageShell } from "../components/PageShell";
 import { useT } from "../lib/i18n";
 import { TagFilterPopover } from "../components/TagFilterPopover";
 import type { Recipe } from "../types";
@@ -28,6 +29,7 @@ import { PlannerToolbar } from "./components/PlannerToolbar";
 import { PlannerWeekBoard } from "./components/PlannerWeekBoard";
 import { addRecipeToSlots, removeRecipeFromSlots } from "./plannerModel";
 import { PLANNER_MEAL_LABEL_KEYS } from "./plannerMessages";
+import styles from "./Planner.module.css";
 
 const COL_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -38,6 +40,12 @@ type DateMutationQueue = {
   operations: DayMutation[];
   inFlight: boolean;
   generation: number;
+};
+
+type SlotPanel = {
+  date: string;
+  slot: MealType;
+  mode: "add" | "manage";
 };
 
 function todayYmd(): string {
@@ -67,7 +75,7 @@ function PlannerPageContent() {
   const [draggingSlot, setDraggingSlot] = useState<{ date: string; slot: MealType } | null>(null);
   const [sideSearch, setSideSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<LibraryFilterId>("all");
-  const [slotPicker, setSlotPicker] = useState<{ date: string; slot: MealType } | null>(null);
+  const [slotPicker, setSlotPicker] = useState<SlotPanel | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [planLoadFailed, setPlanLoadFailed] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -305,6 +313,14 @@ function PlannerPageContent() {
   }
 
   function openRecipePicker(date: string, slot: MealType) {
+    openSlotPanel(date, slot, "add");
+  }
+
+  function openRecipeManager(date: string, slot: MealType) {
+    openSlotPanel(date, slot, "manage");
+  }
+
+  function openSlotPanel(date: string, slot: MealType, mode: SlotPanel["mode"]) {
     if (planLoadFailed) return;
     const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const slotIndex = String(MEAL_PLAN_SLOTS.indexOf(slot));
@@ -315,7 +331,7 @@ function PlannerPageContent() {
       ?? null;
     pickerTriggerRef.current = trigger;
     pickerFallbackRef.current = fallback;
-    setSlotPicker({ date, slot });
+    setSlotPicker({ date, slot, mode });
   }
 
   useEffect(() => {
@@ -376,13 +392,20 @@ function PlannerPageContent() {
     return `${short} ${dayOfMonth(slotPicker.date)}`;
   }, [dates, slotPicker]);
   const slotPickerMealLabel = slotPicker ? t(PLANNER_MEAL_LABEL_KEYS[slotPicker.slot]) : "";
+  const slotPickerRecipeIds = slotPicker
+    ? (planByDate[slotPicker.date] ?? emptyMealPlanSlots())[slotPicker.slot]
+    : [];
+  const slotPickerRecipeIdSet = new Set(slotPickerRecipeIds);
+  const slotPickerRecipes = slotPickerRecipeIds
+    .map((recipeId) => recipeById[recipeId])
+    .filter((recipe): recipe is Recipe => Boolean(recipe));
 
-  if (loading) return <p className="planner-muted app-wide">{t("common.loading")}</p>;
+  if (loading) return <PageShell><p className={styles.status}>{t("common.loading")}</p></PageShell>;
 
   const recipeSourceControls = (
     <>
       <div className="planner-editorial__search">
-        <span className="material-symbols-outlined">search</span>
+        <span className="material-symbols-outlined" aria-hidden>search</span>
         <input
           type="search"
           placeholder={t("planner.searchLibrary")}
@@ -407,7 +430,6 @@ function PlannerPageContent() {
           </button>
         ) : null}
       </div>
-      <p className="planner-sort-note">{t("planner.sortedAZ")}</p>
     </>
   );
 
@@ -447,9 +469,10 @@ function PlannerPageContent() {
               type="button"
               className="planner-source-card__add font-headline"
               onClick={() => handlePickerSelect(r.id)}
-              aria-label={`${t("common.add")} ${r.title}`}
+              disabled={slotPickerRecipeIdSet.has(r.id)}
+              aria-label={`${t(slotPickerRecipeIdSet.has(r.id) ? "common.added" : "common.add")} ${r.title}`}
             >
-              {t("common.add")}
+              {t(slotPickerRecipeIdSet.has(r.id) ? "common.added" : "common.add")}
             </button>
           ) : null}
         </div>
@@ -474,38 +497,27 @@ function PlannerPageContent() {
   const pickerRecipeSourceList = renderRecipeSourceList("picker");
 
   return (
-    <div className="planner-editorial app-wide">
-      <div className="planner-editorial__toolbar-shell">
+    <PageShell className={styles.page}>
+      <div>
         <PlannerToolbar
           weekRange={formatWeekPlannerKicker(start, end)}
-          shoppingHref={`/shopping-list?week=${currentWeek}`}
           onPrevious={() => setWeek(prev)}
           onNext={() => setWeek(next)}
         />
       </div>
 
-      <PlannerRecipeRail
-        controls={
-          <>
-            <div>
-              <h2 className="font-headline m-0 mb-2" style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--on-surface)", letterSpacing: "-0.02em" }}>
-                {t("planner.savedRecipes")}
-              </h2>
-              <p className="m-0 text-sm" style={{ color: "var(--on-surface-variant)" }}>
-                {t("planner.savedRecipesDesc")}
-              </p>
-            </div>
-            {recipeSourceControls}
-          </>
-        }
-        recipes={railRecipeSourceList}
-      />
+      <div className={styles.workspace}>
+        <PlannerRecipeRail
+          controls={
+            <>
+              <h2 className="cw-display">{t("planner.savedRecipes")}</h2>
+              {recipeSourceControls}
+            </>
+          }
+          recipes={railRecipeSourceList}
+        />
 
-      <main className="planner-editorial__main">
-        <div className="planner-mobile-guide">
-          <p className="planner-mobile-guide__title font-headline">{t("planner.phoneFriendlyTitle")}</p>
-          <p className="planner-mobile-guide__text">{t("planner.phoneFriendlyDesc")}</p>
-        </div>
+        <div className={styles.board}>
 
         {mutationError ? (
           <div role="status" className="planner-mutation-error">
@@ -535,6 +547,7 @@ function PlannerPageContent() {
           onChoose={(date, slot) => {
             openRecipePicker(date, slot);
           }}
+          onManage={openRecipeManager}
           onOpen={openRecipe}
           onRemove={removeMeal}
           onDragOver={handleDragOver}
@@ -548,7 +561,11 @@ function PlannerPageContent() {
             className="planner-mobile-picker"
             role="dialog"
             aria-modal="true"
-            aria-label={t("planner.chooseRecipeForMealSlot")}
+            aria-label={t(
+              slotPicker.mode === "manage"
+                ? "planner.manageRecipeSlot"
+                : "planner.chooseRecipeForMealSlot",
+            )}
           >
             <button
               type="button"
@@ -561,7 +578,12 @@ function PlannerPageContent() {
                 <div>
                   <p className="planner-mobile-picker__kicker font-headline">{slotPickerDayLabel}</p>
                   <h2 className="planner-mobile-picker__title font-headline">
-                    {t("planner.addToSlot", { slot: slotPickerMealLabel })}
+                    {t(
+                      slotPicker.mode === "manage"
+                        ? "planner.plannedForSlot"
+                        : "planner.addToSlot",
+                      { slot: slotPickerMealLabel },
+                    )}
                   </h2>
                 </div>
                 <button
@@ -576,13 +598,58 @@ function PlannerPageContent() {
                   </span>
                 </button>
               </div>
-              <div className="planner-mobile-picker__controls">{recipeSourceControls}</div>
-              <div className="planner-mobile-picker__list">{pickerRecipeSourceList}</div>
+              {slotPicker.mode === "add" ? (
+                <>
+                  <div className="planner-mobile-picker__controls">{recipeSourceControls}</div>
+                  <div className="planner-mobile-picker__list">{pickerRecipeSourceList}</div>
+                </>
+              ) : (
+                <>
+                  <div className="planner-slot-manager__list">
+                    {slotPickerRecipes.length ? slotPickerRecipes.map((recipe) => (
+                      <div key={recipe.id} className="planner-slot-manager__recipe">
+                        <div className="planner-slot-manager__thumb">
+                          {recipe.thumbnail_url ? <img src={recipe.thumbnail_url} alt="" /> : null}
+                        </div>
+                        <p className="planner-slot-manager__title font-headline" title={recipe.title}>
+                          {recipe.title}
+                        </p>
+                        <button
+                          type="button"
+                          className="planner-slot-manager__remove font-headline"
+                          onClick={() => removeMeal(slotPicker.date, slotPicker.slot, recipe.id)}
+                          disabled={planLoadFailed}
+                          aria-label={t("planner.removeRecipeFromSlot", {
+                            title: recipe.title,
+                            slot: slotPickerMealLabel,
+                            date: slotPicker.date,
+                          })}
+                        >
+                          <span className="material-symbols-outlined" aria-hidden="true">close</span>
+                        </button>
+                      </div>
+                    )) : (
+                      <p className="planner-source-empty">{t("planner.noRecipesPlanned")}</p>
+                    )}
+                  </div>
+                  <div className="planner-slot-manager__footer">
+                    <button
+                      type="button"
+                      className="planner-slot-manager__add font-headline"
+                      onClick={() => setSlotPicker((current) => current ? { ...current, mode: "add" } : null)}
+                    >
+                      <span className="material-symbols-outlined" aria-hidden="true">add</span>
+                      {t("planner.addRecipe")}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         ) : null}
-      </main>
-    </div>
+        </div>
+      </div>
+    </PageShell>
   );
 }
 

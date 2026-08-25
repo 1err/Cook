@@ -11,9 +11,10 @@ interface Props {
   steps: RecipeStep[];
   onChange: (next: RecipeStep[]) => void;
   pickImage: () => Promise<string | null>;
+  allowImages?: boolean;
 }
 
-export function StepListEditor({ steps, onChange, pickImage }: Props) {
+export function StepListEditor({ steps, onChange, pickImage, allowImages = true }: Props) {
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
 
   const updateAt = (i: number, next: RecipeStep) => {
@@ -97,19 +98,23 @@ export function StepListEditor({ steps, onChange, pickImage }: Props) {
                   style={{ width: "100%", height: 160, borderRadius: radii.md }}
                   resizeMode="cover"
                 />
-                <Pressable onPress={() => updateAt(i, { ...step, image_url: null })}>
-                  <Text style={[typography.caption, { color: colors.error, marginTop: spacing.xs }]}>
-                    Remove image
-                  </Text>
-                </Pressable>
+                {allowImages ? (
+                  <Pressable onPress={() => updateAt(i, { ...step, image_url: null })}>
+                    <Text
+                      style={[typography.caption, { color: colors.error, marginTop: spacing.xs }]}
+                    >
+                      Remove image
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
-            ) : (
+            ) : allowImages ? (
               <Button
                 variant="ghost"
                 onPress={() => onPickImage(i)}
                 title={uploadingIndex === i ? "Uploading…" : "Add image"}
               />
-            )}
+            ) : null}
           </View>
           <View style={{ gap: spacing.xs }}>
             <Pressable onPress={() => swap(i, i - 1)}>

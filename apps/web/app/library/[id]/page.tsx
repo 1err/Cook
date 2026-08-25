@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "../../lib/api";
 import { uploadRecipeImage } from "../../lib/uploadRecipeImage";
 import { RequireAuth } from "../../components/RequireAuth";
+import { PageShell } from "../../components/PageShell";
 import { useT } from "../../lib/i18n";
 import {
   CATEGORY_LABELS,
@@ -16,6 +17,7 @@ import { getRecipeTags } from "../../lib/recipeTags";
 import type { Recipe, IngredientItem, RecipeStep } from "../../types";
 import { StepListEditor } from "../../import/StepListEditor";
 import { StringListEditor } from "../../import/StringListEditor";
+import styles from "./RecipeEdit.module.css";
 
 function RecipeEditContent() {
   const params = useParams();
@@ -196,265 +198,269 @@ function RecipeEditContent() {
     }
   }
 
-  if (loading) return <p style={mutedStyle}>{t("common.loading")}</p>;
-  if (error && !recipe) return <p style={errorStyle}>{error}</p>;
+  if (loading) return <p className={styles.status}>{t("common.loading")}</p>;
+  if (error && !recipe) return <p className={styles.error}>{error}</p>;
   if (!recipe) return null;
 
   return (
-    <div style={{ maxWidth: 1040, margin: "0 auto" }}>
-      <header style={pageHeader}>
-        <div>
-          <span className="font-headline" style={kicker}>
-            {t("recipe.editRecipeTitle")}
-          </span>
-          <h1 className="font-headline" style={pageTitle}>
-            {title.trim() || t("import.untitledRecipe")}
-          </h1>
-          <p style={pageSub}>{t("recipe.updateRecipeSub")}</p>
-        </div>
-        <div style={headerActions}>
-          <button type="button" className="font-headline" style={discardStyle} onClick={() => router.push("/library")}>
+    <div className={styles.editor}>
+      <Link href="/library" className={styles.back}>← {t("nav.library")}</Link>
+
+      <header className={styles.pageHeader}>
+        <h1>{t("recipe.editRecipeTitle")}</h1>
+        <div className={styles.headerActions}>
+          <button type="button" className={styles.cancelButton} onClick={() => router.push("/library")}>
             {t("common.cancel")}
           </button>
-          <button type="button" className="btn-primary" onClick={handleSave} disabled={saving} style={{ minHeight: 48 }}>
+          <button type="button" className={styles.saveButton} onClick={handleSave} disabled={saving}>
             {saving ? t("common.saving") : t("common.save")}
           </button>
         </div>
       </header>
 
-      {error && <p style={{ ...errorStyle, marginBottom: "1rem" }}>{error}</p>}
+      {error ? <p className={styles.error} role="alert">{error}</p> : null}
 
-      <div className="editor-grid">
-        <div className="editor-grid__main">
-          <section style={section}>
-            <label className="font-headline" style={labelUpper}>
-              {t("recipe.recipeTitle")}
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="editor-title-input font-headline"
-              placeholder="e.g. Lemon garlic salmon"
-            />
-          </section>
-
-          <section style={section}>
-            <label className="field-label">{t("recipe.description")}</label>
-            <textarea
-              rows={3}
-              maxLength={500}
-              placeholder={t("recipe.description.placeholder")}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-            <div className="char-counter">{description.length} / 500</div>
-          </section>
-
-          <section style={section}>
-            <label className="field-label">{t("recipe.totalTime")}</label>
-            <div className="inline-input-row">
-              <input
-                type="number"
-                min={0}
-                placeholder={t("recipe.totalTime.placeholder")}
-                value={totalTimeMinutes ?? ""}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  const n = raw === "" ? null : Math.max(0, Math.floor(Number(raw) || 0));
-                  setTotalTimeMinutes(n);
-                }}
-              />
-              <span className="suffix">{t("recipe.totalTime.minutesSuffix")}</span>
-            </div>
-          </section>
-
-          <section style={section}>
-            <div style={sectionHead}>
-              <label className="font-headline" style={labelUpper}>
-                {t("common.ingredients")}
+      <div className={styles.workflow}>
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <h2>{t("recipe.basicDetails")}</h2>
+          </div>
+          <div className={styles.basicGrid}>
+            <div className={styles.basicFields}>
+              <label className={styles.field}>
+                <span>{t("recipe.recipeTitle")}</span>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="e.g. Lemon garlic salmon"
+                />
               </label>
-              <button type="button" className="font-headline" style={addIngStyle} onClick={addIngredient}>
-                + {t("common.add")}
-              </button>
-            </div>
-            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "0.65rem" }}>
-              {ingredients.map((item, idx) => (
-                <li key={idx} style={ingRow}>
-                  <div style={ingQtyStack}>
-                    <input
-                      type="text"
-                      value={item.quantity}
-                      onChange={(e) => updateIngredient(idx, "quantity", e.target.value)}
-                      placeholder={t("recipe.qty")}
-                      className="input-editorial"
-                      style={qtyInputStyle}
-                    />
-                    <input
-                      type="text"
-                      value={item.metric_quantity ?? ""}
-                      onChange={(e) => updateIngredient(idx, "metric_quantity", e.target.value)}
-                      placeholder={t("recipe.metricQty")}
-                      className="input-editorial"
-                      style={qtyInputStyle}
-                    />
-                  </div>
-                  <input
-                    type="text"
-                    value={item.name}
-                    onChange={(e) => updateIngredient(idx, "name", e.target.value)}
-                    placeholder={t("recipe.ingredient")}
-                    className="input-editorial"
-                    style={{ flex: "1 1 120px", minHeight: 46, fontSize: "0.875rem" }}
-                  />
-                  <button type="button" style={removeIngBtn} onClick={() => removeIngredient(idx)} aria-label={t("recipe.removeIngredient")}>
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
 
+              <label className={styles.field}>
+                <span>{t("recipe.description")}</span>
+                <textarea
+                  rows={4}
+                  maxLength={500}
+                  placeholder={t("recipe.description.placeholder")}
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                />
+                <small>{description.length} / 500</small>
+              </label>
+
+              <label className={`${styles.field} ${styles.timeField}`}>
+                <span>{t("recipe.totalTime")}</span>
+                <span className={styles.timeControl}>
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder={t("recipe.totalTime.placeholder")}
+                    value={totalTimeMinutes ?? ""}
+                    onChange={(event) => {
+                      const raw = event.target.value;
+                      setTotalTimeMinutes(raw === "" ? null : Math.max(0, Math.floor(Number(raw) || 0)));
+                    }}
+                  />
+                  <span>{t("recipe.totalTime.minutesSuffix")}</span>
+                </span>
+              </label>
+            </div>
+
+            <div className={styles.coverEditor}>
+              <span className={styles.controlLabel}>{t("recipe.coverImage")}</span>
+              <div className={styles.coverPreview}>
+                {thumbnailUrl.trim() ? (
+                  <img src={thumbnailUrl.trim()} alt="" />
+                ) : (
+                  <span aria-hidden>CW</span>
+                )}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageFile}
+                className={styles.hiddenInput}
+                tabIndex={-1}
+                aria-hidden
+              />
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingImage}
+              >
+                {uploadingImage ? t("recipe.uploading") : t("common.upload")}
+              </button>
+              <label className={styles.field}>
+                <span>{t("recipe.imageUrl")}</span>
+                <input
+                  type="url"
+                  value={thumbnailUrl}
+                  onChange={(event) => setThumbnailUrl(event.target.value)}
+                  placeholder="https://…"
+                />
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <h2>{t("common.ingredients")}</h2>
+            <button type="button" className={styles.textButton} onClick={addIngredient}>
+              + {t("common.add")}
+            </button>
+          </div>
+          <div className={styles.ingredientLabels} aria-hidden>
+            <span>{t("recipe.ingredient")}</span>
+            <span>{t("recipe.originalAmount")}</span>
+            <span>{t("recipe.metricQty")}</span>
+          </div>
+          <ul className={styles.ingredientRows}>
+            {ingredients.map((item, index) => (
+              <li key={index}>
+                <input
+                  type="text"
+                  value={item.name}
+                  onChange={(event) => updateIngredient(index, "name", event.target.value)}
+                  placeholder={t("recipe.ingredient")}
+                  aria-label={`${t("recipe.ingredient")} ${index + 1}`}
+                />
+                <input
+                  type="text"
+                  value={item.quantity}
+                  onChange={(event) => updateIngredient(index, "quantity", event.target.value)}
+                  placeholder={t("recipe.originalAmount")}
+                  aria-label={`${t("recipe.originalAmount")} ${index + 1}`}
+                />
+                <input
+                  type="text"
+                  value={item.metric_quantity ?? ""}
+                  onChange={(event) => updateIngredient(index, "metric_quantity", event.target.value)}
+                  placeholder={t("recipe.metricQty")}
+                  aria-label={`${t("recipe.metricQty")} ${index + 1}`}
+                />
+                <button
+                  type="button"
+                  className={styles.removeButton}
+                  onClick={() => removeIngredient(index)}
+                  aria-label={t("recipe.removeIngredient")}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <div className={`${styles.section} ${styles.stepsSection}`}>
           <StepListEditor
             steps={steps}
             onChange={setSteps}
             uploadImage={(file) => uploadRecipeImage(file, t("common.upload"))}
           />
-
-          <StringListEditor
-            label={t("recipe.tips")}
-            addLabel={t("recipe.tips.addRow")}
-            placeholder={t("recipe.tips.placeholder")}
-            values={tips}
-            onChange={setTips}
-          />
-
-          <StringListEditor
-            label={t("recipe.equipment")}
-            addLabel={t("recipe.equipment.addRow")}
-            placeholder={t("recipe.equipment.placeholder")}
-            values={equipment}
-            onChange={setEquipment}
-          />
         </div>
 
-        <aside className="editor-grid__side">
-          <div style={uploadZone}>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleImageFile}
-              style={{ display: "none" }}
-              aria-hidden
-            />
-            <button
-              type="button"
-              className="upload-zone-inner"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingImage}
-            >
-              <div style={uploadIconWrap}>
-                <span style={{ fontSize: "1.75rem" }} aria-hidden>
-                  📷
-                </span>
-              </div>
-              <p style={{ margin: "0 0 0.35rem", fontWeight: 700, fontSize: "0.95rem" }}>{t("recipe.coverImage")}</p>
-              <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--on-surface-variant)" }}>
-                {uploadingImage ? t("recipe.uploading") : t("recipe.tapToUpload")}
-              </p>
-            </button>
-            <input
-              type="url"
-              value={thumbnailUrl}
-              onChange={(e) => setThumbnailUrl(e.target.value)}
-              className="input-editorial"
-              style={{ marginTop: "1rem", minHeight: 46, fontSize: "0.85rem" }}
-              placeholder="https://…"
-            />
-            {thumbnailUrl.trim() && (
-              <div style={previewBox}>
-                <img src={thumbnailUrl.trim()} alt="Preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              </div>
-            )}
+        <section className={`${styles.section} ${styles.moreSection}`}>
+          <div className={styles.sectionHeader}>
+            <h2>{t("recipe.moreDetails")}</h2>
           </div>
-
-          <div style={metaCard}>
-            <label className="font-headline" style={labelUpper}>
-              {t("common.tags")}
-            </label>
-            <p style={hint}>Add a few tags to help people find this recipe.</p>
-            <div className="recipe-tag-picker">
-              {RECIPE_TAG_GROUPS.map((group) => (
-                <div key={group.id} className="recipe-tag-group">
-                  <p className="recipe-tag-group__title font-headline">{group.label}</p>
-                  <div className="recipe-tag-group__chips">
-                    {group.tags.map((tag) => {
-                      const active = libraryTags.includes(tag.id);
-                      return (
-                        <button
-                          key={tag.id}
-                          type="button"
-                          className={`library-chip ${active ? "library-chip--active" : "library-chip--idle"}`}
-                          onClick={() => toggleTag(tag.id)}
-                        >
-                          {tag.label}
-                        </button>
-                      );
-                    })}
-                  </div>
+          <div className={styles.optionalRows}>
+            <StringListEditor
+              label={t("recipe.tips")}
+              addLabel={t("recipe.tips.addRow")}
+              placeholder={t("recipe.tips.placeholder")}
+              values={tips}
+              onChange={setTips}
+              collapsed
+            />
+            <StringListEditor
+              label={t("recipe.equipment")}
+              addLabel={t("recipe.equipment.addRow")}
+              placeholder={t("recipe.equipment.placeholder")}
+              values={equipment}
+              onChange={setEquipment}
+              collapsed
+            />
+            <details className={styles.tagsDisclosure}>
+              <summary>{t("common.tags")}{libraryTags.length ? ` (${libraryTags.length})` : ""}</summary>
+              <div className={styles.tagsEditor}>
+                <div className="recipe-tag-picker">
+                  {RECIPE_TAG_GROUPS.map((group) => (
+                    <div key={group.id} className="recipe-tag-group">
+                      <p className="recipe-tag-group__title">{group.label}</p>
+                      <div className="recipe-tag-group__chips">
+                        {group.tags.map((tag) => {
+                          const active = libraryTags.includes(tag.id);
+                          return (
+                            <button
+                              key={tag.id}
+                              type="button"
+                              className={`library-chip ${active ? "library-chip--active" : "library-chip--idle"}`}
+                              onClick={() => toggleTag(tag.id)}
+                            >
+                              {tag.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            {libraryTags.length > 0 ? (
-              <p style={{ ...hint, marginTop: "0.85rem", marginBottom: 0 }}>
-                {t("recipe.selectedTags", { tags: libraryTags.map((tag) => CATEGORY_LABELS[tag]).join(", ") })}
-              </p>
+                {libraryTags.length ? (
+                  <p className={styles.selectionSummary}>
+                    {t("recipe.selectedTags", { tags: libraryTags.map((tag) => CATEGORY_LABELS[tag]).join(", ") })}
+                  </p>
+                ) : null}
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <h2>{t("recipe.sharingAndSource")}</h2>
+          </div>
+          <div className={styles.sharingRows}>
+            {canManageCatalog ? (
+              <div className={styles.sharingRow}>
+                <div>
+                  <h3>{t("recipe.publicLibrary")}</h3>
+                  <p>{t("recipe.publicLibraryDesc")}</p>
+                </div>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={handleCatalogToggle}
+                  disabled={catalogSaving}
+                >
+                  {catalogSaving
+                    ? t("common.saving")
+                    : recipe.is_public_catalog
+                      ? t("recipe.removeFromPublicLibrary")
+                      : t("recipe.addToPublicLibrary")}
+                </button>
+              </div>
+            ) : null}
+            {recipe.source_url ? (
+              <a href={recipe.source_url} target="_blank" rel="noopener noreferrer" className={styles.sourceLink}>
+                {t("recipe.openSourceLink")} ↗
+              </a>
             ) : null}
           </div>
+        </section>
 
-          {canManageCatalog ? (
-            <div style={metaCard}>
-              <label className="font-headline" style={labelUpper}>
-                {t("recipe.publicLibrary")}
-              </label>
-              <p style={hint}>
-                {t("recipe.publicLibraryDesc")}
-              </p>
-              <button
-                type="button"
-                className="btn-primary"
-                style={{ width: "100%", justifyContent: "center" }}
-                onClick={handleCatalogToggle}
-                disabled={catalogSaving}
-              >
-                {catalogSaving
-                  ? t("common.saving")
-                  : recipe.is_public_catalog
-                    ? t("recipe.removeFromPublicLibrary")
-                    : t("recipe.addToPublicLibrary")}
-              </button>
-            </div>
-          ) : null}
-
-          {recipe.source_url && (
-            <p style={{ fontSize: "0.85rem", color: "var(--on-surface-variant)", margin: 0 }}>
-              <a href={recipe.source_url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600 }}>
-                {t("recipe.openSourceLink")}
-              </a>
-            </p>
-          )}
-
-          <button
-            type="button"
-            className="font-headline"
-            style={deleteBtn}
-            onClick={handleDelete}
-            disabled={deleting}
-          >
-            {deleting ? t("recipe.deleting") : t("recipe.deleteRecipe")}
+        <section className={styles.dangerZone} aria-label={t("recipe.deleteRecipe")}>
+          <div>
+            <strong>{t("recipe.deleteRecipe")}</strong>
+            <p>{recipe.title}</p>
+          </div>
+          <button type="button" onClick={handleDelete} disabled={deleting}>
+            {deleting ? t("recipe.deleting") : t("common.delete")}
           </button>
-        </aside>
+        </section>
       </div>
     </div>
   );
@@ -463,190 +469,9 @@ function RecipeEditContent() {
 export default function RecipeEditPage() {
   return (
     <RequireAuth>
-      <div className="app-container">
-        <Link href="/library" className="font-headline" style={{ ...mutedStyle, display: "inline-block", marginBottom: "1rem", fontWeight: 700 }}>
-          ← Library
-        </Link>
+      <PageShell>
         <RecipeEditContent />
-      </div>
+      </PageShell>
     </RequireAuth>
   );
 }
-
-const pageHeader: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "1.25rem",
-  marginBottom: "2rem",
-};
-
-const kicker: React.CSSProperties = {
-  display: "block",
-  fontSize: "0.7rem",
-  fontWeight: 800,
-  letterSpacing: "0.14em",
-  textTransform: "uppercase",
-  color: "var(--primary)",
-  marginBottom: "0.35rem",
-};
-
-const pageTitle: React.CSSProperties = {
-  fontSize: "clamp(1.65rem, 4vw, 2.35rem)",
-  fontWeight: 800,
-  letterSpacing: "-0.03em",
-  margin: "0 0 0.35rem",
-};
-
-const pageSub: React.CSSProperties = {
-  margin: 0,
-  color: "var(--on-surface-variant)",
-  fontSize: "0.95rem",
-  maxWidth: 32 * 16,
-  lineHeight: 1.5,
-};
-
-const headerActions: React.CSSProperties = {
-  display: "flex",
-  gap: "0.65rem",
-  flexWrap: "wrap",
-  alignItems: "center",
-};
-
-const discardStyle: React.CSSProperties = {
-  padding: "0.65rem 1.1rem",
-  borderRadius: "var(--radius-lg)",
-  border: "none",
-  background: "transparent",
-  color: "var(--on-surface-variant)",
-  fontWeight: 700,
-  fontSize: "0.9rem",
-  cursor: "pointer",
-};
-
-const section: React.CSSProperties = { marginBottom: "2rem" };
-
-const labelUpper: React.CSSProperties = {
-  display: "block",
-  fontSize: "0.72rem",
-  fontWeight: 800,
-  letterSpacing: "0.12em",
-  textTransform: "uppercase",
-  color: "var(--on-surface-variant)",
-  marginBottom: "0.65rem",
-};
-
-const sectionHead: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginBottom: "0.75rem",
-};
-
-const addIngStyle: React.CSSProperties = {
-  border: "none",
-  background: "var(--surface-container-low)",
-  color: "var(--primary)",
-  fontWeight: 700,
-  fontSize: "0.8rem",
-  padding: "0.4rem 0.75rem",
-  borderRadius: "var(--radius-md)",
-  cursor: "pointer",
-};
-
-const ingRow: React.CSSProperties = {
-  display: "flex",
-  gap: "0.5rem",
-  alignItems: "center",
-};
-
-const ingQtyStack: React.CSSProperties = {
-  flex: "0 0 132px",
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.4rem",
-};
-
-const qtyInputStyle: React.CSSProperties = {
-  minHeight: 42,
-  padding: "0 0.85rem",
-  fontSize: "0.875rem",
-};
-
-const removeIngBtn: React.CSSProperties = {
-  flex: "0 0 40px",
-  width: 40,
-  height: 40,
-  borderRadius: "var(--radius-md)",
-  border: "none",
-  background: "var(--surface-container-high)",
-  color: "var(--on-surface-variant)",
-  fontSize: "1.25rem",
-  cursor: "pointer",
-  lineHeight: 1,
-};
-
-const uploadZone: React.CSSProperties = {
-  background: "var(--surface-container-low)",
-  borderRadius: "1.75rem",
-  padding: "1.5rem",
-  marginBottom: "1.25rem",
-};
-
-const uploadIconWrap: React.CSSProperties = {
-  width: "4rem",
-  height: "4rem",
-  borderRadius: "1rem",
-  background: "var(--surface-container-lowest)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  margin: "0 auto 1rem",
-  boxShadow: "var(--kitchen-glow)",
-};
-
-const previewBox: React.CSSProperties = {
-  marginTop: "1rem",
-  borderRadius: "var(--radius-lg)",
-  overflow: "hidden",
-  aspectRatio: "1",
-  maxHeight: 200,
-  background: "var(--surface-container-high)",
-};
-
-const metaCard: React.CSSProperties = {
-  background: "var(--surface-container-lowest)",
-  borderRadius: "var(--radius-lg)",
-  padding: "1.25rem",
-  boxShadow: "var(--kitchen-glow)",
-  marginBottom: "1.25rem",
-};
-
-const hint: React.CSSProperties = {
-  fontSize: "0.8rem",
-  color: "var(--on-surface-variant)",
-  margin: "0 0 0.75rem",
-  lineHeight: 1.45,
-};
-
-const deleteBtn: React.CSSProperties = {
-  width: "100%",
-  marginTop: "0.5rem",
-  padding: "0.75rem",
-  borderRadius: "var(--radius-lg)",
-  border: "none",
-  background: "transparent",
-  color: "var(--error-muted)",
-  fontWeight: 700,
-  fontSize: "0.9rem",
-  cursor: "pointer",
-};
-
-const mutedStyle: React.CSSProperties = {
-  color: "var(--muted)",
-  fontSize: "0.9rem",
-};
-
-const errorStyle: React.CSSProperties = {
-  color: "#c62828",
-  fontSize: "0.9rem",
-};

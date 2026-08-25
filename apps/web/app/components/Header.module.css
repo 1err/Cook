@@ -12,9 +12,10 @@
   display: flex;
   gap: var(--cw-space-6);
   margin: 0 auto;
-  max-width: 1200px;
+  max-width: none;
   min-height: calc(var(--app-header-height) - var(--app-header-divider-height));
-  padding: var(--cw-space-3) var(--cw-space-6);
+  padding: var(--cw-space-3) 0;
+  width: min(calc(100% - (2 * var(--cw-shell-gutter))), var(--cw-shell-max));
 }
 
 .brand {
@@ -36,19 +37,21 @@
   border-radius: var(--cw-radius-control);
   color: var(--cw-color-on-action);
   display: inline-flex;
-  font-family: "Source Serif 4", "Iowan Old Style", "Songti SC", ui-serif, Georgia, serif;
+  font-family: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
   font-size: 0.875rem;
-  font-weight: 600;
-  height: 36px;
+  font-weight: 700;
+  height: 38px;
   justify-content: center;
   letter-spacing: 0.02em;
-  width: 36px;
+  width: 38px;
 }
 
 .brandName {
-  font-family: "Source Serif 4", "Iowan Old Style", "Songti SC", ui-serif, Georgia, serif;
-  font-size: 1.375rem;
-  font-weight: 600;
+  font-family: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
   white-space: nowrap;
 }
 
@@ -130,7 +133,7 @@ button.menuButton {
     display: grid;
     gap: var(--cw-space-2);
     grid-template-columns: minmax(0, 1fr) auto auto;
-    padding: var(--cw-space-3) var(--cw-space-4);
+    padding: var(--cw-space-3) 0;
   }
 
   .brand {
