@@ -11,8 +11,15 @@ from dataclasses import dataclass
 from typing import Optional
 
 from app.core.llm import get_openai_client
-from app.models import IngredientItem, Recipe
-from app.tutorial import ACTION_TYPES, ATTENTION_TYPES, DURATION_SOURCES
+from app.models import IngredientItem, Recipe, RecipeStep
+from app.tutorial import (
+    ACTION_TYPES,
+    ATTENTION_TYPES,
+    DURATION_SOURCES,
+    GENERATED_MIN_SECONDS,
+    MAX_STEP_SECONDS,
+    classify_step_metadata,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -288,6 +295,118 @@ def _extraction_metadata(value: object, allowed: frozenset[str], fallback: str) 
         return fallback
     value = value.strip()
     return value if value in allowed else fallback
+
+
+def _build_tutorial_estimation_prompt(steps: list[RecipeStep]) -> str:
+    records = [
+        {
+            "number": index,
+            "id": step.id,
+            "text": step.text,
+            "duration_seconds": step.duration_seconds,
+            "duration_source": step.duration_source,
+            "attention_type": step.attention_type,
+            "action_type": step.action_type,
+        }
+        for index, step in enumerate(steps, start=1)
+    ]
+    return f"""Estimate tutorial metadata for these existing cooking steps.
+
+Return a JSON array with exactly one object per supplied step. Each object may contain only:
+- id: copy the supplied ID exactly
+- duration_seconds: a positive whole number from 15 to 86400
+- attention_type: "hands_on" or "passive"
+- action_type: one of {", ".join(sorted(ACTION_TYPES))}
+
+Do not return text. Do not add, delete, reorder, split, or merge steps.
+
+STEPS:
+{json.dumps(records, ensure_ascii=False)}
+"""
+
+
+def _parse_tutorial_estimates(raw: str) -> dict[str, dict[str, object]] | None:
+    text = raw.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```\w*\n?", "", text)
+        text = re.sub(r"\n?```\s*$", "", text)
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if isinstance(data, dict):
+        data = data.get("steps")
+    if not isinstance(data, list):
+        return None
+
+    counts: dict[str, int] = {}
+    candidates: dict[str, dict[str, object]] = {}
+    for item in data:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            continue
+        step_id = item["id"]
+        counts[step_id] = counts.get(step_id, 0) + 1
+        candidates[step_id] = item
+    return {
+        step_id: item
+        for step_id, item in candidates.items()
+        if counts[step_id] == 1
+    }
+
+
+def _valid_estimated_duration(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    if not GENERATED_MIN_SECONDS <= value <= MAX_STEP_SECONDS:
+        return None
+    return value
+
+
+async def estimate_tutorial_step_metadata(steps: list[RecipeStep]) -> list[RecipeStep]:
+    """Preview metadata suggestions without changing step identity or content."""
+    if not steps:
+        return []
+
+    estimates: dict[str, dict[str, object]] = {}
+    client = get_openai_client()
+    if client is not None:
+        try:
+            response = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": _build_tutorial_estimation_prompt(steps),
+                    }
+                ],
+            )
+            raw = response.choices[0].message.content or "[]"
+            estimates = _parse_tutorial_estimates(raw) or {}
+        except Exception as exc:
+            logger.warning("Tutorial metadata estimation failed; using local defaults: %s", exc)
+
+    merged: list[RecipeStep] = []
+    for step in steps:
+        local_attention, local_action = classify_step_metadata(step.text)
+        estimate = estimates.get(step.id or "", {})
+        attention = _extraction_metadata(
+            estimate.get("attention_type"), ATTENTION_TYPES, local_attention
+        )
+        action = _extraction_metadata(
+            estimate.get("action_type"), ACTION_TYPES, local_action
+        )
+        updates: dict[str, object] = {
+            "attention_type": attention,
+            "action_type": action,
+        }
+        estimated_duration = _valid_estimated_duration(
+            estimate.get("duration_seconds")
+        )
+        if step.duration_source == "fallback" and estimated_duration is not None:
+            updates["duration_seconds"] = estimated_duration
+            updates["duration_source"] = "estimated"
+        merged.append(RecipeStep(**{**step.model_dump(), **updates}))
+    return merged
 
 
 async def extract_recipe_from_text(transcript: str) -> Recipe:

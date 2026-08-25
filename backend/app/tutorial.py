@@ -50,6 +50,36 @@ MAX_STEP_SECONDS = 86_400
 DEFAULT_FALLBACK_SECONDS = 300
 
 
+_ACTION_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("bake", ("bake", "roast", "oven", "烤")),
+    ("simmer", ("simmer", "stew", "braise", "炖", "焖", "煨")),
+    ("boil", ("boil", "沸", "煮")),
+    ("rest", ("rest", "wait", "cool", "chill", "静置", "醒", "冷却", "冷藏")),
+    ("chop", ("chop", "dice", "slice", "mince", "切", "剁")),
+    ("mix", ("mix", "stir", "whisk", "fold", "拌", "搅")),
+    ("season", ("season", "salt", "pepper", "调味", "加盐")),
+    ("sear", ("sear", "brown", "fry", "煎", "炒", "炸")),
+    ("drain", ("drain", "strain", "沥", "滤")),
+    ("assemble", ("assemble", "combine", "layer", "组合", "装配")),
+    ("plate", ("plate", "serve", "garnish", "装盘", "上桌")),
+    ("prep", ("prepare", "wash", "peel", "准备", "洗", "削皮")),
+)
+
+
+def classify_step_metadata(text: str) -> tuple[str, str]:
+    """Return deterministic attention/action suggestions from instruction text."""
+    normalized = text.casefold()
+    action_type = "other"
+    for candidate, keywords in _ACTION_KEYWORDS:
+        if any(keyword in normalized for keyword in keywords):
+            action_type = candidate
+            break
+    attention_type = (
+        "passive" if action_type in {"bake", "simmer", "boil", "rest"} else "hands_on"
+    )
+    return attention_type, action_type
+
+
 def parse_step_rows(raw: object) -> list[dict[str, object]]:
     """Accept legacy step shapes and discard rows that cannot become steps."""
     if raw is None:
