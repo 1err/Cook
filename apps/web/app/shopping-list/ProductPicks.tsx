@@ -1,6 +1,7 @@
 import { WEEE_STORE_LABEL, isSafeWeeeProductUrl } from "@cooking/shared";
 import { useT } from "../lib/i18n";
 import type { ProductLookupState } from "./productLoading";
+import styles from "./ShoppingList.module.css";
 
 type ProductPicksProps = {
   state: ProductLookupState;
@@ -10,91 +11,62 @@ type ProductPicksProps = {
 export function ProductPicks({ state, onRetry }: ProductPicksProps) {
   const t = useT();
 
-  const loadingStatus = (message: string) => (
-    <div
-      className="shop-bento-products__status shop-bento-products__status--loading"
-      role="status"
-      aria-live="polite"
-    >
-      <span className="shop-bulk-loading-banner__spinner" aria-hidden />
-      <span>{message}</span>
-    </div>
-  );
-
   if (state.status === "idle") return null;
-  if (state.status === "queued") {
-    return loadingStatus(t("shopping.waitingProducts"));
-  }
-  if (state.status === "loading") {
-    return loadingStatus(t("shopping.findingProducts"));
-  }
-  if (state.status === "error" || state.status === "empty") {
-    const message =
-      state.status === "error"
-        ? t("shopping.productLoadFailed")
-        : t("shopping.noProductsFound", { store: WEEE_STORE_LABEL });
+  if (state.status === "queued" || state.status === "loading") {
     return (
-      <div className="shop-bento-products__status">
-        <p style={{ margin: 0 }}>{message}</p>
-        <button
-          type="button"
-          className="shop-bento-products__toggle font-headline"
-          onClick={onRetry}
-        >
-          {t("shopping.retryProducts")}
-        </button>
+      <div className={styles.productStatus} role="status" aria-live="polite">
+        <span className="shop-bulk-loading-banner__spinner" aria-hidden />
+        <span>{state.status === "queued" ? t("shopping.waitingProducts") : t("shopping.findingProducts")}</span>
       </div>
     );
   }
 
-  const safeProducts = (state.products ?? []).filter((product) =>
-    isSafeWeeeProductUrl(product.url),
-  );
+  if (state.status === "error" || state.status === "empty") {
+    return (
+      <div className={styles.productStatus}>
+        <p>
+          {state.status === "error"
+            ? t("shopping.productLoadFailed")
+            : t("shopping.noProductsFound", { store: WEEE_STORE_LABEL })}
+        </p>
+        <button type="button" onClick={onRetry}>{t("shopping.retryProducts")}</button>
+      </div>
+    );
+  }
+
+  const safeProducts = (state.products ?? []).filter((product) => isSafeWeeeProductUrl(product.url));
   if (!safeProducts.length) {
     return (
-      <div className="shop-bento-products__status">
-        <p style={{ margin: 0 }}>{t("shopping.productLoadFailed")}</p>
-        <button
-          type="button"
-          className="shop-bento-products__toggle font-headline"
-          onClick={onRetry}
-        >
-          {t("shopping.retryProducts")}
-        </button>
+      <div className={styles.productStatus}>
+        <p>{t("shopping.productLoadFailed")}</p>
+        <button type="button" onClick={onRetry}>{t("shopping.retryProducts")}</button>
       </div>
     );
   }
 
   return (
-    <>
+    <div className={styles.productList}>
       {safeProducts.slice(0, 3).map((product) => (
-        <div key={product.url} className="shop-bento-product-card">
+        <div key={product.url} className={styles.productRow} data-testid="store-product-row">
           {product.image ? (
             <img src={product.image} alt={product.name} loading="lazy" />
           ) : (
-            <div
-              className="shop-bento-product-card__img-placeholder"
-              aria-hidden
-            >
-              <span className="material-symbols-outlined">image</span>
-            </div>
+            <div className={styles.productPlaceholder} aria-hidden>CW</div>
           )}
-          <div className="shop-bento-product-card__body">
-            <p className="shop-bento-product-card__name">{product.name}</p>
-            <p className="shop-bento-product-card__price">
-              {product.price || t("shopping.seeListing")}
-            </p>
+          <div className={styles.productCopy}>
+            <p>{product.name}</p>
+            <strong>{product.price || t("shopping.seeListing")}</strong>
             <a
               href={product.url}
               target="_blank"
               rel="noreferrer"
-              className="shop-bento-product-card__link font-headline"
+              aria-label={t("shopping.viewOnStore", { store: WEEE_STORE_LABEL })}
             >
-              {t("shopping.viewOnStore", { store: WEEE_STORE_LABEL })}
+              {t("shopping.viewOnStore", { store: WEEE_STORE_LABEL })} ↗
             </a>
           </div>
         </div>
       ))}
-    </>
+    </div>
   );
 }
