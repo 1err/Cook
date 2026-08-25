@@ -15,7 +15,7 @@ test("announces selection and emits the selected language", async () => {
   const english = screen.getByRole("button", { name: "English" });
   const chinese = screen.getByRole("button", { name: "中文" });
   expect(english).toBeSelected();
-  expect(english).toHaveStyle({ minWidth: 44, minHeight: 44 });
+  expect(english).toHaveStyle({ minWidth: 44, minHeight: 44, borderRadius: 12, borderWidth: 1 });
   expect(chinese).toHaveStyle({ minWidth: 44, minHeight: 44 });
   await fireEvent.press(chinese);
   expect(onChange).toHaveBeenCalledWith("zh");
