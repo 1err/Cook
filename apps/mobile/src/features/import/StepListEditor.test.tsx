@@ -40,6 +40,11 @@ test("shows transparent metadata and marks a valid duration edit as user adjuste
   const onChange = jest.fn();
   await render(<StepListEditor steps={[estimatedStep]} onChange={onChange} />);
 
+  const badgeStyle = StyleSheet.flatten(screen.getByText("1").props.style);
+  expect(badgeStyle.width).toBeUndefined();
+  expect(badgeStyle.height).toBeUndefined();
+  expect(badgeStyle.minHeight).toBeGreaterThanOrEqual(28);
+  expect(badgeStyle.paddingVertical).toBeGreaterThan(0);
   expect(screen.getByText("About 5 min · AI estimated · Passive")).toBeOnTheScreen();
   expect(screen.getByRole("button", { name: "Passive" })).toBeSelected();
 

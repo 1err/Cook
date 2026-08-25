@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import type { CompositeScreenProps } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
@@ -63,12 +64,15 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
   const [canManage, setCanManage] = useState(false);
   const [heroRatio, setHeroRatio] = useState<number | null>(null);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     let cancelled = false;
     async function load() {
       try {
         const row = await apiClient.recipes.get(route.params.recipeId);
-        if (!cancelled) setRecipe(row);
+        if (!cancelled) {
+          setRecipe(row);
+          setError(null);
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load recipe");
       } finally {
@@ -79,7 +83,7 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [apiClient, route.params.recipeId]);
+  }, [apiClient, route.params.recipeId]));
 
   useEffect(() => {
     let cancelled = false;
@@ -391,8 +395,9 @@ const styles = StyleSheet.create({
   stepIndex: {
     ...typography.footnote,
     minWidth: 26,
-    height: 26,
-    lineHeight: 26,
+    minHeight: 26,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 3,
     textAlign: "center",
     color: colors.white,
     backgroundColor: colors.accent,

@@ -317,9 +317,10 @@ const styles = StyleSheet.create({
   stepHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   stepIndex: {
     ...typography.footnote,
-    width: 28,
-    height: 28,
-    lineHeight: 28,
+    minWidth: 28,
+    minHeight: 28,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 4,
     textAlign: "center",
     color: colors.onAction,
     backgroundColor: colors.terracotta,

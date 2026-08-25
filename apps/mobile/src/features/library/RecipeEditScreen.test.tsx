@@ -6,6 +6,8 @@ import { RecipeEditScreen } from "./RecipeEditScreen";
 const mockGet = jest.fn();
 const mockUpdate = jest.fn();
 const mockEstimateTutorial = jest.fn();
+let mockPreventRemove = false;
+let mockPreventRemoveCallback: ((options: { data: { action: { type: string } } }) => void) | undefined;
 const mockApiClient = {
   recipes: {
     get: mockGet,
@@ -17,6 +19,16 @@ const mockApiClient = {
 
 jest.mock("../../lib/api", () => ({
   useApiClient: () => mockApiClient,
+}));
+
+jest.mock("@react-navigation/native", () => ({
+  UNSTABLE_usePreventRemove: (
+    preventRemove: boolean,
+    callback: (options: { data: { action: { type: string } } }) => void,
+  ) => {
+    mockPreventRemove = preventRemove;
+    mockPreventRemoveCallback = callback;
+  },
 }));
 
 jest.mock("../../lib/i18n", () => ({
@@ -74,6 +86,8 @@ function route(focus: "recipe" | "tutorial" = "tutorial") {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockPreventRemove = false;
+  mockPreventRemoveCallback = undefined;
   mockGet.mockResolvedValue(recipe);
   mockUpdate.mockResolvedValue(recipe);
   mockEstimateTutorial.mockImplementation(async (_id: string, steps: RecipeStep[]) => ({
@@ -110,6 +124,10 @@ test("cancels tutorial editing without PATCH", async () => {
   await render(<RecipeEditScreen navigation={nav as never} route={route()} />);
 
   await screen.findByLabelText("Step 1");
+  expect(mockPreventRemove).toBe(false);
+  expect(nav.setOptions).toHaveBeenCalledWith(expect.objectContaining({
+    headerBackButtonMenuEnabled: false,
+  }));
   await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
 
   expect(mockUpdate).not.toHaveBeenCalled();
@@ -118,6 +136,9 @@ test("cancels tutorial editing without PATCH", async () => {
 
 test("saves only tutorial steps and returns only after a successful PATCH", async () => {
   const nav = navigation();
+  nav.goBack.mockImplementation(() => {
+    expect(mockPreventRemove).toBe(false);
+  });
   await render(<RecipeEditScreen navigation={nav as never} route={route()} />);
 
   const instructions = await screen.findByLabelText("Step 1");
@@ -161,6 +182,10 @@ test("locks tutorial mutations until a pending Estimate resolves", async () => {
   );
 
   await waitFor(() => expect(instructions).toHaveProp("editable", false));
+  expect(mockPreventRemove).toBe(true);
+  expect(mockPreventRemoveCallback).toBeDefined();
+  mockPreventRemoveCallback?.({ data: { action: { type: "GO_BACK" } } });
+  expect(nav.goBack).not.toHaveBeenCalled();
   expect(screen.getByRole("button", { name: "Add step" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Save tutorial" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
@@ -179,6 +204,7 @@ test("locks tutorial mutations until a pending Estimate resolves", async () => {
     await estimatePress;
   });
   await waitFor(() => expect(instructions).toHaveProp("editable", true));
+  expect(mockPreventRemove).toBe(false);
   expect(instructions).toHaveProp("value", "Snapshot sent for estimation.");
 });
 
@@ -193,6 +219,9 @@ test("locks tutorial mutations and navigation until a pending Save settles", asy
   const savePress = fireEvent.press(screen.getByRole("button", { name: "Save tutorial" }));
 
   await waitFor(() => expect(instructions).toHaveProp("editable", false));
+  expect(mockPreventRemove).toBe(true);
+  expect(mockPreventRemoveCallback).toBeDefined();
+  mockPreventRemoveCallback?.({ data: { action: { type: "GO_BACK" } } });
   expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   expect(nav.goBack).not.toHaveBeenCalled();
   await fireEvent.changeText(instructions, "Unsent mutation");
@@ -203,6 +232,7 @@ test("locks tutorial mutations and navigation until a pending Save settles", asy
     await savePress;
   });
   await waitFor(() => expect(nav.goBack).toHaveBeenCalledTimes(1));
+  expect(mockPreventRemove).toBe(false);
   expect(mockUpdate).toHaveBeenCalledWith(recipe.id, {
     steps: [{ ...fallbackStep, text: "Snapshot sent for saving." }],
   });

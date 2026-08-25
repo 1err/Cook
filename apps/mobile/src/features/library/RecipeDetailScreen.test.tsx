@@ -1,20 +1,31 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
 import type { Recipe } from "@cooking/shared";
 import { RecipeDetailScreen } from "./RecipeDetailScreen";
 
 const mockGet = jest.fn();
 const mockEditorStatus = jest.fn().mockResolvedValue({ can_manage: false });
+let mockFocusEffect: (() => void | (() => void)) | undefined;
+const mockApiClient = {
+  recipes: {
+    get: mockGet,
+    editorStatus: mockEditorStatus,
+    setCatalogVisibility: jest.fn(),
+    remove: jest.fn(),
+  },
+};
+
+jest.mock("@react-navigation/native", () => ({
+  useFocusEffect: (effect: () => void | (() => void)) => {
+    const ReactModule = require("react") as typeof import("react");
+    mockFocusEffect = effect;
+    ReactModule.useEffect(effect, [effect]);
+  },
+}));
 
 jest.mock("../../lib/api", () => ({
-  useApiClient: () => ({
-    recipes: {
-      get: mockGet,
-      editorStatus: mockEditorStatus,
-      setCatalogVisibility: jest.fn(),
-      remove: jest.fn(),
-    },
-  }),
+  useApiClient: () => mockApiClient,
 }));
 
 jest.mock("../../lib/i18n", () => ({
@@ -52,8 +63,36 @@ function navigation() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockFocusEffect = undefined;
   mockEditorStatus.mockResolvedValue({ can_manage: false });
   mockGet.mockResolvedValue(recipe);
+});
+
+test("refetches tutorial steps when the mounted detail screen regains focus", async () => {
+  mockGet
+    .mockResolvedValueOnce(recipe)
+    .mockResolvedValueOnce({
+      ...recipe,
+      steps: [{ ...recipe.steps![0], text: "Freshly saved tutorial step." }],
+    });
+
+  await render(
+    <RecipeDetailScreen
+      navigation={navigation() as never}
+      route={{ key: "detail", name: "RecipeDetail", params: { recipeId: recipe.id } } as never}
+    />,
+  );
+
+  expect(await screen.findByText("Simmer gently.")).toBeOnTheScreen();
+  expect(mockFocusEffect).toBeDefined();
+
+  await act(async () => {
+    mockFocusEffect?.();
+  });
+
+  await waitFor(() => expect(screen.getByText("Freshly saved tutorial step.")).toBeOnTheScreen());
+  expect(screen.queryByText("Simmer gently.")).not.toBeOnTheScreen();
+  expect(mockGet).toHaveBeenCalledTimes(2);
 });
 
 test("shows transparent tutorial metadata and opens focused tutorial editing", async () => {
@@ -68,6 +107,10 @@ test("shows transparent tutorial metadata and opens focused tutorial editing", a
   expect(await screen.findByText("About 8 min · AI estimated · Passive")).toBeOnTheScreen();
   expect(screen.queryByText(/⏱/)).not.toBeOnTheScreen();
   expect(screen.getByRole("image", { name: "Simmer illustration" })).toBeOnTheScreen();
+  const badgeStyle = StyleSheet.flatten(screen.getByText("1").props.style);
+  expect(badgeStyle.height).toBeUndefined();
+  expect(badgeStyle.minHeight).toBeGreaterThanOrEqual(26);
+  expect(badgeStyle.paddingVertical).toBeGreaterThan(0);
 
   await fireEvent.press(screen.getByRole("button", { name: "Edit tutorial" }));
   expect(nav.navigate).toHaveBeenCalledWith("RecipeEdit", {

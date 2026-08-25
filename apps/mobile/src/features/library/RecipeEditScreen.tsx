@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { UNSTABLE_usePreventRemove as usePreventRemove } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { Recipe, RecipeStep } from "@cooking/shared";
 import { useApiClient } from "../../lib/api";
@@ -39,12 +40,23 @@ export function RecipeEditScreen({ navigation, route }: Props) {
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [navigateAfterSave, setNavigateAfterSave] = useState(false);
+  const busy = estimating || saving;
+
+  usePreventRemove(busy, () => undefined);
 
   useLayoutEffect(() => {
     navigation.setOptions({
+      headerBackButtonMenuEnabled: false,
       title: tutorialOnly ? t("recipe.tutorial.edit") : "Edit recipe",
     });
   }, [navigation, t, tutorialOnly]);
+
+  useEffect(() => {
+    if (!navigateAfterSave || saving) return;
+    setNavigateAfterSave(false);
+    navigation.goBack();
+  }, [navigateAfterSave, navigation, saving]);
 
   useEffect(() => {
     if (!recipeId) {
@@ -116,7 +128,7 @@ export function RecipeEditScreen({ navigation, route }: Props) {
           equipment: submittedDraft.equipment,
         });
       }
-      navigation.goBack();
+      setNavigateAfterSave(true);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Couldn't save changes");
     } finally {
