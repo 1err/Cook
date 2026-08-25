@@ -6,9 +6,10 @@ interface Props {
   placeholder: string;
   values: string[];
   onChange: (next: string[]) => void;
+  collapsed?: boolean;
 }
 
-export function StringListEditor({ label, addLabel, placeholder, values, onChange }: Props) {
+export function StringListEditor({ label, addLabel, placeholder, values, onChange, collapsed = false }: Props) {
   const updateAt = (i: number, v: string) => {
     const arr = values.slice();
     arr[i] = v;
@@ -17,9 +18,8 @@ export function StringListEditor({ label, addLabel, placeholder, values, onChang
   const removeAt = (i: number) => onChange(values.filter((_, idx) => idx !== i));
   const append = () => onChange([...values, ""]);
 
-  return (
-    <section className="string-list-editor">
-      <label className="field-label">{label}</label>
+  const contents = (
+    <>
       <ul>
         {values.map((v, i) => (
           <li key={i} className="string-row">
@@ -34,6 +34,17 @@ export function StringListEditor({ label, addLabel, placeholder, values, onChang
         ))}
       </ul>
       <button type="button" className="add-row-btn" onClick={append}>+ {addLabel}</button>
-    </section>
+    </>
   );
+
+  if (collapsed) {
+    return (
+      <details className="string-list-editor">
+        <summary>{label}{values.length ? ` (${values.length})` : ""}</summary>
+        {contents}
+      </details>
+    );
+  }
+
+  return <section className="string-list-editor"><label className="field-label">{label}</label>{contents}</section>;
 }
