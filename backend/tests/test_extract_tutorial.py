@@ -113,6 +113,56 @@ def test_parser_marks_missing_or_invalid_step_metadata_as_fallback():
     ]
 
 
+def test_parser_marks_string_step_metadata_as_fallback():
+    parsed = parse_llm_recipe_response(
+        json.dumps({"title": "Soup", "steps": ["Simmer."]})
+    )
+
+    assert parsed["steps"] == [
+        {
+            "text": "Simmer.",
+            "duration_seconds": None,
+            "duration_source": "fallback",
+            "attention_type": "hands_on",
+            "action_type": "other",
+        }
+    ]
+
+
+def test_parser_discards_non_list_ingredient_equipment_and_tip_containers():
+    parsed = parse_llm_recipe_response(
+        json.dumps(
+            {
+                "title": "Malformed containers",
+                "ingredients": 7,
+                "equipment": {"wok": True},
+                "tips": "serve immediately",
+            }
+        )
+    )
+
+    assert parsed["ingredients"] == []
+    assert parsed["equipment"] == []
+    assert parsed["tips"] == []
+
+
+def test_parser_coerces_numeric_ingredient_quantity_to_safe_text():
+    parsed = parse_llm_recipe_response(
+        json.dumps(
+            {
+                "title": "Sauce",
+                "ingredients": [
+                    {"name": "Soy sauce", "quantity": 7, "notes": 3}
+                ],
+            }
+        )
+    )
+
+    assert parsed["ingredients"] == [
+        {"name": "Soy sauce", "quantity": "7", "metric_quantity": None, "notes": "3"}
+    ]
+
+
 def test_generated_duration_is_clamped_and_missing_total_is_derived_after_parsing():
     parsed = parse_llm_recipe_response(
         json.dumps(

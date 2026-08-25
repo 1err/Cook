@@ -207,18 +207,22 @@ def parse_llm_recipe_response(raw: str) -> dict:
             "tips": [],
         }
 
-    title = data.get("title") or "Untitled Recipe"
+    title = _extraction_string(data.get("title"), "Untitled Recipe")
 
-    ingredients_raw = data.get("ingredients") or []
+    ingredients_raw = data.get("ingredients")
+    if not isinstance(ingredients_raw, list):
+        ingredients_raw = []
     ingredients: list[dict] = []
     for i in ingredients_raw:
         if isinstance(i, dict):
-            quantity, metric_quantity = _split_dual_quantity(i.get("quantity") or "")
+            quantity, metric_quantity = _split_dual_quantity(
+                _extraction_string(i.get("quantity"))
+            )
             ingredients.append({
-                "name": i.get("name") or "",
+                "name": _extraction_string(i.get("name")),
                 "quantity": quantity,
                 "metric_quantity": metric_quantity,
-                "notes": i.get("notes"),
+                "notes": _extraction_optional_string(i.get("notes")),
             })
         else:
             ingredients.append({"name": str(i), "quantity": "", "notes": None})
@@ -243,17 +247,39 @@ def parse_llm_recipe_response(raw: str) -> dict:
                 ),
             })
         elif isinstance(s, str):
-            steps.append({"text": s, "duration_seconds": None})
+            steps.append({
+                "text": s,
+                "duration_seconds": None,
+                "duration_source": "fallback",
+                "attention_type": "hands_on",
+                "action_type": "other",
+            })
 
     return {
         "title": title,
-        "description": data.get("description"),
+        "description": _extraction_optional_string(data.get("description")),
         "total_time_minutes": data.get("total_time_minutes"),
         "ingredients": ingredients,
-        "equipment": data.get("equipment") or [],
+        "equipment": _extraction_string_list(data.get("equipment")),
         "steps": steps,
-        "tips": data.get("tips") or [],
+        "tips": _extraction_string_list(data.get("tips")),
     }
+
+
+def _extraction_string(value: object, default: str = "") -> str:
+    if value is None:
+        return default
+    return value if isinstance(value, str) else str(value)
+
+
+def _extraction_optional_string(value: object) -> str | None:
+    return None if value is None else _extraction_string(value)
+
+
+def _extraction_string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
 
 
 def _extraction_metadata(value: object, allowed: frozenset[str], fallback: str) -> str:
