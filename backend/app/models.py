@@ -1,7 +1,10 @@
 """Simple data models. No complex schemas."""
-from typing import Optional
+import math
+from typing import Annotated, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
+
+from app.tutorial import normalize_step_payloads, parse_step_rows
 
 # Library tags (multiple allowed per recipe)
 RECIPE_TAG_SLUGS = frozenset(
@@ -92,8 +95,12 @@ class IngredientItem(BaseModel):
 
 
 class RecipeStep(BaseModel):
+    id: Optional[str] = None
     text: str
     duration_seconds: Optional[int] = None
+    duration_source: Optional[str] = None
+    attention_type: Optional[str] = None
+    action_type: Optional[str] = None
     image_url: Optional[str] = None
 
     @field_validator("text", mode="before")
@@ -129,24 +136,20 @@ class RecipeStep(BaseModel):
         return s or None
 
 
-def coerce_steps(v: object) -> list[RecipeStep]:
+def coerce_steps(v: object, total_time_minutes: object = None) -> list[RecipeStep]:
+    """Normalize complete recipe steps while preserving legacy field absence."""
     if v is None:
         return []
     if not isinstance(v, list):
         raise ValueError("steps must be a list")
-    out: list[RecipeStep] = []
-    for item in v:
-        if isinstance(item, RecipeStep):
-            step = item
-        elif isinstance(item, dict):
-            step = RecipeStep(**item)
-        elif isinstance(item, str):
-            step = RecipeStep(text=item)
-        else:
-            continue
-        if step.text:
-            out.append(step)
-    return out
+    raw_steps = [
+        item.model_dump(exclude_unset=True) if isinstance(item, RecipeStep) else item
+        for item in v
+    ]
+    return [
+        RecipeStep(**payload)
+        for payload in normalize_step_payloads(raw_steps, total_time_minutes)
+    ]
 
 
 def coerce_string_list(v: object) -> list[str]:
@@ -192,7 +195,7 @@ class RecipeCreate(BaseModel):
     catalog_source_recipe_id: Optional[str] = None
     description: Optional[str] = None
     total_time_minutes: Optional[int] = None
-    steps: list[RecipeStep] = Field(default_factory=list)
+    steps: Annotated[list[RecipeStep], BeforeValidator(parse_step_rows)] = Field(default_factory=list)
     tips: list[str] = Field(default_factory=list)
     equipment: list[str] = Field(default_factory=list)
 
@@ -211,10 +214,13 @@ class RecipeCreate(BaseModel):
     def normalize_total_time(cls, v: object) -> Optional[int]:
         return coerce_total_time_minutes(v)
 
-    @field_validator("steps", mode="before")
-    @classmethod
-    def normalize_steps(cls, v: object) -> list[RecipeStep]:
-        return coerce_steps(v)
+    @model_validator(mode="after")
+    def normalize_steps(self) -> "RecipeCreate":
+        self.steps = coerce_steps(self.steps, self.total_time_minutes)
+        if self.total_time_minutes is None and self.steps:
+            seconds = sum(step.duration_seconds or 0 for step in self.steps)
+            self.total_time_minutes = math.ceil(seconds / 60)
+        return self
 
     @field_validator("tips", mode="before")
     @classmethod
@@ -288,4 +294,3 @@ class MealPlan(BaseModel):
 class ShoppingListItem(BaseModel):
     name: str
     total_quantity: str
-

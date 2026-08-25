@@ -17,10 +17,10 @@ from pydantic import BeforeValidator
 from app.models import (
     RecipeStep,
     coerce_library_tags,
-    coerce_steps,
     coerce_string_list,
 )
+from app.tutorial import parse_step_rows
 
 LibraryTags = Annotated[list[str], BeforeValidator(coerce_library_tags)]
-StepList = Annotated[list[RecipeStep], BeforeValidator(coerce_steps)]
+StepList = Annotated[list[RecipeStep], BeforeValidator(parse_step_rows)]
 StringList = Annotated[list[str], BeforeValidator(coerce_string_list)]
