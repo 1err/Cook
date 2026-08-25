@@ -98,6 +98,24 @@ def test_downgrade_removes_only_the_added_metadata_keys() -> None:
     ]
 
 
+def test_upgrade_then_downgrade_preserves_unrelated_legacy_step_keys() -> None:
+    """Breaks if migration normalization irreversibly discards legacy step data."""
+    migration = _migration_module()
+    legacy = [
+        {
+            "text": "Bake until golden",
+            "duration_seconds": 600,
+            "image_url": "/uploads/bake.jpg",
+            "legacy_annotation": {"reviewed": True},
+        }
+    ]
+
+    upgraded = migration._upgrade_steps_json(json.dumps(legacy), 10, id_factory=_fixed_ids())
+    downgraded = json.loads(migration._downgrade_steps_json(upgraded))
+
+    assert downgraded == legacy
+
+
 @pytest.mark.parametrize(
     ("raw", "total_time_minutes"),
     [

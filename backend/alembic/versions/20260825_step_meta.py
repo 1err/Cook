@@ -131,7 +131,8 @@ def _normalize_step_payloads(
         if step_id is None or step_id in seen_ids:
             step_id = _new_id(id_factory, seen_ids)
         seen_ids.add(step_id)
-        records.append(
+        record = dict(row)
+        record.update(
             {
                 "id": step_id,
                 "text": row["text"],
@@ -146,6 +147,7 @@ def _normalize_step_payloads(
                 "image_url": _normalized_image_url(row.get("image_url")),
             }
         )
+        records.append(record)
 
     missing_indexes = [
         index for index, record in enumerate(records) if record["duration_seconds"] is None
