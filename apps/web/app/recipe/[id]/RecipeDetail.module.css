@@ -8,6 +8,9 @@
 
 .back,
 .source {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
   color: var(--cw-color-action);
   font-size: 0.86rem;
   font-weight: 750;
@@ -16,12 +19,17 @@
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 0.55rem;
 }
 
 .actions a,
 .actions button {
-  min-height: 2.6rem;
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
   padding: 0.65rem 1rem;
   border: 1px solid var(--cw-color-divider);
   border-radius: var(--cw-radius-control);
@@ -139,7 +147,7 @@
 }
 
 .ingredients > ul,
-.method ol {
+.tutorialSteps {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -179,16 +187,47 @@
   padding-left: 1.1rem;
 }
 
-.method ol {
+.tutorial {
+  min-width: 0;
+}
+
+.tutorialHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.3rem;
+}
+
+.tutorialHeader h2 {
+  margin-bottom: 0;
+}
+
+.editTutorial,
+.tutorialEmpty a {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  color: var(--cw-color-action);
+  font-size: 0.8rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.tutorialSteps {
   display: grid;
   gap: 1.6rem;
 }
 
-.method ol > li {
+.tutorialSteps > li {
   display: grid;
   align-items: start;
   gap: 1rem;
-  grid-template-columns: 2.2rem minmax(0, 1fr);
+  grid-template-columns: 2.2rem 7rem minmax(0, 1fr);
 }
 
 .stepNumber {
@@ -203,25 +242,57 @@
   font-weight: 800;
 }
 
-.method small {
+.stepVisual,
+.stepIllustration {
+  width: 7rem;
+  aspect-ratio: 1;
+  border-radius: var(--cw-radius-field);
+}
+
+.stepVisual {
+  object-fit: cover;
+}
+
+.stepIllustration {
+  display: grid;
+  place-items: center;
+  background: var(--cw-color-subtle-surface);
+}
+
+.stepIllustration svg {
+  width: 72%;
+  height: 72%;
+}
+
+.stepContent {
+  min-width: 0;
+  padding-top: 0.15rem;
+}
+
+.stepContent small {
   color: var(--cw-color-sage);
   font-size: 0.75rem;
   font-weight: 750;
 }
 
-.method p {
+.stepContent p {
   margin: 0.35rem 0 0;
   line-height: 1.7;
 }
 
-.method img {
-  width: min(100%, 34rem);
-  margin-top: 1rem;
-  border-radius: var(--cw-radius-field);
+.tutorialEmpty {
+  padding: 1.25rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-card);
+  background: var(--cw-color-subtle-surface);
+}
+
+.tutorialEmpty p {
+  margin: 0 0 1rem;
+  color: var(--cw-color-muted-ink);
 }
 
 .source {
-  display: inline-block;
   margin-bottom: 2rem;
 }
 
@@ -246,5 +317,35 @@
 
   .recipeHeader {
     padding: 1.5rem;
+  }
+
+  .tutorialSteps > li {
+    grid-template-columns: 2.2rem minmax(0, 1fr);
+  }
+
+  .stepVisual,
+  .stepIllustration {
+    grid-column: 2;
+  }
+
+  .stepContent {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 480px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .tutorialHeader {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
