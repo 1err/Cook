@@ -62,10 +62,12 @@ function EditorHarness({
   initialSteps,
   onChange = () => undefined,
   onValidityChange,
+  disabled = false,
 }: {
   initialSteps: RecipeStep[];
   onChange?: (steps: RecipeStep[]) => void;
   onValidityChange?: (valid: boolean) => void;
+  disabled?: boolean;
 }) {
   const [steps, setSteps] = useState(initialSteps);
   return (
@@ -76,6 +78,7 @@ function EditorHarness({
         onChange(next);
       }}
       onValidityChange={onValidityChange}
+      disabled={disabled}
     />
   );
 }
@@ -83,6 +86,32 @@ function EditorHarness({
 afterEach(cleanup);
 
 describe("StepListEditor", () => {
+  it("disables every draft mutation while a parent request is pending", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn<(steps: RecipeStep[]) => void>();
+    render(
+      <EditorHarness
+        disabled
+        initialSteps={[estimatedStep]}
+        onChange={onChange}
+      />,
+    );
+
+    const instructions = screen.getByRole("textbox", { name: "Step 1" });
+    expect(instructions).toBeDisabled();
+    expect(screen.getByLabelText("Step 1 minutes")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Passive" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Step 1 illustration" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add step" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Move step 1 up" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Remove step 1" })).toBeDisabled();
+
+    await user.type(instructions, " should not change");
+    await user.click(screen.getByRole("button", { name: "Add step" }));
+    expect(instructions).toHaveValue(estimatedStep.text);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("marks an edited estimate as user-authored without dropping hidden step data", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn<(steps: RecipeStep[]) => void>();

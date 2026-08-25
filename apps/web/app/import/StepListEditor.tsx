@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import {
   createRecipeStep,
   RECIPE_ACTION_MESSAGE_KEYS,
@@ -19,6 +19,7 @@ export interface StepListEditorProps {
   onChange: (next: RecipeStep[]) => void;
   uploadImage?: (file: File) => Promise<string>;
   onValidityChange?: (valid: boolean) => void;
+  disabled?: boolean;
 }
 
 function hasValidDuration(step: RecipeStep): boolean {
@@ -39,8 +40,10 @@ export function StepListEditor({
   onChange,
   uploadImage,
   onValidityChange,
+  disabled = false,
 }: StepListEditorProps) {
   const t = useT();
+  const headingId = useId();
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [invalidStepKeys, setInvalidStepKeys] = useState<Set<string>>(() => new Set());
   const durationsValid = steps.every(
@@ -85,9 +88,14 @@ export function StepListEditor({
   }
 
   return (
-    <section className={styles.editorSection}>
+    <fieldset
+      aria-busy={disabled || undefined}
+      aria-labelledby={headingId}
+      className={`${styles.editorSection} ${styles.editorFieldset}`}
+      disabled={disabled}
+    >
       <div className={styles.sectionHeader}>
-        <h2 className="cw-display">{t("recipe.steps")}</h2>
+        <h2 className="cw-display" id={headingId}>{t("recipe.steps")}</h2>
         <button
           type="button"
           aria-label={t("recipe.step.addRow")}
@@ -198,6 +206,6 @@ export function StepListEditor({
           </li>
         ))}
       </ol>
-    </section>
+    </fieldset>
   );
 }

@@ -278,6 +278,10 @@
   min-width: 0;
 }
 
+.editorFieldset {
+  margin: 0;
+}
+
 .sectionHeader {
   display: flex;
   align-items: center;

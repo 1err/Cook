@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Recipe, RecipeStep } from "../../../../types";
+import buttonStyles from "../../../../components/ui/Button.module.css";
 import TutorialEditPage from "./page";
 
 const { mockApiFetch, mockPush } = vi.hoisted(() => ({
@@ -91,6 +92,14 @@ function requestOptionsAt(method: string): RequestInit | undefined {
   return mockApiFetch.mock.calls.find(([, options]) => options?.method === method)?.[1];
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 beforeEach(() => {
   mockApiFetch.mockReset();
   mockPush.mockReset();
@@ -118,6 +127,85 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("TutorialEditPage", () => {
+  it("uses large action targets for Estimate, Cancel, and Save", async () => {
+    render(<TutorialEditPage />);
+
+    expect(await screen.findByRole("button", { name: "Estimate missing tutorial details" }))
+      .toHaveClass(buttonStyles.lg);
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveClass(buttonStyles.lg);
+    expect(screen.getByRole("button", { name: "Save tutorial" })).toHaveClass(buttonStyles.lg);
+  });
+
+  it("locks draft controls until a pending estimate has updated the draft", async () => {
+    const user = userEvent.setup();
+    const pendingEstimate = deferred<Response>();
+    mockApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+      if (!options?.method) return Promise.resolve(jsonResponse(recipe));
+      if (path.endsWith("/tutorial/estimate")) return pendingEstimate.promise;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    render(<TutorialEditPage />);
+
+    const instructions = await screen.findByRole("textbox", { name: "Step 1" });
+    await user.clear(instructions);
+    await user.type(instructions, "Draft sent for estimation.");
+    await user.click(screen.getByRole("button", { name: "Estimate missing tutorial details" }));
+
+    expect(instructions).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add step" })).toBeDisabled();
+    expect(screen.getByLabelText("Step 1 minutes")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Passive" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Step 1 illustration" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Remove step 1" })).toBeDisabled();
+
+    await user.type(instructions, " unsent change");
+    await user.click(screen.getByRole("button", { name: "Add step" }));
+    expect(instructions).toHaveValue("Draft sent for estimation.");
+
+    pendingEstimate.resolve(jsonResponse({
+      steps: [{
+        ...fallbackStep,
+        text: "Draft sent for estimation.",
+        duration_seconds: 480,
+        duration_source: "estimated",
+        attention_type: "passive",
+        action_type: "simmer",
+      }],
+    }));
+    await waitFor(() => expect(instructions).toBeEnabled());
+    expect(instructions).toHaveValue("Draft sent for estimation.");
+  });
+
+  it("locks draft controls while Save is pending so navigation cannot discard unsent edits", async () => {
+    const user = userEvent.setup();
+    const pendingSave = deferred<Response>();
+    mockApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+      if (!options?.method) return Promise.resolve(jsonResponse(recipe));
+      if (options.method === "PATCH") return pendingSave.promise;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    render(<TutorialEditPage />);
+
+    const instructions = await screen.findByRole("textbox", { name: "Step 1" });
+    await user.clear(instructions);
+    await user.type(instructions, "Draft sent for saving.");
+    await user.click(screen.getByRole("button", { name: "Save tutorial" }));
+
+    expect(instructions).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add step" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Passive" })).toBeDisabled();
+    await user.type(instructions, " unsent change");
+    await user.click(screen.getByRole("button", { name: "Add step" }));
+    expect(instructions).toHaveValue("Draft sent for saving.");
+    expect(mockPush).not.toHaveBeenCalled();
+
+    pendingSave.resolve(jsonResponse(recipe));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/recipe/recipe-1"));
+    expect(JSON.parse(String(requestOptionsAt("PATCH")?.body))).toEqual({
+      steps: [{ ...fallbackStep, text: "Draft sent for saving." }],
+    });
+  });
+
   it("loads an independent draft and keeps estimation preview-only", async () => {
     const user = userEvent.setup();
     render(<TutorialEditPage />);

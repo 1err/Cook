@@ -123,6 +123,7 @@ function TutorialEditContent() {
             disabled={!canEstimate || estimating || saving}
             loading={estimating}
             onClick={() => void handleEstimate()}
+            size="lg"
             variant="secondary"
           >
             {estimating
@@ -132,6 +133,7 @@ function TutorialEditContent() {
           <Button
             disabled={saving}
             onClick={() => router.push(detailHref)}
+            size="lg"
             variant="ghost"
           >
             {t("recipe.tutorial.cancel")}
@@ -140,6 +142,7 @@ function TutorialEditContent() {
             disabled={!stepsValid || estimating}
             loading={saving}
             onClick={() => void handleSave()}
+            size="lg"
           >
             {t("recipe.tutorial.save")}
           </Button>
@@ -150,6 +153,7 @@ function TutorialEditContent() {
       {saveError ? <p className={styles.error} role="alert">{saveError}</p> : null}
 
       <StepListEditor
+        disabled={estimating || saving}
         onChange={setDraftSteps}
         onValidityChange={setStepsValid}
         steps={draftSteps}
