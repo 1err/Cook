@@ -1,5 +1,6 @@
 import React from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image } from "expo-image";
 import type { IngredientItem, Recipe, RecipeStep, RecipeTagSlug } from "@cooking/shared";
 import { Button, TextField } from "../../components";
 import { useApiClient } from "../../lib/api";
@@ -11,6 +12,7 @@ import { StringListEditor } from "./StringListEditor";
 import { TagPicker } from "./TagPicker";
 import { TotalTimeField } from "./TotalTimeField";
 import { pickAndUploadImage, useImageUpload } from "./useImageUpload";
+import { resolveImageUrl } from "../../lib/imageUrl";
 
 export type DraftRecipeEditorProps = {
   draft: Recipe;
@@ -21,6 +23,7 @@ export type DraftRecipeEditorProps = {
   onCancel?: () => void;
   saveLabel?: string;
   cancelLabel?: string;
+  allowImageEditing?: boolean;
 };
 
 export function DraftRecipeEditor({
@@ -32,6 +35,7 @@ export function DraftRecipeEditor({
   onCancel,
   saveLabel = "Save recipe",
   cancelLabel = "Back",
+  allowImageEditing = true,
 }: DraftRecipeEditorProps) {
   const upload = useImageUpload(draft.thumbnail_url);
   const apiClient = useApiClient();
@@ -59,26 +63,36 @@ export function DraftRecipeEditor({
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
-      <ImagePickerButton
-        thumbnailUrl={upload.thumbnailUrl}
-        isUploading={upload.isUploading}
-        error={upload.error}
-        onPick={() => void upload.pickAndUpload()}
-        onClear={() => upload.clear()}
-      />
+      {allowImageEditing ? (
+        <>
+          <ImagePickerButton
+            thumbnailUrl={upload.thumbnailUrl}
+            isUploading={upload.isUploading}
+            error={upload.error}
+            onPick={() => void upload.pickAndUpload()}
+            onClear={() => upload.clear()}
+          />
 
-      <TextField
-        label="Or paste an image URL"
-        placeholder="https://…"
-        value={draft.thumbnail_url ?? ""}
-        onChangeText={(thumbnail_url) => {
-          onChange({ ...draft, thumbnail_url });
-          upload.setThumbnailUrl(thumbnail_url || null);
-        }}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="url"
-      />
+          <TextField
+            label="Or paste an image URL"
+            placeholder="https://…"
+            value={draft.thumbnail_url ?? ""}
+            onChangeText={(thumbnail_url) => {
+              onChange({ ...draft, thumbnail_url });
+              upload.setThumbnailUrl(thumbnail_url || null);
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+          />
+        </>
+      ) : resolveImageUrl(draft.thumbnail_url) ? (
+        <Image
+          source={{ uri: resolveImageUrl(draft.thumbnail_url)! }}
+          style={styles.reviewCover}
+          contentFit="cover"
+        />
+      ) : null}
 
       <TextField
         label="Title"
@@ -121,6 +135,7 @@ export function DraftRecipeEditor({
         steps={draft.steps ?? []}
         onChange={(steps: RecipeStep[]) => onChange({ ...draft, steps })}
         pickImage={pickStepImage}
+        allowImages={allowImageEditing}
       />
       <StringListEditor
         label="Tips"
@@ -158,6 +173,7 @@ export function DraftRecipeEditor({
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, paddingBottom: spacing["3xl"] },
+  reviewCover: { width: "100%", aspectRatio: 16 / 9, borderRadius: radii.lg, marginBottom: spacing.lg },
   sectionLabel: {
     ...typography.headline,
     color: colors.onSurface,
