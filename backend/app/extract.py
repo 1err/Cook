@@ -12,6 +12,7 @@ from typing import Optional
 
 from app.core.llm import get_openai_client
 from app.models import IngredientItem, Recipe
+from app.tutorial import ACTION_TYPES, ATTENTION_TYPES, DURATION_SOURCES
 
 logger = logging.getLogger(__name__)
 
@@ -141,14 +142,18 @@ Extract the following JSON:
 - total_time_minutes: integer total minutes, or null if unclear.
 - ingredients: list of {{name, quantity, notes}}.
 - equipment: list of distinct tools/pans named in the transcript. [] if none mentioned.
-- steps: ordered list of {{text, duration_seconds}}. duration_seconds is integer or null. Each step is one short instruction. If the transcript is thin or doesn't describe procedure, return []. DO NOT invent steps.
+- steps: ordered list of {{text, duration_seconds, duration_source, attention_type, action_type}}. Each step is one short instruction copied from the source. If the transcript is thin or doesn't describe procedure, return []. DO NOT add, split, merge, or invent procedural steps. DO NOT invent procedure.
+  - duration_seconds: positive whole seconds from 15 to 86400. Use a source-stated duration when explicit; otherwise estimate a plausible duration for that exact step.
+  - duration_source: "stated" only when the source explicitly states the duration; otherwise "estimated".
+  - attention_type: "hands_on" or "passive". hands_on means the cook is actively working; passive means they may safely leave the step until attention is needed.
+  - action_type: one of "prep", "chop", "mix", "season", "sear", "simmer", "boil", "bake", "rest", "drain", "assemble", "plate", or "other".
 - tips: list of chef tips/tricks explicitly mentioned (e.g., "press tofu first"). [] if none.
 
 Language rules:
 - If the source names ingredients/steps/tips in Chinese, keep them in Chinese. English in parens is optional.
 - Quantities and durations may stay in the source language.
 
-Do not invent details that are not suggested by the text.
+Metadata may be inferred, but DO NOT invent details or procedural steps that are not suggested by the text.
 
 --- TRANSCRIPT ---
 {body}
@@ -158,7 +163,7 @@ Respond with a JSON object only, no markdown:
 {{ "title": "...", "description": null, "total_time_minutes": null,
    "ingredients": [{{ "name": "...", "quantity": "...", "notes": null }}],
    "equipment": [],
-   "steps": [{{ "text": "...", "duration_seconds": null }}],
+   "steps": [{{ "text": "...", "duration_seconds": 480, "duration_source": "stated", "attention_type": "passive", "action_type": "simmer" }}],
    "tips": []
 }}"""
 
@@ -190,6 +195,8 @@ def parse_llm_recipe_response(raw: str) -> dict:
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
+        data = None
+    if not isinstance(data, dict):
         return {
             "title": "Imported Recipe",
             "description": None,
@@ -216,13 +223,24 @@ def parse_llm_recipe_response(raw: str) -> dict:
         else:
             ingredients.append({"name": str(i), "quantity": "", "notes": None})
 
-    steps_raw = data.get("steps") or []
+    steps_raw = data.get("steps")
+    if not isinstance(steps_raw, list):
+        steps_raw = []
     steps: list[dict] = []
     for s in steps_raw:
         if isinstance(s, dict):
             steps.append({
                 "text": s.get("text") or "",
                 "duration_seconds": s.get("duration_seconds"),
+                "duration_source": _extraction_metadata(
+                    s.get("duration_source"), DURATION_SOURCES, "fallback"
+                ),
+                "attention_type": _extraction_metadata(
+                    s.get("attention_type"), ATTENTION_TYPES, "hands_on"
+                ),
+                "action_type": _extraction_metadata(
+                    s.get("action_type"), ACTION_TYPES, "other"
+                ),
             })
         elif isinstance(s, str):
             steps.append({"text": s, "duration_seconds": None})
@@ -236,6 +254,14 @@ def parse_llm_recipe_response(raw: str) -> dict:
         "steps": steps,
         "tips": data.get("tips") or [],
     }
+
+
+def _extraction_metadata(value: object, allowed: frozenset[str], fallback: str) -> str:
+    """Accept only the metadata enum values supported by tutorial normalization."""
+    if not isinstance(value, str):
+        return fallback
+    value = value.strip()
+    return value if value in allowed else fallback
 
 
 async def extract_recipe_from_text(transcript: str) -> Recipe:
@@ -282,11 +308,41 @@ def _stub_extraction(input_text: str) -> dict:
             ],
             "equipment": ["wok", "spatula"],
             "steps": [
-                {"text": "Dice the tofu into 2 cm cubes and let it sit in lightly salted hot water.", "duration_seconds": 180},
-                {"text": "Sear ground pork in the wok until browned and crispy at the edges.", "duration_seconds": 240},
-                {"text": "Add doubanjiang and garlic; stir-fry until fragrant.", "duration_seconds": 60},
-                {"text": "Drain the tofu, slide it into the wok, and simmer gently with stock.", "duration_seconds": 180},
-                {"text": "Thicken with a cornstarch slurry, finish with green onion and Sichuan pepper.", "duration_seconds": 60},
+                {
+                    "text": "Dice the tofu into 2 cm cubes and let it sit in lightly salted hot water.",
+                    "duration_seconds": 180,
+                    "duration_source": "estimated",
+                    "attention_type": "hands_on",
+                    "action_type": "chop",
+                },
+                {
+                    "text": "Sear ground pork in the wok until browned and crispy at the edges.",
+                    "duration_seconds": 240,
+                    "duration_source": "estimated",
+                    "attention_type": "hands_on",
+                    "action_type": "sear",
+                },
+                {
+                    "text": "Add doubanjiang and garlic; stir-fry until fragrant.",
+                    "duration_seconds": 60,
+                    "duration_source": "estimated",
+                    "attention_type": "hands_on",
+                    "action_type": "season",
+                },
+                {
+                    "text": "Drain the tofu, slide it into the wok, and simmer gently with stock.",
+                    "duration_seconds": 180,
+                    "duration_source": "estimated",
+                    "attention_type": "passive",
+                    "action_type": "simmer",
+                },
+                {
+                    "text": "Thicken with a cornstarch slurry, finish with green onion and Sichuan pepper.",
+                    "duration_seconds": 60,
+                    "duration_source": "estimated",
+                    "attention_type": "hands_on",
+                    "action_type": "assemble",
+                },
             ],
             "tips": ["Drain the tofu well before adding it — it absorbs sauce better."],
         }
