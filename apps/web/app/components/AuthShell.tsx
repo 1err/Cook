@@ -8,8 +8,6 @@ const HERO_IMAGE =
 
 export function AuthShell({
   title,
-  subtitle,
-  eyebrow,
   children,
   footer,
 }: {
@@ -39,15 +37,6 @@ export function AuthShell({
             Chef World
           </span>
         </div>
-        <div className="auth-hero__copy">
-          <span className="auth-hero__pill">Recipe workspace</span>
-          <h2 className="auth-hero__title font-headline">
-            Plan meals with calm, editorial clarity.
-          </h2>
-          <p className="auth-hero__sub">
-            Import from video, build your library, and sync a shopping list—without the clutter of a typical recipe app.
-          </p>
-        </div>
       </section>
 
       <section className="auth-panel" style={{ position: "relative" }}>
@@ -56,27 +45,10 @@ export function AuthShell({
         </div>
         <div className="auth-panel__inner">
           <header style={{ marginBottom: "2.25rem" }}>
-            <h1 className="font-headline" style={{ fontSize: "clamp(1.75rem, 4vw, 2.25rem)", fontWeight: 800, letterSpacing: "-0.03em", margin: "0 0 0.65rem", color: "var(--on-surface)" }}>
+            <h1 className="cw-display" style={{ fontSize: "clamp(2rem, 4vw, 2.75rem)", fontWeight: 600, letterSpacing: "-0.035em", margin: 0, color: "var(--cw-color-ink)" }}>
               {title}
             </h1>
-            <p style={{ margin: 0, color: "var(--on-surface-variant)", fontWeight: 500, fontSize: "1rem", lineHeight: 1.5 }}>
-              {subtitle}
-            </p>
           </header>
-
-          <p
-            className="font-headline"
-            style={{
-              fontSize: "0.8rem",
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-              color: "var(--on-surface-variant)",
-              marginBottom: "1.25rem",
-            }}
-          >
-            {eyebrow}
-          </p>
 
           {children}
 
