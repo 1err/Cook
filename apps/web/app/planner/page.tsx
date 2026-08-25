@@ -42,6 +42,12 @@ type DateMutationQueue = {
   generation: number;
 };
 
+type SlotPanel = {
+  date: string;
+  slot: MealType;
+  mode: "add" | "manage";
+};
+
 function todayYmd(): string {
   const n = new Date();
   const y = n.getFullYear();
@@ -69,7 +75,7 @@ function PlannerPageContent() {
   const [draggingSlot, setDraggingSlot] = useState<{ date: string; slot: MealType } | null>(null);
   const [sideSearch, setSideSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<LibraryFilterId>("all");
-  const [slotPicker, setSlotPicker] = useState<{ date: string; slot: MealType } | null>(null);
+  const [slotPicker, setSlotPicker] = useState<SlotPanel | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [planLoadFailed, setPlanLoadFailed] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -307,6 +313,14 @@ function PlannerPageContent() {
   }
 
   function openRecipePicker(date: string, slot: MealType) {
+    openSlotPanel(date, slot, "add");
+  }
+
+  function openRecipeManager(date: string, slot: MealType) {
+    openSlotPanel(date, slot, "manage");
+  }
+
+  function openSlotPanel(date: string, slot: MealType, mode: SlotPanel["mode"]) {
     if (planLoadFailed) return;
     const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const slotIndex = String(MEAL_PLAN_SLOTS.indexOf(slot));
@@ -317,7 +331,7 @@ function PlannerPageContent() {
       ?? null;
     pickerTriggerRef.current = trigger;
     pickerFallbackRef.current = fallback;
-    setSlotPicker({ date, slot });
+    setSlotPicker({ date, slot, mode });
   }
 
   useEffect(() => {
@@ -378,6 +392,13 @@ function PlannerPageContent() {
     return `${short} ${dayOfMonth(slotPicker.date)}`;
   }, [dates, slotPicker]);
   const slotPickerMealLabel = slotPicker ? t(PLANNER_MEAL_LABEL_KEYS[slotPicker.slot]) : "";
+  const slotPickerRecipeIds = slotPicker
+    ? (planByDate[slotPicker.date] ?? emptyMealPlanSlots())[slotPicker.slot]
+    : [];
+  const slotPickerRecipeIdSet = new Set(slotPickerRecipeIds);
+  const slotPickerRecipes = slotPickerRecipeIds
+    .map((recipeId) => recipeById[recipeId])
+    .filter((recipe): recipe is Recipe => Boolean(recipe));
 
   if (loading) return <PageShell><p className={styles.status}>{t("common.loading")}</p></PageShell>;
 
@@ -448,9 +469,10 @@ function PlannerPageContent() {
               type="button"
               className="planner-source-card__add font-headline"
               onClick={() => handlePickerSelect(r.id)}
-              aria-label={`${t("common.add")} ${r.title}`}
+              disabled={slotPickerRecipeIdSet.has(r.id)}
+              aria-label={`${t(slotPickerRecipeIdSet.has(r.id) ? "common.added" : "common.add")} ${r.title}`}
             >
-              {t("common.add")}
+              {t(slotPickerRecipeIdSet.has(r.id) ? "common.added" : "common.add")}
             </button>
           ) : null}
         </div>
@@ -525,6 +547,7 @@ function PlannerPageContent() {
           onChoose={(date, slot) => {
             openRecipePicker(date, slot);
           }}
+          onManage={openRecipeManager}
           onOpen={openRecipe}
           onRemove={removeMeal}
           onDragOver={handleDragOver}
@@ -538,7 +561,11 @@ function PlannerPageContent() {
             className="planner-mobile-picker"
             role="dialog"
             aria-modal="true"
-            aria-label={t("planner.chooseRecipeForMealSlot")}
+            aria-label={t(
+              slotPicker.mode === "manage"
+                ? "planner.manageRecipeSlot"
+                : "planner.chooseRecipeForMealSlot",
+            )}
           >
             <button
               type="button"
@@ -551,7 +578,12 @@ function PlannerPageContent() {
                 <div>
                   <p className="planner-mobile-picker__kicker font-headline">{slotPickerDayLabel}</p>
                   <h2 className="planner-mobile-picker__title font-headline">
-                    {t("planner.addToSlot", { slot: slotPickerMealLabel })}
+                    {t(
+                      slotPicker.mode === "manage"
+                        ? "planner.plannedForSlot"
+                        : "planner.addToSlot",
+                      { slot: slotPickerMealLabel },
+                    )}
                   </h2>
                 </div>
                 <button
@@ -566,8 +598,52 @@ function PlannerPageContent() {
                   </span>
                 </button>
               </div>
-              <div className="planner-mobile-picker__controls">{recipeSourceControls}</div>
-              <div className="planner-mobile-picker__list">{pickerRecipeSourceList}</div>
+              {slotPicker.mode === "add" ? (
+                <>
+                  <div className="planner-mobile-picker__controls">{recipeSourceControls}</div>
+                  <div className="planner-mobile-picker__list">{pickerRecipeSourceList}</div>
+                </>
+              ) : (
+                <>
+                  <div className="planner-slot-manager__list">
+                    {slotPickerRecipes.length ? slotPickerRecipes.map((recipe) => (
+                      <div key={recipe.id} className="planner-slot-manager__recipe">
+                        <div className="planner-slot-manager__thumb">
+                          {recipe.thumbnail_url ? <img src={recipe.thumbnail_url} alt="" /> : null}
+                        </div>
+                        <p className="planner-slot-manager__title font-headline" title={recipe.title}>
+                          {recipe.title}
+                        </p>
+                        <button
+                          type="button"
+                          className="planner-slot-manager__remove font-headline"
+                          onClick={() => removeMeal(slotPicker.date, slotPicker.slot, recipe.id)}
+                          disabled={planLoadFailed}
+                          aria-label={t("planner.removeRecipeFromSlot", {
+                            title: recipe.title,
+                            slot: slotPickerMealLabel,
+                            date: slotPicker.date,
+                          })}
+                        >
+                          <span className="material-symbols-outlined" aria-hidden="true">close</span>
+                        </button>
+                      </div>
+                    )) : (
+                      <p className="planner-source-empty">{t("planner.noRecipesPlanned")}</p>
+                    )}
+                  </div>
+                  <div className="planner-slot-manager__footer">
+                    <button
+                      type="button"
+                      className="planner-slot-manager__add font-headline"
+                      onClick={() => setSlotPicker((current) => current ? { ...current, mode: "add" } : null)}
+                    >
+                      <span className="material-symbols-outlined" aria-hidden="true">add</span>
+                      {t("planner.addRecipe")}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         ) : null}

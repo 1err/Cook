@@ -40,9 +40,9 @@
   color: var(--cw-color-ink);
   font-family: var(--cw-type-display-family), var(--cw-type-display-fallback);
   font-size: clamp(2rem, 4vw, 3rem);
-  font-weight: 600;
-  letter-spacing: -0.035em;
-  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1.04;
   margin: 0;
 }
 

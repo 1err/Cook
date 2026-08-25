@@ -25,12 +25,14 @@ vi.mock("../lib/i18n", () => ({ useT: mockUseT }));
 
 const messages: Record<string, string> = {
   "common.add": "Add",
+  "common.added": "Added",
   "common.loading": "Loading...",
   "common.next": "Next",
   "common.previous": "Previous",
   "nav.shoppingList": "Shopping List",
   "planner.addAnotherRecipe": "Add another recipe",
   "planner.addAnotherRecipeForSlot": "Add another recipe for {slot} on {date}",
+  "planner.addRecipe": "Add recipe",
   "planner.addToSlot": "Add to {slot}",
   "planner.chooseRecipe": "Choose recipe",
   "planner.chooseRecipeForMealSlot": "Choose recipe for meal slot",
@@ -43,8 +45,11 @@ const messages: Record<string, string> = {
   "planner.mealBreakfast": "breakfast",
   "planner.mealLunch": "lunch",
   "planner.mealDinner": "dinner",
+  "planner.manageRecipeSlot": "Manage recipes for meal slot",
   "planner.noRecipesMatch": "No recipes match the current search or filter.",
   "planner.openRecipe": "Open {title} for {slot} on {date}",
+  "planner.plannedForSlot": "Planned for {slot}",
+  "planner.removeRecipeFromSlot": "Remove {title} from {slot} on {date}",
   "planner.phoneFriendlyDesc": "Tap any meal slot to choose from your saved recipes.",
   "planner.phoneFriendlyTitle": "Phone-friendly planning",
   "planner.planYourWeek": "to plan your week.",
@@ -57,6 +62,8 @@ const messages: Record<string, string> = {
   "planner.shoppingListUsesPlan": "Shopping list uses this week's plan.",
   "planner.sortedAZ": "Sorted A-Z",
   "planner.title": "Weekly planner",
+  "planner.viewAllRecipes": "View all {count}",
+  "planner.viewAllRecipesForSlot": "View all {count} planned recipes for {slot} on {date}",
   "recipe.ingredientsCount": "{count} ingredients",
 };
 
@@ -197,6 +204,79 @@ test("keeps Add actions and recipe media in the open recipe picker, not the reci
   expect(within(dialog).getAllByText("0 ingredients")).toHaveLength(2);
 });
 
+test("marks recipes already planned in the selected slot as added", async () => {
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/meal-plan?")) {
+      return Promise.resolve(jsonResponse([
+        { date: "2026-08-10", breakfast: [], lunch: [], dinner: ["recipe-1"] },
+      ]));
+    }
+    if (path === "/recipes") {
+      return Promise.resolve(jsonResponse([
+        { id: "recipe-1", title: "Test recipe", ingredients: [] },
+        { id: "recipe-2", title: "Second recipe", ingredients: [] },
+      ]));
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  const user = userEvent.setup();
+  render(<PlannerPage />);
+
+  await user.click(await screen.findByRole("button", {
+    name: "Add another recipe for dinner on 2026-08-10",
+  }));
+  const picker = await screen.findByRole("dialog", { name: "Choose recipe for meal slot" });
+
+  expect(within(picker).getByRole("button", { name: "Added Test recipe" })).toBeDisabled();
+  expect(within(picker).getByRole("button", { name: "Add Second recipe" })).toBeEnabled();
+});
+
+test("lists every overflow recipe and removes any chosen recipe from the manager", async () => {
+  const dinner = ["recipe-1", "recipe-2", "recipe-3", "recipe-4", "recipe-5"];
+  const recipes = dinner.map((id, index) => ({
+    id,
+    title: ["First", "Second", "Third", "Fourth", "Fifth"][index] + " recipe",
+    ingredients: [],
+  }));
+  const requests: Array<{ dinner: string[] }> = [];
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+    if (path.startsWith("/meal-plan?")) {
+      return Promise.resolve(jsonResponse([
+        { date: "2026-08-10", breakfast: [], lunch: [], dinner },
+      ]));
+    }
+    if (path === "/recipes") return Promise.resolve(jsonResponse(recipes));
+    if (path === "/meal-plan/2026-08-10" && options?.method === "PUT") {
+      const slots = JSON.parse(String(options.body));
+      requests.push(slots);
+      return Promise.resolve(jsonResponse({ date: "2026-08-10", ...slots }));
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  const user = userEvent.setup();
+  render(<PlannerPage />);
+
+  await user.click(await screen.findByRole("button", {
+    name: "View all 5 planned recipes for dinner on 2026-08-10",
+  }));
+  let manager = await screen.findByRole("dialog", { name: "Manage recipes for meal slot" });
+  for (const recipe of recipes) {
+    expect(within(manager).getByText(recipe.title)).toBeVisible();
+  }
+
+  await user.click(within(manager).getByRole("button", {
+    name: "Remove Fourth recipe from dinner on 2026-08-10",
+  }));
+  await waitFor(() => {
+    expect(requests.at(-1)?.dinner).toEqual(["recipe-1", "recipe-2", "recipe-3", "recipe-5"]);
+    expect(within(manager).queryByText("Fourth recipe")).not.toBeInTheDocument();
+  });
+
+  await user.click(within(manager).getByRole("button", { name: "Add recipe" }));
+  manager = await screen.findByRole("dialog", { name: "Choose recipe for meal slot" });
+  expect(within(manager).getByRole("button", { name: "Added First recipe" })).toBeDisabled();
+});
+
 test("contains picker focus and restores it after Escape, Close, and backdrop dismissal", async () => {
   const user = userEvent.setup();
   render(<PlannerPage />);
@@ -263,6 +343,17 @@ test("restores picker focus to the meal-slot fallback when selection replaces it
 });
 
 test("restores the prior plan and reports an error when an optimistic meal-plan write fails", async () => {
+  const failedWrite = deferredResponse();
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
+    if (path === "/recipes") {
+      return Promise.resolve(jsonResponse([{ id: "recipe-1", title: "Test recipe", ingredients: [] }]));
+    }
+    if (path === "/meal-plan/2026-08-10" && options?.method === "PUT") {
+      return failedWrite.promise;
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
   const user = userEvent.setup();
   render(<PlannerPage />);
 
@@ -279,6 +370,7 @@ test("restores the prior plan and reports an error when an optimistic meal-plan 
       name: /Open Test recipe/,
     }),
   ).toBeVisible();
+  failedWrite.resolve(jsonResponse({ detail: "save failed" }, 500));
 
   await waitFor(() => {
     expect(

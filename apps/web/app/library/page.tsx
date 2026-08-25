@@ -212,7 +212,7 @@ function LibraryPageContent() {
             const tags = getRecipeTags(recipe).slice(0, 2);
             return (
               <li key={recipe.id} className={styles.publicCard}>
-                <div className={styles.publicMedia}>
+                <div className={`${styles.publicMedia} ${recipe.thumbnail_url ? "" : styles.publicMediaPlaceholder}`}>
                   {recipe.thumbnail_url ? (
                     <img src={recipe.thumbnail_url} alt="" />
                   ) : (

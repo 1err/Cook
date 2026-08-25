@@ -41,6 +41,7 @@ function slotProps() {
     recipesById: recipes,
     isDragOver: false,
     onChoose: vi.fn(),
+    onManage: vi.fn(),
     onOpen: vi.fn(),
     onRemove: vi.fn(),
     onDragOver: vi.fn(),
@@ -89,7 +90,7 @@ test("marks four recipes with the overflow layout and exposes their complete tit
   expect(screen.getByRole("button", { name: /Open One/ })).toHaveAttribute("title", "One");
 });
 
-test("summarizes four or more recipes without stretching the meal cell", async () => {
+test("opens management for four or more recipes without stretching the meal cell", async () => {
   const user = userEvent.setup();
   const props = { ...slotProps(), recipeIds: ["r1", "r2", "r3", "r4"] };
   renderSlot(<PlannerMealSlot {...props} />);
@@ -100,35 +101,38 @@ test("summarizes four or more recipes without stretching the meal cell", async (
   expect(within(recipeList).getByRole("button", { name: "Open One for dinner on 2026-08-10" })).toBeVisible();
   expect(within(recipeList).getByRole("button", { name: "Open Two for dinner on 2026-08-10" })).toBeVisible();
   expect(within(recipeList).queryByRole("button", { name: "Open Four for dinner on 2026-08-10" })).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: /2 more: Dinner 2026-08-10/ }));
-  expect(props.onChoose).toHaveBeenCalledTimes(1);
+  await user.click(screen.getByRole("button", {
+    name: "View all 4 planned recipes for dinner on 2026-08-10",
+  }));
+  expect(props.onManage).toHaveBeenCalledTimes(1);
+  expect(props.onChoose).not.toHaveBeenCalled();
 });
 
-test("shows a visible overflow cue for recipes hidden from the compact composition", () => {
+test("shows a visible management cue for every recipe in the compact composition", () => {
   renderSlot(<PlannerMealSlot {...slotProps()} recipeIds={["r1", "r2", "r3", "r4"]} />);
 
-  expect(screen.getByText("+ 2 more")).toBeVisible();
+  expect(screen.getByText("View all 4")).toBeVisible();
 });
 
-test("updates and removes the overflow cue as parent recipe data changes", () => {
+test("updates and removes the management cue as parent recipe data changes", () => {
   const props = { ...slotProps(), recipeIds: ["r1", "r2", "r3", "r4", "r5"] };
   const view = renderSlot(<PlannerMealSlot {...props} />);
 
-  expect(screen.getByText("+ 3 more")).toBeVisible();
+  expect(screen.getByText("View all 5")).toBeVisible();
 
   view.rerender(
     <I18nProvider>
       <PlannerMealSlot {...props} recipeIds={["r1", "r2", "r3", "r4"]} />
     </I18nProvider>,
   );
-  expect(screen.getByText("+ 2 more")).toBeVisible();
+  expect(screen.getByText("View all 4")).toBeVisible();
 
   view.rerender(
     <I18nProvider>
       <PlannerMealSlot {...props} recipeIds={["r1", "r2", "r3"]} />
     </I18nProvider>,
   );
-  expect(screen.queryByRole("button", { name: /more:/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /View all .* planned recipes/ })).not.toBeInTheDocument();
 });
 
 test("forwards visible recipe, add, and drag callbacks", async () => {
@@ -230,5 +234,5 @@ test("localizes the recipe overflow cue in Chinese", async () => {
   localStorage.setItem("cooking-ui-language", "zh");
   renderSlot(<PlannerMealSlot {...slotProps()} recipeIds={["r1", "r2", "r3", "r4"]} />);
 
-  expect(await screen.findByText("+ 另 2 道")).toBeVisible();
+  expect(await screen.findByText("查看全部 4 道")).toBeVisible();
 });

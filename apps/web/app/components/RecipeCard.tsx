@@ -30,12 +30,6 @@ export function RecipeCard({ recipe, isHighlighted = false }: RecipeCardProps) {
         <div className={styles.body}>
           <h2 className={`cw-display ${styles.title}`}>{recipe.title}</h2>
 
-          {recipe.total_time_minutes ? (
-            <p className={styles.time} data-testid="recipe-time">
-              {recipe.total_time_minutes} min
-            </p>
-          ) : null}
-
           {featuredTags.length ? (
             <div className={styles.tags} aria-label="Recipe tags">
               {featuredTags.map((tag) => (

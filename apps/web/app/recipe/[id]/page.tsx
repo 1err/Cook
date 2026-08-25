@@ -100,7 +100,7 @@ function RecipeDetailContent() {
             {typeof recipe.total_time_minutes === "number" ? (
               <dl className={styles.meta}>
                 <div>
-                  <dt>{t("recipe.totalTime.minutesSuffix")}</dt>
+                  <dt>{t("recipe.totalTime")}</dt>
                   <dd>{recipe.total_time_minutes} min</dd>
                 </div>
               </dl>

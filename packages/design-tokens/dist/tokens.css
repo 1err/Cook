@@ -25,9 +25,9 @@
   --cw-radius-card: 16px;
   --cw-radius-modal: 24px;
   --cw-radius-round: 9999px;
-  --cw-type-display-family: Source Serif 4;
+  --cw-type-display-family: Inter;
   --cw-type-ui-family: Inter;
-  --cw-type-display-fallback: Iowan Old Style, Songti SC, ui-serif, Georgia, serif;
+  --cw-type-display-fallback: SF Pro Display, PingFang SC, system-ui, sans-serif;
   --cw-type-ui-fallback: SF Pro Text, PingFang SC, system-ui, sans-serif;
   --cw-motion-fast-ms: 120ms;
   --cw-motion-standard-ms: 180ms;

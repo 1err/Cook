@@ -88,6 +88,10 @@ async function installPlannerFixtures(page: Page) {
     }),
   );
   await page.route("**/recipes", (route) => fulfillJson(route, recipes));
+  await page.route("**/recipes/*", (route) => {
+    const recipeId = route.request().url().split("/").at(-1);
+    return fulfillJson(route, recipes.find((recipe) => recipe.id === recipeId) ?? null);
+  });
   await page.route("**/meal-plan?*", (route) => fulfillJson(route, [...plans.values()]));
   await page.route("**/meal-plan/*", async (route) => {
     if (route.request().method() !== "PUT") {
@@ -130,7 +134,9 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
   const overflowSlot = page.locator('[data-date="2026-08-11"][data-slot-index="0"]');
   await expect(overflowSlot.getByRole("region")).toHaveAttribute("data-recipe-layout", "overflow");
   await expect(
-    overflowSlot.getByRole("button", { name: "2 more: Breakfast 2026-08-11" }),
+    overflowSlot.getByRole("button", {
+      name: "View all 4 planned recipes for breakfast on 2026-08-11",
+    }),
   ).toBeVisible();
   await expect(overflowSlot.getByRole("button", { name: /Open Recipe 07/ })).toBeVisible();
   await expect(overflowSlot.getByRole("button", { name: /Open Recipe 08/ })).toBeVisible();
@@ -149,6 +155,7 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
       rightGutter: window.innerWidth - mainRect.right,
       viewportWidth: window.innerWidth,
       boardBottom: board.getBoundingClientRect().bottom,
+      viewportBottomGap: window.innerHeight - board.getBoundingClientRect().bottom,
     };
   });
   expect(workspaceMetrics.documentWidth).toBeLessThanOrEqual(workspaceMetrics.viewportWidth);
@@ -160,6 +167,8 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
     ),
     JSON.stringify(workspaceMetrics),
   ).toBeLessThanOrEqual(1);
+  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeGreaterThanOrEqual(24);
+  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeLessThanOrEqual(72);
 
   const mealCardMetrics = await page
     .getByRole("button", { name: /Open Recipe 01/ })
@@ -172,10 +181,15 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
         cardWidth: card.getBoundingClientRect().width,
         columns: getComputedStyle(card).gridTemplateColumns,
         imageDisplay: getComputedStyle(image).display,
+        imageWidth: image.getBoundingClientRect().width,
+        titleVisibleRatio: title.clientWidth / title.scrollWidth,
         titleWidth: title.getBoundingClientRect().width,
+        titleWhiteSpace: getComputedStyle(title).whiteSpace,
       };
     });
-  expect(mealCardMetrics.titleWidth, JSON.stringify(mealCardMetrics)).toBeGreaterThan(80);
+  expect(mealCardMetrics.imageWidth, JSON.stringify(mealCardMetrics)).toBeGreaterThanOrEqual(42);
+  expect(mealCardMetrics.titleVisibleRatio, JSON.stringify(mealCardMetrics)).toBeGreaterThan(0.72);
+  expect(mealCardMetrics.titleWhiteSpace).toBe("nowrap");
 
   await expect(page).toHaveScreenshot("planner-matrix.png", {
     animations: "disabled",
@@ -186,12 +200,24 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
 test("preserves picker, remove, drag, and open interactions", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Planner interactions are verified once.");
 
+  await page.getByRole("button", {
+    name: "View all 4 planned recipes for breakfast on 2026-08-11",
+  }).click();
+  const manager = page.getByRole("dialog", { name: "Manage recipes for meal slot" });
+  await expect(manager).toBeVisible();
+  for (const number of ["07", "08", "09", "10"]) {
+    await expect(manager.getByText(`Recipe ${number} with a descriptive two-line title`)).toBeVisible();
+  }
   const removeRequest = page.waitForRequest(
     (request) => request.method() === "PUT" && request.url().endsWith("/meal-plan/2026-08-11"),
   );
-  await page.getByRole("button", { name: /Remove Recipe 07.*breakfast.*2026-08-11/ }).click();
-  expect((await removeRequest).postDataJSON().breakfast).toEqual(["recipe-08", "recipe-09", "recipe-10"]);
-  await expect(page.getByRole("button", { name: /Remove Recipe 08.*breakfast.*2026-08-11/ })).toBeFocused();
+  await manager.getByRole("button", { name: /Remove Recipe 09.*breakfast.*2026-08-11/ }).click();
+  expect((await removeRequest).postDataJSON().breakfast).toEqual(["recipe-07", "recipe-08", "recipe-10"]);
+  await expect(manager.getByText(/Recipe 09 with/)).toHaveCount(0);
+  await manager.getByRole("button", { name: "Add recipe" }).click();
+  const managedPicker = page.getByRole("dialog", { name: "Choose recipe for meal slot" });
+  await expect(managedPicker.getByRole("button", { name: /Added Recipe 07/ })).toBeDisabled();
+  await managedPicker.getByRole("button", { name: "Close recipe picker" }).last().click();
 
   const emptyBreakfast = page.getByRole("button", {
     name: "Choose a recipe for breakfast on 2026-08-12",
@@ -275,7 +301,7 @@ test("keeps the Chinese overflow action inside its meal cell", async ({ page }, 
 
   const slot = page.locator('[data-date="2026-08-11"][data-slot-index="0"]');
   const cue = slot.locator(".planner-slot-overflow-cue");
-  await expect(cue).toContainText("另 2 道");
+  await expect(cue).toContainText("查看全部 4 道");
   const metrics = await cue.evaluate((element) => {
     const cueRect = element.getBoundingClientRect();
     const slotRect = element.closest<HTMLElement>("[data-testid='planner-meal-slot']")!.getBoundingClientRect();

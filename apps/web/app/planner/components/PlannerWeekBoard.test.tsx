@@ -16,6 +16,7 @@ test("renders seven day rows beneath three meal columns", () => {
         recipesById={{}}
         draggingSlot={null}
         onChoose={vi.fn()}
+        onManage={vi.fn()}
         onOpen={vi.fn()}
         onRemove={vi.fn()}
         onDragOver={vi.fn()}

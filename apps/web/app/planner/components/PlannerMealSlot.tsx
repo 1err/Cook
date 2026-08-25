@@ -13,6 +13,7 @@ export type PlannerMealSlotProps = {
   isDragOver: boolean;
   mutationsDisabled?: boolean;
   onChoose: () => void;
+  onManage: () => void;
   onOpen: (recipeId: string) => void;
   onRemove: (recipeId: string) => void;
   onDragOver: React.DragEventHandler<HTMLDivElement>;
@@ -61,6 +62,7 @@ export function PlannerMealSlot({
   isDragOver,
   mutationsDisabled = false,
   onChoose,
+  onManage,
   onOpen,
   onRemove,
   onDragOver,
@@ -79,11 +81,8 @@ export function PlannerMealSlot({
   const removeButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const addRecipeRef = useRef<HTMLButtonElement>(null);
   const slotRecipeFingerprint = slotRecipes.map(({ recipeId }) => recipeId).join("\u0000");
-  const overflowCount = slotRecipes.length > 3 ? slotRecipes.length - 2 : 0;
-  const visibleRecipes = overflowCount ? slotRecipes.slice(0, 2) : slotRecipes;
-  const overflowVisualMessage = overflowCount
-    ? t("planner.moreRecipeCue", { count: overflowCount })
-    : "";
+  const hasOverflow = slotRecipes.length > 3;
+  const visibleRecipes = hasOverflow ? slotRecipes.slice(0, 2) : slotRecipes;
   const recipeLayout = slotRecipes.length > 3
     ? "overflow"
     : (["one", "two", "three"][slotRecipes.length - 1] ?? "one");
@@ -152,14 +151,18 @@ export function PlannerMealSlot({
               </div>
             ))}
           </div>
-          {overflowCount ? (
+          {hasOverflow ? (
             <button
               type="button"
               className="planner-slot-overflow-cue font-headline"
-              onClick={onChoose}
-              aria-label={`${overflowVisualMessage}: ${slotHeading} ${date}`}
+              onClick={onManage}
+              aria-label={t("planner.viewAllRecipesForSlot", {
+                count: slotRecipes.length,
+                slot: slotLabel,
+                date,
+              })}
             >
-              + {overflowVisualMessage}
+              {t("planner.viewAllRecipes", { count: slotRecipes.length })}
             </button>
           ) : null}
           <button

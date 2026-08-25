@@ -15,6 +15,7 @@ export type PlannerWeekBoardProps = {
   draggingSlot: { date: string; slot: MealType } | null;
   mutationsDisabled?: boolean;
   onChoose: (date: string, slot: MealType) => void;
+  onManage: (date: string, slot: MealType) => void;
   onOpen: (recipeId: string) => void;
   onRemove: (date: string, slot: MealType, recipeId: string) => void;
   onDragOver: React.DragEventHandler<HTMLDivElement>;
@@ -38,6 +39,7 @@ export function PlannerWeekBoard({
   draggingSlot,
   mutationsDisabled = false,
   onChoose,
+  onManage,
   onOpen,
   onRemove,
   onDragOver,
@@ -76,6 +78,7 @@ export function PlannerWeekBoard({
                 isDragOver={draggingSlot?.date === date && draggingSlot.slot === slot}
                 mutationsDisabled={mutationsDisabled}
                 onChoose={() => onChoose(date, slot)}
+                onManage={() => onManage(date, slot)}
                 onOpen={onOpen}
                 onRemove={(recipeId) => onRemove(date, slot, recipeId)}
                 onDragOver={onDragOver}

@@ -60,3 +60,17 @@ test("closes the account menu with Escape and restores focus", async ({ page }) 
   await page.keyboard.press("Escape");
   await expect(account).toBeFocused();
 });
+
+test("uses the local sans family for the brand and page title", async ({ page }) => {
+  const brand = page.locator('a[aria-label="Chef World"] span:last-child');
+  const pageTitle = page.getByRole("heading", { level: 1 });
+  await expect(brand).toHaveCount(1);
+  await expect(pageTitle).toBeVisible();
+  const fontFamilies = {
+    brand: await brand.evaluate((element) => getComputedStyle(element).fontFamily),
+    pageTitle: await pageTitle.evaluate((element) => getComputedStyle(element).fontFamily),
+  };
+
+  expect(fontFamilies.brand).toMatch(/^Inter/);
+  expect(fontFamilies.pageTitle).toMatch(/^Inter/);
+});
