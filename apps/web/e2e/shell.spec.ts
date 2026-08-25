@@ -23,6 +23,18 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("renders an accessible responsive authenticated shell", async ({ page }, testInfo) => {
+  if (testInfo.project.name === "desktop") {
+    const geometry = await page.locator("header > div").evaluate((inner) => {
+      const rect = inner.getBoundingClientRect();
+      return {
+        left: rect.left,
+        right: window.innerWidth - rect.right,
+        width: rect.width,
+      };
+    });
+    expect(geometry.width).toBe(1280);
+    expect(Math.abs(geometry.left - geometry.right)).toBeLessThanOrEqual(1);
+  }
   await expect(page.getByRole("link", { name: "Add Recipe" })).toBeVisible();
   const navigationMenu = page.getByRole("button", { name: "Open navigation menu" });
   if (testInfo.project.name === "desktop") {

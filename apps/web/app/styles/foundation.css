@@ -1,3 +1,8 @@
+:root {
+  --cw-shell-max: 80rem;
+  --cw-shell-gutter: clamp(1rem, 2vw, 2rem);
+}
+
 body {
   background: var(--cw-color-canvas);
   color: var(--cw-color-ink);
