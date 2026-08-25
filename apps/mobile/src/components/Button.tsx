@@ -78,7 +78,7 @@ export function Button({
 const styles = StyleSheet.create({
   base: {
     minHeight: 44,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -103,12 +103,14 @@ const variantStyles: Record<Variant, VariantStyle> = {
   },
   secondary: {
     container: {
-      backgroundColor: colors.subtleSurface,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.divider,
     },
     label: { color: colors.ink },
   },
   ghost: {
-    container: { backgroundColor: "transparent" },
+    container: { backgroundColor: "transparent", paddingHorizontal: spacing.md },
     label: { color: colors.terracotta },
   },
   destructive: {

@@ -12,3 +12,12 @@ test("announces loading and blocks duplicate presses", async () => {
   await fireEvent.press(button);
   expect(onPress).not.toHaveBeenCalled();
 });
+
+test("uses a stable, non-pill control shape", async () => {
+  await render(<Button title="Save" onPress={jest.fn()} />);
+
+  expect(screen.getByRole("button", { name: "Save" })).toHaveStyle({
+    minHeight: 44,
+    borderRadius: 12,
+  });
+});

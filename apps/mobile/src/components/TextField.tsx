@@ -36,6 +36,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
         ) : null}
         <TextInput
           ref={ref}
+          accessibilityLabel={inputProps.accessibilityLabel ?? label}
           placeholderTextColor={colors.onSurfaceVariant}
           selectionColor={colors.primary}
           clearButtonMode={inputProps.secureTextEntry ? "never" : "while-editing"}
@@ -62,7 +63,7 @@ const styles = StyleSheet.create({
   box: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,

@@ -16,6 +16,7 @@ import type {
   MainTabsParamList,
   RootStackParamList,
 } from "../../navigation/types";
+import { RecipeListMeta } from "./RecipeListMeta";
 
 type Props = CompositeScreenProps<
   NativeStackScreenProps<LibraryStackParamList, "FriendLibrary">,
@@ -145,9 +146,7 @@ export function FriendLibraryScreen({ route }: Props) {
               <Text style={styles.cardTitle} numberOfLines={2}>
                 {item.title}
               </Text>
-              <Text style={styles.cardSub}>
-                {item.ingredients.length} {item.ingredients.length === 1 ? "ingredient" : "ingredients"}
-              </Text>
+              <RecipeListMeta recipe={item} />
               <View style={styles.action}>
                 <Button
                   title={owned ? "In your library" : "Add to library"}
@@ -180,18 +179,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.white,
-    borderRadius: radii.xl,
+    borderRadius: radii.lg,
     padding: spacing.md,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.divider,
+    shadowColor: colors.ink,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
     elevation: 1,
   },
   thumb: { width: 64, height: 64, borderRadius: radii.lg, backgroundColor: colors.primaryFixed },
   thumbPlaceholder: { alignItems: "center", justifyContent: "center" },
   cardBody: { flex: 1, marginHorizontal: spacing.md },
   cardTitle: { ...typography.headline, color: colors.onSurface },
-  cardSub: { ...typography.subhead, color: colors.onSurfaceVariant, marginTop: 2 },
   action: { marginTop: spacing.sm, alignSelf: "flex-start" },
 });

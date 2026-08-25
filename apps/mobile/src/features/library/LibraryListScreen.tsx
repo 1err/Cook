@@ -24,6 +24,7 @@ import type {
   MainTabsParamList,
   RootStackParamList,
 } from "../../navigation/types";
+import { RecipeListMeta } from "./RecipeListMeta";
 
 type Props = CompositeScreenProps<
   NativeStackScreenProps<LibraryStackParamList, "LibraryList">,
@@ -184,9 +185,7 @@ export function LibraryListScreen({ navigation }: Props) {
                 <Text style={styles.cardTitle} numberOfLines={2}>
                   {item.title}
                 </Text>
-                <Text style={styles.cardSub}>
-                  {item.ingredients.length} {item.ingredients.length === 1 ? "ingredient" : "ingredients"}
-                </Text>
+                <RecipeListMeta recipe={item} />
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceVariant} />
             </Pressable>
@@ -206,9 +205,7 @@ export function LibraryListScreen({ navigation }: Props) {
               <Text style={styles.cardTitle} numberOfLines={2}>
                 {item.title}
               </Text>
-              <Text style={styles.cardSub}>
-                {item.ingredients.length} {item.ingredients.length === 1 ? "ingredient" : "ingredients"}
-              </Text>
+              <RecipeListMeta recipe={item} />
               <View style={styles.publicAction}>
                 <Button
                   title={owned ? "In your library" : "Add to library"}
@@ -251,17 +248,19 @@ const styles = StyleSheet.create({
   segmentRow: {
     flexDirection: "row",
     backgroundColor: colors.surfaceContainerLow,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     padding: 4,
     marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
   segment: {
     flex: 1,
     paddingVertical: spacing.sm,
     alignItems: "center",
-    borderRadius: radii.full,
+    borderRadius: radii.sm,
   },
-  segmentActive: { backgroundColor: colors.white, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  segmentActive: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.divider },
   segmentPressed: { opacity: 0.85 },
   segmentLabel: { ...typography.headline, color: colors.onSurfaceVariant },
   segmentLabelActive: { color: colors.onSurface },
@@ -269,12 +268,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.white,
-    borderRadius: radii.xl,
+    borderRadius: radii.lg,
     padding: spacing.md,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.divider,
+    shadowColor: colors.ink,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
     elevation: 1,
   },
   cardPressed: { opacity: 0.92 },
@@ -282,6 +283,5 @@ const styles = StyleSheet.create({
   thumbPlaceholder: { alignItems: "center", justifyContent: "center" },
   cardBody: { flex: 1, marginHorizontal: spacing.md },
   cardTitle: { ...typography.headline, color: colors.onSurface },
-  cardSub: { ...typography.subhead, color: colors.onSurfaceVariant, marginTop: 2 },
   publicAction: { marginTop: spacing.sm, alignSelf: "flex-start" },
 });

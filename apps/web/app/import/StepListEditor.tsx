@@ -4,93 +4,101 @@ import { useState } from "react";
 import type { RecipeStep } from "@cooking/shared";
 import { useT } from "../lib/i18n";
 import { DurationField } from "./DurationField";
+import styles from "./ImportFlow.module.css";
 
 export interface StepListEditorProps {
   steps: RecipeStep[];
   onChange: (next: RecipeStep[]) => void;
-  uploadImage: (file: File) => Promise<string>;
+  uploadImage?: (file: File) => Promise<string>;
 }
 
 export function StepListEditor({ steps, onChange, uploadImage }: StepListEditorProps) {
   const t = useT();
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
-
-  const updateAt = (i: number, next: RecipeStep) => {
-    const arr = steps.slice();
-    arr[i] = next;
-    onChange(arr);
+  const updateAt = (index: number, next: RecipeStep) => {
+    const updated = steps.slice();
+    updated[index] = next;
+    onChange(updated);
   };
-  const removeAt = (i: number) => onChange(steps.filter((_, idx) => idx !== i));
-  const swap = (i: number, j: number) => {
-    if (j < 0 || j >= steps.length) return;
-    const arr = steps.slice();
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-    onChange(arr);
+  const removeAt = (index: number) => onChange(steps.filter((_, itemIndex) => itemIndex !== index));
+  const swap = (index: number, nextIndex: number) => {
+    if (nextIndex < 0 || nextIndex >= steps.length) return;
+    const updated = steps.slice();
+    [updated[index], updated[nextIndex]] = [updated[nextIndex], updated[index]];
+    onChange(updated);
   };
-  const append = () => onChange([...steps, { text: "" }]);
 
-  const onPickImage = async (i: number, file: File) => {
-    setUploadingIndex(i);
+  async function onPickImage(index: number, file: File) {
+    if (!uploadImage) return;
+    setUploadingIndex(index);
     try {
-      const url = await uploadImage(file);
-      updateAt(i, { ...steps[i], image_url: url });
+      const imageUrl = await uploadImage(file);
+      updateAt(index, { ...steps[index], image_url: imageUrl });
     } finally {
       setUploadingIndex(null);
     }
-  };
+  }
 
   return (
-    <section className="step-list-editor">
-      <label className="field-label">{t("recipe.steps")}</label>
-      {steps.length === 0 && <p className="hint">{t("recipe.steps.empty")}</p>}
-      <ol>
-        {steps.map((step, i) => (
-          <li key={i} className="step-row">
-            <div className="step-row__index">{i + 1}</div>
-            <div className="step-row__body">
+    <section className={styles.editorSection}>
+      <div className={styles.sectionHeader}>
+        <h2 className="cw-display">{t("recipe.steps")}</h2>
+        <button type="button" onClick={() => onChange([...steps, { text: "" }])}>
+          + {t("recipe.step.addRow")}
+        </button>
+      </div>
+      {steps.length === 0 ? <p className={styles.muted}>{t("recipe.steps.empty")}</p> : null}
+      <ol className={styles.stepRows}>
+        {steps.map((step, index) => (
+          <li key={index}>
+            <span className={styles.stepIndex}>{index + 1}</span>
+            <div className={styles.stepBody}>
               <textarea
-                rows={2}
+                rows={3}
+                aria-label={`Step ${index + 1}`}
                 placeholder={t("recipe.step.textPlaceholder")}
                 value={step.text}
-                onChange={(e) => updateAt(i, { ...step, text: e.target.value })}
+                onChange={(event) => updateAt(index, { ...step, text: event.target.value })}
               />
-              <div className="step-row__meta">
-                <label>{t("recipe.step.duration")}</label>
+              <div className={styles.stepDuration}>
+                <span>{t("recipe.step.duration")}</span>
                 <DurationField
                   seconds={step.duration_seconds ?? null}
-                  onChange={(next) => updateAt(i, { ...step, duration_seconds: next })}
-                  ariaLabel={`step ${i + 1} duration`}
+                  onChange={(next) => updateAt(index, { ...step, duration_seconds: next })}
+                  ariaLabel={`step ${index + 1} duration`}
                 />
               </div>
-              {step.image_url ? (
-                <div className="step-row__image">
-                  <img src={step.image_url} alt="" />
-                  <button type="button" onClick={() => updateAt(i, { ...step, image_url: null })}>
-                    {t("recipe.step.removeImage")}
-                  </button>
-                </div>
-              ) : (
-                <label className="step-row__upload">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => e.target.files?.[0] && onPickImage(i, e.target.files[0])}
-                  />
-                  {uploadingIndex === i ? "Uploading…" : t("recipe.step.uploadImage")}
-                </label>
-              )}
+              {uploadImage ? (
+                step.image_url ? (
+                  <div className={styles.stepImage}>
+                    <img src={step.image_url} alt="" />
+                    <button type="button" onClick={() => updateAt(index, { ...step, image_url: null })}>
+                      {t("recipe.step.removeImage")}
+                    </button>
+                  </div>
+                ) : (
+                  <label className={styles.stepUpload}>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) void onPickImage(index, file);
+                      }}
+                    />
+                    {uploadingIndex === index ? "Uploading…" : t("recipe.step.uploadImage")}
+                  </label>
+                )
+              ) : null}
             </div>
-            <div className="step-row__actions">
-              <button type="button" onClick={() => swap(i, i - 1)} aria-label={t("recipe.step.moveUp")}>↑</button>
-              <button type="button" onClick={() => swap(i, i + 1)} aria-label={t("recipe.step.moveDown")}>↓</button>
-              <button type="button" onClick={() => removeAt(i)} aria-label={t("recipe.step.remove")}>×</button>
+            <div className={styles.rowActions}>
+              <button type="button" onClick={() => swap(index, index - 1)} aria-label={t("recipe.step.moveUp")}>↑</button>
+              <button type="button" onClick={() => swap(index, index + 1)} aria-label={t("recipe.step.moveDown")}>↓</button>
+              <button type="button" onClick={() => removeAt(index)} aria-label={t("recipe.step.remove")}>×</button>
             </div>
           </li>
         ))}
       </ol>
-      <button type="button" className="add-row-btn" onClick={append}>
-        + {t("recipe.step.addRow")}
-      </button>
     </section>
   );
 }

@@ -1,22 +1,17 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import { apiFetch } from "../lib/api";
-import { uploadRecipeImage } from "../lib/uploadRecipeImage";
 import { useT } from "../lib/i18n";
-import {
-  CATEGORY_LABELS,
-  RECIPE_TAG_GROUPS,
-  categoryBadgeStyle,
-  type RecipeTagSlug,
-} from "../lib/recipeCategories";
+import { RECIPE_TAG_GROUPS, type RecipeTagSlug } from "../lib/recipeCategories";
 import type { IngredientItem, Recipe } from "../types";
 import { StepListEditor } from "./StepListEditor";
 import { StringListEditor } from "./StringListEditor";
+import styles from "./ImportFlow.module.css";
 
-async function readErrorMessage(res: Response, fallback: string): Promise<string> {
+async function readErrorMessage(response: Response, fallback: string): Promise<string> {
   try {
-    const text = await res.text();
+    const text = await response.text();
     if (!text.trim()) return fallback;
     try {
       const data = JSON.parse(text);
@@ -39,362 +34,210 @@ export interface DraftRecipeEditorProps {
   onSaveSuccess: (savedId: string) => void;
 }
 
-export function DraftRecipeEditor({
-  draft,
-  onChange,
-  onBack,
-  onSaveSuccess,
-}: DraftRecipeEditorProps) {
+export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: DraftRecipeEditorProps) {
   const t = useT();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [saving, setSaving] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const draftTags = draft.library_tags ?? [];
 
-  const previewText = useMemo(() => {
-    const names = draft.ingredients.map((item) => item.name).filter(Boolean);
-    return names.join(", ");
-  }, [draft.ingredients]);
-
   function toggleDraftTag(tag: RecipeTagSlug) {
-    const nextTags = draft.library_tags ?? [];
     onChange({
       ...draft,
-      library_tags: nextTags.includes(tag)
-        ? nextTags.filter((item) => item !== tag)
-        : [...nextTags, tag],
+      library_tags: draftTags.includes(tag)
+        ? draftTags.filter((item) => item !== tag)
+        : [...draftTags, tag],
     });
   }
 
-  function updateDraftIngredient(index: number, field: keyof IngredientItem, value: string | null) {
+  function updateDraftIngredient(index: number, field: "quantity" | "name", value: string) {
     const nextIngredients = [...draft.ingredients];
     if (!nextIngredients[index]) return;
-    nextIngredients[index] = { ...nextIngredients[index], [field]: value ?? "" };
+    nextIngredients[index] = { ...nextIngredients[index], [field]: value };
     onChange({ ...draft, ingredients: nextIngredients });
   }
 
   function removeDraftIngredient(index: number) {
-    onChange({
-      ...draft,
-      ingredients: draft.ingredients.filter((_, itemIndex) => itemIndex !== index),
-    });
+    onChange({ ...draft, ingredients: draft.ingredients.filter((_, itemIndex) => itemIndex !== index) });
   }
 
   function addDraftIngredient() {
-    onChange({
-      ...draft,
-      ingredients: [...draft.ingredients, { name: "", quantity: "", metric_quantity: "", notes: "" }],
-    });
-  }
-
-  async function handleDraftImageFile(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setError(null);
-    setUploadingImage(true);
-    try {
-      const file_url = await uploadRecipeImage(file, t("common.upload"));
-      onChange({ ...draft, thumbnail_url: file_url });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("common.upload"));
-    } finally {
-      setUploadingImage(false);
-      event.target.value = "";
-    }
+    const ingredient: IngredientItem = { name: "", quantity: "", metric_quantity: "", notes: "" };
+    onChange({ ...draft, ingredients: [...draft.ingredients, ingredient] });
   }
 
   async function handleSaveRecipe() {
     setError(null);
     setSaving(true);
     try {
-      const res = await apiFetch("/recipes", {
+      const response = await apiFetch("/recipes", {
         method: "POST",
         body: JSON.stringify({
           ...draft,
           ingredients: draft.ingredients.filter((item) => item.name.trim()),
         }),
       });
-      if (!res.ok) {
-        throw new Error(await readErrorMessage(res, t("common.save")));
-      }
-      const saved: Recipe = await res.json();
+      if (!response.ok) throw new Error(await readErrorMessage(response, t("common.save")));
+      const saved: Recipe = await response.json();
       onSaveSuccess(saved.id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("common.save"));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t("common.save"));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="import-review-grid">
-      <div>
-        <div className="import-review-card recipe-card-stitch">
-          <div className="recipe-card-stitch__media">
-            {draft.thumbnail_url ? (
-              <>
-                <img src={draft.thumbnail_url} alt="" className="recipe-card-stitch__img recipe-card-stitch__img--bg" />
-                <div className="recipe-card-stitch__img-frame">
-                  <img src={draft.thumbnail_url} alt="" className="recipe-card-stitch__img recipe-card-stitch__img--full" />
-                </div>
-              </>
-            ) : (
-              <div className="recipe-card-stitch__placeholder recipeCardPlaceholder">
-                <span className="font-headline recipe-card-stitch__placeholder-text">Recipe</span>
-              </div>
-            )}
-            {draftTags[0] ? (
-              <span className="recipe-card-stitch__badge font-headline" style={categoryBadgeStyle(draftTags[0])}>
-                {CATEGORY_LABELS[draftTags[0]]}
-              </span>
-            ) : null}
-          </div>
-          <div className="recipe-card-stitch__meta">
-            <div className="recipe-card-stitch__meta-left">
-              <h2 className="font-headline recipe-card-stitch__title">{draft.title || t("import.untitledRecipe")}</h2>
-              <p className="recipe-card-stitch__sub" title={previewText}>
-                {previewText || t("import.reviewIngredientsReady")}
-              </p>
-              {draftTags.length > 0 ? (
-                <div className="recipe-card-stitch__tag-row">
-                  {draftTags.slice(0, 3).map((tag) => (
-                    <span key={tag} className="recipe-card-stitch__tag-mini font-headline">
-                      {CATEGORY_LABELS[tag]}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
+    <div className={styles.review}>
+      <div className={styles.reviewBackRow}>
+        <button type="button" aria-label="Back to source" onClick={onBack} disabled={saving}>← Back to source</button>
       </div>
 
-      <div className="import-review-panel">
-        <section className="import-review-section">
-          <label className="import-engine__label" htmlFor="draft-title">
-            {t("recipe.recipeTitle")}
-          </label>
-          <input
-            id="draft-title"
-            className="import-engine__input import-engine__input--plain"
-            type="text"
-            value={draft.title}
-            onChange={(e) => onChange({ ...draft, title: e.target.value })}
-            disabled={saving}
-          />
-        </section>
+      <header className={styles.reviewHeader}>
+        <h1 className="cw-display">Review recipe</h1>
+        <button
+          type="button"
+          className={styles.saveButton}
+          onClick={() => void handleSaveRecipe()}
+          disabled={saving}
+        >
+          {saving ? t("common.saving") : t("import.saveRecipe")}
+        </button>
+      </header>
 
-        <section className="import-review-section">
-          <label className="field-label">{t("recipe.description")}</label>
-          <textarea
-            rows={3}
-            maxLength={500}
-            placeholder={t("recipe.description.placeholder")}
-            value={draft.description ?? ""}
-            onChange={(e) =>
-              onChange({ ...draft, description: e.target.value })
-            }
-          />
-          <div className="char-counter">
-            {(draft.description ?? "").length} / 500
+      {error ? <p className={styles.error} role="alert">{error}</p> : null}
+
+      <div className={styles.reviewColumns}>
+        <aside className={styles.overviewColumn}>
+          <div className={styles.reviewImage}>
+            {draft.thumbnail_url ? <img src={draft.thumbnail_url} alt="" /> : <span className="cw-display">CW</span>}
           </div>
-        </section>
 
-        <section className="import-review-section">
-          <label className="field-label">{t("recipe.totalTime")}</label>
-          <div className="inline-input-row">
+          <div className={styles.field}>
+            <label htmlFor="draft-title">{t("recipe.recipeTitle")}</label>
             <input
-              type="number"
-              min={0}
-              placeholder={t("recipe.totalTime.placeholder")}
-              value={draft.total_time_minutes ?? ""}
-              onChange={(e) => {
-                const raw = e.target.value;
-                const n = raw === "" ? null : Math.max(0, Math.floor(Number(raw) || 0));
-                onChange({ ...draft, total_time_minutes: n });
-              }}
+              id="draft-title"
+              type="text"
+              value={draft.title}
+              onChange={(event) => onChange({ ...draft, title: event.target.value })}
+              disabled={saving}
             />
-            <span className="suffix">{t("recipe.totalTime.minutesSuffix")}</span>
           </div>
-        </section>
 
-        <section className="import-review-section">
-          <div className="import-review-section__head">
-            <label className="import-engine__label" style={{ marginBottom: 0 }}>
-              {t("common.ingredients")}
-            </label>
-            <button type="button" className="import-review-add font-headline" onClick={addDraftIngredient}>
-              + {t("common.add")}
-            </button>
+          <div className={styles.field}>
+            <label htmlFor="draft-description">{t("recipe.description")}</label>
+            <textarea
+              id="draft-description"
+              rows={4}
+              maxLength={500}
+              value={draft.description ?? ""}
+              onChange={(event) => onChange({ ...draft, description: event.target.value })}
+              disabled={saving}
+            />
           </div>
-          <div className="import-review-ingredients">
-            {draft.ingredients.map((ingredient, index) => (
-              <div key={`${draft.id}-${index}`} className="import-review-ingredient-row">
-                <div style={draftQtyStackStyle}>
+
+          <div className={styles.field}>
+            <label htmlFor="draft-total-time">{t("recipe.totalTime")}</label>
+            <div className={styles.timeField}>
+              <input
+                id="draft-total-time"
+                type="number"
+                min={0}
+                value={draft.total_time_minutes ?? ""}
+                onChange={(event) => {
+                  const raw = event.target.value;
+                  onChange({
+                    ...draft,
+                    total_time_minutes: raw === "" ? null : Math.max(0, Math.floor(Number(raw) || 0)),
+                  });
+                }}
+                disabled={saving}
+              />
+              <span>{t("recipe.totalTime.minutesSuffix")}</span>
+            </div>
+          </div>
+
+          <fieldset className={styles.tagPicker}>
+            <legend>{t("common.tags")}</legend>
+            {RECIPE_TAG_GROUPS.map((group) => (
+              <div key={group.id}>
+                <p>{group.label}</p>
+                <div>
+                  {group.tags.map((tag) => (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      aria-pressed={draftTags.includes(tag.id)}
+                      onClick={() => toggleDraftTag(tag.id)}
+                    >
+                      {tag.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </fieldset>
+        </aside>
+
+        <div className={styles.contentColumn}>
+          <section className={styles.editorSection}>
+            <div className={styles.sectionHeader}>
+              <h2 className="cw-display">{t("common.ingredients")}</h2>
+              <button type="button" onClick={addDraftIngredient}>+ {t("common.add")}</button>
+            </div>
+            <div className={styles.ingredientRows}>
+              {draft.ingredients.map((ingredient, index) => (
+                <div key={`${draft.id}-${index}`} className={styles.ingredientRow}>
                   <input
-                    className="import-engine__input import-engine__input--plain"
                     type="text"
+                    aria-label={`Ingredient ${index + 1} amount`}
                     placeholder={t("recipe.qty")}
                     value={ingredient.quantity}
-                    onChange={(e) => updateDraftIngredient(index, "quantity", e.target.value)}
+                    onChange={(event) => updateDraftIngredient(index, "quantity", event.target.value)}
                   />
                   <input
-                    className="import-engine__input import-engine__input--plain"
                     type="text"
-                    placeholder={t("recipe.metricQty")}
-                    value={ingredient.metric_quantity ?? ""}
-                    onChange={(e) => updateDraftIngredient(index, "metric_quantity", e.target.value)}
+                    aria-label={`Ingredient ${index + 1}`}
+                    placeholder={t("recipe.ingredient")}
+                    value={ingredient.name}
+                    onChange={(event) => updateDraftIngredient(index, "name", event.target.value)}
                   />
+                  <button
+                    type="button"
+                    className={styles.removeButton}
+                    onClick={() => removeDraftIngredient(index)}
+                    aria-label={t("recipe.removeIngredient")}
+                  >
+                    ×
+                  </button>
                 </div>
-                <input
-                  className="import-engine__input import-engine__input--plain"
-                  type="text"
-                  placeholder={t("recipe.ingredient")}
-                  value={ingredient.name}
-                  onChange={(e) => updateDraftIngredient(index, "name", e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="import-review-remove"
-                  onClick={() => removeDraftIngredient(index)}
-                  aria-label={t("recipe.removeIngredient")}
-                >
-                  <span className="material-symbols-outlined">close</span>
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
 
-        <StepListEditor
-          steps={draft.steps ?? []}
-          onChange={(steps) => onChange({ ...draft, steps })}
-          uploadImage={(file) => uploadRecipeImage(file, t("common.upload"))}
-        />
-
-        <StringListEditor
-          label={t("recipe.tips")}
-          addLabel={t("recipe.tips.addRow")}
-          placeholder={t("recipe.tips.placeholder")}
-          values={draft.tips ?? []}
-          onChange={(tips) => onChange({ ...draft, tips })}
-        />
-
-        <StringListEditor
-          label={t("recipe.equipment")}
-          addLabel={t("recipe.equipment.addRow")}
-          placeholder={t("recipe.equipment.placeholder")}
-          values={draft.equipment ?? []}
-          onChange={(equipment) => onChange({ ...draft, equipment })}
-        />
-
-        <section className="import-review-section">
-          <label className="import-engine__label">
-            {t("common.tags")}
-          </label>
-          <div className="recipe-tag-picker recipe-tag-picker--compact">
-            {RECIPE_TAG_GROUPS.map((group) => (
-              <div key={group.id} className="recipe-tag-group">
-                <p className="recipe-tag-group__title font-headline">{group.label}</p>
-                <div className="recipe-tag-group__chips">
-                  {group.tags.map((tag) => {
-                    const active = draftTags.includes(tag.id);
-                    return (
-                      <button
-                        key={tag.id}
-                        type="button"
-                        className={`library-chip ${active ? "library-chip--active" : "library-chip--idle"}`}
-                        onClick={() => toggleDraftTag(tag.id)}
-                      >
-                        {tag.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="import-review-section">
-          <div className="import-review-section__head">
-            <label className="import-engine__label" style={{ marginBottom: 0 }}>
-              {t("recipe.coverImage")}
-            </label>
-            <button
-              type="button"
-              className="import-review-add font-headline"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingImage}
-            >
-              {uploadingImage ? t("recipe.uploading") : t("import.uploadImage")}
-            </button>
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleDraftImageFile}
-            style={{ display: "none" }}
+          <StepListEditor
+            steps={draft.steps ?? []}
+            onChange={(steps) => onChange({ ...draft, steps })}
           />
-          <input
-            className="import-engine__input import-engine__input--plain"
-            type="url"
-            placeholder={t("import.orPasteImageUrl")}
-            value={draft.thumbnail_url ?? ""}
-            onChange={(e) => onChange({ ...draft, thumbnail_url: e.target.value })}
-            disabled={uploadingImage || saving}
+
+          <StringListEditor
+            label={t("recipe.tips")}
+            addLabel={t("recipe.tips.addRow")}
+            placeholder={t("recipe.tips.placeholder")}
+            values={draft.tips ?? []}
+            onChange={(tips) => onChange({ ...draft, tips })}
+            collapsed
           />
-        </section>
 
-        {error ? (
-          <p style={{ color: "var(--error)", fontSize: "0.9rem", marginTop: "0.5rem" }} role="alert">
-            {error}
-          </p>
-        ) : null}
-
-        <div className="import-engine__actions">
-          <button
-            type="button"
-            className="import-engine__cta"
-            onClick={handleSaveRecipe}
-            disabled={saving}
-          >
-            {saving ? (
-              <>
-                {t("common.saving")}
-                <span className="material-symbols-outlined ms-fill import-spin" style={{ fontSize: "1.25rem" }}>
-                  progress_activity
-                </span>
-              </>
-            ) : (
-              <>
-                {t("import.saveRecipe")}
-                <span className="material-symbols-outlined" style={{ fontSize: "1.25rem" }}>
-                  check
-                </span>
-              </>
-            )}
-          </button>
-          <button
-            type="button"
-            className="import-review-secondary font-headline"
-            onClick={onBack}
-            disabled={saving}
-          >
-            {t("import.backToImport")}
-          </button>
+          <StringListEditor
+            label={t("recipe.equipment")}
+            addLabel={t("recipe.equipment.addRow")}
+            placeholder={t("recipe.equipment.placeholder")}
+            values={draft.equipment ?? []}
+            onChange={(equipment) => onChange({ ...draft, equipment })}
+            collapsed
+          />
         </div>
       </div>
     </div>
   );
 }
-
-const draftQtyStackStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.4rem",
-  minWidth: 132,
-};
