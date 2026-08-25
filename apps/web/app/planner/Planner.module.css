@@ -1,0 +1,484 @@
+.page {
+  padding-block: 1.5rem;
+}
+
+.workspace {
+  display: grid;
+  height: clamp(32rem, calc(100dvh - 14.75rem), 44rem);
+  min-height: 0;
+  align-items: stretch;
+  gap: 1rem;
+  grid-template-columns: 16rem minmax(0, 1fr);
+}
+
+.board {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-card);
+  background: var(--cw-color-surface);
+}
+
+.status {
+  color: var(--cw-color-muted-ink);
+}
+
+.page :global(.planner-toolbar) {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.page :global(.planner-toolbar > div > span) {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.page :global(.planner-toolbar h1) {
+  margin: 0;
+  color: var(--cw-color-ink);
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.page :global(.planner-toolbar__actions) {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.page :global(.planner-toolbar__actions button) {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  place-items: center;
+  background: var(--cw-color-surface);
+  color: var(--cw-color-ink);
+  cursor: pointer;
+  font: inherit;
+}
+
+.page :global(.planner-editorial__sidebar) {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-card);
+  background: var(--cw-color-surface);
+}
+
+.page :global(.planner-editorial__sidebar-head) {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-bottom: 1px solid var(--cw-color-divider);
+}
+
+.page :global(.planner-editorial__sidebar-head h2) {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.page :global(.planner-editorial__search) {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-field);
+  background: var(--cw-color-canvas);
+}
+
+.page :global(.planner-editorial__search span) {
+  color: var(--cw-color-muted-ink);
+  font-size: 1rem;
+}
+
+.page :global(.planner-editorial__search input) {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.5rem;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.page :global(.planner-filter-bar) {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.page :global(.planner-editorial__sidebar-scroll) {
+  display: grid;
+  min-height: 0;
+  align-content: start;
+  gap: 0.65rem;
+  overflow-y: auto;
+  padding: 0.8rem;
+}
+
+.page :global(.planner-source-card) {
+  min-width: 0;
+}
+
+.page :global(.planner-drag-card) {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-field);
+  background: var(--cw-color-surface);
+  cursor: grab;
+  grid-template-columns: 3rem minmax(0, 1fr);
+}
+
+.page :global(.planner-drag-card__thumb) {
+  width: 3rem;
+  height: 3rem;
+  overflow: hidden;
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-subtle-surface);
+}
+
+.page :global(.planner-drag-card__thumb img) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.page :global(.planner-drag-card__body) {
+  min-width: 0;
+}
+
+.page :global(.planner-drag-card__title) {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--cw-color-ink);
+  font-size: 0.84rem;
+  line-height: 1.18;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.page :global(.planner-drag-card__meta) {
+  overflow: hidden;
+  margin: 0.25rem 0 0;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page :global(.planner-matrix) {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: 3rem repeat(7, minmax(0, 1fr));
+}
+
+.page :global(.planner-matrix__header),
+.page :global(.planner-matrix__row) {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 5.2rem repeat(3, minmax(0, 1fr));
+}
+
+.page :global(.planner-matrix__header) {
+  align-items: center;
+  border-bottom: 1px solid var(--cw-color-divider);
+  background: var(--cw-color-subtle-surface);
+}
+
+.page :global(.planner-matrix__header span) {
+  padding-inline: 0.75rem;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.page :global(.planner-matrix__row) {
+  min-height: 0;
+  border-bottom: 1px solid var(--cw-color-divider);
+}
+
+.page :global(.planner-matrix__row:last-child) {
+  border-bottom: 0;
+}
+
+.page :global(.planner-matrix__day) {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.55rem 0.75rem;
+  border-right: 1px solid var(--cw-color-divider);
+}
+
+.page :global(.planner-matrix__day strong) {
+  color: var(--cw-color-ink);
+  font-size: 0.78rem;
+}
+
+.page :global(.planner-matrix__day span) {
+  margin-top: 0.12rem;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.68rem;
+}
+
+.page :global(.planner-matrix__row.is-today .planner-matrix__day) {
+  border-left: 3px solid var(--cw-color-action);
+  background: color-mix(in srgb, var(--cw-color-action) 7%, var(--cw-color-surface));
+}
+
+.page :global(.planner-matrix__cell) {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--cw-color-divider);
+}
+
+.page :global(.planner-matrix__cell:last-child) {
+  border-right: 0;
+}
+
+.page :global(.planner-drop-target) {
+  position: relative;
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  padding: 0.35rem;
+  background: var(--cw-color-surface);
+}
+
+.page :global(.planner-drop-target.is-drag-over) {
+  background: color-mix(in srgb, var(--cw-color-action) 9%, var(--cw-color-surface));
+  box-shadow: inset 0 0 0 2px var(--cw-color-action);
+}
+
+.page :global(.planner-slot-meal-label) {
+  display: none;
+}
+
+.page :global(.planner-slot-recipes) {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  gap: 0.18rem;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.page :global(.planner-slot-recipes__scroll) {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  gap: 0.18rem;
+}
+
+.page :global(.planner-slot-recipes__scroll[data-recipe-layout="one"]) {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.page :global(.planner-slot-recipes__scroll[data-recipe-layout="two"]),
+.page :global(.planner-slot-recipes__scroll[data-recipe-layout="overflow"]) {
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.page :global(.planner-slot-recipes__scroll[data-recipe-layout="three"]) {
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+}
+
+.page :global(.planner-slot-recipe) {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+.page :global(.planner-meal-card) {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  align-items: center;
+  padding: 0;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: 0.45rem;
+  background: var(--cw-color-canvas);
+  color: inherit;
+  cursor: pointer;
+  grid-template-columns: 2.4rem minmax(0, 1fr);
+}
+
+.page :global(.planner-meal-card__img) {
+  width: 100%;
+  height: 100%;
+  min-height: 1.55rem;
+  object-fit: cover;
+}
+
+.page :global(.planner-meal-card__body) {
+  min-width: 0;
+  padding: 0.2rem 1.5rem 0.2rem 0.4rem;
+}
+
+.page :global(.planner-meal-card__title) {
+  overflow: hidden;
+  margin: 0;
+  color: var(--cw-color-ink);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page :global(.planner-meal-card__clear) {
+  position: absolute;
+  top: 50%;
+  right: 0.2rem;
+  display: grid;
+  width: 1.3rem;
+  height: 1.3rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--cw-radius-round);
+  place-items: center;
+  background: transparent;
+  color: var(--cw-color-muted-ink);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.page :global(.planner-meal-card__clear span) {
+  font-size: 0.8rem;
+}
+
+.page :global(.planner-slot-action) {
+  min-height: 1rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cw-color-action);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.58rem;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.page :global(.planner-slot-overflow-cue) {
+  position: absolute;
+  right: 0.45rem;
+  bottom: 0.35rem;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  background: var(--cw-color-surface);
+  color: var(--cw-color-action);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.58rem;
+  font-weight: 750;
+}
+
+.page :global(.planner-slot-empty-trigger) {
+  display: grid;
+  width: 100%;
+  border: 0;
+  border-radius: var(--cw-radius-control);
+  place-items: center;
+  background: transparent;
+  color: var(--cw-color-muted-ink);
+  cursor: pointer;
+}
+
+.page :global(.planner-slot-empty-trigger .material-symbols-outlined) {
+  font-size: 1.1rem;
+}
+
+.page :global(.planner-slot-empty-trigger__label) {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .workspace {
+    display: block;
+    height: auto;
+  }
+
+  .page :global(.planner-editorial__sidebar) {
+    display: none;
+  }
+
+  .board {
+    overflow: visible;
+  }
+
+  .page :global(.planner-matrix) {
+    display: block;
+    height: auto;
+  }
+
+  .page :global(.planner-matrix__header) {
+    display: none;
+  }
+
+  .page :global(.planner-matrix__row) {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .page :global(.planner-matrix__day) {
+    min-height: 3.4rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--cw-color-divider);
+  }
+
+  .page :global(.planner-matrix__cell) {
+    min-height: 6.5rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--cw-color-divider);
+  }
+
+  .page :global(.planner-slot-meal-label) {
+    display: block;
+    position: absolute;
+    top: 0.5rem;
+    left: 0.65rem;
+    color: var(--cw-color-muted-ink);
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .page :global(.planner-drop-target) {
+    padding: 1.5rem 0.65rem 0.55rem;
+  }
+
+  .page :global(.planner-slot-empty-trigger__label) {
+    display: block;
+    font-size: 0.72rem;
+  }
+}

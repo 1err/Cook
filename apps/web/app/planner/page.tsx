@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
+import { PageShell } from "../components/PageShell";
 import { useT } from "../lib/i18n";
 import { TagFilterPopover } from "../components/TagFilterPopover";
 import type { Recipe } from "../types";
@@ -28,6 +29,7 @@ import { PlannerToolbar } from "./components/PlannerToolbar";
 import { PlannerWeekBoard } from "./components/PlannerWeekBoard";
 import { addRecipeToSlots, removeRecipeFromSlots } from "./plannerModel";
 import { PLANNER_MEAL_LABEL_KEYS } from "./plannerMessages";
+import styles from "./Planner.module.css";
 
 const COL_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -377,12 +379,12 @@ function PlannerPageContent() {
   }, [dates, slotPicker]);
   const slotPickerMealLabel = slotPicker ? t(PLANNER_MEAL_LABEL_KEYS[slotPicker.slot]) : "";
 
-  if (loading) return <p className="planner-muted app-wide">{t("common.loading")}</p>;
+  if (loading) return <PageShell><p className={styles.status}>{t("common.loading")}</p></PageShell>;
 
   const recipeSourceControls = (
     <>
       <div className="planner-editorial__search">
-        <span className="material-symbols-outlined">search</span>
+        <span className="material-symbols-outlined" aria-hidden>search</span>
         <input
           type="search"
           placeholder={t("planner.searchLibrary")}
@@ -407,7 +409,6 @@ function PlannerPageContent() {
           </button>
         ) : null}
       </div>
-      <p className="planner-sort-note">{t("planner.sortedAZ")}</p>
     </>
   );
 
@@ -474,38 +475,27 @@ function PlannerPageContent() {
   const pickerRecipeSourceList = renderRecipeSourceList("picker");
 
   return (
-    <div className="planner-editorial app-wide">
-      <div className="planner-editorial__toolbar-shell">
+    <PageShell className={styles.page}>
+      <div>
         <PlannerToolbar
           weekRange={formatWeekPlannerKicker(start, end)}
-          shoppingHref={`/shopping-list?week=${currentWeek}`}
           onPrevious={() => setWeek(prev)}
           onNext={() => setWeek(next)}
         />
       </div>
 
-      <PlannerRecipeRail
-        controls={
-          <>
-            <div>
-              <h2 className="font-headline m-0 mb-2" style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--on-surface)", letterSpacing: "-0.02em" }}>
-                {t("planner.savedRecipes")}
-              </h2>
-              <p className="m-0 text-sm" style={{ color: "var(--on-surface-variant)" }}>
-                {t("planner.savedRecipesDesc")}
-              </p>
-            </div>
-            {recipeSourceControls}
-          </>
-        }
-        recipes={railRecipeSourceList}
-      />
+      <div className={styles.workspace}>
+        <PlannerRecipeRail
+          controls={
+            <>
+              <h2 className="cw-display">{t("planner.savedRecipes")}</h2>
+              {recipeSourceControls}
+            </>
+          }
+          recipes={railRecipeSourceList}
+        />
 
-      <main className="planner-editorial__main">
-        <div className="planner-mobile-guide">
-          <p className="planner-mobile-guide__title font-headline">{t("planner.phoneFriendlyTitle")}</p>
-          <p className="planner-mobile-guide__text">{t("planner.phoneFriendlyDesc")}</p>
-        </div>
+        <div className={styles.board}>
 
         {mutationError ? (
           <div role="status" className="planner-mutation-error">
@@ -581,8 +571,9 @@ function PlannerPageContent() {
             </div>
           </div>
         ) : null}
-      </main>
-    </div>
+        </div>
+      </div>
+    </PageShell>
   );
 }
 

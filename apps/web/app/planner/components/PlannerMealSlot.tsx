@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { MEAL_PLAN_SLOTS, type MealType, type Recipe } from "@cooking/shared";
 import { useT } from "../../lib/i18n";
 import { PLANNER_MEAL_LABEL_KEYS } from "../plannerMessages";
@@ -81,17 +81,9 @@ export function PlannerMealSlot({
   const pendingRemoveFocusRef = useRef<{ recipeId: string; index: number } | null>(null);
   const removeButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const addRecipeRef = useRef<HTMLButtonElement>(null);
-  const overflowCueId = useId();
   const slotRecipeFingerprint = slotRecipes.map(({ recipeId }) => recipeId).join("\u0000");
-  const overflowCount = Math.max(0, slotRecipes.length - 3);
-  const overflowMessage = overflowCount
-    ? t(
-        overflowCount === 1
-          ? "planner.scrollForMoreRecipe"
-          : "planner.scrollForMoreRecipes",
-        { count: overflowCount },
-      )
-    : "";
+  const overflowCount = slotRecipes.length > 3 ? slotRecipes.length - 2 : 0;
+  const visibleRecipes = overflowCount ? slotRecipes.slice(0, 2) : slotRecipes;
   const overflowVisualMessage = overflowCount
     ? t("planner.moreRecipeCue", { count: overflowCount })
     : "";
@@ -131,10 +123,8 @@ export function PlannerMealSlot({
             data-recipe-layout={recipeLayout}
             role="region"
             aria-label={t("planner.slotRecipes", { slot: slotHeading, date })}
-            aria-describedby={overflowCount ? overflowCueId : undefined}
-            tabIndex={slotRecipes.length > 3 ? 0 : undefined}
           >
-            {slotRecipes.map(({ recipeId, recipe }, index) => (
+            {visibleRecipes.map(({ recipeId, recipe }, index) => (
               <div key={recipeId} className="planner-slot-recipe">
                 <RecipeTile
                   recipe={recipe}
@@ -166,15 +156,14 @@ export function PlannerMealSlot({
             ))}
           </div>
           {overflowCount ? (
-            <p className="planner-slot-overflow-cue font-headline">
-              <span className="planner-slot-overflow-cue__icon" aria-hidden="true">
-                ↓
-              </span>
-              <span>{overflowVisualMessage}</span>
-              <span id={overflowCueId} hidden>
-                {overflowMessage}
-              </span>
-            </p>
+            <button
+              type="button"
+              className="planner-slot-overflow-cue font-headline"
+              onClick={onChoose}
+              aria-label={`${overflowVisualMessage}: ${slotHeading} ${date}`}
+            >
+              + {overflowVisualMessage}
+            </button>
           ) : null}
           <button
             ref={addRecipeRef}

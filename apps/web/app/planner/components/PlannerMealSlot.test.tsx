@@ -89,54 +89,46 @@ test("marks four recipes with the overflow layout and exposes their complete tit
   expect(screen.getByRole("button", { name: /Open One/ })).toHaveAttribute("title", "One");
 });
 
-test("keeps a fourth recipe in a keyboard-reachable in-slot scroll region", () => {
-  renderSlot(<PlannerMealSlot {...slotProps()} recipeIds={["r1", "r2", "r3", "r4"]} />);
+test("summarizes four or more recipes without stretching the meal cell", async () => {
+  const user = userEvent.setup();
+  const props = { ...slotProps(), recipeIds: ["r1", "r2", "r3", "r4"] };
+  renderSlot(<PlannerMealSlot {...props} />);
 
   const recipeList = screen.getByRole("region", {
     name: "Dinner recipes for 2026-08-10",
   });
-  expect(recipeList).toHaveAttribute("tabindex", "0");
-  expect(
-    within(recipeList).getByRole("button", {
-      name: "Open Four for dinner on 2026-08-10",
-    }),
-  ).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /Show .* more recipe/ })).not.toBeInTheDocument();
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(within(recipeList).getByRole("button", { name: "Open One for dinner on 2026-08-10" })).toBeVisible();
+  expect(within(recipeList).getByRole("button", { name: "Open Two for dinner on 2026-08-10" })).toBeVisible();
+  expect(within(recipeList).queryByRole("button", { name: "Open Four for dinner on 2026-08-10" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /2 more: Dinner 2026-08-10/ }));
+  expect(props.onChoose).toHaveBeenCalledTimes(1);
 });
 
-test("shows a visible singular overflow cue that describes the scrollable recipe region", () => {
+test("shows a visible overflow cue for recipes hidden from the compact composition", () => {
   renderSlot(<PlannerMealSlot {...slotProps()} recipeIds={["r1", "r2", "r3", "r4"]} />);
 
-  expect(screen.getByText("1 more")).toBeVisible();
-  expect(screen.getByText("Scroll for 1 more")).not.toBeVisible();
-  expect(
-    screen.getByRole("region", { name: "Dinner recipes for 2026-08-10" }),
-  ).toHaveAccessibleDescription("Scroll for 1 more");
+  expect(screen.getByText("+ 2 more")).toBeVisible();
 });
 
 test("updates and removes the overflow cue as parent recipe data changes", () => {
   const props = { ...slotProps(), recipeIds: ["r1", "r2", "r3", "r4", "r5"] };
   const view = renderSlot(<PlannerMealSlot {...props} />);
 
-  expect(screen.getByText("2 more")).toBeVisible();
+  expect(screen.getByText("+ 3 more")).toBeVisible();
 
   view.rerender(
     <I18nProvider>
       <PlannerMealSlot {...props} recipeIds={["r1", "r2", "r3", "r4"]} />
     </I18nProvider>,
   );
-  expect(screen.getByText("1 more")).toBeVisible();
+  expect(screen.getByText("+ 2 more")).toBeVisible();
 
   view.rerender(
     <I18nProvider>
       <PlannerMealSlot {...props} recipeIds={["r1", "r2", "r3"]} />
     </I18nProvider>,
   );
-  expect(screen.queryByText(/Scroll for \d+ more/)).not.toBeInTheDocument();
-  expect(
-    screen.getByRole("region", { name: "Dinner recipes for 2026-08-10" }),
-  ).not.toHaveAccessibleDescription();
+  expect(screen.queryByRole("button", { name: /more:/ })).not.toBeInTheDocument();
 });
 
 test("forwards visible recipe, add, and drag callbacks", async () => {
@@ -186,27 +178,27 @@ test("rehomes focus to the previous remove control after the third of three reci
   );
 });
 
-test("rehomes focus to the next remove control after an asynchronous parent removes the third of four recipes", async () => {
+test("rehomes focus to the next visible remove control as overflow collapses", async () => {
   const user = userEvent.setup();
   const props = { ...slotProps(), recipeIds: ["r1", "r2", "r3", "r4"] };
   const view = renderSlot(<PlannerMealSlot {...props} />);
 
-  const removeThree = screen.getByRole("button", {
-    name: "Remove Three from dinner on 2026-08-10",
+  const removeTwo = screen.getByRole("button", {
+    name: "Remove Two from dinner on 2026-08-10",
   });
-  await user.click(removeThree);
-  expect(removeThree).toHaveFocus();
+  await user.click(removeTwo);
+  expect(removeTwo).toHaveFocus();
 
   view.rerender(
     <I18nProvider>
-      <PlannerMealSlot {...props} recipeIds={["r1", "r2", "r4"]} />
+      <PlannerMealSlot {...props} recipeIds={["r1", "r3", "r4"]} />
     </I18nProvider>,
   );
 
   await waitFor(() =>
     expect(
       screen.getByRole("button", {
-        name: "Remove Four from dinner on 2026-08-10",
+        name: "Remove Three from dinner on 2026-08-10",
       }),
     ).toHaveFocus(),
   );
@@ -238,9 +230,5 @@ test("localizes the recipe overflow cue in Chinese", async () => {
   localStorage.setItem("cooking-ui-language", "zh");
   renderSlot(<PlannerMealSlot {...slotProps()} recipeIds={["r1", "r2", "r3", "r4"]} />);
 
-  expect(await screen.findByText("另 1 道")).toBeVisible();
-  expect(screen.getByText("滚动查看另外 1 道菜谱")).not.toBeVisible();
-  expect(
-    screen.getByRole("region", { name: "2026-08-10 的晚餐菜谱" }),
-  ).toHaveAccessibleDescription("滚动查看另外 1 道菜谱");
+  expect(await screen.findByText("+ 另 2 道")).toBeVisible();
 });
