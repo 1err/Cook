@@ -38,6 +38,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
   const t = useT();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tutorialValid, setTutorialValid] = useState(true);
   const draftTags = draft.library_tags ?? [];
 
   function toggleDraftTag(tag: RecipeTagSlug) {
@@ -66,6 +67,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
   }
 
   async function handleSaveRecipe() {
+    if (!tutorialValid) return;
     setError(null);
     setSaving(true);
     try {
@@ -98,7 +100,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
           type="button"
           className={styles.saveButton}
           onClick={() => void handleSaveRecipe()}
-          disabled={saving}
+          disabled={saving || !tutorialValid}
         >
           {saving ? t("common.saving") : t("import.saveRecipe")}
         </button>
@@ -217,6 +219,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
           <StepListEditor
             steps={draft.steps ?? []}
             onChange={(steps) => onChange({ ...draft, steps })}
+            onValidityChange={setTutorialValid}
           />
 
           <StringListEditor
