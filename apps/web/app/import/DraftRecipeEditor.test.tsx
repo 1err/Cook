@@ -71,6 +71,7 @@ describe("DraftRecipeEditor", () => {
     expect(screen.getByRole("button", { name: "Back to source" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Review recipe" })).toBeVisible();
     expect(screen.queryByRole("button", { name: /Add image|Upload image/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Image URL")).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText(/Notes/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Errors stay local/i)).not.toBeInTheDocument();
   });

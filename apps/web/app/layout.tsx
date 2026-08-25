@@ -36,7 +36,7 @@ export default function RootLayout({
         <I18nProvider>
           <AuthProvider>
             <Header />
-            <main>{children}</main>
+            <div id="app-content">{children}</div>
           </AuthProvider>
         </I18nProvider>
       </body>

@@ -113,17 +113,6 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
           </div>
 
           <div className={styles.field}>
-            <label htmlFor="draft-image-url">Image URL</label>
-            <input
-              id="draft-image-url"
-              type="url"
-              value={draft.thumbnail_url ?? ""}
-              onChange={(event) => onChange({ ...draft, thumbnail_url: event.target.value })}
-              disabled={saving}
-            />
-          </div>
-
-          <div className={styles.field}>
             <label htmlFor="draft-title">{t("recipe.recipeTitle")}</label>
             <input
               id="draft-title"

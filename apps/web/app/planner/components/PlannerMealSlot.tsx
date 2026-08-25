@@ -44,10 +44,7 @@ function RecipeTile({
       {recipe.thumbnail_url ? (
         <img src={recipe.thumbnail_url} alt="" className="planner-meal-card__img" />
       ) : (
-        <div
-          className="planner-meal-card__img"
-          style={{ background: "linear-gradient(145deg, var(--primary-fixed), var(--surface-container-high))" }}
-        />
+        <div className="planner-meal-card__img planner-meal-card__img--placeholder" />
       )}
       <div className="planner-meal-card__body">
         <p className="planner-meal-card__title font-headline">{recipe.title}</p>

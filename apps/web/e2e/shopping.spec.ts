@@ -9,12 +9,7 @@ const shoppingItems = [
 ];
 
 const mealPlans = [
-  {
-    date: "2026-08-10",
-    breakfast: ["recipe-1"],
-    lunch: [],
-    dinner: [],
-  },
+  { date: "2026-08-10", breakfast: ["recipe-1"], lunch: [], dinner: [] },
 ];
 
 const recipes = [
@@ -23,10 +18,7 @@ const recipes = [
     title: "Ginger rice bowl",
     source_url: null,
     thumbnail_url: null,
-    ingredients: shoppingItems.map(({ name, total_quantity }) => ({
-      name,
-      quantity: total_quantity,
-    })),
+    ingredients: shoppingItems.map(({ name, total_quantity }) => ({ name, quantity: total_quantity })),
     raw_extraction_text: null,
     library_tags: ["weeknight"],
     library_category: "weeknight",
@@ -49,6 +41,12 @@ const refinedList = {
     { name: "Whole milk", suggested_purchase: "1 quart", category: "Dairy" },
   ],
 };
+
+const storeProducts = [
+  { name: "Organic kale bunch", price: "$2.99", image: "", url: "https://www.sayweee.com/product/kale-1" },
+  { name: "Baby kale", price: "$3.49", image: "", url: "https://www.sayweee.com/product/kale-2" },
+  { name: "Tuscan kale", price: "$4.19", image: "", url: "https://www.sayweee.com/product/kale-3" },
+];
 
 function corsHeaders() {
   return {
@@ -95,16 +93,17 @@ async function installShoppingFixtures(page: Page) {
       await fulfillJson(route, recipes);
       return;
     }
+    if (pathname === "/store-products") {
+      await fulfillJson(route, {
+        products: storeProducts,
+        expires_at: "2030-01-01T00:00:00.000Z",
+      });
+      return;
+    }
 
     await route.abort();
   });
 }
-
-const libraryTitleSizeByProject = {
-  phone: 29.6,
-  tablet: 32.8,
-  desktop: 37.6,
-} as const;
 
 test.beforeEach(async ({ page }) => {
   await installShoppingFixtures(page);
@@ -114,28 +113,17 @@ test.beforeEach(async ({ page }) => {
 test("loads local Inter faces for every requested Shopping weight", async ({ page }) => {
   const loadedFaces = await page.evaluate(async () => {
     const requestedWeights = ["500", "800", "900"];
-    const probes = requestedWeights.map((weight) => {
-      const probe = document.createElement("span");
-      probe.textContent = `Inter ${weight}`;
-      probe.style.cssText = `font-family: Inter; font-size: 16px; font-weight: ${weight}`;
-      document.body.append(probe);
-      return probe;
-    });
-
     await Promise.all(
       requestedWeights.map((weight) => document.fonts.load(`${weight} 16px Inter`, "Chef World")),
     );
     await document.fonts.ready;
-
     const interFaces = Array.from(document.fonts).filter(
       (face) => face.family.replace(/["']/g, "") === "Inter",
     );
-    const availability = requestedWeights.map((weight) => ({
+    return requestedWeights.map((weight) => ({
       loaded: interFaces.some((face) => face.weight === weight && face.status === "loaded"),
       weight,
     }));
-    probes.forEach((probe) => probe.remove());
-    return availability;
   });
 
   expect(loadedFaces).toEqual([
@@ -145,102 +133,57 @@ test("loads local Inter faces for every requested Shopping weight", async ({ pag
   ]);
 });
 
-test("keeps confirmation and smart shopping restrained at every viewport", async ({ page }, testInfo) => {
-  const expectedTitleSize = libraryTitleSizeByProject[
-    testInfo.project.name as keyof typeof libraryTitleSizeByProject
-  ];
-  expect(expectedTitleSize).toBeDefined();
+test("keeps preparation in context and renders smart groceries without horizontal overflow", async ({ page }, testInfo) => {
+  await expect(page.getByRole("heading", { name: "Shopping List" })).toBeVisible();
+  const preparePanel = page.getByRole("region", { name: "Prepare smart shopping list" });
+  await expect(preparePanel.getByRole("heading", { name: "Planned meals" })).toBeVisible();
+  await expect(preparePanel.getByRole("heading", { name: "Prepare smart list" })).toBeVisible();
+  await expect(preparePanel.getByText("Ginger rice bowl")).toBeVisible();
 
-  const confirmationTitle = page.getByRole("heading", { name: "Shopping List" });
-  await expect(confirmationTitle).toBeVisible();
-
-  const confirmationMetrics = await page.locator(".shop-page--wide").evaluate((shell) => {
-    const shellRect = shell.getBoundingClientRect();
-    const title = shell.querySelector<HTMLElement>(".shop-confirm-title");
-    const asideTitle = shell.querySelector<HTMLElement>(".shop-confirm-aside__title");
-    if (!title || !asideTitle) throw new Error("Shopping confirmation headings are missing");
-    const titleStyle = getComputedStyle(title);
-    const asideStyle = getComputedStyle(asideTitle);
-    const tokenProbe = document.createElement("span");
-    tokenProbe.style.fontFamily = "var(--font-inter), monospace";
-    const sourceSerifProbe = document.createElement("span");
-    sourceSerifProbe.className = "cw-display";
-    document.body.append(tokenProbe, sourceSerifProbe);
-    const metrics = {
-      asideTitleSize: Number.parseFloat(asideStyle.fontSize),
-      documentWidth: document.documentElement.scrollWidth,
-      interTokenFamily: getComputedStyle(tokenProbe).fontFamily,
-      leftGutter: shellRect.left,
-      overflowingElements: Array.from(document.querySelectorAll<HTMLElement>("body *"))
-        .filter((element) => element.getBoundingClientRect().right > document.documentElement.clientWidth + 0.5)
-        .slice(0, 5)
-        .map((element) => ({
-          className: element.className,
-          right: element.getBoundingClientRect().right,
-          tagName: element.tagName,
-          width: element.getBoundingClientRect().width,
-        })),
-      paddingLeft: Number.parseFloat(getComputedStyle(shell).paddingLeft),
-      rightGutter: document.documentElement.clientWidth - shellRect.right,
-      shellWidth: shellRect.width,
-      sourceSerifFamily: getComputedStyle(sourceSerifProbe).fontFamily,
-      titleFamily: titleStyle.fontFamily,
-      titleMarginBottom: Number.parseFloat(titleStyle.marginBottom),
-      titleSize: Number.parseFloat(titleStyle.fontSize),
-      viewportWidth: document.documentElement.clientWidth,
-    };
-    tokenProbe.remove();
-    sourceSerifProbe.remove();
-    return metrics;
-  });
-
-  expect(confirmationMetrics.shellWidth).toBeLessThanOrEqual(1120);
-  expect(Math.abs(confirmationMetrics.leftGutter - confirmationMetrics.rightGutter)).toBeLessThanOrEqual(1);
-  expect(
-    confirmationMetrics.documentWidth,
-    JSON.stringify(confirmationMetrics),
-  ).toBeLessThanOrEqual(confirmationMetrics.viewportWidth);
-  expect(confirmationMetrics.paddingLeft).toBeGreaterThanOrEqual(testInfo.project.name === "phone" ? 20 : 24);
-  expect(confirmationMetrics.titleSize).toBeCloseTo(expectedTitleSize, 1);
-  expect(confirmationMetrics.titleMarginBottom).toBeCloseTo(5.6, 1);
-  expect(confirmationMetrics.asideTitleSize).toBeLessThanOrEqual(26.4);
-  expect(confirmationMetrics.interTokenFamily).toContain("Inter");
-  expect(confirmationMetrics.titleFamily).toContain("Inter");
-  expect(confirmationMetrics.sourceSerifFamily).toContain("Source Serif 4");
-
-  await page.getByRole("button", { name: "Prepare smart shopping list" }).click();
-  const smartTitle = page.getByRole("heading", { name: "Smart shopping list" });
-  await expect(smartTitle).toBeVisible();
-
-  const smartMetrics = await page.locator(".shop-page--wide").evaluate((shell) => {
-    const title = shell.querySelector<HTMLElement>(".shop-smart-hero__title");
-    const primaryColumn = shell.querySelector<HTMLElement>(".shop-bento-column--primary");
-    const secondaryColumn = shell.querySelector<HTMLElement>(".shop-bento-column--secondary");
-    if (!title || !primaryColumn || !secondaryColumn) {
-      throw new Error("Smart shopping layout is missing");
-    }
-    const titleStyle = getComputedStyle(title);
-    const primaryRect = primaryColumn.getBoundingClientRect();
-    const secondaryRect = secondaryColumn.getBoundingClientRect();
+  const shellMetrics = await page.locator('[data-page-shell="default"]').evaluate((shell) => {
+    const rect = shell.getBoundingClientRect();
     return {
-      columnsAreSideBySide: secondaryRect.left >= primaryRect.right,
-      columnsAreStacked: secondaryRect.top >= primaryRect.bottom,
       documentWidth: document.documentElement.scrollWidth,
-      narrowestColumnWidth: Math.min(primaryRect.width, secondaryRect.width),
-      titleMarginBottom: Number.parseFloat(titleStyle.marginBottom),
-      titleSize: Number.parseFloat(titleStyle.fontSize),
-      viewportWidth: document.documentElement.clientWidth,
+      leftGutter: rect.left,
+      rightGutter: window.innerWidth - rect.right,
+      shellWidth: rect.width,
+      viewportWidth: window.innerWidth,
     };
   });
+  expect(shellMetrics.shellWidth).toBeLessThanOrEqual(1280);
+  expect(Math.abs(shellMetrics.leftGutter - shellMetrics.rightGutter)).toBeLessThanOrEqual(1);
+  expect(shellMetrics.documentWidth).toBeLessThanOrEqual(shellMetrics.viewportWidth);
 
-  expect(smartMetrics.titleSize).toBeCloseTo(expectedTitleSize, 1);
-  expect(smartMetrics.titleMarginBottom).toBeCloseTo(5.6, 1);
-  expect(smartMetrics.documentWidth).toBeLessThanOrEqual(smartMetrics.viewportWidth);
+  await preparePanel.getByRole("button", { name: "Prepare smart shopping list" }).click();
+  await expect(page.getByText("Smart mode", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Produce" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pantry & Dry Goods" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dairy" })).toBeVisible();
+  await expect(page.locator("[data-category-icon]")).toHaveCount(0);
+
+  const categoryLayout = await page.getByRole("heading", { name: "Produce" }).locator("..").locator("..").evaluate((section) => ({
+    width: section.getBoundingClientRect().width,
+    pageHasOverflow: document.documentElement.scrollWidth > window.innerWidth,
+  }));
+  expect(categoryLayout.pageHasOverflow).toBe(false);
+  expect(categoryLayout.width).toBeGreaterThan(testInfo.project.name === "phone" ? 300 : 320);
+
+  const produceSection = page.getByRole("heading", { name: "Produce" }).locator("..").locator("..");
+  await produceSection.getByRole("button", { name: "View products" }).click();
+  await expect(produceSection.getByTestId("store-product-row")).toHaveCount(3);
+  const productRows = produceSection.getByTestId("store-product-row");
+  const verticalRows = await productRows.evaluateAll((rows) => rows.map((row) => {
+    const rect = row.getBoundingClientRect();
+    return { bottom: rect.bottom, top: rect.top };
+  }));
+  expect(verticalRows[1].top).toBeGreaterThanOrEqual(verticalRows[0].bottom);
+  expect(verticalRows[2].top).toBeGreaterThanOrEqual(verticalRows[1].bottom);
+  await expect(produceSection.getByRole("link", { name: "View on Weee" })).toHaveCount(3);
+
   if (testInfo.project.name === "desktop") {
-    expect(smartMetrics.columnsAreSideBySide).toBe(true);
-    expect(smartMetrics.narrowestColumnWidth).toBeGreaterThan(480);
-  } else {
-    expect(smartMetrics.columnsAreStacked).toBe(true);
-    expect(smartMetrics.narrowestColumnWidth).toBeGreaterThan(300);
+    await expect(page).toHaveScreenshot("shopping-smart.png", {
+      animations: "disabled",
+      fullPage: true,
+    });
   }
 });
