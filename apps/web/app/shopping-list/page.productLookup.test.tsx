@@ -111,7 +111,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("manual and bulk aliases share one request under the global four-request ceiling", async () => {
+test("bulk loading renders fresh cache hits before serial misses and advances progress per result", async () => {
   const storage = stubSessionStorage();
   storage.set(
     "smartShoppingList:2026-08-10",
@@ -119,12 +119,10 @@ test("manual and bulk aliases share one request under the global four-request ce
       remove: [],
       likely_pantry: [],
       purchase_items: [
-        { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
-        { name: " rice ", suggested_purchase: "1 bag", category: "Produce" },
         { name: "Beans", suggested_purchase: "1 can", category: "Produce" },
         { name: "Milk", suggested_purchase: "1 carton", category: "Dairy" },
         { name: "Eggs", suggested_purchase: "1 dozen", category: "Dairy" },
-        { name: "Flour", suggested_purchase: "1 bag", category: "Bakery" },
+        { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
       ],
       _ui: { hidden: [], checked: [] },
     }),
@@ -132,53 +130,50 @@ test("manual and bulk aliases share one request under the global four-request ce
 
   const pending = new Map<string, ReturnType<typeof deferredResponse>>();
   const started: string[] = [];
-  let active = 0;
-  let peak = 0;
-  mockApiFetch.mockImplementation((path: string) => {
+  mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
     if (path.startsWith("/shopping-list?")) {
       return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
     }
     if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
     if (path === "/recipes") return Promise.resolve(jsonResponse([]));
+    if (path === "/store-products/batch") {
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toEqual({ queries: ["Rice", "Beans", "Milk", "Eggs"] });
+      return Promise.resolve(jsonResponse({
+        entries: [
+          { query: "Rice", status: "fresh", products: [{ name: "Cached rice", price: "$1", image: "", url: "https://www.sayweee.com/product/cached-rice" }], expires_at: "2099-01-01T00:00:00.000Z" },
+          { query: "Beans", status: "fresh", products: [{ name: "Cached beans", price: "$2", image: "", url: "https://www.sayweee.com/product/cached-beans" }], expires_at: "2099-01-01T00:00:00.000Z" },
+          { query: "Milk", status: "missing", products: [], expires_at: null },
+          { query: "Eggs", status: "missing", products: [], expires_at: null },
+        ],
+      }));
+    }
     if (path.startsWith("/store-products?query=")) {
       const query = decodeURIComponent(path.split("query=")[1]);
       started.push(query);
-      active += 1;
-      peak = Math.max(peak, active);
       const response = deferredResponse();
       pending.set(query, response);
-      return response.promise.finally(() => {
-        active -= 1;
-      });
+      return response.promise;
     }
     throw new Error(`Unexpected request: ${path}`);
   });
 
   const user = userEvent.setup();
   render(<ShoppingListPage />);
-  const viewButtons = await screen.findAllByRole("button", { name: "View products" });
-  await user.click(viewButtons[0]);
-  await waitFor(() => expect(started).toEqual(["Rice"]));
-  await user.click(screen.getByRole("button", { name: /Load top picks from Weee/ }));
+  await user.click(await screen.findByRole("button", { name: /Load top picks from Weee/ }));
 
-  await waitFor(() => expect(started).toEqual(["Rice", "Beans", "Milk", "Eggs"]));
-  expect(peak).toBe(4);
-  expect(started.filter((name) => name.trim().toLocaleLowerCase() === "rice")).toHaveLength(1);
-
-  pending.get("Rice")?.resolve(productResponse([{ name: "Rice", price: "$1", image: "", url: "https://www.sayweee.com/product/rice" }]));
-  await waitFor(() => expect(started).toEqual(["Rice", "Beans", "Milk", "Eggs", "Flour"]));
-  for (const [query, response] of pending) {
-    if (query !== "Rice") {
-      response.resolve(productResponse([{ name: query, price: "$1", image: "", url: `https://www.sayweee.com/product/${query}` }]));
-    }
-  }
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: /Load top picks from Weee/ })).toBeEnabled(),
-  );
-  expect(peak).toBe(4);
+  expect(await screen.findByText("Cached rice")).toBeVisible();
+  expect(screen.getByText("Cached beans")).toBeVisible();
+  await waitFor(() => expect(started).toEqual(["Milk"]));
+  expect(screen.getByText(/Loading store matches.*2 of 4/)).toBeVisible();
+  pending.get("Milk")?.resolve(productResponse([{ name: "Milk", price: "$3", image: "", url: "https://www.sayweee.com/product/milk" }]));
+  await waitFor(() => expect(started).toEqual(["Milk", "Eggs"]));
+  expect(screen.getByText(/Loading store matches.*3 of 4/)).toBeVisible();
+  pending.get("Eggs")?.resolve(productResponse([{ name: "Eggs", price: "$4", image: "", url: "https://www.sayweee.com/product/eggs" }]));
+  await screen.findByRole("button", { name: /Load top picks from Weee/ });
 });
 
-test("revalidates a hydrated positive before displaying any stored product", async () => {
+test("retains a hydrated unexpired safe positive without a live request", async () => {
   const storage = stubSessionStorage();
   storage.set(
     "smartShoppingList:2026-08-10",
@@ -204,7 +199,7 @@ test("revalidates a hydrated positive before displaying any stored product", asy
               name: "Stored rice",
               price: "$0.01",
               image: "",
-              url: "https://sayweee.com.evil.test/product/rice",
+              url: "https://www.sayweee.com/product/rice",
             },
           ],
         },
@@ -212,36 +207,53 @@ test("revalidates a hydrated positive before displaying any stored product", asy
     }),
   );
 
-  const freshResponse = deferredResponse();
   mockApiFetch.mockImplementation((path: string) => {
     if (path.startsWith("/shopping-list?")) {
       return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
     }
     if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
     if (path === "/recipes") return Promise.resolve(jsonResponse([]));
-    if (path === "/store-products?query=rice") return freshResponse.promise;
+    if (path.startsWith("/store-products")) throw new Error("A retained success must not revalidate before expiry");
     throw new Error(`Unexpected request: ${path}`);
   });
 
   render(<ShoppingListPage />);
 
+  expect(await screen.findByText("Stored rice")).toBeVisible();
+  expect(mockApiFetch).not.toHaveBeenCalledWith("/store-products?query=rice");
+});
+
+test("Retry keeps the generic panel error and replaces it with a valid product", async () => {
+  const storage = stubSessionStorage();
+  storage.set("smartShoppingList:2026-08-10", JSON.stringify({
+    remove: [], likely_pantry: [],
+    purchase_items: [{ name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" }],
+    _ui: { hidden: [], checked: [] },
+  }));
+  let calls = 0;
+  const recovered = deferredResponse();
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/shopping-list?")) return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
+    if (path === "/recipes") return Promise.resolve(jsonResponse([]));
+    if (path === "/store-products?query=Rice") {
+      calls += 1;
+      return calls === 1
+        ? Promise.resolve(new Response("busy", { status: 503 }))
+        : recovered.promise;
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+
+  const user = userEvent.setup();
+  render(<ShoppingListPage />);
+  await user.click((await screen.findAllByRole("button", { name: "View products" }))[0]);
+  expect(await screen.findByText("Could not load products from Weee.")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "Retry" }));
   expect(await screen.findByText("Finding matches on Weee…")).toBeVisible();
-  expect(screen.queryByText("Stored rice")).not.toBeInTheDocument();
-  expect(mockApiFetch).toHaveBeenCalledWith("/store-products?query=rice");
-
-  freshResponse.resolve(
-    productResponse([
-      {
-        name: "Fresh rice",
-        price: "$2.99",
-        image: "",
-        url: "https://www.sayweee.com/product/rice",
-      },
-    ]),
-  );
-
-  expect(await screen.findByText("Fresh rice")).toBeVisible();
-  expect(screen.queryByText("Stored rice")).not.toBeInTheDocument();
+  recovered.resolve(productResponse([{ name: "Recovered rice", price: "$2", image: "", url: "https://www.sayweee.com/product/recovered-rice" }]));
+  expect(await screen.findByText("Recovered rice")).toBeVisible();
+  expect(calls).toBe(2);
 });
 
 test("reload requeues an open product panel whose persisted lookup is missing", async () => {

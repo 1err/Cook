@@ -187,3 +187,92 @@ test("keeps preparation in context and renders smart groceries without horizonta
     });
   }
 });
+
+test("loads batch cache hits before one serial miss and permits retry after a failed miss", async ({ page }) => {
+  const fourItems = [
+    { name: "Rice", total_quantity: "1 bag" },
+    { name: "Beans", total_quantity: "1 can" },
+    { name: "Milk", total_quantity: "1 carton" },
+    { name: "Eggs", total_quantity: "1 dozen" },
+  ];
+  const fourRefined = {
+    remove: [],
+    likely_pantry: [],
+    purchase_items: [
+      { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+      { name: "Beans", suggested_purchase: "1 can", category: "Pantry & Dry Goods" },
+      { name: "Milk", suggested_purchase: "1 carton", category: "Dairy" },
+      { name: "Eggs", suggested_purchase: "1 dozen", category: "Dairy" },
+    ],
+  };
+  let batchRequests = 0;
+  const getQueries: string[] = [];
+  let releaseMilk!: () => void;
+  const milkPending = new Promise<void>((resolve) => { releaseMilk = resolve; });
+  let eggCalls = 0;
+
+  await page.route("http://localhost:8000/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === "/shopping-list" || url.pathname === "/meal-plan") {
+      await fulfillJson(route, url.pathname === "/shopping-list" ? fourItems : mealPlans);
+      return;
+    }
+    if (url.pathname === "/shopping-list/refine" && request.method() === "POST") {
+      await fulfillJson(route, fourRefined);
+      return;
+    }
+    if (url.pathname === "/store-products/batch") {
+      batchRequests += 1;
+      expect(await request.postDataJSON()).toEqual({ queries: ["Rice", "Beans", "Milk", "Eggs"] });
+      await fulfillJson(route, {
+        entries: [
+          { query: "Rice", status: "fresh", products: [{ name: "Cached rice", price: "$1", image: "", url: "https://www.sayweee.com/product/cached-rice" }], expires_at: "2030-01-01T00:00:00.000Z" },
+          { query: "Beans", status: "fresh", products: [{ name: "Cached beans", price: "$2", image: "", url: "https://www.sayweee.com/product/cached-beans" }], expires_at: "2030-01-01T00:00:00.000Z" },
+          { query: "Milk", status: "missing", products: [], expires_at: null },
+          { query: "Eggs", status: "missing", products: [], expires_at: null },
+        ],
+      });
+      return;
+    }
+    if (url.pathname === "/store-products") {
+      const query = url.searchParams.get("query");
+      if (query) getQueries.push(query);
+      if (query === "Milk") {
+        await milkPending;
+        await fulfillJson(route, {
+          products: [{ name: "Fresh milk", price: "$3", image: "", url: "https://www.sayweee.com/product/fresh-milk" }],
+          expires_at: "2030-01-01T00:00:00.000Z",
+        });
+        return;
+      }
+      if (query === "Eggs") {
+        eggCalls += 1;
+        if (eggCalls === 1) {
+          await route.fulfill({ status: 503, headers: corsHeaders(), body: "busy" });
+          return;
+        }
+        await fulfillJson(route, {
+          products: [{ name: "Recovered eggs", price: "$4", image: "", url: "https://www.sayweee.com/product/recovered-eggs" }],
+          expires_at: "2030-01-01T00:00:00.000Z",
+        });
+        return;
+      }
+    }
+    await route.continue();
+  });
+
+  await page.getByRole("button", { name: "Prepare smart shopping list" }).click();
+  await page.getByRole("button", { name: /Load top picks from Weee/ }).click();
+  await expect(page.getByText("Cached rice")).toBeVisible();
+  await expect(page.getByText("Cached beans")).toBeVisible();
+  expect(batchRequests).toBe(1);
+  await expect.poll(() => getQueries).toEqual(["Milk"]);
+
+  releaseMilk();
+  await expect.poll(() => getQueries).toEqual(["Milk", "Eggs"]);
+  await expect(page.getByText("Could not load products from Weee.")).toBeVisible();
+  await page.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByText("Recovered eggs")).toBeVisible();
+  expect(eggCalls).toBe(2);
+});

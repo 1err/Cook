@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import type { StoreProductsResponse } from "@cooking/api-client";
+import type { StoreProductsBatchResponse, StoreProductsResponse } from "@cooking/api-client";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
 import { PageHeader, PageShell } from "../components/PageShell";
@@ -141,6 +141,15 @@ async function loadProduct(key: string): Promise<StoreProductsResponse> {
   return parseStoreProductsResponse(data);
 }
 
+async function loadProductBatch(queries: string[]): Promise<StoreProductsBatchResponse> {
+  const res = await apiFetch("/store-products/batch", {
+    method: "POST",
+    body: JSON.stringify({ queries }),
+  });
+  if (!res.ok) throw new Error("Failed to load cached products");
+  return (await res.json()) as StoreProductsBatchResponse;
+}
+
 function parseSmartStored(
   raw: string
 ): { data: RefineResponse; hidden: Set<number>; checked: Set<number>; plannerFingerprint: string | null } | null {
@@ -211,6 +220,7 @@ function ShoppingListPageContent() {
   if (!productLookupCoordinatorRef.current) {
     productLookupCoordinatorRef.current = createProductLookupCoordinator({
       load: loadProduct,
+      loadBatch: loadProductBatch,
       shouldPublish: (generation) => productLoadGenerationRef.current === generation,
       onState: (key, state) => {
         setLookupByIngredient((current) => ({ ...current, [key]: state }));
@@ -618,20 +628,35 @@ function ShoppingListPageContent() {
   }
 
   async function handleLoadAllProducts() {
-    const keys = buildVisualProductQueue(productQueueGroups);
+    const seen = new Set<string>();
+    const keys = buildVisualProductQueue(productQueueGroups).filter((key) => {
+      const canonicalKey = canonicalIngredientKey(key);
+      if (!canonicalKey || seen.has(canonicalKey)) return false;
+      seen.add(canonicalKey);
+      return true;
+    });
     if (!keys.length) return;
     const generation = productLoadGenerationRef.current;
     setOpenProductsByIngredient((current) => ({
       ...current,
       ...Object.fromEntries(keys.map((key) => [canonicalIngredientKey(key), true])),
     }));
+    const unresolvedKeys = keys.filter((key) => {
+      const state = lookupByIngredient[canonicalIngredientKey(key)];
+      return !(
+        state?.status === "success" &&
+        typeof state.expiresAt === "string" &&
+        Date.parse(state.expiresAt) > Date.now()
+      );
+    });
+    let completed = keys.length - unresolvedKeys.length;
+    if (!unresolvedKeys.length) return;
     setBulkLoadingProducts(true);
-    setBulkLoadProgress({ current: 0, total: keys.length });
-    let completed = 0;
+    setBulkLoadProgress({ current: completed, total: keys.length });
     try {
       await Promise.all(
-        keys.map(async (key) => {
-          await productLookupCoordinator.request(key, generation);
+        productLookupCoordinator.requestBulk(unresolvedKeys, generation).map(async (request) => {
+          await request;
           if (productLoadGenerationRef.current !== generation) return;
           completed += 1;
           setBulkLoadProgress({ current: completed, total: keys.length });

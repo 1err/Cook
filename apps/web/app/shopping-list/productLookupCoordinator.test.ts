@@ -1,9 +1,14 @@
 import { expect, test, vi } from "vitest";
-import type { StoreProduct, StoreProductsResponse } from "@cooking/api-client";
+import type {
+  StoreProduct,
+  StoreProductsBatchResponse,
+  StoreProductsResponse,
+} from "@cooking/api-client";
 import type { ProductLookupState } from "./productLoading";
 import {
   buildProductLookupStorage,
   canonicalIngredientKey,
+  cleanIngredientQuery,
   createProductLookupCoordinator,
   parseProductLookupStorage,
   parseStoreProductsResponse,
@@ -36,17 +41,16 @@ function deferred<T>() {
 }
 
 test("canonicalizes ingredient identity across spelling aliases", () => {
-  expect(canonicalIngredientKey("  Rice ")).toBe("rice");
+  expect(cleanIngredientQuery("  Jasmine   Rice ")).toBe("Jasmine Rice");
+  expect(canonicalIngredientKey("  Jasmine   Rice ")).toBe("jasmine rice");
   expect(canonicalIngredientKey("RICE")).toBe("rice");
 });
 
-test("caps combined manual and bulk work at four and deduplicates aliases in flight", async () => {
+test("publishes batch hits before draining misses serially in visual order", async () => {
   const releases = new Map<string, ReturnType<typeof deferred<StoreProductsResponse>>>();
-  const started: string[] = [];
   let active = 0;
   let peak = 0;
   const load = vi.fn((query: string) => {
-    started.push(query);
     active += 1;
     peak = Math.max(peak, active);
     const release = deferred<StoreProductsResponse>();
@@ -55,30 +59,184 @@ test("caps combined manual and bulk work at four and deduplicates aliases in fli
       active -= 1;
     });
   });
+  const loadBatch = vi.fn().mockResolvedValue({
+    entries: [
+      { query: "Rice", status: "fresh", products: [product("Cached rice")], expires_at: FUTURE_EXPIRES_AT },
+      { query: "Beans", status: "missing", products: [], expires_at: null },
+      { query: "Milk", status: "missing", products: [], expires_at: null },
+    ],
+  } satisfies StoreProductsBatchResponse);
+  const transitions: Array<[string, string]> = [];
   const coordinator = createProductLookupCoordinator({
     load,
+    loadBatch,
+    shouldPublish: () => true,
+    onState: (key, state) => transitions.push([key, state.status]),
+  });
+
+  const requests = coordinator.requestBulk(["Rice", "Beans", "Milk"], 1);
+  await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+  expect(transitions).toContainEqual(["rice", "success"]);
+  expect(load).toHaveBeenNthCalledWith(1, "Beans");
+  releases.get("Beans")?.resolve(response([product("Beans")]));
+  await vi.waitFor(() => expect(load).toHaveBeenNthCalledWith(2, "Milk"));
+  releases.get("Milk")?.resolve(response([product("Milk")]));
+  await Promise.all(requests);
+
+  expect(peak).toBe(1);
+});
+
+test("mechanically equivalent visual inputs join one request using the first cleaned spelling", async () => {
+  const release = deferred<StoreProductsResponse>();
+  const load = vi.fn(() => release.promise);
+  const coordinator = createProductLookupCoordinator({
+    load,
+    loadBatch: vi.fn(),
     shouldPublish: () => true,
     onState: vi.fn(),
   });
 
-  const manual = coordinator.request("Rice", 1);
-  const alias = coordinator.request(" rice ", 1);
-  const bulk = ["Beans", "Milk", "Eggs", "Flour"].map((name) =>
-    coordinator.request(name, 1),
+  const [first] = coordinator.requestBulk(
+    [" Rice ", "rice", "  rice   "],
+    1,
   );
+  await vi.waitFor(() => expect(load).toHaveBeenCalledWith("Rice"));
+  release.resolve(response([product("Rice")]));
+  await expect(first).resolves.toMatchObject({ status: "success" });
+});
 
-  expect(alias).toBe(manual);
-  await vi.waitFor(() => expect(started).toEqual(["Rice", "Beans", "Milk", "Eggs"]));
-  expect(peak).toBe(4);
+test("a manual request queued behind an active bulk miss runs before the next bulk miss", async () => {
+  const releases = new Map<string, ReturnType<typeof deferred<StoreProductsResponse>>>();
+  const load = vi.fn((query: string) => {
+    const release = deferred<StoreProductsResponse>();
+    releases.set(query, release);
+    return release.promise;
+  });
+  const coordinator = createProductLookupCoordinator({
+    load,
+    loadBatch: vi.fn().mockResolvedValue({
+      entries: [
+        { query: "Beans", status: "missing", products: [], expires_at: null },
+        { query: "Milk", status: "missing", products: [], expires_at: null },
+      ],
+    } satisfies StoreProductsBatchResponse),
+    shouldPublish: () => true,
+    onState: vi.fn(),
+  });
+
+  const bulk = coordinator.requestBulk(["Beans", "Milk"], 1);
+  await vi.waitFor(() => expect(load).toHaveBeenNthCalledWith(1, "Beans"));
+  const manual = coordinator.request("Rice", 1);
+  releases.get("Beans")?.resolve(response([product("Beans")]));
+  await vi.waitFor(() => expect(load).toHaveBeenNthCalledWith(2, "Rice"));
   releases.get("Rice")?.resolve(response([product("Rice")]));
-  await vi.waitFor(() => expect(started).toEqual(["Rice", "Beans", "Milk", "Eggs", "Flour"]));
-  for (const [query, release] of releases) {
-    if (query !== "Rice") release.resolve(response([product(query)]));
-  }
-  await Promise.all([manual, alias, ...bulk]);
+  await vi.waitFor(() => expect(load).toHaveBeenNthCalledWith(3, "Milk"));
+  releases.get("Milk")?.resolve(response([product("Milk")]));
+  await Promise.all([...bulk, manual]);
+});
 
-  expect(load).toHaveBeenCalledTimes(5);
-  expect(peak).toBe(4);
+test("an already-running manual alias is excluded from the batch and its promise is joined", async () => {
+  const manualRelease = deferred<StoreProductsResponse>();
+  const batchRelease = deferred<StoreProductsResponse>();
+  const load = vi.fn((query: string) => query === "Rice" ? manualRelease.promise : batchRelease.promise);
+  const loadBatch = vi.fn().mockResolvedValue({
+    entries: [{ query: "Beans", status: "missing", products: [], expires_at: null }],
+  } satisfies StoreProductsBatchResponse);
+  const coordinator = createProductLookupCoordinator({ load, loadBatch, shouldPublish: () => true, onState: vi.fn() });
+
+  const manual = coordinator.request("Rice", 1);
+  const [alias, bean] = coordinator.requestBulk([" rice ", "Beans"], 1);
+  expect(alias).toBe(manual);
+  await vi.waitFor(() => expect(loadBatch).toHaveBeenCalledWith(["Beans"]));
+  manualRelease.resolve(response([product("Rice")]));
+  await vi.waitFor(() => expect(load).toHaveBeenCalledWith("Beans"));
+  batchRelease.resolve(response([product("Beans")]));
+  await Promise.all([manual, alias, bean]);
+});
+
+test.each([
+  "rejects",
+  "has duplicate entries",
+  "has an unknown entry",
+  "omits a requested entry",
+])("a batch that %s falls back to the serial miss queue", async (caseName) => {
+  const load = vi.fn((query: string) => Promise.resolve(response([product(query)])));
+  const malformed = {
+    "has duplicate entries": { entries: [
+      { query: "Rice", status: "missing", products: [], expires_at: null },
+      { query: "Rice", status: "missing", products: [], expires_at: null },
+    ] },
+    "has an unknown entry": { entries: [
+      { query: "Rice", status: "missing", products: [], expires_at: null },
+      { query: "Unknown", status: "missing", products: [], expires_at: null },
+    ] },
+    "omits a requested entry": { entries: [
+      { query: "Rice", status: "missing", products: [], expires_at: null },
+    ] },
+  } as Record<string, unknown>;
+  const coordinator = createProductLookupCoordinator({
+    load,
+    loadBatch: vi.fn().mockImplementation(() => caseName === "rejects" ? Promise.reject(new Error("cache unavailable")) : Promise.resolve(malformed[caseName])),
+    shouldPublish: () => true,
+    onState: vi.fn(),
+  });
+
+  await Promise.all(coordinator.requestBulk(["Rice", "Beans"], 1));
+  expect(load.mock.calls.map(([query]) => query)).toEqual(["Rice", "Beans"]);
+});
+
+test("a non-empty server response containing no safe products becomes error", async () => {
+  const coordinator = createProductLookupCoordinator({
+    load: vi.fn().mockResolvedValue({
+      products: [{ name: "Unsafe", price: "$1", image: "", url: "https://evil.test/product/unsafe" }],
+      expires_at: FUTURE_EXPIRES_AT,
+    }),
+    loadBatch: vi.fn(),
+    shouldPublish: () => true,
+    onState: vi.fn(),
+  });
+
+  await expect(coordinator.request("Rice", 1)).resolves.toEqual({ status: "error" });
+});
+
+test("generation cancellation suppresses batch and GET completion publication", async () => {
+  let generation = 1;
+  const batch = deferred<StoreProductsBatchResponse>();
+  const get = deferred<StoreProductsResponse>();
+  const transitions: string[] = [];
+  const coordinator = createProductLookupCoordinator({
+    load: () => get.promise,
+    loadBatch: () => batch.promise,
+    shouldPublish: (requestGeneration) => requestGeneration === generation,
+    onState: (_key, state) => transitions.push(state.status),
+  });
+
+  const cached = coordinator.requestBulk(["Rice"], 1);
+  generation = 2;
+  batch.resolve({ entries: [{ query: "Rice", status: "fresh", products: [product("Rice")], expires_at: FUTURE_EXPIRES_AT }] });
+  await Promise.all(cached);
+  const live = coordinator.request("Beans", 2);
+  await vi.waitFor(() => expect(transitions).toContain("loading"));
+  generation = 3;
+  get.resolve(response([product("Beans")]));
+  await live;
+  expect(transitions).not.toContain("success");
+});
+
+test("seventy-five fresh cache hits resolve without a live GET", async () => {
+  const names = Array.from({ length: 75 }, (_, index) => `Ingredient ${index}`);
+  const load = vi.fn();
+  const coordinator = createProductLookupCoordinator({
+    load,
+    loadBatch: vi.fn().mockResolvedValue({
+      entries: names.map((query) => ({ query, status: "fresh" as const, products: [product(query)], expires_at: FUTURE_EXPIRES_AT })),
+    } satisfies StoreProductsBatchResponse),
+    shouldPublish: () => true,
+    onState: vi.fn(),
+  });
+
+  await Promise.all(coordinator.requestBulk(names, 1));
+  expect(load).not.toHaveBeenCalled();
 });
 
 test("a completed empty lookup can be retried through the same coordinator", async () => {
@@ -89,6 +247,7 @@ test("a completed empty lookup can be retried through the same coordinator", asy
   const transitions: ProductLookupState[] = [];
   const coordinator = createProductLookupCoordinator({
     load,
+    loadBatch: vi.fn(),
     shouldPublish: () => true,
     onState: (_key, state) => transitions.push(state),
   });
@@ -122,6 +281,7 @@ test("a failed lookup can be retried without publishing technical details", asyn
   const transitions: ProductLookupState[] = [];
   const coordinator = createProductLookupCoordinator({
     load,
+    loadBatch: vi.fn(),
     shouldPublish: () => true,
     onState: (_key, state) => transitions.push(state),
   });
@@ -145,6 +305,7 @@ test.each(["generation change", "unmount"])(
     const transitions: Array<{ key: string; status: string; generation: number }> = [];
     const coordinator = createProductLookupCoordinator({
       load: () => release.promise,
+      loadBatch: vi.fn(),
       shouldPublish: (generation) => generation === currentGeneration,
       onState: (key, state, generation) =>
         transitions.push({ key, status: state.status, generation }),
@@ -175,6 +336,7 @@ test("does not start queued work after its generation is cancelled", async () =>
   });
   const coordinator = createProductLookupCoordinator({
     load,
+    loadBatch: vi.fn(),
     shouldPublish: (generation) => generation === currentGeneration,
     onState: vi.fn(),
   });
@@ -182,14 +344,11 @@ test("does not start queued work after its generation is cancelled", async () =>
     coordinator.request(name, 1),
   );
 
-  await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(4));
+  await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
   currentGeneration = 2;
   releases[0].resolve(response([product("a")]));
   await expect(requests[4]).resolves.toEqual({ status: "idle" });
-  expect(load).toHaveBeenCalledTimes(4);
-  releases.slice(1).forEach((release, index) =>
-    release.resolve(response([product(String(index))])),
-  );
+  expect(load).toHaveBeenCalledTimes(1);
   await Promise.all(requests);
 });
 
@@ -222,7 +381,7 @@ test("stores only canonical terminal states and strips technical errors", () => 
   });
 });
 
-test("revalidates stored positives and every open key without a retained success", () => {
+test("retains unexpired stored positives and revalidates every open key without one", () => {
   const hydrated = parseProductLookupStorage(
     JSON.stringify({
       open: {
@@ -259,8 +418,15 @@ test("revalidates stored positives and every open key without a retained success
       missing: true,
       legacy: true,
     },
-    lookup: { closed: { status: "empty", products: [] } },
-    revalidate: ["rice", "legacy", "waiting", "queued", "missing"],
+    lookup: {
+      rice: {
+        status: "success",
+        products: [product("Rice")],
+        expiresAt: FUTURE_EXPIRES_AT,
+      },
+      closed: { status: "empty", products: [] },
+    },
+    revalidate: ["waiting", "queued", "missing", "legacy"],
   });
 });
 
