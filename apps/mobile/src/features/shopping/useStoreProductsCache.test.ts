@@ -59,6 +59,12 @@ const MILK: StoreProduct = {
   image: "",
   url: "https://www.sayweee.com/product/milk",
 };
+const FOUR_PRODUCTS: StoreProduct[] = [
+  RICE,
+  BEANS,
+  MILK,
+  { name: "Tofu", price: "$2.49", image: "", url: "https://www.sayweee.com/product/tofu" },
+];
 
 function response(
   products: StoreProduct[],
@@ -89,6 +95,52 @@ test("hydrates fresh stored positives immediately without batch or GET", async (
   expect(result.current.products.tofu?.[0]?.name).toBe("Tofu");
   expect(mockStoreProductsBatch).not.toHaveBeenCalled();
   expect(mockStoreProducts).not.toHaveBeenCalled();
+});
+
+test("caps hydrated persisted products at the first three choices", async () => {
+  mockReadSmartProducts.mockResolvedValue({
+    open: { rice: true },
+    products: { rice: response(FOUR_PRODUCTS) },
+    errors: { rice: null },
+  });
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+
+  await waitFor(() => expect(result.current.products.rice).toEqual(FOUR_PRODUCTS.slice(0, 3)));
+});
+
+test("caps live product responses at the first three choices", async () => {
+  mockStoreProducts.mockResolvedValue(response(FOUR_PRODUCTS));
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+
+  await act(async () => {
+    await result.current.togglePanel("Rice");
+  });
+  expect(result.current.products.rice).toEqual(FOUR_PRODUCTS.slice(0, 3));
+});
+
+test("persists the first cleaned query spelling by canonical key", async () => {
+  mockStoreProducts.mockResolvedValue(response([RICE]));
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+
+  await act(async () => {
+    await result.current.togglePanel("  RICE  ");
+  });
+  await waitFor(() => {
+    const latest = mockWriteSmartProducts.mock.calls.at(-1)?.[1];
+    expect(latest?.queries).toEqual({ rice: "RICE" });
+  });
+});
+
+test("caps fresh batch product responses at the first three choices", async () => {
+  mockStoreProductsBatch.mockResolvedValue({
+    entries: [{ query: "Rice", status: "fresh", products: FOUR_PRODUCTS, expires_at: FUTURE_EXPIRES_AT }],
+  });
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+
+  await act(async () => {
+    void result.current.loadAll(["Rice"]);
+  });
+  await waitFor(() => expect(result.current.products.rice).toEqual(FOUR_PRODUCTS.slice(0, 3)));
 });
 
 test("hydrates a fresh positive then batch-loads and serially GETs only open misses", async () => {
@@ -359,6 +411,26 @@ test("keeps hydrated data visible before exact expiry, then queues its revalidat
   });
   expect(result.current.products.rice).toBeUndefined();
   expect(mockStoreProducts).toHaveBeenCalledWith("rice");
+});
+
+test("hydrates the persisted first spelling for exact-expiry reloads", async () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date("2026-08-15T12:00:00.000Z"));
+  mockReadSmartProducts.mockResolvedValue({
+    open: { rice: true },
+    products: { rice: response([RICE], "2026-08-15T12:00:01.000Z") },
+    errors: { rice: null },
+    queries: { rice: "RICE" },
+  });
+  mockStoreProducts.mockResolvedValue(response([]));
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+
+  await waitFor(() => expect(result.current.products.rice).toEqual([RICE]));
+  await act(async () => {
+    jest.advanceTimersByTime(1_000);
+    await Promise.resolve();
+  });
+  expect(mockStoreProducts).toHaveBeenCalledWith("RICE");
 });
 
 test("week changes suppress queued publications and reset bulk progress", async () => {

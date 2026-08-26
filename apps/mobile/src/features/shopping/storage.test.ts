@@ -44,6 +44,7 @@ test("keeps only persisted positives with a valid authoritative future expiry", 
       },
     },
     errors: {},
+    queries: {},
   });
 });
 
@@ -62,4 +63,37 @@ test("accepts stored positives only strictly before their authoritative expiry",
       now,
     ),
   ).toBe(false);
+});
+
+test("caps persisted choices and retains valid canonical query metadata", () => {
+  const now = Date.parse("2026-08-15T12:00:00.000Z");
+  const products = [
+    product,
+    { ...product, name: "Beans", url: "https://www.sayweee.com/product/beans" },
+    { ...product, name: "Milk", url: "https://www.sayweee.com/product/milk" },
+    { ...product, name: "Tofu", url: "https://www.sayweee.com/product/tofu" },
+  ];
+
+  expect(
+    parseSmartProductsStored(
+      {
+        open: { Rice: true },
+        products: { Rice: { products, expires_at: "2026-08-15T12:00:00.001Z" } },
+        errors: {},
+        queries: { Rice: "RICE", unknown: "Unknown" },
+      },
+      now,
+    ),
+  ).toEqual({
+    open: { rice: true },
+    products: { rice: { products: products.slice(0, 3), expires_at: "2026-08-15T12:00:00.001Z" } },
+    errors: {},
+    queries: { rice: "RICE", unknown: "Unknown" },
+  });
+});
+
+test("parses legacy product payloads without query metadata", () => {
+  expect(
+    parseSmartProductsStored({ open: {}, products: {}, errors: {} }),
+  ).toEqual({ open: {}, products: {}, errors: {}, queries: {} });
 });

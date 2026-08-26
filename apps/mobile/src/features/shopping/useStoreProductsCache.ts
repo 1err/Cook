@@ -148,7 +148,7 @@ function parseStoreProductsResponse(value: unknown, nowMs = Date.now()): StorePr
   if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) {
     throw new Error("Expired product response");
   }
-  return { products, expires_at: data.expires_at };
+  return { products: products.slice(0, 3), expires_at: data.expires_at };
 }
 
 async function fetchProducts(apiClient: ApiClient, query: string): Promise<StoreProductsResponse> {
@@ -478,10 +478,19 @@ export function useStoreProductsCache(weekStart: string | null) {
       const products: Record<string, StoreProductsResponse> = {};
       const open: Record<string, boolean> = {};
       const errors: Record<string, string | null> = {};
+      const queries: Record<string, string> = {};
       for (const [rawKey, value] of Object.entries(cached.products)) {
         const key = canonicalStoreProductKey(rawKey);
         if (key && !products[key] && isFreshStoredProductResponse(value, nowMs)) {
-          products[key] = value;
+          products[key] = { products: value.products.slice(0, 3), expires_at: value.expires_at };
+        }
+      }
+      for (const [rawKey, rawQuery] of Object.entries(cached.queries ?? {})) {
+        const key = canonicalStoreProductKey(rawKey);
+        const query = cleanStoreProductQuery(rawQuery);
+        if (key && query && canonicalStoreProductKey(query) === key && !(key in queries)) {
+          queries[key] = query;
+          firstQueryByKeyRef.current.set(key, query);
         }
       }
       for (const [rawKey, value] of Object.entries(cached.open)) {
@@ -494,7 +503,7 @@ export function useStoreProductsCache(weekStart: string | null) {
           errors[key] = value;
         }
       }
-      const hydrated: SmartProductsStored = { open, products, errors };
+      const hydrated: SmartProductsStored = { open, products, errors, queries };
       dispatch({ type: "hydrate", payload: hydrated, weekStart });
       const misses = prepareStoreProductQueries(
         Object.entries(cached.open)
@@ -574,9 +583,20 @@ export function useStoreProductsCache(weekStart: string | null) {
     for (const [key, rows] of Object.entries(state.products)) {
       const expiresAt = state.expiresAt[key];
       if (!rows.length || !expiresAt || Date.parse(expiresAt) <= Date.now()) continue;
-      products[key] = { products: rows, expires_at: expiresAt };
+      products[key] = { products: rows.slice(0, 3), expires_at: expiresAt };
     }
-    void writeSmartProducts(weekStart, { open: state.open, products, errors: state.errors });
+    const knownKeys = new Set([
+      ...Object.keys(state.open),
+      ...Object.keys(products),
+      ...Object.keys(state.errors),
+    ]);
+    const queries = Object.fromEntries(
+      [...knownKeys].flatMap((key) => {
+        const query = firstQueryByKeyRef.current.get(key);
+        return query ? [[key, query]] : [];
+      }),
+    );
+    void writeSmartProducts(weekStart, { open: state.open, products, errors: state.errors, queries });
   }, [state.errors, state.expiresAt, state.hydratedWeekStart, state.open, state.products, weekStart]);
 
   const ensureLoaded = useCallback(

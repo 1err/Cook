@@ -76,6 +76,25 @@ test("keeps each product as its own accessible vertical result", async () => {
   expect(screen.getByLabelText("View Idaho potatoes on Weee")).toBeOnTheScreen();
 });
 
+test("defensively renders only the first three safe products", async () => {
+  await render(
+    <StoreProductPicks
+      loading={false}
+      error={null}
+      products={[
+        { name: "Rice", price: "$1", image: "", url: "https://www.sayweee.com/product/rice" },
+        { name: "Beans", price: "$1", image: "", url: "https://www.sayweee.com/product/beans" },
+        { name: "Milk", price: "$1", image: "", url: "https://www.sayweee.com/product/milk" },
+        { name: "Tofu", price: "$1", image: "", url: "https://www.sayweee.com/product/tofu" },
+      ]}
+      onRetry={jest.fn()}
+    />,
+  );
+
+  expect(screen.getAllByRole("link")).toHaveLength(3);
+  expect(screen.queryByLabelText("View Tofu on Weee")).not.toBeOnTheScreen();
+});
+
 test.each([
   "http://www.sayweee.com/product/tofu",
   "https://sayweee.com.evil.test/product/tofu",
