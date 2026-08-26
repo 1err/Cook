@@ -443,7 +443,7 @@ async def test_interactive_history_without_a_waiting_background_does_not_spend_b
 
 
 @pytest.mark.asyncio
-async def test_hung_live_operation_times_out_and_next_job_recovers(monkeypatch):
+async def test_hung_live_operation_times_out_fails_queued_then_recovers(monkeypatch):
     hung_started = asyncio.Event()
     started: list[str] = []
 
@@ -465,32 +465,46 @@ async def test_hung_live_operation_times_out_and_next_job_recovers(monkeypatch):
 
     with pytest.raises(weee_scraper.StoreScrapeError, match="timed out"):
         await hung
-    assert await next_job == [product_for("next")]
-    assert started == ["hung", "next"]
+    with pytest.raises(weee_scraper.StoreScrapeError, match="temporarily unavailable"):
+        await next_job
+    await wait_until(lambda: service._live_lookups._worker is None)
+    assert await service.fetch_store_products("recovered", force_refresh=True) == [
+        product_for("recovered")
+    ]
+    assert started == ["hung", "recovered"]
 
 
 @pytest.mark.asyncio
-async def test_cancellation_resistant_live_operation_cannot_hold_the_worker(monkeypatch):
+async def test_cancellation_resistant_live_operation_quarantines_the_serial_lane(monkeypatch, caplog):
     hung_started = asyncio.Event()
     cancelled = asyncio.Event()
     release_abandoned = asyncio.Event()
     started: list[str] = []
+    active = 0
+    peak_active = 0
 
     async def scrape(query_text: str, language: str) -> list[dict[str, str]]:
+        nonlocal active, peak_active
         started.append(query_text)
-        if query_text == "hung":
-            hung_started.set()
-            try:
-                await asyncio.Event().wait()
-            except asyncio.CancelledError:
-                cancelled.set()
-                await release_abandoned.wait()
-        return [product_for(query_text)]
+        active += 1
+        peak_active = max(peak_active, active)
+        try:
+            if query_text == "hung":
+                hung_started.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    cancelled.set()
+                    await release_abandoned.wait()
+            return [product_for(query_text)]
+        finally:
+            active -= 1
 
     monkeypatch.setattr(service, "LIVE_OPERATION_TIMEOUT_SECONDS", 0.01)
     monkeypatch.setattr(service, "LIVE_FRONT_DOOR_TIMEOUT_SECONDS", 0.1)
     monkeypatch.setattr(weee_scraper, "scrape_weee_products", scrape)
     monkeypatch.setattr(service, "_persist_positive_result", async_noop)
+    caplog.set_level(logging.INFO, logger=service.__name__)
 
     hung = asyncio.create_task(service.fetch_store_products("hung", force_refresh=True))
     await hung_started.wait()
@@ -498,12 +512,29 @@ async def test_cancellation_resistant_live_operation_cannot_hold_the_worker(monk
     try:
         with pytest.raises(weee_scraper.StoreScrapeError, match="timed out"):
             await hung
-        assert await next_job == [product_for("next")]
+        with pytest.raises(weee_scraper.StoreScrapeError, match="temporarily unavailable"):
+            await asyncio.wait_for(next_job, timeout=0.05)
         assert cancelled.is_set()
-        assert started == ["hung", "next"]
+        assert started == ["hung"]
+        assert peak_active == 1
+        with pytest.raises(weee_scraper.StoreScrapeError, match="temporarily unavailable"):
+            await service.fetch_store_products("rejected", force_refresh=True)
+        timeout_record = next(
+            record
+            for record in caplog.records
+            if getattr(record, "event", None) == "store_products_live_timeout"
+        )
+        assert timeout_record.priority == "interactive"
+        assert timeout_record.queue_wait_ms >= 0
     finally:
         release_abandoned.set()
-        await asyncio.sleep(0)
+        await wait_until(lambda: service._live_lookups._worker is None)
+
+    assert await service.fetch_store_products("recovered", force_refresh=True) == [
+        product_for("recovered")
+    ]
+    assert started == ["hung", "recovered"]
+    assert peak_active == 1
 
 
 @pytest.mark.asyncio
@@ -542,18 +573,19 @@ async def test_timed_out_cancellation_resistant_persistence_cannot_publish_l1(mo
         assert service._live_lookups._detached_operations
 
         monkeypatch.setattr(service, "_persist_positive_result", async_noop)
-        assert await service.fetch_store_products("next", force_refresh=True) == [
-            product_for("next")
-        ]
+        with pytest.raises(weee_scraper.StoreScrapeError, match="temporarily unavailable"):
+            await service.fetch_store_products("next", force_refresh=True)
     finally:
         release_persistence.set()
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
+        await wait_until(lambda: service._live_lookups._worker is None)
 
     await wait_until(lambda: not service._live_lookups._detached_operations)
+    assert await service.fetch_store_products("recovered", force_refresh=True) == [
+        product_for("recovered")
+    ]
     late_key = ("weee", "en", service.CACHE_VERSION, "late")
     assert service._memory_cache_get(late_key) is None
-    assert started == ["late", "next"]
+    assert started == ["late", "recovered"]
 
 
 @pytest.mark.asyncio
@@ -586,7 +618,7 @@ async def test_shutdown_tracks_and_boundedly_drains_resistant_operations(monkeyp
         await service.shutdown_live_lookups()
 
         assert cancelled.is_set()
-        assert service._live_lookups._worker is None
+        assert service._live_lookups._worker is not None
         assert service._live_lookups._detached_operations
         with pytest.raises(weee_scraper.StoreScrapeError, match="shutting down"):
             await lookup
@@ -603,6 +635,28 @@ async def test_shutdown_tracks_and_boundedly_drains_resistant_operations(monkeyp
         ("weee", "en", service.CACHE_VERSION, "tofu")
     ) is None
     await service.shutdown_live_lookups()
+
+
+@pytest.mark.asyncio
+async def test_self_cancelled_live_child_is_typed_failure_and_worker_recovers(monkeypatch):
+    calls: list[str] = []
+
+    async def scrape(query_text: str, language: str) -> list[dict[str, str]]:
+        calls.append(query_text)
+        if query_text == "cancelled":
+            raise asyncio.CancelledError
+        return [product_for(query_text)]
+
+    monkeypatch.setattr(weee_scraper, "scrape_weee_products", scrape)
+    monkeypatch.setattr(service, "_persist_positive_result", async_noop)
+
+    with pytest.raises(weee_scraper.StoreScrapeError, match="cancelled"):
+        await service.fetch_store_products("cancelled", force_refresh=True)
+    await wait_until(lambda: service._live_lookups._worker is None)
+    assert await service.fetch_store_products("next", force_refresh=True) == [
+        product_for("next")
+    ]
+    assert calls == ["cancelled", "next"]
 
 
 @pytest.mark.asyncio
@@ -647,6 +701,37 @@ async def test_expired_queued_job_settles_and_a_newer_job_runs(monkeypatch, capl
 
 
 @pytest.mark.asyncio
+async def test_queue_watchdog_expires_a_job_while_active_lane_is_still_running(monkeypatch):
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    started: list[str] = []
+
+    async def scrape(query_text: str, language: str) -> list[dict[str, str]]:
+        started.append(query_text)
+        if query_text == "first":
+            first_started.set()
+            await release_first.wait()
+        return [product_for(query_text)]
+
+    monkeypatch.setattr(service, "LIVE_QUEUE_MAX_WAIT_SECONDS", 0.01)
+    monkeypatch.setattr(service, "LIVE_OPERATION_TIMEOUT_SECONDS", 1.0)
+    monkeypatch.setattr(service, "LIVE_FRONT_DOOR_TIMEOUT_SECONDS", 1.0)
+    monkeypatch.setattr(weee_scraper, "scrape_weee_products", scrape)
+    monkeypatch.setattr(service, "_persist_positive_result", async_noop)
+
+    first = asyncio.create_task(service.fetch_store_products("first", force_refresh=True))
+    await first_started.wait()
+    queued = asyncio.create_task(service.fetch_store_products("queued", force_refresh=True))
+    try:
+        with pytest.raises(weee_scraper.StoreScrapeError, match="queue"):
+            await asyncio.wait_for(queued, timeout=0.05)
+        assert started == ["first"]
+    finally:
+        release_first.set()
+        await first
+
+
+@pytest.mark.asyncio
 async def test_front_door_expiry_removes_unstarted_job_with_no_waiters(monkeypatch):
     first_started = asyncio.Event()
     release_first = asyncio.Event()
@@ -688,12 +773,15 @@ async def test_front_door_timeout_invalidates_active_job_before_late_l1_publicat
     monkeypatch,
 ):
     started = asyncio.Event()
+    cancelled = asyncio.Event()
     release = asyncio.Event()
 
     async def scrape(query_text: str, language: str) -> list[dict[str, str]]:
         started.set()
-        await release.wait()
-        return [TOFU]
+        try:
+            await release.wait()
+        finally:
+            cancelled.set()
 
     monkeypatch.setattr(service, "LIVE_FRONT_DOOR_TIMEOUT_SECONDS", 0.01)
     monkeypatch.setattr(service, "LIVE_OPERATION_TIMEOUT_SECONDS", 1.0)
@@ -702,9 +790,12 @@ async def test_front_door_timeout_invalidates_active_job_before_late_l1_publicat
 
     lookup = asyncio.create_task(service.fetch_store_products("tofu", force_refresh=True))
     await started.wait()
-    with pytest.raises(weee_scraper.StoreScrapeError, match="front door"):
-        await lookup
-    release.set()
+    try:
+        with pytest.raises(weee_scraper.StoreScrapeError, match="front door"):
+            await lookup
+        await asyncio.wait_for(cancelled.wait(), timeout=0.05)
+    finally:
+        release.set()
     await wait_until(lambda: service._live_lookups._worker is None)
 
     key = ("weee", "en", service.CACHE_VERSION, "tofu")
@@ -1079,6 +1170,55 @@ async def test_invalidated_job_lease_blocks_persistence_before_commit(monkeypatc
     with pytest.raises(weee_scraper.StoreScrapeError, match="expired"):
         await task
     assert calls == ["open", "upsert", "rollback", "close"]
+
+
+@pytest.mark.asyncio
+async def test_invalidation_during_irrevocable_commit_never_rolls_back_or_publishes(monkeypatch):
+    commit_started = asyncio.Event()
+    release_commit = asyncio.Event()
+    calls: list[str] = []
+
+    class WriteSession:
+        async def commit(self) -> None:
+            calls.append("commit_started")
+            commit_started.set()
+            await release_commit.wait()
+            calls.append("committed")
+
+        async def rollback(self) -> None:
+            calls.append("rollback")
+
+    class Context:
+        async def __aenter__(self) -> WriteSession:
+            calls.append("open")
+            return WriteSession()
+
+        async def __aexit__(self, *args: Any) -> None:
+            calls.append("close")
+
+    async def upsert(*args: Any, **kwargs: Any) -> bool:
+        calls.append("upsert")
+        return True
+
+    lease = service._LiveJobLease(generation=7)
+    monkeypatch.setattr(db_session, "async_session_maker", lambda: Context())
+    monkeypatch.setattr(repo_store_cache, "upsert_cached_store_products", upsert)
+
+    task = asyncio.create_task(
+        service._persist_positive_result(
+            "tofu", "en", [TOFU], datetime.now(timezone.utc), lease=lease
+        )
+    )
+    await commit_started.wait()
+    lease.invalidate("operation timeout")
+    task.cancel()
+    await asyncio.sleep(0)
+    assert not task.done()
+    release_commit.set()
+
+    with pytest.raises(weee_scraper.StoreScrapeError, match="expired"):
+        await task
+    assert calls == ["open", "upsert", "commit_started", "committed", "close"]
 
 
 @pytest.mark.asyncio

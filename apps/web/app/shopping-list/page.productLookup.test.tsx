@@ -69,6 +69,10 @@ function deferredResponse() {
   return { promise, resolve };
 }
 
+function nearFutureExpiry() {
+  return new Date(Date.now() + 60_000).toISOString();
+}
+
 function stubSessionStorage() {
   const values = new Map<string, string>();
   vi.stubGlobal("sessionStorage", {
@@ -141,9 +145,9 @@ test("bulk loading renders fresh cache hits before serial misses and advances pr
       expect(JSON.parse(String(init?.body))).toEqual({ queries: ["Rice", "Beans", "Milk", "Eggs"] });
       return Promise.resolve(jsonResponse({
         entries: [
-          { query: "Rice", status: "fresh", products: [{ name: "Cached rice", price: "$1", image: "", url: "https://www.sayweee.com/product/cached-rice" }], expires_at: "2099-01-01T00:00:00.000Z" },
+          { query: "Rice", status: "fresh", products: [{ name: "Cached rice", price: "$1", image: "", url: "https://www.sayweee.com/product/cached-rice" }], expires_at: nearFutureExpiry() },
           { query: "Milk", status: "missing", products: [], expires_at: null },
-          { query: "Beans", status: "fresh", products: [{ name: "Cached beans", price: "$2", image: "", url: "https://www.sayweee.com/product/cached-beans" }], expires_at: "2099-01-01T00:00:00.000Z" },
+          { query: "Beans", status: "fresh", products: [{ name: "Cached beans", price: "$2", image: "", url: "https://www.sayweee.com/product/cached-beans" }], expires_at: nearFutureExpiry() },
           { query: "Eggs", status: "missing", products: [], expires_at: null },
         ],
       }));
@@ -193,7 +197,7 @@ test("retains a hydrated unexpired safe positive without a live request", async 
       lookup: {
         rice: {
           status: "success",
-          expiresAt: "2099-01-01T00:00:00.000Z",
+          expiresAt: nearFutureExpiry(),
           products: [
             {
               name: "Stored rice",
@@ -220,7 +224,11 @@ test("retains a hydrated unexpired safe positive without a live request", async 
   render(<ShoppingListPage />);
 
   expect(await screen.findByText("Stored rice")).toBeVisible();
-  expect(mockApiFetch).not.toHaveBeenCalledWith("/store-products?query=rice");
+  expect(
+    mockApiFetch.mock.calls.some(
+      ([path]) => path === "/store-products?query=rice",
+    ),
+  ).toBe(false);
 });
 
 test("Retry keeps the generic panel error and replaces it with a valid product", async () => {
@@ -291,7 +299,10 @@ test("reload requeues an open product panel whose persisted lookup is missing", 
   render(<ShoppingListPage />);
 
   expect(await screen.findByText("Finding matches on Weee…")).toBeVisible();
-  expect(mockApiFetch).toHaveBeenCalledWith("/store-products?query=Jasmine%20Rice");
+  expect(mockApiFetch).toHaveBeenCalledWith(
+    "/store-products?query=Jasmine%20Rice",
+    { signal: expect.any(AbortSignal) },
+  );
 
   freshResponse.resolve(
     productResponse([
@@ -433,9 +444,8 @@ test("successful smart-list preparation survives a sessionStorage removal error"
 test("clears a displayed result and revalidates at the exact backend expiry", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-08-15T12:00:00.000Z"));
-  const maximumSafeTimerDelay = 2_147_483_647;
-  const expiryAfterRearm = 1_000;
-  const expiry = new Date(Date.now() + maximumSafeTimerDelay + expiryAfterRearm).toISOString();
+  const expiryDelay = 1_000;
+  const expiry = new Date(Date.now() + expiryDelay).toISOString();
   const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
   const storage = stubSessionStorage();
   storage.set(
@@ -496,17 +506,10 @@ test("clears a displayed result and revalidates at the exact backend expiry", as
     await Promise.resolve();
   });
   expect(screen.getByText("Fresh rice")).toBeVisible();
-  expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), maximumSafeTimerDelay);
+  expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), expiryDelay);
 
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(maximumSafeTimerDelay);
-  });
-  expect(screen.getByText("Fresh rice")).toBeVisible();
-  expect(productCalls).toBe(1);
-  expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), expiryAfterRearm);
-
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(expiryAfterRearm - 1);
+    await vi.advanceTimersByTimeAsync(expiryDelay - 1);
   });
   expect(screen.getByText("Fresh rice")).toBeVisible();
   expect(productCalls).toBe(1);
@@ -521,3 +524,49 @@ test("clears a displayed result and revalidates at the exact backend expiry", as
 
   vi.useRealTimers();
 });
+
+test.each(["clear", "unmount"] as const)(
+  "%s aborts and settles the active product generation",
+  async (action) => {
+    const storage = stubSessionStorage();
+    storage.set(
+      "smartShoppingList:2026-08-10",
+      JSON.stringify({
+        remove: [],
+        likely_pantry: [],
+        purchase_items: [
+          { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+        ],
+        _ui: { hidden: [], checked: [] },
+      }),
+    );
+    const pending = deferredResponse();
+    let productSignal: AbortSignal | undefined;
+    mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith("/shopping-list?")) {
+        return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+      }
+      if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
+      if (path === "/recipes") return Promise.resolve(jsonResponse([]));
+      if (path === "/store-products?query=Rice") {
+        productSignal = init?.signal ?? undefined;
+        return pending.promise;
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    const user = userEvent.setup();
+    const rendered = render(<ShoppingListPage />);
+    await user.click((await screen.findAllByRole("button", { name: "View products" }))[0]);
+    expect(await screen.findByText("Finding matches on Weee…")).toBeVisible();
+    await waitFor(() => expect(productSignal).toBeDefined());
+
+    if (action === "clear") {
+      await user.click(screen.getByRole("button", { name: /Back to original list/ }));
+    } else {
+      rendered.unmount();
+    }
+
+    expect(productSignal?.aborted).toBe(true);
+  },
+);

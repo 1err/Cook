@@ -214,8 +214,9 @@ async def _run_scheduled_cache_warmer() -> None:
 
 
 def get_cache_warmer_status() -> dict[str, Any]:
+    running = _warmer_task is not None and not _warmer_task.done()
     return {
-        "running": bool(_warmer_status["running"]),
+        "running": running,
         "current": int(_warmer_status["current"]),
         "total": int(_warmer_status["total"]),
         "last_query": str(_warmer_status["last_query"] or ""),
@@ -257,7 +258,7 @@ async def shutdown_cache_warmer() -> None:
     finally:
         if task.done() and _warmer_task is task:
             _warmer_task = None
-        _warmer_status["running"] = False
+        _warmer_status["running"] = not task.done()
     if caller_cancelled:
         raise asyncio.CancelledError
 

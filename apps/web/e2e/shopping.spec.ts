@@ -96,7 +96,7 @@ async function installShoppingFixtures(page: Page) {
     if (pathname === "/store-products") {
       await fulfillJson(route, {
         products: storeProducts,
-        expires_at: "2030-01-01T00:00:00.000Z",
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
       });
       return;
     }
@@ -227,8 +227,8 @@ test("loads batch cache hits before one serial miss and permits retry after a fa
       expect(await request.postDataJSON()).toEqual({ queries: ["Rice", "Beans", "Milk", "Eggs"] });
       await fulfillJson(route, {
         entries: [
-          { query: "Rice", status: "fresh", products: [{ name: "Cached rice", price: "$1", image: "", url: "https://www.sayweee.com/product/cached-rice" }], expires_at: "2030-01-01T00:00:00.000Z" },
-          { query: "Beans", status: "fresh", products: [{ name: "Cached beans", price: "$2", image: "", url: "https://www.sayweee.com/product/cached-beans" }], expires_at: "2030-01-01T00:00:00.000Z" },
+          { query: "Rice", status: "fresh", products: [{ name: "Cached rice", price: "$1", image: "", url: "https://www.sayweee.com/product/cached-rice" }], expires_at: new Date(Date.now() + 60_000).toISOString() },
+          { query: "Beans", status: "fresh", products: [{ name: "Cached beans", price: "$2", image: "", url: "https://www.sayweee.com/product/cached-beans" }], expires_at: new Date(Date.now() + 60_000).toISOString() },
           { query: "Milk", status: "missing", products: [], expires_at: null },
           { query: "Eggs", status: "missing", products: [], expires_at: null },
         ],
@@ -242,7 +242,7 @@ test("loads batch cache hits before one serial miss and permits retry after a fa
         await milkPending;
         await fulfillJson(route, {
           products: [{ name: "Fresh milk", price: "$3", image: "", url: "https://www.sayweee.com/product/fresh-milk" }],
-          expires_at: "2030-01-01T00:00:00.000Z",
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
         });
         return;
       }
@@ -254,7 +254,7 @@ test("loads batch cache hits before one serial miss and permits retry after a fa
         }
         await fulfillJson(route, {
           products: [{ name: "Recovered eggs", price: "$4", image: "", url: "https://www.sayweee.com/product/recovered-eggs" }],
-          expires_at: "2030-01-01T00:00:00.000Z",
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
         });
         return;
       }

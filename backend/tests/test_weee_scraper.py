@@ -182,7 +182,7 @@ class BrowserHarness:
             harness.browser_launches += 1
             return Playwright(), Browser()
 
-        async def classify(page: Page) -> str:
+        async def classify(page: Page, expected_query: str = "") -> str:
             return page.attempt.page_state
 
         async def extract(page: Page, language: str) -> list[dict[str, str]]:
@@ -273,6 +273,18 @@ async def test_real_dom_generic_empty_copy_is_not_authoritative(real_browser_pag
         "<main><h1>Search</h1><p>No products found in this featured collection.</p></main>"
     )
     assert await weee_scraper._classify_search_page(real_browser_page) == "pending"
+
+
+@pytest.mark.asyncio
+async def test_real_dom_footer_empty_marker_is_not_authoritative(real_browser_page):
+    await real_browser_page.set_content(
+        """
+        <main><h1>Search</h1></main>
+        <footer><div data-testid="no-results">No matching footer links</div></footer>
+        """
+    )
+
+    assert await weee_scraper._classify_search_page(real_browser_page, "rice") == "pending"
 
 
 @pytest.mark.asyncio
@@ -403,6 +415,114 @@ async def test_real_dom_extracts_and_normalizes_a_visible_product(real_browser_p
             "url": "https://www.sayweee.com/en/product/silken-tofu/1",
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_real_dom_outer_results_bind_each_anchor_to_its_nearest_leaf_card(
+    real_browser_page,
+):
+    await real_browser_page.set_content(
+        """
+        <main class="search-results">
+          <article data-testid="wid-product-card-container">
+            <h3>Premium Rice</h3><span>$15.99</span><span>$1.07/lb</span>
+            <div class="product-card-image">
+              <a href="https://www.sayweee.com/en/product/rice/1">
+                <img alt="weee_dried_rice_10_lb_front_1200x1200" />
+              </a>
+            </div>
+          </article>
+          <article data-testid="wid-product-card-container">
+            <h3>Jasmine Tea</h3><span>$154.99</span><span>$17.61/lb</span>
+            <div class="product-card-image">
+              <a href="https://www.sayweee.com/en/product/tea/1">
+                <img alt="weee_dried_tea_front_1200x1200" />
+              </a>
+            </div>
+          </article>
+        </main>
+        """
+    )
+
+    assert await weee_scraper._classify_search_page(real_browser_page, "rice") == "results"
+    raw = await weee_scraper._extract_weee_search_products(real_browser_page, "en")
+    products = [weee_scraper._normalize_weee_product(row) for row in raw]
+    assert products == [
+        {
+            "name": "Premium Rice",
+            "price": "$15.99",
+            "image": "",
+            "url": "https://www.sayweee.com/en/product/rice/1",
+        },
+        {
+            "name": "Jasmine Tea",
+            "price": "$154.99",
+            "image": "",
+            "url": "https://www.sayweee.com/en/product/tea/1",
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_real_dom_current_exact_empty_ignores_nested_recommendation(
+    real_browser_page,
+):
+    await real_browser_page.set_content(
+        """
+        <main class="search-results">
+          <li class="max-w-[380px] enki-heading-xl text-surface-100-fg-default break-words">
+            Sorry, no results were found for "dragon fruit"
+          </li>
+          <section class="recommendation-carousel">
+            <article data-testid="wid-product-card-container">
+              <a href="https://www.sayweee.com/en/product/recommended/1">
+                <h3>Recommended tofu</h3><span>$2.99</span>
+              </a>
+            </article>
+          </section>
+        </main>
+        """
+    )
+
+    assert (
+        await weee_scraper._classify_search_page(real_browser_page, "dragon fruit")
+        == "no_results"
+    )
+    assert await weee_scraper._extract_weee_search_products(real_browser_page, "en") == []
+    assert await weee_scraper._classify_search_page(real_browser_page, "mango") == "pending"
+
+
+def test_product_normalization_prefers_card_title_and_primary_purchase_price():
+    assert weee_scraper._normalize_weee_product(
+        {
+            "href": "https://www.sayweee.com/en/product/rice/1",
+            "name": "weee_dried_rice_10_lb_front_1200x1200",
+            "image_alt": "weee_dried_rice_10_lb_front_1200x1200",
+            "primary_title": "Premium Rice 10 lb",
+            "title_hint": "Premium Rice 10 lb",
+            "text": "Premium Rice 10 lb $15.99 $1.07/lb",
+        }
+    ) == {
+        "name": "Premium Rice 10 lb",
+        "price": "$15.99",
+        "image": "",
+        "url": "https://www.sayweee.com/en/product/rice/1",
+    }
+    assert weee_scraper._extract_price("Jasmine Tea $154.99 $17.61/lb") == "$154.99"
+
+    assert weee_scraper._normalize_weee_product(
+        {
+            "href": "https://www.sayweee.com/en/product/rice/1",
+            "name": "weee_dried_rice_10_lb_front_1200x1200",
+            "image_alt": "weee_dried_rice_10_lb_front_1200x1200",
+            "text": "",
+        }
+    ) == {
+        "name": "rice 10 lb",
+        "price": "",
+        "image": "",
+        "url": "https://www.sayweee.com/en/product/rice/1",
+    }
 
 
 @pytest.mark.asyncio
@@ -604,6 +724,283 @@ async def test_cancellation_resistant_playwright_task_is_tracked_and_drained(mon
         await asyncio.sleep(0)
         await asyncio.sleep(0)
     assert not weee_scraper._detached_tasks
+
+
+@pytest.mark.asyncio
+async def test_scrape_does_not_retry_until_a_timed_out_child_reaches_quiescence(monkeypatch):
+    child_cancelled = asyncio.Event()
+    release_child = asyncio.Event()
+    attempts = 0
+
+    async def resistant_child() -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            child_cancelled.set()
+            await release_child.wait()
+
+    async def scrape_once(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            await weee_scraper._bounded_await(
+                resistant_child(), 0.01, "resistant evaluation"
+            )
+        return [PRODUCT]
+
+    monkeypatch.setattr(weee_scraper, "_scrape_once", scrape_once)
+    monkeypatch.setattr(weee_scraper, "WEEE_MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(weee_scraper.random, "uniform", lambda *args: -0.4)
+
+    scrape = asyncio.create_task(weee_scraper.scrape_weee_products("rice", "en"))
+    await child_cancelled.wait()
+    try:
+        await asyncio.sleep(0.02)
+        assert attempts == 1
+        assert not scrape.done()
+    finally:
+        release_child.set()
+    assert await scrape == [PRODUCT]
+    assert attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_scrape_cancellation_waits_for_resistant_nested_operation(monkeypatch):
+    child_started = asyncio.Event()
+    child_cancelled = asyncio.Event()
+    release_child = asyncio.Event()
+
+    async def resistant_child() -> None:
+        child_started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            child_cancelled.set()
+            await release_child.wait()
+
+    async def scrape_once(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
+        await weee_scraper._bounded_await(resistant_child(), 10.0, "evaluation")
+        return [PRODUCT]
+
+    monkeypatch.setattr(weee_scraper, "_scrape_once", scrape_once)
+    scrape = asyncio.create_task(weee_scraper.scrape_weee_products("rice", "en"))
+    await child_started.wait()
+    scrape.cancel()
+    await child_cancelled.wait()
+    try:
+        await asyncio.sleep(0)
+        assert not scrape.done()
+    finally:
+        release_child.set()
+    with pytest.raises(asyncio.CancelledError):
+        await scrape
+
+
+@pytest.mark.asyncio
+async def test_late_context_acquisition_is_closed_after_timeout(monkeypatch):
+    cancelled = asyncio.Event()
+    release = asyncio.Event()
+    closed = asyncio.Event()
+
+    class Context:
+        async def close(self) -> None:
+            closed.set()
+
+    async def acquire() -> Context:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            await release.wait()
+        return Context()
+
+    with pytest.raises(weee_scraper.StoreScrapeError, match="timed out"):
+        await weee_scraper._bounded_call(
+            acquire,
+            deadline=weee_scraper.time.monotonic() + 0.01,
+            label="context acquisition",
+            late_result_cleanup=lambda context: context.close(),
+        )
+    await cancelled.wait()
+    release.set()
+    await asyncio.wait_for(closed.wait(), timeout=0.05)
+
+
+@pytest.mark.asyncio
+async def test_quiescence_rechecks_done_callbacks_for_late_resource_cleanup():
+    closed = asyncio.Event()
+
+    class Context:
+        async def close(self) -> None:
+            closed.set()
+
+    async def acquire() -> Context:
+        return Context()
+
+    task = asyncio.create_task(acquire())
+    weee_scraper._track_detached_task(
+        task,
+        late_result_cleanup=lambda context: context.close(),
+    )
+    await asyncio.sleep(0)
+    assert task.done()
+
+    await weee_scraper.wait_for_scraper_quiescence()
+
+    assert closed.is_set()
+    assert not weee_scraper._detached_tasks
+
+
+@pytest.mark.asyncio
+async def test_quiescence_propagates_its_callers_cancellation_after_physical_release():
+    child_started = asyncio.Event()
+    child_cancelled = asyncio.Event()
+    release_child = asyncio.Event()
+
+    async def resistant_child() -> None:
+        child_started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            child_cancelled.set()
+            await release_child.wait()
+
+    child = asyncio.create_task(resistant_child())
+    weee_scraper._track_detached_task(child)
+    await child_started.wait()
+    quiescence = asyncio.create_task(weee_scraper.wait_for_scraper_quiescence())
+    await asyncio.sleep(0)
+    quiescence.cancel()
+    await asyncio.sleep(0)
+
+    try:
+        assert not quiescence.done()
+    finally:
+        child.cancel()
+        await child_cancelled.wait()
+        release_child.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await quiescence
+
+
+@pytest.mark.asyncio
+async def test_shutdown_drain_allows_owned_cleanup_to_finish_before_cancelling():
+    completed = asyncio.Event()
+
+    async def cleanup() -> None:
+        await asyncio.sleep(0)
+        completed.set()
+
+    task = asyncio.create_task(cleanup())
+    weee_scraper._track_detached_task(task, cleanup_task=True)
+
+    await weee_scraper._drain_detached_tasks()
+
+    assert completed.is_set()
+    assert not weee_scraper._detached_tasks
+
+
+@pytest.mark.asyncio
+async def test_detached_drain_reaches_fixed_point_for_nested_tasks(monkeypatch):
+    nested_cancelled = asyncio.Event()
+
+    async def nested() -> None:
+        try:
+            await asyncio.Event().wait()
+        finally:
+            nested_cancelled.set()
+
+    async def parent() -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            weee_scraper._track_detached_task(asyncio.create_task(nested()))
+
+    task = asyncio.create_task(parent())
+    weee_scraper._track_detached_task(task)
+    await asyncio.sleep(0)
+    try:
+        await weee_scraper._drain_detached_tasks()
+        assert nested_cancelled.is_set()
+        assert not weee_scraper._detached_tasks
+    finally:
+        remaining = list(weee_scraper._detached_tasks)
+        for pending in remaining:
+            pending.cancel()
+        await asyncio.gather(*remaining, return_exceptions=True)
+        weee_scraper._detached_tasks.clear()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_generation_fences_a_late_browser_launch(monkeypatch):
+    launch_started = asyncio.Event()
+    release_launch = asyncio.Event()
+    closed: list[str] = []
+
+    class Browser:
+        def is_connected(self) -> bool:
+            return True
+
+        async def close(self) -> None:
+            closed.append("browser")
+
+    class Playwright:
+        async def stop(self) -> None:
+            closed.append("playwright")
+
+    async def launch() -> tuple[Playwright, Browser]:
+        launch_started.set()
+        await release_launch.wait()
+        return Playwright(), Browser()
+
+    monkeypatch.setattr(weee_scraper, "_launch_browser", launch)
+    monkeypatch.setattr(weee_scraper, "_shared_browser", None)
+    monkeypatch.setattr(weee_scraper, "_playwright_inst", None)
+    monkeypatch.setattr(weee_scraper, "SCRAPER_CLEANUP_TIMEOUT_SECONDS", 0.01)
+
+    acquisition = asyncio.create_task(weee_scraper._ensure_shared_browser())
+    await launch_started.wait()
+    try:
+        shutdown_error: BaseException | None = None
+        try:
+            await weee_scraper.shutdown_weee_scraper()
+        except BaseException as exc:
+            shutdown_error = exc
+    finally:
+        release_launch.set()
+    if shutdown_error is not None:
+        await asyncio.gather(acquisition, return_exceptions=True)
+        raise shutdown_error
+    with pytest.raises(weee_scraper.StoreScrapeError, match="invalidated"):
+        await acquisition
+    assert weee_scraper._shared_browser is None
+    assert weee_scraper._playwright_inst is None
+    assert closed == ["browser", "playwright"]
+
+
+@pytest.mark.asyncio
+async def test_browser_cleanup_attempts_playwright_after_caller_cancellation():
+    browser_started = asyncio.Event()
+    playwright_stopped = asyncio.Event()
+
+    class Browser:
+        async def close(self) -> None:
+            browser_started.set()
+            await asyncio.Event().wait()
+
+    class Playwright:
+        async def stop(self) -> None:
+            playwright_stopped.set()
+
+    cleanup = asyncio.create_task(
+        weee_scraper._close_browser_resources(Browser(), Playwright())
+    )
+    await browser_started.wait()
+    cleanup.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cleanup
+    assert playwright_stopped.is_set()
 
 
 @pytest.mark.asyncio

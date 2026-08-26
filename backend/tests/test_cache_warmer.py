@@ -258,6 +258,7 @@ async def test_shutdown_propagates_caller_cancellation_and_keeps_resistant_task_
 
     assert cache_warmer._warmer_task is tracked
     assert not tracked.done()
+    assert cache_warmer.get_cache_warmer_status()["running"] is True
     release.set()
     await tracked
     await cache_warmer.shutdown_cache_warmer()

@@ -17,8 +17,11 @@ export type HydratedProductLookupStorage = ProductLookupStorage & {
 };
 
 type ProductLookupCoordinatorOptions = {
-  load: (query: string) => Promise<StoreProductsResponse>;
-  loadBatch: (queries: string[]) => Promise<StoreProductsBatchResponse>;
+  load: (query: string, signal?: AbortSignal) => Promise<StoreProductsResponse>;
+  loadBatch: (
+    queries: string[],
+    signal?: AbortSignal,
+  ) => Promise<StoreProductsBatchResponse>;
   shouldPublish: (generation: number) => boolean;
   onState: (
     canonicalKey: string,
@@ -36,7 +39,19 @@ type QueueEntry = {
   promise: Promise<ProductLookupState>;
   resolve: (state: ProductLookupState) => void;
   started: boolean;
+  settled: boolean;
+  cancelled: boolean;
+  controller: AbortController;
 };
+
+type BatchPreflight = {
+  generation: number;
+  entries: QueueEntry[];
+  controller: AbortController;
+  cancelled: boolean;
+};
+
+const MAX_AUTHORITATIVE_TTL_MS = 86_400_000;
 
 export function cleanIngredientQuery(value: string): string {
   return value.trim().replace(/\s+/g, " ");
@@ -109,7 +124,11 @@ function parseAuthoritativeExpiry(value: unknown, nowMs: number): string | null 
     throw new Error("Invalid product expiry");
   }
   const expiresAtMs = Date.parse(value);
-  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) {
+  if (
+    !Number.isFinite(expiresAtMs) ||
+    expiresAtMs <= nowMs ||
+    expiresAtMs > nowMs + MAX_AUTHORITATIVE_TTL_MS
+  ) {
     throw new Error("Expired product response");
   }
   return value;
@@ -145,9 +164,10 @@ export function createProductLookupCoordinator({
   const interactiveQueue: QueueEntry[] = [];
   const bulkQueue: QueueEntry[] = [];
   const pendingByIdentity = new Map<string, QueueEntry>();
+  const batchPreflights = new Set<BatchPreflight>();
   const preferredQueryByKey = new Map<string, string>();
   let preferredQueryGeneration: number | null = null;
-  let active: 0 | 1 = 0;
+  let activeEntry: QueueEntry | null = null;
 
   function rotatePreferredQueries(generation: number) {
     if (preferredQueryGeneration === generation) return;
@@ -166,19 +186,36 @@ export function createProductLookupCoordinator({
     state: ProductLookupState,
     shouldPump = true,
   ) {
-    pendingByIdentity.delete(entry.id);
-    if (entry.started) active = 0;
-    publish(entry, state);
-    entry.resolve(state);
+    if (entry.settled) return;
+    entry.settled = true;
+    if (pendingByIdentity.get(entry.id) === entry) {
+      pendingByIdentity.delete(entry.id);
+    }
+    if (activeEntry === entry) activeEntry = null;
+    const finalState =
+      entry.cancelled || !shouldPublish(entry.generation)
+        ? ({ status: "idle" } as const)
+        : state;
+    publish(entry, finalState);
+    entry.resolve(finalState);
     if (shouldPump) pump();
   }
 
+  function callLoad(entry: QueueEntry) {
+    return load(entry.query, entry.controller.signal);
+  }
+
+  function callLoadBatch(preflight: BatchPreflight) {
+    const queries = preflight.entries.map((entry) => entry.query);
+    return loadBatch(queries, preflight.controller.signal);
+  }
+
   function start(entry: QueueEntry) {
-    active = 1;
+    activeEntry = entry;
     entry.started = true;
     publish(entry, { status: "loading" });
     Promise.resolve()
-      .then(() => load(entry.query))
+      .then(() => callLoad(entry))
       .then(
         (value) => {
           let response: StoreProductsResponse;
@@ -204,12 +241,15 @@ export function createProductLookupCoordinator({
   }
 
   function pump() {
-    while (active === 0) {
+    while (activeEntry === null) {
       const entry = interactiveQueue.shift() ?? bulkQueue.shift();
       if (!entry) return;
-      if (!shouldPublish(entry.generation)) {
-        pendingByIdentity.delete(entry.id);
-        entry.resolve({ status: "idle" });
+      if (
+        entry.cancelled ||
+        entry.settled ||
+        !shouldPublish(entry.generation)
+      ) {
+        finish(entry, { status: "idle" }, false);
         continue;
       }
       start(entry);
@@ -241,6 +281,9 @@ export function createProductLookupCoordinator({
       promise,
       resolve,
       started: false,
+      settled: false,
+      cancelled: false,
+      controller: new AbortController(),
     };
     pendingByIdentity.set(entry.id, entry);
     publish(entry, { status: "queued" });
@@ -288,12 +331,6 @@ export function createProductLookupCoordinator({
     }
   }
 
-  function cancelPreflight(entry: QueueEntry) {
-    if (pendingByIdentity.get(entry.id) !== entry) return;
-    pendingByIdentity.delete(entry.id);
-    entry.resolve({ status: "idle" });
-  }
-
   function parseBatch(
     value: unknown,
     entries: QueueEntry[],
@@ -302,47 +339,61 @@ export function createProductLookupCoordinator({
       throw new Error("Invalid batch product response");
     }
     const requested = new Map(entries.map((entry) => [entry.key, entry]));
-    const parsed = new Map<string, ProductLookupState>();
+    const parsed = new Map<string, ProductLookupState>(
+      entries.map((entry) => [entry.key, { status: "queued" }]),
+    );
     const batchEntries = (value as StoreProductsBatchResponse).entries;
-    if (batchEntries.length !== entries.length) throw new Error("Invalid batch product response");
+    const seen = new Map<string, number>();
+    const invalid = new Set<string>();
     for (const batchEntry of batchEntries) {
       if (!batchEntry || typeof batchEntry !== "object" || typeof batchEntry.query !== "string") {
-        throw new Error("Invalid batch product response");
+        continue;
       }
       const key = canonicalIngredientKey(batchEntry.query);
-      if (!key || !requested.has(key) || parsed.has(key)) {
-        throw new Error("Invalid batch product response");
-      }
-      if (batchEntry.status === "fresh") {
-        if (
-          !Array.isArray(batchEntry.products) ||
-          batchEntry.products.length === 0
-        ) {
-          throw new Error("Invalid batch product response");
-        }
-        const response = parseStoreProductsResponse({
-          products: batchEntry.products,
-          expires_at: batchEntry.expires_at,
-        });
-        if (!response.products.length || !response.expires_at) {
-          throw new Error("Invalid batch product response");
-        }
-        parsed.set(key, {
-          status: "success",
-          products: response.products,
-          expiresAt: response.expires_at,
-        });
-      } else if (
-        batchEntry.status === "missing" &&
-        Array.isArray(batchEntry.products) &&
-        batchEntry.products.length === 0 &&
-        batchEntry.expires_at === null
-      ) {
+      if (!key || !requested.has(key)) continue;
+      const count = (seen.get(key) ?? 0) + 1;
+      seen.set(key, count);
+      if (count > 1) {
+        invalid.add(key);
         parsed.set(key, { status: "queued" });
-      } else {
-        throw new Error("Invalid batch product response");
+        continue;
+      }
+      try {
+        if (batchEntry.status === "fresh") {
+          if (
+            !Array.isArray(batchEntry.products) ||
+            batchEntry.products.length === 0
+          ) {
+            throw new Error("Invalid batch product response");
+          }
+          const response = parseStoreProductsResponse({
+            products: batchEntry.products,
+            expires_at: batchEntry.expires_at,
+          });
+          if (!response.products.length || !response.expires_at) {
+            throw new Error("Invalid batch product response");
+          }
+          parsed.set(key, {
+            status: "success",
+            products: response.products,
+            expiresAt: response.expires_at,
+          });
+        } else if (
+          batchEntry.status === "missing" &&
+          Array.isArray(batchEntry.products) &&
+          batchEntry.products.length === 0 &&
+          batchEntry.expires_at === null
+        ) {
+          parsed.set(key, { status: "queued" });
+        } else {
+          throw new Error("Invalid batch product response");
+        }
+      } catch {
+        invalid.add(key);
+        parsed.set(key, { status: "queued" });
       }
     }
+    for (const key of invalid) parsed.set(key, { status: "queued" });
     return parsed;
   }
 
@@ -397,12 +448,21 @@ export function createProductLookupCoordinator({
     }
     if (!newEntries.length) return requests;
 
+    const preflight: BatchPreflight = {
+      generation,
+      entries: newEntries,
+      controller: new AbortController(),
+      cancelled: false,
+    };
+    batchPreflights.add(preflight);
     Promise.resolve()
-      .then(() => loadBatch(newEntries.map((entry) => entry.query)))
+      .then(() => callLoadBatch(preflight))
       .then(
         (batch) => {
+          if (preflight.cancelled) return;
           if (!shouldPublish(generation)) {
-            newEntries.forEach(cancelPreflight);
+            newEntries.forEach((entry) => finish(entry, { status: "idle" }, false));
+            pump();
             return;
           }
           let parsed: Map<string, ProductLookupState>;
@@ -416,19 +476,25 @@ export function createProductLookupCoordinator({
             pump();
             return;
           }
-          const misses: QueueEntry[] = [];
-          for (const entry of newEntries) {
-            if (pendingByIdentity.get(entry.id) !== entry) continue;
-            const state = parsed.get(entry.key)!;
-            if (state.status === "queued") misses.push(entry);
-            else finish(entry, state, false);
-          }
+          const pending = newEntries.filter(
+            (entry) =>
+              !entry.settled && pendingByIdentity.get(entry.id) === entry,
+          );
+          const hits = pending.filter(
+            (entry) => parsed.get(entry.key)?.status !== "queued",
+          );
+          const misses = pending.filter(
+            (entry) => parsed.get(entry.key)?.status === "queued",
+          );
+          hits.forEach((entry) => finish(entry, parsed.get(entry.key)!, false));
           misses.forEach((entry) => enqueue(entry, false));
           pump();
         },
         () => {
+          if (preflight.cancelled) return;
           if (!shouldPublish(generation)) {
-            newEntries.forEach(cancelPreflight);
+            newEntries.forEach((entry) => finish(entry, { status: "idle" }, false));
+            pump();
             return;
           }
           const fallback = newEntries.filter(
@@ -437,13 +503,44 @@ export function createProductLookupCoordinator({
           fallback.forEach((entry) => enqueue(entry, false));
           pump();
         },
-      );
+      )
+      .finally(() => batchPreflights.delete(preflight));
     return requests;
+  }
+
+  function cancelGeneration(generation: number) {
+    const entries = Array.from(pendingByIdentity.values()).filter(
+      (entry) => entry.generation === generation && !entry.settled,
+    );
+    const controllers: AbortController[] = [];
+    for (const entry of entries) {
+      entry.cancelled = true;
+      entry.settled = true;
+      if (pendingByIdentity.get(entry.id) === entry) {
+        pendingByIdentity.delete(entry.id);
+      }
+      if (activeEntry === entry) activeEntry = null;
+      entry.resolve({ status: "idle" });
+      controllers.push(entry.controller);
+    }
+    for (const preflight of batchPreflights) {
+      if (preflight.generation !== generation || preflight.cancelled) continue;
+      preflight.cancelled = true;
+      batchPreflights.delete(preflight);
+      controllers.push(preflight.controller);
+    }
+    for (const controller of controllers) controller.abort();
+    if (preferredQueryGeneration === generation) {
+      preferredQueryByKey.clear();
+      preferredQueryGeneration = null;
+    }
+    pump();
   }
 
   return {
     request,
     requestBulk,
+    cancelGeneration,
     seedQueries,
     preferredQueryCount: () => preferredQueryByKey.size,
   };

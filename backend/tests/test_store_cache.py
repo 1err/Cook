@@ -324,6 +324,64 @@ async def test_upsert_keeps_distinct_weights_and_uses_shared_safe_deduplication(
     assert getattr(session.added[0], "data") == [rice_one, rice_two, beans]
 
 
+@pytest.mark.asyncio
+async def test_upsert_refuses_to_overwrite_a_newer_generation():
+    newer_at = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    older_at = newer_at - timedelta(seconds=1)
+    row = SimpleNamespace(data=[PRODUCT], updated_at=newer_at)
+
+    class Scalars:
+        def one_or_none(self) -> SimpleNamespace:
+            return row
+
+    class Result:
+        def scalars(self) -> Scalars:
+            return Scalars()
+
+    class Session:
+        flush_count = 0
+        statement: Any = None
+
+        async def execute(self, statement: Any) -> Result:
+            self.statement = statement
+            return Result()
+
+        async def flush(self) -> None:
+            self.flush_count += 1
+
+    session = Session()
+    written = await repo_store_cache.upsert_cached_store_products(
+        session,  # type: ignore[arg-type]
+        query="silken tofu",
+        store="weee",
+        language="en",
+        cache_version="v7",
+        data=[{**PRODUCT, "price": "$9.99"}],
+        updated_at=older_at,
+    )
+
+    assert written is False
+    assert row.data == [PRODUCT]
+    assert row.updated_at == newer_at
+    assert session.flush_count == 0
+    assert session.statement._for_update_arg is not None
+
+    equal_generation_written = await repo_store_cache.upsert_cached_store_products(
+        session,  # type: ignore[arg-type]
+        query="silken tofu",
+        store="weee",
+        language="en",
+        cache_version="v7",
+        data=[{**PRODUCT, "price": "$8.99"}],
+        updated_at=newer_at,
+    )
+
+    assert equal_generation_written is False
+    assert row.data == [PRODUCT]
+    assert row.updated_at == newer_at
+    assert session.flush_count == 0
+
+
 def test_store_scraper_is_a_public_compatibility_facade():
     assert store_scraper.__all__ == [
         "CACHE",

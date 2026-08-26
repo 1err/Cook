@@ -208,19 +208,19 @@ async def upsert_cached_store_products(
     cache_version: str,
     data: list[dict[str, str]],
     updated_at: datetime,
-) -> None:
+) -> bool:
     result = await session.execute(
         select(CachedStoreProductModel).where(
             CachedStoreProductModel.query == query,
             CachedStoreProductModel.store == store,
             CachedStoreProductModel.language == language,
             CachedStoreProductModel.cache_version == cache_version,
-        )
+        ).with_for_update()
     )
     row = result.scalars().one_or_none()
     normalized = normalize_cached_store_products(data)
     if not normalized:
-        return
+        return False
     if row is None:
         row = CachedStoreProductModel(
             query=query,
@@ -232,6 +232,9 @@ async def upsert_cached_store_products(
         )
         session.add(row)
     else:
+        if row.updated_at >= updated_at:
+            return False
         row.data = normalized
         row.updated_at = updated_at
     await session.flush()
+    return True

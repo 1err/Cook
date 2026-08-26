@@ -136,17 +136,26 @@ interface SmartStored extends RefineResponse {
   _plannerFingerprint?: string;
 }
 
-async function loadProduct(key: string): Promise<StoreProductsResponse> {
-  const res = await apiFetch(`/store-products?query=${encodeURIComponent(key)}`);
+async function loadProduct(
+  key: string,
+  signal?: AbortSignal,
+): Promise<StoreProductsResponse> {
+  const res = await apiFetch(`/store-products?query=${encodeURIComponent(key)}`, {
+    signal,
+  });
   if (!res.ok) throw new Error("Failed to load products");
   const data: unknown = await res.json();
   return parseStoreProductsResponse(data);
 }
 
-async function loadProductBatch(queries: string[]): Promise<StoreProductsBatchResponse> {
+async function loadProductBatch(
+  queries: string[],
+  signal?: AbortSignal,
+): Promise<StoreProductsBatchResponse> {
   const res = await apiFetch("/store-products/batch", {
     method: "POST",
     body: JSON.stringify({ queries }),
+    signal,
   });
   if (!res.ok) throw new Error("Failed to load cached products");
   return (await res.json()) as StoreProductsBatchResponse;
@@ -245,7 +254,9 @@ function ShoppingListPageContent() {
   }, [menuOpenFor]);
 
   function clearProductResults() {
-    productLoadGenerationRef.current += 1;
+    const previousGeneration = productLoadGenerationRef.current;
+    productLoadGenerationRef.current = previousGeneration + 1;
+    productLookupCoordinator.cancelGeneration(previousGeneration);
     for (const entry of productExpiryTimersRef.current.values()) {
       clearTimeout(entry.timer);
     }
@@ -260,13 +271,15 @@ function ShoppingListPageContent() {
 
   useEffect(() => {
     return () => {
-      productLoadGenerationRef.current += 1;
+      const previousGeneration = productLoadGenerationRef.current;
+      productLoadGenerationRef.current = previousGeneration + 1;
+      productLookupCoordinator.cancelGeneration(previousGeneration);
       for (const entry of productExpiryTimersRef.current.values()) {
         clearTimeout(entry.timer);
       }
       productExpiryTimersRef.current.clear();
     };
-  }, []);
+  }, [productLookupCoordinator]);
 
   useEffect(() => {
     const timers = productExpiryTimersRef.current;

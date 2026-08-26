@@ -14,7 +14,7 @@ import {
   parseStoreProductsResponse,
 } from "./productLookupCoordinator";
 
-const FUTURE_EXPIRES_AT = "2099-01-01T00:00:00.000Z";
+const FUTURE_EXPIRES_AT = new Date(Date.now() + 60_000).toISOString();
 
 function product(name: string): StoreProduct {
   return {
@@ -162,9 +162,11 @@ test("publishes batch hits before draining misses serially in visual order", asy
   const requests = coordinator.requestBulk(["Rice", "Beans", "Milk"], 1);
   await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
   expect(transitions).toContainEqual(["rice", "success"]);
-  expect(load).toHaveBeenNthCalledWith(1, "Beans");
+  expect(load).toHaveBeenNthCalledWith(1, "Beans", expect.any(AbortSignal));
   releases.get("Beans")?.resolve(response([product("Beans")]));
-  await vi.waitFor(() => expect(load).toHaveBeenNthCalledWith(2, "Milk"));
+  await vi.waitFor(() =>
+    expect(load).toHaveBeenNthCalledWith(2, "Milk", expect.any(AbortSignal)),
+  );
   releases.get("Milk")?.resolve(response([product("Milk")]));
   await Promise.all(requests);
 
@@ -189,7 +191,9 @@ test("publishes interleaved fresh batch hits before a missing entry starts loadi
   });
 
   const requests = coordinator.requestBulk(["Rice", "Beans", "Milk"], 1);
-  await vi.waitFor(() => expect(load).toHaveBeenCalledWith("Beans"));
+  await vi.waitFor(() =>
+    expect(load).toHaveBeenCalledWith("Beans", expect.any(AbortSignal)),
+  );
   expect(transitions).toEqual(expect.arrayContaining([
     ["rice", "success"],
     ["milk", "success"],
@@ -199,6 +203,42 @@ test("publishes interleaved fresh batch hits before a missing entry starts loadi
   );
   release.resolve(response([product("Beans")]));
   await Promise.all(requests);
+});
+
+test("isolates malformed and omitted batch rows while publishing valid hits first", async () => {
+  const transitions: Array<[string, string]> = [];
+  const load = vi.fn((query: string) => Promise.resolve(response([product(query)])));
+  const coordinator = createProductLookupCoordinator({
+    load,
+    loadBatch: vi.fn().mockResolvedValue({
+      entries: [
+        {
+          query: "Rice",
+          status: "fresh",
+          products: [product("Cached rice")],
+          expires_at: FUTURE_EXPIRES_AT,
+        },
+        {
+          query: "Beans",
+          status: "fresh",
+          products: null,
+          expires_at: FUTURE_EXPIRES_AT,
+        },
+      ],
+    }),
+    shouldPublish: () => true,
+    onState: (key, state) => transitions.push([key, state.status]),
+  });
+
+  await Promise.all(coordinator.requestBulk(["Rice", "Beans", "Milk"], 1));
+
+  expect(load.mock.calls.map(([query]) => query)).toEqual(["Beans", "Milk"]);
+  const riceSuccess = transitions.findIndex(
+    ([key, status]) => key === "rice" && status === "success",
+  );
+  const firstLiveLoad = transitions.findIndex(([, status]) => status === "loading");
+  expect(riceSuccess).toBeGreaterThanOrEqual(0);
+  expect(riceSuccess).toBeLessThan(firstLiveLoad);
 });
 
 test("mechanically equivalent visual inputs join one request using the first cleaned spelling", async () => {
@@ -215,7 +255,9 @@ test("mechanically equivalent visual inputs join one request using the first cle
     [" Rice ", "rice", "  rice   "],
     1,
   );
-  await vi.waitFor(() => expect(load).toHaveBeenCalledWith("Rice"));
+  await vi.waitFor(() =>
+    expect(load).toHaveBeenCalledWith("Rice", expect.any(AbortSignal)),
+  );
   release.resolve(response([product("Rice")]));
   await expect(first).resolves.toMatchObject({ status: "success" });
 });
@@ -259,12 +301,18 @@ test("a manual request queued behind an active bulk miss runs before the next bu
   });
 
   const bulk = coordinator.requestBulk(["Beans", "Milk"], 1);
-  await vi.waitFor(() => expect(load).toHaveBeenNthCalledWith(1, "Beans"));
+  await vi.waitFor(() =>
+    expect(load).toHaveBeenNthCalledWith(1, "Beans", expect.any(AbortSignal)),
+  );
   const manual = coordinator.request("Rice", 1);
   releases.get("Beans")?.resolve(response([product("Beans")]));
-  await vi.waitFor(() => expect(load).toHaveBeenNthCalledWith(2, "Rice"));
+  await vi.waitFor(() =>
+    expect(load).toHaveBeenNthCalledWith(2, "Rice", expect.any(AbortSignal)),
+  );
   releases.get("Rice")?.resolve(response([product("Rice")]));
-  await vi.waitFor(() => expect(load).toHaveBeenNthCalledWith(3, "Milk"));
+  await vi.waitFor(() =>
+    expect(load).toHaveBeenNthCalledWith(3, "Milk", expect.any(AbortSignal)),
+  );
   releases.get("Milk")?.resolve(response([product("Milk")]));
   await Promise.all([...bulk, manual]);
 });
@@ -281,9 +329,16 @@ test("an already-running manual alias is excluded from the batch and its promise
   const manual = coordinator.request("Rice", 1);
   const [alias, bean] = coordinator.requestBulk([" rice ", "Beans"], 1);
   expect(alias).toBe(manual);
-  await vi.waitFor(() => expect(loadBatch).toHaveBeenCalledWith(["Beans"]));
+  await vi.waitFor(() =>
+    expect(loadBatch).toHaveBeenCalledWith(
+      ["Beans"],
+      expect.any(AbortSignal),
+    ),
+  );
   manualRelease.resolve(response([product("Rice")]));
-  await vi.waitFor(() => expect(load).toHaveBeenCalledWith("Beans"));
+  await vi.waitFor(() =>
+    expect(load).toHaveBeenCalledWith("Beans", expect.any(AbortSignal)),
+  );
   batchRelease.resolve(response([product("Beans")]));
   await Promise.all([manual, alias, bean]);
 });
@@ -369,7 +424,7 @@ test.each([
 
   await Promise.all(coordinator.requestBulk(["Rice"], 1));
 
-  expect(load).toHaveBeenCalledWith("Rice");
+  expect(load).toHaveBeenCalledWith("Rice", expect.any(AbortSignal));
   expect(transitions).not.toContainEqual({ status: "empty", products: [] });
   expect(transitions.at(-1)).toEqual({
     status: "success",
@@ -478,6 +533,127 @@ test("generation cancellation suppresses batch and GET completion publication", 
   get.resolve(response([product("Beans")]));
   await live;
   expect(transitions).not.toContain("success");
+});
+
+test("generation cancellation settles a hung GET and cannot release a newer active token", async () => {
+  let generation = 1;
+  const old = deferred<StoreProductsResponse>();
+  const next = deferred<StoreProductsResponse>();
+  const third = deferred<StoreProductsResponse>();
+  const signals = new Map<string, AbortSignal>();
+  const load = vi.fn((query: string, signal?: AbortSignal) => {
+    if (signal) signals.set(query, signal);
+    if (query === "Old") return old.promise;
+    if (query === "New") return next.promise;
+    return third.promise;
+  });
+  const coordinator = createProductLookupCoordinator({
+    load,
+    loadBatch: vi.fn(),
+    shouldPublish: (candidate) => candidate === generation,
+    onState: vi.fn(),
+  });
+
+  const oldRequest = coordinator.request("Old", 1);
+  await vi.waitFor(() => expect(load).toHaveBeenCalledWith("Old", expect.any(AbortSignal)));
+  generation = 2;
+  coordinator.cancelGeneration(1);
+  await expect(oldRequest).resolves.toEqual({ status: "idle" });
+  expect(signals.get("Old")?.aborted).toBe(true);
+
+  const newRequest = coordinator.request("New", 2);
+  await vi.waitFor(() => expect(load).toHaveBeenCalledWith("New", expect.any(AbortSignal)));
+  const thirdRequest = coordinator.request("Third", 2);
+  old.resolve(response([product("Old")]));
+  await Promise.resolve();
+  expect(load.mock.calls.map(([query]) => query)).toEqual(["Old", "New"]);
+
+  next.resolve(response([product("New")]));
+  await vi.waitFor(() => expect(load).toHaveBeenCalledWith("Third", expect.any(AbortSignal)));
+  third.resolve(response([product("Third")]));
+  await Promise.all([newRequest, thirdRequest]);
+});
+
+test("generation cancellation settles and aborts a hung batch preflight", async () => {
+  let generation = 1;
+  const preflight = deferred<StoreProductsBatchResponse>();
+  let preflightSignal: AbortSignal | undefined;
+  const load = vi.fn().mockResolvedValue(response([product("New")]));
+  const coordinator = createProductLookupCoordinator({
+    load,
+    loadBatch: (_queries: string[], signal?: AbortSignal) => {
+      preflightSignal = signal;
+      return preflight.promise;
+    },
+    shouldPublish: (candidate) => candidate === generation,
+    onState: vi.fn(),
+  });
+
+  const [oldRequest] = coordinator.requestBulk(["Old"], 1);
+  await vi.waitFor(() => expect(preflightSignal).toBeDefined());
+  generation = 2;
+  coordinator.cancelGeneration(1);
+
+  await expect(oldRequest).resolves.toEqual({ status: "idle" });
+  expect(preflightSignal?.aborted).toBe(true);
+  await expect(coordinator.request("New", 2)).resolves.toMatchObject({
+    status: "success",
+  });
+});
+
+test("always forwards cancellation signals to callbacks that declare defaults", async () => {
+  let batchSignal: AbortSignal | undefined;
+  let liveSignal: AbortSignal | undefined;
+  const coordinator = createProductLookupCoordinator({
+    load: vi.fn(
+      (
+        _query: string,
+        signal: AbortSignal | undefined = undefined,
+      ) => {
+        liveSignal = signal;
+        return Promise.resolve(response([product("Rice")]));
+      },
+    ),
+    loadBatch: vi.fn(
+      (
+        _queries: string[],
+        signal: AbortSignal | undefined = undefined,
+      ) => {
+        batchSignal = signal;
+        return Promise.resolve({
+          entries: [
+            {
+              query: "Rice",
+              status: "missing",
+              products: [],
+              expires_at: null,
+            },
+          ],
+        } satisfies StoreProductsBatchResponse);
+      },
+    ),
+    shouldPublish: () => true,
+    onState: vi.fn(),
+  });
+
+  await Promise.all(coordinator.requestBulk(["Rice"], 1));
+
+  expect(batchSignal).toBeInstanceOf(AbortSignal);
+  expect(liveSignal).toBeInstanceOf(AbortSignal);
+});
+
+test("authoritative expiry cannot exceed the strict twenty-four-hour window", () => {
+  const now = Date.parse("2026-08-15T12:00:00.000Z");
+  const products = [product("Rice")];
+  const exactBoundary = new Date(now + 86_400_000).toISOString();
+  const beyondBoundary = new Date(now + 86_400_001).toISOString();
+
+  expect(
+    parseStoreProductsResponse({ products, expires_at: exactBoundary }, now),
+  ).toEqual({ products, expires_at: exactBoundary });
+  expect(() =>
+    parseStoreProductsResponse({ products, expires_at: beyondBoundary }, now),
+  ).toThrow();
 });
 
 test("preferred query metadata rotates to one canonical-key map per generation", async () => {

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import random
 import re
@@ -35,6 +36,9 @@ _browser_lock = asyncio.Lock()
 _playwright_inst: Any = None
 _shared_browser: Any = None
 _detached_tasks: set[asyncio.Task[Any]] = set()
+_detached_late_cleanups: dict[asyncio.Task[Any], Any] = {}
+_detached_cleanup_tasks: set[asyncio.Task[Any]] = set()
+_browser_generation = 0
 
 
 class StoreScrapeError(RuntimeError):
@@ -43,22 +47,67 @@ class StoreScrapeError(RuntimeError):
 
 def _consume_background_task(task: asyncio.Task[Any]) -> None:
     _detached_tasks.discard(task)
-    if not task.cancelled():
-        try:
-            task.exception()
-        except asyncio.CancelledError:
-            pass
+    _detached_cleanup_tasks.discard(task)
+    cleanup = _detached_late_cleanups.pop(task, None)
+    if task.cancelled():
+        return
+    try:
+        result = task.result()
+    except asyncio.CancelledError:
+        return
+    except Exception:
+        return
+    if cleanup is None:
+        return
+
+    async def run_cleanup() -> None:
+        maybe_awaitable = cleanup(result)
+        if inspect.isawaitable(maybe_awaitable):
+            await maybe_awaitable
+
+    cleanup_task = asyncio.create_task(run_cleanup())
+    _track_detached_task(cleanup_task, cleanup_task=True)
 
 
-def _track_detached_task(task: asyncio.Task[Any]) -> None:
+async def _event_loop_checkpoint() -> None:
+    """Yield without relying on ``asyncio.sleep``, which tests replace."""
+    loop = asyncio.get_running_loop()
+    checkpoint = loop.create_future()
+
+    def resume() -> None:
+        if not checkpoint.done():
+            checkpoint.set_result(None)
+
+    loop.call_soon(resume)
+    await checkpoint
+
+
+def _track_detached_task(
+    task: asyncio.Task[Any],
+    *,
+    late_result_cleanup: Any = None,
+    cleanup_task: bool = False,
+) -> None:
     if task.done():
+        if late_result_cleanup is not None:
+            _detached_late_cleanups[task] = late_result_cleanup
         _consume_background_task(task)
         return
     _detached_tasks.add(task)
+    if late_result_cleanup is not None:
+        _detached_late_cleanups[task] = late_result_cleanup
+    if cleanup_task:
+        _detached_cleanup_tasks.add(task)
     task.add_done_callback(_consume_background_task)
 
 
-async def _bounded_await(awaitable: Any, timeout_seconds: float, label: str) -> Any:
+async def _bounded_await(
+    awaitable: Any,
+    timeout_seconds: float,
+    label: str,
+    *,
+    late_result_cleanup: Any = None,
+) -> Any:
     """Bound even cancellation-resistant Playwright awaits by a monotonic timer."""
     if timeout_seconds <= 0:
         if asyncio.iscoroutine(awaitable):
@@ -69,13 +118,13 @@ async def _bounded_await(awaitable: Any, timeout_seconds: float, label: str) -> 
         done, _ = await asyncio.wait({task}, timeout=timeout_seconds)
     except asyncio.CancelledError:
         task.cancel()
-        _track_detached_task(task)
+        _track_detached_task(task, late_result_cleanup=late_result_cleanup)
         await asyncio.sleep(0)
         raise
     if task in done:
         return task.result()
     task.cancel()
-    _track_detached_task(task)
+    _track_detached_task(task, late_result_cleanup=late_result_cleanup)
     await asyncio.sleep(0)
     raise StoreScrapeError(f"Weee {label} timed out.")
 
@@ -86,6 +135,7 @@ async def _bounded_call(
     deadline: float,
     label: str,
     limit_seconds: float | None = None,
+    late_result_cleanup: Any = None,
 ) -> Any:
     remaining = deadline - time.monotonic()
     operation_limit = (
@@ -93,7 +143,12 @@ async def _bounded_call(
         if limit_seconds is None
         else limit_seconds
     )
-    return await _bounded_await(factory(), min(operation_limit, remaining), label)
+    return await _bounded_await(
+        factory(),
+        min(operation_limit, remaining),
+        label,
+        late_result_cleanup=late_result_cleanup,
+    )
 
 
 def _normalize_space(value: str) -> str:
@@ -102,9 +157,6 @@ def _normalize_space(value: str) -> str:
 
 def _extract_price(text: str) -> str:
     normalized = _normalize_space(text)
-    unit_price = re.search(r"\$[\d,.]+\s*/\s*[A-Za-z]+", normalized)
-    if unit_price:
-        return unit_price.group(0).replace(" ", "")
     price = re.search(r"\$[\d,.]+", normalized)
     return price.group(0) if price else ""
 
@@ -123,7 +175,7 @@ def _normalize_image_url(raw: str, base_url: str) -> str:
 
 def _is_valid_name(name: str) -> bool:
     cleaned = _normalize_space(name)
-    return 2 <= len(cleaned) <= 120
+    return 1 <= len(cleaned) <= 120
 
 
 def _extract_weee_search_card_title_block(text: str) -> str:
@@ -154,7 +206,7 @@ def _resolve_weee_zh_product_name(candidate: dict[str, Any]) -> str:
     title_hint = _normalize_space(str(candidate.get("title_hint") or ""))
     text = _normalize_space(str(candidate.get("text") or ""))
     image_alt = _normalize_space(str(candidate.get("image_alt") or ""))
-    for raw in (primary, title_hint, image_alt, _extract_weee_search_card_title_block(text)):
+    for raw in (primary, title_hint, _extract_weee_search_card_title_block(text), image_alt):
         cleaned = _cleanup_weee_zh_full_title(raw)
         if _is_valid_name(cleaned):
             return cleaned
@@ -177,6 +229,20 @@ def _cleanup_name(text: str) -> str:
     return _normalize_space(name)
 
 
+def _cleanup_machine_image_name(raw: str) -> str:
+    name = _normalize_space(raw)
+    if not re.match(r"^weee_(?:dried_)?", name, re.IGNORECASE):
+        return name
+    name = re.sub(r"^weee_(?:dried_)?", "", name, flags=re.IGNORECASE)
+    name = re.sub(
+        r"_(?:front|back|side)(?:_\d+x\d+)?$",
+        "",
+        name,
+        flags=re.IGNORECASE,
+    )
+    return _normalize_space(name.replace("_", " "))
+
+
 def _normalize_weee_product(candidate: dict[str, Any], *, prefer_zh: bool = False) -> dict[str, str] | None:
     href = _normalize_space(str(candidate.get("href") or ""))
     url = normalize_weee_product_url(href, base_url=WEEE_BASE_URL)
@@ -186,12 +252,22 @@ def _normalize_weee_product(candidate: dict[str, Any], *, prefer_zh: bool = Fals
     text = _normalize_space(str(candidate.get("text") or ""))
     link_name = _normalize_space(str(candidate.get("name") or ""))
     image_alt = _normalize_space(str(candidate.get("image_alt") or ""))
+    primary_title = _normalize_space(str(candidate.get("primary_title") or ""))
+    title_hint = _normalize_space(str(candidate.get("title_hint") or ""))
     name = ""
     if prefer_zh:
         name = _resolve_weee_zh_product_name(candidate)
     if not name:
-        name = link_name or image_alt or _cleanup_name(text)
+        for candidate_name in (primary_title, title_hint, _cleanup_name(text)):
+            cleaned = _cleanup_name(candidate_name)
+            if _is_valid_name(cleaned):
+                name = cleaned
+                break
     if not name:
+        fallback_name = _cleanup_machine_image_name(link_name or image_alt)
+        if _is_valid_name(fallback_name):
+            name = fallback_name
+    if not _is_valid_name(name):
         return None
     return {
         "name": name,
@@ -251,28 +327,29 @@ async def _close_browser_resources(
             return SCRAPER_CLEANUP_TIMEOUT_SECONDS
         return min(SCRAPER_CLEANUP_TIMEOUT_SECONDS, deadline - time.monotonic())
 
-    if browser is not None:
+    caller_cancelled = False
+    substages = (
+        (browser, "close", "browser cleanup"),
+        (playwright, "stop", "Playwright cleanup"),
+    )
+    for resource, method_name, label in substages:
+        if resource is None:
+            continue
         try:
             await _bounded_await(
-                browser.close(),
+                getattr(resource, method_name)(),
                 cleanup_timeout(),
-                "browser cleanup",
+                label,
             )
         except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.warning("weee_scraper: browser cleanup failed: %s", type(exc).__name__)
-    if playwright is not None:
-        try:
-            await _bounded_await(
-                playwright.stop(),
-                cleanup_timeout(),
-                "Playwright cleanup",
+            current = asyncio.current_task()
+            caller_cancelled = caller_cancelled or bool(
+                current is not None and current.cancelling()
             )
-        except asyncio.CancelledError:
-            raise
         except Exception as exc:
-            logger.warning("weee_scraper: Playwright cleanup failed: %s", type(exc).__name__)
+            logger.warning("weee_scraper: %s failed: %s", label, type(exc).__name__)
+    if caller_cancelled:
+        raise asyncio.CancelledError
 
 
 async def _invalidate_shared_browser(
@@ -280,7 +357,7 @@ async def _invalidate_shared_browser(
     *,
     deadline: float | None = None,
 ) -> None:
-    global _shared_browser, _playwright_inst
+    global _shared_browser, _playwright_inst, _browser_generation
     lock_timeout = SCRAPER_CLEANUP_TIMEOUT_SECONDS
     if deadline is not None:
         lock_timeout = min(lock_timeout, deadline - time.monotonic())
@@ -292,6 +369,7 @@ async def _invalidate_shared_browser(
     try:
         if observed_browser is not None and _shared_browser is not observed_browser:
             return
+        _browser_generation += 1
         browser, playwright = _shared_browser, _playwright_inst
         _shared_browser = None
         _playwright_inst = None
@@ -301,21 +379,42 @@ async def _invalidate_shared_browser(
 
 
 async def _drain_detached_tasks() -> None:
-    tasks = {task for task in _detached_tasks if not task.done()}
-    if not tasks:
-        return
-    for task in tasks:
+    deadline = asyncio.get_running_loop().time() + SCRAPER_DETACHED_DRAIN_TIMEOUT_SECONDS
+    cancel_requested: set[asyncio.Task[Any]] = set()
+    empty_passes = 0
+    pending: set[asyncio.Task[Any]] = set()
+    while True:
+        pending = {task for task in _detached_tasks if not task.done()}
+        if not pending:
+            if empty_passes >= 2:
+                return
+            empty_passes += 1
+            if asyncio.get_running_loop().time() >= deadline:
+                return
+            await _event_loop_checkpoint()
+            continue
+        empty_passes = 0
+        for task in pending - _detached_cleanup_tasks - cancel_requested:
+            task.cancel()
+            cancel_requested.add(task)
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            break
+        done, _ = await asyncio.wait(
+            pending,
+            timeout=remaining,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in done:
+            _consume_background_task(task)
+        await _event_loop_checkpoint()
+    pending = {task for task in _detached_tasks if not task.done()}
+    for task in pending - cancel_requested:
         task.cancel()
-    done, _ = await asyncio.wait(
-        tasks,
-        timeout=SCRAPER_DETACHED_DRAIN_TIMEOUT_SECONDS,
-    )
-    for task in done:
-        _consume_background_task(task)
-    if tasks - done:
+    if pending:
         logger.error(
             "weee_scraper: %s detached Playwright operation(s) outlived shutdown deadline",
-            len(tasks - done),
+            len(pending),
         )
 
 
@@ -350,9 +449,28 @@ async def _ensure_shared_browser() -> Any:
         stale_browser, stale_playwright = _shared_browser, _playwright_inst
         _shared_browser = None
         _playwright_inst = None
-        await _close_browser_resources(stale_browser, stale_playwright)
-        _playwright_inst, _shared_browser = await _launch_browser()
-        return _shared_browser
+        generation = _browser_generation
+    await _close_browser_resources(stale_browser, stale_playwright)
+    playwright, browser = await _launch_browser()
+    winner: Any = None
+    publish = False
+    async with _browser_lock:
+        current = asyncio.current_task()
+        if (
+            generation == _browser_generation
+            and _shared_browser is None
+            and not (current is not None and current.cancelling())
+        ):
+            _playwright_inst, _shared_browser = playwright, browser
+            publish = True
+        elif generation == _browser_generation and _browser_is_connected(_shared_browser):
+            winner = _shared_browser
+    if publish:
+        return browser
+    await _close_browser_resources(browser, playwright)
+    if winner is not None:
+        return winner
+    raise StoreScrapeError("Weee browser acquisition was invalidated by lifecycle shutdown.")
 
 
 def _looks_like_browser_closure(error: BaseException) -> bool:
@@ -416,57 +534,78 @@ def _weee_search_scope_javascript() -> str:
         '[class*="recommend" i]', '[class*="carousel" i]',
         '[class*="similar" i]', '[class*="recently" i]'
       ].join(',');
-      const productCardSelector = [
+      const currentProductCardSelector = '[data-testid="wid-product-card-container"]';
+      const fallbackProductCardSelector = [
         '[data-testid*="product-card" i]',
         '[data-testid*="search-product" i]',
-        '[data-testid*="search-result" i]',
-        '[class*="product-card" i]', '[class*="productCard"]',
-        '[class*="search-result" i]',
-        '[class*="SearchResult"]'
+        '[class~="product-card" i]', '[class~="productCard"]',
+        '[class~="search-result-card" i]',
+        '[class~="SearchResultCard"]'
       ].join(',');
       const seenAnchors = new Set();
       const scopedProducts = [];
-      for (const card of document.querySelectorAll(productCardSelector)) {
-        if (!visible(card) || card.closest(excludedRegionSelector)) continue;
-        const anchors = card.matches('a[href*="/product/"]')
-          ? [card, ...card.querySelectorAll('a[href*="/product/"]')]
-          : card.querySelectorAll('a[href*="/product/"]');
-        for (const anchor of anchors) {
-          if (!visible(anchor) || seenAnchors.has(anchor)) continue;
-          seenAnchors.add(anchor);
-          scopedProducts.push({anchor, card});
-        }
+      for (const anchor of document.querySelectorAll('a[href*="/product/"]')) {
+        if (!visible(anchor) || seenAnchors.has(anchor)) continue;
+        if (anchor.closest(excludedRegionSelector)) continue;
+        const card = anchor.closest(currentProductCardSelector)
+          || anchor.closest(fallbackProductCardSelector);
+        if (!card || !visible(card) || card.closest(excludedRegionSelector)) continue;
+        seenAnchors.add(anchor);
+        scopedProducts.push({anchor, card});
       }
     """
 
 
-async def _classify_search_page(page: Any) -> PageOutcome:
+async def _classify_search_page(page: Any, expected_query: str = "") -> PageOutcome:
     """Classify visible signals, with challenge and conflicts always untrusted."""
-    script = """
-        () => {
+    script = r"""
+        (expectedQuery) => {
           const text = (document.body?.innerText || "").replace(/\\s+/g, " ").toLowerCase();
           if (/captcha|verify you are human|access denied|unusual traffic|安全验证/.test(text)) return "challenge";
           __WEEE_SEARCH_SCOPE__
+          const excludedEmptyRegionSelector = [
+            excludedRegionSelector, 'footer', 'header', 'nav', 'aside'
+          ].join(',');
+          const scopedVisibleEmpty = (element) => (
+            visible(element) && !element.closest(excludedEmptyRegionSelector)
+          );
           const noResultsSelector = [
             '[data-testid*="no-result"]', '[data-testid*="no_result"]',
             '[data-testid*="search-empty"]', '[class*="no-result"]',
             '[class*="empty-result"]', '[class*="search-empty"]'
-          ].some((selector) => Array.from(document.querySelectorAll(selector)).some(visible));
-          if (scopedProducts.length && noResultsSelector) return "pending";
+          ].some((selector) => Array.from(document.querySelectorAll(selector)).some(scopedVisibleEmpty));
+          const exactEmptyClasses = [
+            'max-w-[380px]', 'enki-heading-xl',
+            'text-surface-100-fg-default', 'break-words'
+          ];
+          const normalizedExpected = String(expectedQuery || '').replace(/\s+/g, ' ').trim();
+          const expectedEmptyText = normalizedExpected
+            ? `Sorry, no results were found for "${normalizedExpected}"`.toLocaleLowerCase()
+            : '';
+          const currentExactEmpty = Boolean(expectedEmptyText) && Array.from(
+            document.querySelectorAll('li')
+          ).some((element) => (
+            scopedVisibleEmpty(element)
+            && exactEmptyClasses.every((token) => element.classList.contains(token))
+            && (element.textContent || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase()
+              === expectedEmptyText
+          ));
+          const hasEmpty = noResultsSelector || currentExactEmpty;
+          if (scopedProducts.length && hasEmpty) return "pending";
           if (scopedProducts.length) return "results";
-          if (noResultsSelector) return "no_results";
+          if (hasEmpty) return "no_results";
           return "pending";
         }
         """.replace("__WEEE_SEARCH_SCOPE__", _weee_search_scope_javascript())
-    result = await page.evaluate(script)
+    result = await page.evaluate(script, expected_query)
     if result in ("results", "no_results", "challenge", "pending"):
         return result
     return "pending"
 
 
-async def _wait_for_search_outcome(page: Any) -> PageOutcome:
+async def _wait_for_search_outcome(page: Any, expected_query: str = "") -> PageOutcome:
     for poll in range(_PAGE_STATE_POLLS):
-        outcome = await _classify_search_page(page)
+        outcome = await _classify_search_page(page, expected_query)
         if outcome != "pending":
             return outcome
         if poll + 1 < _PAGE_STATE_POLLS:
@@ -532,11 +671,13 @@ async def _scrape_once(
             lambda: browser.new_context(**context_options),
             deadline=deadline,
             label="browser context creation",
+            late_result_cleanup=lambda late_context: late_context.close(),
         )
         page = await _bounded_call(
             context.new_page,
             deadline=deadline,
             label="search page creation",
+            late_result_cleanup=lambda late_page: late_page.close(),
         )
         response = await _bounded_call(
             lambda: page.goto(
@@ -558,7 +699,7 @@ async def _scrape_once(
             raise StoreScrapeError("Weee search was redirected to an unexpected route.")
 
         outcome = await _bounded_call(
-            lambda: _wait_for_search_outcome(page),
+            lambda: _wait_for_search_outcome(page, query_text),
             deadline=deadline,
             label="search page evaluation",
         )
@@ -588,36 +729,41 @@ async def _scrape_once(
         raise
     finally:
         cleanup_failed = False
-        if page is not None:
+        caller_cancelled = False
+        for resource, label in (
+            (page, "page cleanup"),
+            (context, "context cleanup"),
+        ):
+            if resource is None:
+                continue
             try:
                 await _bounded_await(
-                    page.close(),
+                    resource.close(),
                     min(
                         SCRAPER_CLEANUP_TIMEOUT_SECONDS,
                         cleanup_deadline - time.monotonic(),
                     ),
-                    "page cleanup",
+                    label,
                 )
             except asyncio.CancelledError:
-                raise
-            except Exception:
-                cleanup_failed = True
-        if context is not None:
-            try:
-                await _bounded_await(
-                    context.close(),
-                    min(
-                        SCRAPER_CLEANUP_TIMEOUT_SECONDS,
-                        cleanup_deadline - time.monotonic(),
-                    ),
-                    "context cleanup",
+                current = asyncio.current_task()
+                caller_cancelled = caller_cancelled or bool(
+                    current is not None and current.cancelling()
                 )
-            except asyncio.CancelledError:
-                raise
             except Exception:
                 cleanup_failed = True
         if cleanup_failed and browser is not None:
-            await _invalidate_shared_browser(browser, deadline=cleanup_deadline)
+            try:
+                await _invalidate_shared_browser(browser, deadline=cleanup_deadline)
+            except asyncio.CancelledError:
+                current = asyncio.current_task()
+                caller_cancelled = caller_cancelled or bool(
+                    current is not None and current.cancelling()
+                )
+            except Exception:
+                logger.exception("failed to invalidate browser after attempt cleanup")
+        if caller_cancelled:
+            raise asyncio.CancelledError
 
 
 def _log_attempt(
@@ -655,11 +801,14 @@ async def scrape_weee_products(query_text: str, language: Language) -> list[dict
                 attempt_deadline,
                 cleanup_deadline,
             )
+            await wait_for_scraper_quiescence()
             _log_attempt(query_text, language, attempt_number, "empty" if not products else "success")
             return products
         except asyncio.CancelledError:
+            await wait_for_scraper_quiescence()
             raise
         except Exception as exc:
+            await wait_for_scraper_quiescence()
             last_error = exc
             _log_attempt(query_text, language, attempt_number, "failure", exc)
             if attempt_number == WEEE_MAX_ATTEMPTS or time.monotonic() >= total_deadline:
@@ -677,3 +826,47 @@ async def scrape_weee_products(query_text: str, language: Language) -> list[dict
     if isinstance(last_error, StoreScrapeError):
         raise last_error
     raise StoreScrapeError(f"Weee scraping failed for query {query_text!r}.") from last_error
+
+
+async def wait_for_scraper_quiescence() -> None:
+    """Hold the process-local serial permit until every owned child is finished."""
+    current = asyncio.current_task()
+    caller_cancelled = bool(current is not None and current.cancelling())
+    empty_passes = 0
+    while True:
+        tasks = {task for task in _detached_tasks if not task.done()}
+        if not tasks:
+            if empty_passes >= 2:
+                if caller_cancelled:
+                    raise asyncio.CancelledError
+                return
+            empty_passes += 1
+            try:
+                await _event_loop_checkpoint()
+            except asyncio.CancelledError:
+                current = asyncio.current_task()
+                caller_cancelled = caller_cancelled or bool(
+                    current is not None and current.cancelling()
+                )
+            continue
+        empty_passes = 0
+        for task in tasks:
+            while not task.done():
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    current = asyncio.current_task()
+                    caller_cancelled = caller_cancelled or bool(
+                        current is not None and current.cancelling()
+                    )
+                    if task.done():
+                        break
+                except BaseException:
+                    break
+        try:
+            await _event_loop_checkpoint()
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            caller_cancelled = caller_cancelled or bool(
+                current is not None and current.cancelling()
+            )

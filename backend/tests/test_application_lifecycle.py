@@ -71,6 +71,44 @@ async def test_database_engine_disposal_is_idempotent(monkeypatch: pytest.Monkey
 
 
 @pytest.mark.asyncio
+async def test_database_disposal_retains_resistant_engine_until_dispose_finishes(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+    release = asyncio.Event()
+
+    class Engine:
+        async def dispose(self) -> None:
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                await release.wait()
+
+    engine = Engine()
+    monkeypatch.setattr(db_session, "_engine", engine)
+    monkeypatch.setattr(db_session, "async_session_maker", object())
+    disposing = asyncio.create_task(db_session.dispose_engine())
+    await started.wait()
+    disposing.cancel()
+    await cancelled.wait()
+    try:
+        assert db_session._engine is engine
+        assert db_session._engine_dispose_task is not None
+        assert not db_session._engine_dispose_task.done()
+    finally:
+        release.set()
+        await asyncio.gather(disposing, return_exceptions=True)
+
+    await db_session.dispose_engine()
+    assert db_session._engine is None
+    assert db_session._engine_dispose_task is None
+    assert db_session.async_session_maker is None
+
+
+@pytest.mark.asyncio
 async def test_lifespan_runs_all_cleanup_phases_after_an_earlier_error(
     monkeypatch: pytest.MonkeyPatch,
 ):

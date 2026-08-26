@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 from collections import OrderedDict, deque
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import logging
 import math
@@ -190,6 +190,10 @@ class _LiveJobLease:
             )
 
 
+class _LiveChildCancelled(weee_scraper.StoreScrapeError):
+    """A child stopped itself (or lost its final waiter), not the worker."""
+
+
 @dataclass
 class _QueuedJob:
     key: CacheKey
@@ -201,8 +205,10 @@ class _QueuedJob:
     priority: LookupPriority
     queued_at: float
     lease: _LiveJobLease
-    waiter_count: int = 0
+    waiter_tokens: set[int] = field(default_factory=set)
     started: bool = False
+    active_task: asyncio.Task[StoreProductsResult] | None = None
+    queue_watchdog: asyncio.Task[None] | None = None
 
 
 class _LiveLookupCoordinator:
@@ -214,10 +220,12 @@ class _LiveLookupCoordinator:
         self._interactive: deque[_QueuedJob] = deque()
         self._background: deque[_QueuedJob] = deque()
         self._worker: asyncio.Task[None] | None = None
-        self._detached_operations: set[asyncio.Task[StoreProductsResult]] = set()
+        self._detached_operations: set[asyncio.Task[Any]] = set()
         self._accepting = True
+        self._contaminated = False
         self._interactive_streak = 0
         self._next_generation = 1
+        self._next_waiter_token = 1
 
     @staticmethod
     def _consume_exception(future: asyncio.Future[StoreProductsResult]) -> None:
@@ -226,7 +234,7 @@ class _LiveLookupCoordinator:
 
     def _consume_operation(
         self,
-        task: asyncio.Task[StoreProductsResult],
+        task: asyncio.Task[Any],
     ) -> None:
         self._detached_operations.discard(task)
         if not task.cancelled():
@@ -237,7 +245,7 @@ class _LiveLookupCoordinator:
 
     def _track_detached_operation(
         self,
-        task: asyncio.Task[StoreProductsResult],
+        task: asyncio.Task[Any],
     ) -> None:
         if task.done():
             self._consume_operation(task)
@@ -246,53 +254,158 @@ class _LiveLookupCoordinator:
         task.add_done_callback(self._consume_operation)
 
     async def _drain_detached_operations(self) -> None:
-        tasks = {task for task in self._detached_operations if not task.done()}
-        if not tasks:
-            return
-        for task in tasks:
-            task.cancel()
-        done, _ = await asyncio.wait(
-            tasks,
-            timeout=LIVE_DETACHED_DRAIN_TIMEOUT_SECONDS,
-        )
-        for task in done:
-            self._consume_operation(task)
-        if tasks - done:
+        deadline = asyncio.get_running_loop().time() + LIVE_DETACHED_DRAIN_TIMEOUT_SECONDS
+        pending: set[asyncio.Task[Any]] = set()
+        while True:
+            pending = {task for task in self._detached_operations if not task.done()}
+            if not pending:
+                return
+            for task in pending:
+                task.cancel()
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                break
+            done, pending = await asyncio.wait(pending, timeout=remaining)
+            for task in done:
+                self._consume_operation(task)
+            if pending:
+                break
+            await asyncio.sleep(0)
+        if pending:
             logger.error(
                 "store product detached operation(s) outlived shutdown deadline",
                 extra={
                     "event": "store_products_detached_shutdown_timeout",
-                    "operation_count": len(tasks - done),
+                    "operation_count": len(pending),
                 },
             )
 
     async def _bounded_operation(
         self,
+        job: _QueuedJob,
         operation: Awaitable[StoreProductsResult],
-        lease: _LiveJobLease,
     ) -> StoreProductsResult:
         """Stop waiting at the deadline even if an awaitable resists cancellation."""
         task = asyncio.ensure_future(operation)
+        job.active_task = task
         try:
             done, _ = await asyncio.wait(
                 {task},
                 timeout=LIVE_OPERATION_TIMEOUT_SECONDS,
             )
         except asyncio.CancelledError:
-            lease.invalidate("worker cancellation")
+            job.lease.invalidate("worker cancellation")
             task.cancel()
             self._track_detached_operation(task)
             await asyncio.sleep(0)
             raise
         if task in done:
-            result = task.result()
-            lease.ensure_valid()
+            try:
+                result = task.result()
+            except asyncio.CancelledError as exc:
+                raise _LiveChildCancelled(
+                    "Store product live child was cancelled."
+                ) from exc
+            job.lease.ensure_valid()
             return result
-        lease.invalidate("operation timeout")
+        job.lease.invalidate("operation timeout")
         task.cancel()
         self._track_detached_operation(task)
         await asyncio.sleep(0)
         raise TimeoutError
+
+    @staticmethod
+    def _temporary_unavailable_error() -> weee_scraper.StoreScrapeError:
+        return weee_scraper.StoreScrapeError(
+            "Store product lookup is temporarily unavailable while the prior live operation stops."
+        )
+
+    def _cancel_queue_watchdog(self, job: _QueuedJob) -> None:
+        watchdog = job.queue_watchdog
+        job.queue_watchdog = None
+        if watchdog is not None and watchdog is not asyncio.current_task() and not watchdog.done():
+            watchdog.cancel()
+
+    def _remove_job_locked(self, job: _QueuedJob) -> None:
+        if self._jobs.get(job.key) is job:
+            self._jobs.pop(job.key, None)
+        self._cancel_queue_watchdog(job)
+
+    async def _expire_queued_job(self, job: _QueuedJob) -> None:
+        delay = max(job.queued_at + LIVE_QUEUE_MAX_WAIT_SECONDS - time.perf_counter(), 0.0)
+        try:
+            await asyncio.sleep(delay)
+        except asyncio.CancelledError:
+            return
+        async with self._lock:
+            if self._jobs.get(job.key) is not job or job.started:
+                return
+            queue_wait_seconds = max(time.perf_counter() - job.queued_at, 0.0)
+            job.lease.invalidate("queue timeout")
+            self._remove_job_locked(job)
+            error = weee_scraper.StoreScrapeError(
+                "Store product lookup expired in the live queue."
+            )
+            if not job.future.done():
+                job.future.set_exception(error)
+            _log_event(
+                "queue_expired",
+                job.key,
+                priority=job.priority,
+                started_at=job.queued_at,
+                queue_wait_ms=queue_wait_seconds * 1_000,
+                error=error,
+            )
+
+    def _fail_queued_for_quarantine_locked(self, active_job: _QueuedJob) -> None:
+        for queued in list(self._jobs.values()):
+            if queued is active_job or queued.started:
+                continue
+            queued.lease.invalidate("serial lane quarantine")
+            self._remove_job_locked(queued)
+            if not queued.future.done():
+                queued.future.set_exception(self._temporary_unavailable_error())
+        self._interactive.clear()
+        self._background.clear()
+
+    async def _enter_quarantine(self, job: _QueuedJob) -> None:
+        async with self._lock:
+            self._contaminated = True
+            self._fail_queued_for_quarantine_locked(job)
+
+    async def _await_task_termination(self, task: asyncio.Task[Any]) -> bool:
+        caller_cancelled = False
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                current = asyncio.current_task()
+                if current is not None and current.cancelling():
+                    caller_cancelled = True
+            except BaseException:
+                break
+        return caller_cancelled
+
+    async def _quarantine_until_quiescent(self, job: _QueuedJob) -> bool:
+        caller_cancelled = False
+        active = job.active_task
+        if active is not None:
+            caller_cancelled = await self._await_task_termination(active)
+        wait_for_quiescence = getattr(weee_scraper, "wait_for_scraper_quiescence", None)
+        if callable(wait_for_quiescence):
+            quiescence = asyncio.create_task(wait_for_quiescence())
+            caller_cancelled = (
+                await self._await_task_termination(quiescence) or caller_cancelled
+            )
+            if not quiescence.cancelled():
+                try:
+                    quiescence.result()
+                except Exception:
+                    logger.exception("failed to reach Weee scraper fixed-point quiescence")
+        job.active_task = None
+        async with self._lock:
+            self._contaminated = False
+        return caller_cancelled
 
     def _next_valid(self, queue: deque[_QueuedJob], priority: LookupPriority) -> _QueuedJob | None:
         while queue:
@@ -358,6 +471,8 @@ class _LiveLookupCoordinator:
                 raise weee_scraper.StoreScrapeError(
                     "Store product lookups are shutting down."
                 )
+            if self._contaminated:
+                raise self._temporary_unavailable_error()
             job = self._jobs.get(key)
             if job is None:
                 future: asyncio.Future[StoreProductsResult] = asyncio.get_running_loop().create_future()
@@ -374,6 +489,7 @@ class _LiveLookupCoordinator:
                 )
                 self._jobs[key] = job
                 (self._interactive if priority == "interactive" else self._background).append(job)
+                job.queue_watchdog = asyncio.create_task(self._expire_queued_job(job))
             elif priority == "interactive" and job.priority == "background" and not job.started:
                 job.priority = "interactive"
                 self._interactive.append(job)
@@ -381,23 +497,32 @@ class _LiveLookupCoordinator:
                 self._worker = asyncio.create_task(self._run())
                 self._worker.add_done_callback(self._worker_completed)
             future = job.future
-            job.waiter_count += 1
+            waiter_token = self._next_waiter_token
+            self._next_waiter_token += 1
+            job.waiter_tokens.add(waiter_token)
+        released = False
         try:
             return await asyncio.wait_for(
                 asyncio.shield(future),
                 timeout=LIVE_FRONT_DOOR_TIMEOUT_SECONDS,
             )
         except TimeoutError as exc:
-            await self._release_waiter(job, front_door_timeout=True)
+            await self._release_waiter(
+                job,
+                waiter_token,
+                front_door_timeout=True,
+            )
+            released = True
             raise weee_scraper.StoreScrapeError(
                 "Store product lookup front door timed out."
             ) from exc
         except asyncio.CancelledError:
-            await self._release_waiter(job)
+            await self._release_waiter(job, waiter_token)
+            released = True
             raise
         finally:
-            if future.done():
-                await self._release_waiter(job)
+            if not released:
+                await self._release_waiter(job, waiter_token)
 
     def _worker_completed(self, task: asyncio.Task[None]) -> None:
         if self._worker is task:
@@ -407,25 +532,36 @@ class _LiveLookupCoordinator:
                 task.exception()
             except asyncio.CancelledError:
                 pass
+        if (
+            self._accepting
+            and not self._contaminated
+            and self._jobs
+            and self._worker is None
+        ):
+            self._worker = asyncio.create_task(self._run())
+            self._worker.add_done_callback(self._worker_completed)
 
     async def _release_waiter(
         self,
         job: _QueuedJob,
+        waiter_token: int,
         *,
         front_door_timeout: bool = False,
     ) -> None:
         async with self._lock:
-            if job.waiter_count > 0:
-                job.waiter_count -= 1
-            if job.waiter_count != 0:
+            if waiter_token not in job.waiter_tokens:
+                return
+            job.waiter_tokens.remove(waiter_token)
+            if job.waiter_tokens:
                 return
             if front_door_timeout:
                 job.lease.invalidate("front door timeout")
             if not job.started or front_door_timeout:
-                if self._jobs.get(job.key) is job:
-                    self._jobs.pop(job.key, None)
+                self._remove_job_locked(job)
                 if not job.started:
                     job.lease.invalidate("no front-door waiters")
+                elif job.active_task is not None and not job.active_task.done():
+                    job.active_task.cancel()
                 if not job.future.done():
                     job.future.set_exception(
                         weee_scraper.StoreScrapeError(
@@ -443,8 +579,7 @@ class _LiveLookupCoordinator:
                 queue_wait_seconds = now - job.queued_at
                 if queue_wait_seconds >= LIVE_QUEUE_MAX_WAIT_SECONDS:
                     job.lease.invalidate("queue timeout")
-                    if self._jobs.get(job.key) is job:
-                        self._jobs.pop(job.key, None)
+                    self._remove_job_locked(job)
                     if not job.future.done():
                         job.future.set_exception(
                             weee_scraper.StoreScrapeError(
@@ -463,15 +598,16 @@ class _LiveLookupCoordinator:
                     )
                     continue
                 job.started = True
+                self._cancel_queue_watchdog(job)
                 selected_priority = job.priority
             try:
                 result = await self._bounded_operation(
+                    job,
                     job.operation(
                         queue_wait_seconds * 1_000,
                         selected_priority,
                         job.lease,
                     ),
-                    job.lease,
                 )
             except asyncio.CancelledError:
                 job.lease.invalidate("shutdown")
@@ -481,23 +617,47 @@ class _LiveLookupCoordinator:
                             "Store product lookups are shutting down."
                         )
                     )
-                raise
-            except TimeoutError:
+                await self._enter_quarantine(job)
                 try:
                     await weee_scraper.shutdown_weee_scraper()
                 except asyncio.CancelledError:
-                    raise
+                    pass
                 except Exception:
-                    logger.exception("failed to invalidate Weee browser after live timeout")
+                    logger.exception("failed to invalidate Weee browser during shutdown")
+                await self._quarantine_until_quiescent(job)
+                return
+            except TimeoutError:
                 timeout_error = weee_scraper.StoreScrapeError(
                     "Store product live operation timed out."
                 )
+                await self._enter_quarantine(job)
                 if not job.future.done():
                     job.future.set_exception(timeout_error)
                 logger.warning(
                     "store product live operation timed out",
-                    extra={"event": "store_products_live_timeout", "query": job.key[3]},
+                    extra={
+                        "event": "store_products_live_timeout",
+                        "query": job.key[3],
+                        "priority": selected_priority,
+                        "queue_wait_ms": queue_wait_seconds * 1_000,
+                    },
                 )
+                try:
+                    await weee_scraper.shutdown_weee_scraper()
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    logger.exception("failed to invalidate Weee browser after live timeout")
+                caller_cancelled = await self._quarantine_until_quiescent(job)
+                if caller_cancelled or not self._accepting:
+                    return
+            except _LiveChildCancelled as exc:
+                await self._enter_quarantine(job)
+                if not job.future.done():
+                    job.future.set_exception(exc)
+                caller_cancelled = await self._quarantine_until_quiescent(job)
+                if caller_cancelled or not self._accepting:
+                    return
             except Exception as exc:
                 if not job.future.done():
                     job.future.set_exception(exc)
@@ -506,8 +666,7 @@ class _LiveLookupCoordinator:
                     job.future.set_result(result)
             finally:
                 async with self._lock:
-                    if self._jobs.get(job.key) is job:
-                        self._jobs.pop(job.key, None)
+                    self._remove_job_locked(job)
 
     async def shutdown(self) -> None:
         error = weee_scraper.StoreScrapeError(
@@ -523,6 +682,7 @@ class _LiveLookupCoordinator:
             worker = self._worker
             for job in jobs:
                 job.lease.invalidate("shutdown")
+                self._cancel_queue_watchdog(job)
                 if not job.future.done():
                     job.future.set_exception(error)
             if worker is not None and not worker.done():
@@ -585,6 +745,8 @@ class _LiveLookupCoordinator:
             self._background.clear()
             self._worker = None
             self._interactive_streak = 0
+            self._contaminated = False
+            self._next_waiter_token = 1
 
 
 _live_lookups = _LiveLookupCoordinator()
@@ -624,18 +786,34 @@ async def _persist_positive_result(
     if maker is None:
         raise RuntimeError("Database session maker is not initialized.")
     async with maker() as write_session:
+        committed = False
         try:
-            await repo_store_cache.upsert_cached_store_products(
+            written = await repo_store_cache.upsert_cached_store_products(
                 write_session, query=cache_query, store="weee", language=language,
                 cache_version=CACHE_VERSION, data=products, updated_at=cached_at,
             )
+            if written is False:
+                raise weee_scraper.StoreScrapeError(
+                    "Store product cache write was superseded by a newer result."
+                )
             if lease is not None:
                 lease.ensure_valid()
-            await write_session.commit()
+            commit_task = asyncio.create_task(write_session.commit())
+            caller_cancelled = False
+            while not commit_task.done():
+                try:
+                    await asyncio.shield(commit_task)
+                except asyncio.CancelledError:
+                    caller_cancelled = True
+            commit_task.result()
+            committed = True
             if lease is not None:
                 lease.ensure_valid()
+            if caller_cancelled:
+                raise asyncio.CancelledError
         except BaseException:
-            await write_session.rollback()
+            if not committed:
+                await write_session.rollback()
             raise
 
 
