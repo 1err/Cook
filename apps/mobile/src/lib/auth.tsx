@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import * as SecureStore from "expo-secure-store";
 import { buildClient } from "./api";
 import { clearUserScopedPersistent, ephemeral } from "./storage";
+import { cancelAllCookingNotifications } from "../features/cook/notifications";
 
 const TOKEN_KEY = "cooking-mobile-token";
 
@@ -74,6 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
     ephemeral.clear();
+    await cancelAllCookingNotifications();
     await clearUserScopedPersistent();
     setToken(null);
     setUser(null);

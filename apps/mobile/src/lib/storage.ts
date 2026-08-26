@@ -38,6 +38,7 @@ export const ephemeral: StorageBackend & { clear: () => void } = {
  */
 const USER_SCOPED_PERSISTENT_PREFIXES = [
   "plannerWeekFingerprint:",
+  "cookingSession:",
 ];
 
 export async function clearUserScopedPersistent(): Promise<void> {

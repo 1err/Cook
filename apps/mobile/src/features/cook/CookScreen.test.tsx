@@ -6,6 +6,7 @@ const mockRefresh = jest.fn();
 const mockUseCookingSession = jest.fn();
 
 jest.mock("./useCookingSession", () => ({ useCookingSession: () => mockUseCookingSession() }));
+jest.mock("../../lib/auth", () => ({ useAuth: () => ({ user: { id: "user-1" } }) }));
 jest.mock("./CookSetup", () => ({
   CookSetup: () => {
     const ReactModule = require("react") as typeof import("react");

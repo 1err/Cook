@@ -1,16 +1,35 @@
-import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { Image, StyleSheet, Text, View } from "react-native";
 import {
+  formatRecipeStepMetadata,
   getCurrentCookingStep,
   getDishProgress,
   getEffectiveStepState,
   type CookingAction,
   type CookingDish,
+  type CookingStep,
 } from "@cooking/shared";
 import { Button, RecipeStepIllustration } from "../../components";
 import { useT } from "../../lib/i18n";
 import { colors, radii, spacing, typography } from "../../theme";
+import { resolveImageUrl } from "../../lib/imageUrl";
 import { CookingTimerRing } from "./CookingTimerRing";
+
+function StepVisual({ step }: { step: CookingStep }) {
+  const [failed, setFailed] = useState(false);
+  if (step.image_url && !failed) {
+    return (
+      <Image
+        onError={() => setFailed(true)}
+        resizeMode="cover"
+        source={{ uri: resolveImageUrl(step.image_url) }}
+        style={styles.stepImage}
+        testID="cooking-step-image"
+      />
+    );
+  }
+  return <RecipeStepIllustration actionType={step.action_type} size={116} title={step.text} />;
+}
 
 export function FocusedCookingStep({
   dish,
@@ -42,8 +61,9 @@ export function FocusedCookingStep({
       <Text style={styles.kicker}>{t("cook.step.number", { current: step.position + 1, total: dish.steps.length })}</Text>
       <Text style={styles.title}>{dish.title}</Text>
       <Text style={[styles.badge, state === "needs_attention" && styles.attention]}>{badge}</Text>
-      <RecipeStepIllustration actionType={step.action_type} size={116} title={step.text} />
+      <StepVisual step={step} />
       <Text style={styles.instruction}>{step.text}</Text>
+      <Text style={styles.metadata}>{formatRecipeStepMetadata(step, t)}</Text>
       {timerActive ? <CookingTimerRing step={{ ...step, state }} /> : null}
       <View style={styles.actions}>
         {step.attention_type === "passive" && state === "ready" ? <Button title={t("cook.action.startTimer")} onPress={() => onAction(step.id, "start_timer")} /> : null}
@@ -64,7 +84,9 @@ const styles = StyleSheet.create({
   title: { ...typography.title1, color: colors.ink },
   badge: { ...typography.footnote, color: colors.sage, fontWeight: "700", alignSelf: "flex-start" },
   attention: { color: colors.error },
+  stepImage: { width: "100%", aspectRatio: 4 / 3, borderRadius: radii.md, backgroundColor: colors.subtleSurface },
   instruction: { ...typography.title3, color: colors.ink, lineHeight: 30 },
+  metadata: { ...typography.subhead, color: colors.mutedInk, lineHeight: 22 },
   body: { ...typography.body, color: colors.mutedInk },
   actions: { gap: spacing.sm },
   progress: { ...typography.footnote, color: colors.mutedInk, fontWeight: "700" },

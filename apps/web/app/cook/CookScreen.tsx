@@ -6,10 +6,12 @@ import styles from "./CookPage.module.css";
 import { useCookingSession } from "./useCookingSession";
 import { CookSetup } from "./CookSetup";
 import { CookWorkspace } from "./CookWorkspace";
+import { useAuth } from "../lib/auth";
 
 export function CookScreen() {
   const t = useT();
-  const controller = useCookingSession();
+  const { user } = useAuth();
+  const controller = useCookingSession(user?.id ?? null);
 
   if (controller.status === "loading") {
     return (

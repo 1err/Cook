@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  formatRecipeStepMetadata,
   getCurrentCookingStep,
   getDishProgress,
   getEffectiveStepState,
@@ -75,6 +76,7 @@ export function FocusedCookingStep({
         <StepVisual step={step} />
         <div className={styles.stepBody}>
           <p className={styles.stepText}>{step.text}</p>
+          <p className={styles.stepMeta}>{formatRecipeStepMetadata(step, t)}</p>
           {showTimer ? <CookingTimer step={{ ...step, state }} /> : null}
           <div className={styles.stepActions}>
             {step.attention_type === "passive" && state === "ready" ? (

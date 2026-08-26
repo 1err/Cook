@@ -1,7 +1,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 import type { CookingSession, CookingStep } from "@cooking/shared";
+import { ApiError } from "@cooking/api-client";
 import { useCookingSession } from "./useCookingSession";
+import { readCookingStorage, writeCookingStorage } from "./cookingStorage";
 
 const { mockAction, mockActive, mockAddDishes, mockDiscard, mockFinish, mockRemoveDish } = vi.hoisted(() => ({
   mockAction: vi.fn(),
@@ -109,6 +111,29 @@ test("keeps a retryable load error and recovers through refresh", async () => {
   expect(result.current.session).toBeNull();
 });
 
+test("keeps a cached session readable when the initial refresh is offline", async () => {
+  writeCookingStorage("user-1", {
+    version: 1,
+    user_id: "user-1",
+    session,
+    queue: [],
+    device_id: "device-a",
+    preferences: { notifications: false, sound: true, vibration: true, keep_awake: true },
+    updated_at: "2026-08-27T11:00:00.000Z",
+  });
+  mockActive.mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValueOnce(session);
+
+  const { result } = renderHook(() => useCookingSession("user-1"));
+  await waitFor(() => expect(mockActive).toHaveBeenCalled());
+
+  expect(result.current.status).toBe("ready");
+  expect(result.current.session).toEqual(session);
+  expect(result.current.notice).toBe("cook.offline.cached");
+
+  await act(async () => result.current.refresh());
+  expect(result.current.notice).toBeNull();
+});
+
 test("accepts a newly created canonical session without another fetch", async () => {
   mockActive.mockResolvedValue(null);
   const { result } = renderHook(() => useCookingSession());
@@ -189,4 +214,114 @@ test("returns to setup after finishing or discarding the canonical session", asy
   await act(async () => result.current.discardSession());
   expect(mockDiscard).toHaveBeenCalledWith("session-1");
   expect(result.current.session).toBeNull();
+});
+
+test("keeps an optimistic step action queued through a temporary network failure", async () => {
+  mockActive.mockResolvedValue(session);
+  mockAction.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+  const { result } = renderHook(() => useCookingSession("user-1"));
+  await waitFor(() => expect(result.current.status).toBe("ready"));
+
+  await act(async () => result.current.applyAction("dish-1", "step-1", "complete"));
+
+  expect(result.current.session?.dishes[0].steps[0].state).toBe("completed");
+  expect(result.current.pendingCount).toBe(1);
+  expect(readCookingStorage("user-1")?.queue).toHaveLength(1);
+
+  mockAction.mockResolvedValue({
+    ...session,
+    dishes: [{ ...session.dishes[0], steps: [{ ...readyStep, state: "completed", revision: 3 }] }],
+  });
+  await act(async () => result.current.replayQueue());
+  expect(result.current.pendingCount).toBe(0);
+  expect(readCookingStorage("user-1")?.queue).toEqual([]);
+});
+
+test("persists account-scoped cooking preferences", async () => {
+  mockActive.mockResolvedValue(session);
+  const { result } = renderHook(() => useCookingSession("user-1"));
+  await waitFor(() => expect(result.current.status).toBe("ready"));
+
+  act(() => result.current.updatePreferences({ notifications: true, keep_awake: false }));
+
+  expect(result.current.preferences).toMatchObject({ notifications: true, keep_awake: false });
+  expect(readCookingStorage("user-1")?.preferences).toMatchObject({ notifications: true, keep_awake: false });
+});
+
+test("keeps a queued action when replay hits a retryable server failure", async () => {
+  mockActive.mockResolvedValue(session);
+  mockAction.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+  const { result } = renderHook(() => useCookingSession("user-1"));
+  await waitFor(() => expect(result.current.status).toBe("ready"));
+  await act(async () => result.current.applyAction("dish-1", "step-1", "complete"));
+
+  mockAction.mockRejectedValueOnce(new ApiError("Temporarily unavailable", 503));
+  await act(async () => result.current.replayQueue());
+
+  expect(result.current.pendingCount).toBe(1);
+  expect(readCookingStorage("user-1")?.queue).toHaveLength(1);
+});
+
+test("replays queued mutations in FIFO order with their original ids", async () => {
+  writeCookingStorage("user-1", {
+    version: 1,
+    user_id: "user-1",
+    session,
+    queue: ["m1", "m2"].map((mutation_id) => ({
+      session_id: "session-1",
+      dish_id: "dish-1",
+      step_id: "step-1",
+      payload: {
+        action: "complete" as const,
+        mutation_id,
+        device_id: "device-a",
+        occurred_at: "2026-08-27T11:01:00.000Z",
+        expected_revision: 2,
+      },
+      enqueued_at: "2026-08-27T11:01:00.000Z",
+    })),
+    device_id: "device-a",
+    preferences: { notifications: false, sound: true, vibration: true, keep_awake: true },
+    updated_at: "2026-08-27T11:01:00.000Z",
+  });
+  mockActive.mockResolvedValue(session);
+  mockAction.mockResolvedValue(session);
+
+  const { result } = renderHook(() => useCookingSession("user-1"));
+  await waitFor(() => expect(result.current.pendingCount).toBe(0));
+
+  expect(mockAction.mock.calls.map((call) => call[2].mutation_id)).toEqual(["m1", "m2"]);
+});
+
+test("drops a stale queued mutation, reloads canonical state, and explains the conflict", async () => {
+  const canonical = { ...session, version: 3 };
+  writeCookingStorage("user-1", {
+    version: 1,
+    user_id: "user-1",
+    session,
+    queue: [{
+      session_id: "session-1",
+      dish_id: "dish-1",
+      step_id: "step-1",
+      payload: {
+        action: "complete",
+        mutation_id: "stale",
+        device_id: "device-a",
+        occurred_at: "2026-08-27T11:01:00.000Z",
+        expected_revision: 1,
+      },
+      enqueued_at: "2026-08-27T11:01:00.000Z",
+    }],
+    device_id: "device-a",
+    preferences: { notifications: false, sound: true, vibration: true, keep_awake: true },
+    updated_at: "2026-08-27T11:01:00.000Z",
+  });
+  mockActive.mockResolvedValueOnce(session).mockResolvedValueOnce(canonical);
+  mockAction.mockRejectedValue(new ApiError("Revision conflict", 409, "revision_conflict"));
+
+  const { result } = renderHook(() => useCookingSession("user-1"));
+  await waitFor(() => expect(result.current.notice).toBe("cook.conflict.reloaded"));
+
+  expect(result.current.session).toEqual(canonical);
+  expect(readCookingStorage("user-1")?.queue).toEqual([]);
 });

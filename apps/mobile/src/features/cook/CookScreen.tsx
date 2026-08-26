@@ -8,12 +8,14 @@ import { useCookingSession } from "./useCookingSession";
 import { CookSetup } from "./CookSetup";
 import { CookWorkspace } from "./CookWorkspace";
 import type { CookStackParamList } from "../../navigation/types";
+import { useAuth } from "../../lib/auth";
 
 type Props = NativeStackScreenProps<CookStackParamList, "CookHome">;
 
 export function CookScreen({ navigation, route }: Partial<Props> = {}) {
   const t = useT();
-  const controller = useCookingSession();
+  const { user } = useAuth();
+  const controller = useCookingSession(user?.id ?? null);
   const appliedDishId = useRef<string | null>(null);
 
   useEffect(() => {

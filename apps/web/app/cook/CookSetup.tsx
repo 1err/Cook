@@ -156,7 +156,12 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
               ))}
             </ul>
           ) : (
-            <p>{t("cook.setup.noPlannedRecipes")}</p>
+            <div>
+              <p>{t("cook.setup.noPlannedRecipes")}</p>
+              <Button onClick={() => setMode("manual")} variant="secondary">
+                {t("cook.setup.chooseInstead")}
+              </Button>
+            </div>
           )}
         </div>
       ) : (

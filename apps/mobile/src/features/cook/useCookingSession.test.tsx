@@ -1,6 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import type { CookingSession, CookingStep } from "@cooking/shared";
+import { ApiError } from "@cooking/api-client";
 import { useCookingSession } from "./useCookingSession";
+import { readCookingStorage, writeCookingStorage } from "./storage";
 
 jest.mock(
   "@react-native-async-storage/async-storage",
@@ -114,6 +116,27 @@ test("optimistically applies a step action and accepts the canonical response", 
   expect(result.current.session).toEqual(canonical);
 });
 
+test("keeps a cached session readable when the initial refresh is offline", async () => {
+  await writeCookingStorage("user-1", {
+    version: 1,
+    user_id: "user-1",
+    session,
+    queue: [],
+    device_id: "device-a",
+    preferences: { notifications: false, sound: true, vibration: true, keep_awake: true },
+    updated_at: "2026-08-27T11:00:00.000Z",
+  });
+  mockActive.mockRejectedValueOnce(new TypeError("Network request failed")).mockResolvedValueOnce(session);
+
+  const { result } = await renderHook(() => useCookingSession("user-1"));
+  await waitFor(() => expect(result.current.notice).toBe("cook.offline.cached"));
+
+  expect(result.current.session).toEqual(session);
+
+  await act(async () => result.current.refresh());
+  expect(result.current.notice).toBeNull();
+});
+
 test("supports structural session mutations and returns to setup after finish", async () => {
   mockAddDishes.mockResolvedValue({ ...session, version: 2 });
   mockRemoveDish.mockResolvedValue(session);
@@ -128,4 +151,49 @@ test("supports structural session mutations and returns to setup after finish", 
   expect(mockRemoveDish).toHaveBeenCalledWith("session-1", "dish-1");
   await act(async () => result.current.finishSession());
   expect(result.current.session).toBeNull();
+});
+
+test("queues a step action offline and replays the same mutation later", async () => {
+  mockAction.mockRejectedValueOnce(new TypeError("Network request failed"));
+  const { result } = await renderHook(() => useCookingSession("user-1"));
+  await waitFor(() => expect(result.current.status).toBe("ready"));
+
+  await act(async () => result.current.applyAction("dish-1", "step-1", "complete"));
+  expect(result.current.session?.dishes[0].steps[0].state).toBe("completed");
+  expect(result.current.pendingCount).toBe(1);
+  expect((await readCookingStorage("user-1"))?.queue).toHaveLength(1);
+
+  mockAction.mockResolvedValue({
+    ...session,
+    dishes: [{ ...session.dishes[0], steps: [{ ...readyStep, state: "completed", revision: 3 }] }],
+  });
+  await act(async () => result.current.replayQueue());
+  expect(result.current.pendingCount).toBe(0);
+});
+
+test("persists account-scoped cooking preferences", async () => {
+  const { result } = await renderHook(() => useCookingSession("user-1"));
+  await waitFor(() => expect(result.current.status).toBe("ready"));
+
+  await act(async () => {
+    result.current.updatePreferences({ notifications: true, keep_awake: false });
+  });
+
+  expect(result.current.preferences).toMatchObject({ notifications: true, keep_awake: false });
+  await waitFor(async () => {
+    expect((await readCookingStorage("user-1"))?.preferences).toMatchObject({ notifications: true, keep_awake: false });
+  });
+});
+
+test("keeps a queued action when replay hits a retryable server failure", async () => {
+  mockAction.mockRejectedValueOnce(new TypeError("Network request failed"));
+  const { result } = await renderHook(() => useCookingSession("user-1"));
+  await waitFor(() => expect(result.current.status).toBe("ready"));
+  await act(async () => result.current.applyAction("dish-1", "step-1", "complete"));
+
+  mockAction.mockRejectedValueOnce(new ApiError("Temporarily unavailable", 503));
+  await act(async () => result.current.replayQueue());
+
+  expect(result.current.pendingCount).toBe(1);
+  expect((await readCookingStorage("user-1"))?.queue).toHaveLength(1);
 });

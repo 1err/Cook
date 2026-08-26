@@ -127,7 +127,12 @@ export function CookSetup({
           />
           {plannedSelection.length ? plannedSelection.map((recipeId) => (
             <Text key={recipeId} style={styles.recipeTitle}>{recipes.find((recipe) => recipe.id === recipeId)?.title ?? recipeId}</Text>
-          )) : <Text style={styles.muted}>{t("cook.setup.noPlannedRecipes")}</Text>}
+          )) : (
+            <View style={styles.emptyPlanned}>
+              <Text style={styles.muted}>{t("cook.setup.noPlannedRecipes")}</Text>
+              <Button onPress={() => setMode("manual")} title={t("cook.setup.chooseInstead")} variant="secondary" />
+            </View>
+          )}
         </View>
       ) : (
         <View style={styles.panel}>
@@ -176,6 +181,7 @@ const styles = StyleSheet.create({
   title: { ...typography.title1, color: colors.ink, textAlign: "center" },
   description: { ...typography.body, color: colors.mutedInk, textAlign: "center" },
   panel: { gap: spacing.md, padding: spacing.lg, borderRadius: radii.lg, backgroundColor: colors.surface },
+  emptyPlanned: { gap: spacing.md },
   choice: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
   checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: colors.divider },
   checkboxSelected: { borderColor: colors.terracotta, backgroundColor: colors.terracotta },

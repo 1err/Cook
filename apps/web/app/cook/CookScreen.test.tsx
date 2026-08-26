@@ -9,6 +9,7 @@ const { mockUseCookingSession, mockUseT } = vi.hoisted(() => ({
 }));
 
 vi.mock("./useCookingSession", () => ({ useCookingSession: mockUseCookingSession }));
+vi.mock("../lib/auth", () => ({ useAuth: () => ({ user: { id: "user-1" } }) }));
 vi.mock("./CookSetup", () => ({
   CookSetup: () => (
     <section>
@@ -84,7 +85,28 @@ test("shows a retryable local error without removing the Cook shell", () => {
 });
 
 test("renders the active workspace boundary for a canonical session", () => {
-  mockUseCookingSession.mockReturnValue({ status: "ready", session, error: null });
+  mockUseCookingSession.mockReturnValue({
+    status: "ready",
+    session,
+    error: null,
+    actionError: null,
+    sessionBusy: false,
+    pendingCount: 0,
+    notice: null,
+    deviceId: "device-a",
+    preferences: { notifications: false, sound: true, vibration: true, keep_awake: false },
+    selectedDishId: null,
+    refresh: vi.fn(),
+    acceptSession: vi.fn(),
+    focusDish: vi.fn(),
+    applyAction: vi.fn(),
+    addDishes: vi.fn(),
+    removeDish: vi.fn(),
+    finishSession: vi.fn(),
+    discardSession: vi.fn(),
+    replayQueue: vi.fn(),
+    updatePreferences: vi.fn(),
+  });
 
   render(<CookScreen />);
 

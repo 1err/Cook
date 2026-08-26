@@ -21,10 +21,15 @@ const messages: Record<string, string> = {
   "cook.action.resume": "Resume timer",
   "cook.action.skip": "Skip step",
   "cook.action.startTimer": "Start timer",
+  "cook.action.undo": "Undo",
+  "cook.undo.available": "Step updated. Undo is available for 10 seconds.",
   "cook.control.addDish": "Add dish",
   "cook.control.discard": "Discard session",
   "cook.control.finish": "Finish session",
   "cook.control.removeDish": "Remove {dish}",
+  "cook.alerts.sound": "Play a timer sound",
+  "cook.alerts.vibration": "Vibrate for timer attention",
+  "cook.alerts.browserOpen": "Keep this browser open for cooking sounds and notifications.",
   "cook.add.title": "Add dishes",
   "cook.add.confirm": "Add selected dishes",
   "cook.attention.handsOn": "Hands on",
@@ -37,6 +42,10 @@ const messages: Record<string, string> = {
   "cook.recommendation.timerRunning": "{dish} timer is running",
   "cook.recommendations.title": "What to do next",
   "cook.step.number": "Step {current} of {total}",
+  "recipe.tutorial.duration.aboutMinutes": "About {minutes} min",
+  "recipe.tutorial.source.stated": "From recipe",
+  "recipe.tutorial.attention.handsOn": "Hands-on",
+  "recipe.tutorial.attention.passive": "Passive",
 };
 
 function step(overrides: Partial<CookingStep> = {}): CookingStep {
@@ -105,6 +114,10 @@ function controller(overrides: Partial<CookingSessionController> = {}): CookingS
     error: null,
     actionError: null,
     sessionBusy: false,
+    pendingCount: 0,
+    notice: null,
+    deviceId: "device-a",
+    preferences: { notifications: false, sound: true, vibration: true, keep_awake: true },
     selectedDishId: "tofu",
     refresh: vi.fn(),
     acceptSession: vi.fn(),
@@ -114,6 +127,8 @@ function controller(overrides: Partial<CookingSessionController> = {}): CookingS
     removeDish: vi.fn(),
     finishSession: vi.fn(),
     discardSession: vi.fn(),
+    replayQueue: vi.fn(),
+    updatePreferences: vi.fn(),
     ...overrides,
   };
 }
@@ -133,6 +148,14 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+test("can enter a cooking workspace after setup without changing hook order", () => {
+  const { rerender } = render(<CookWorkspace controller={controller({ session: null })} />);
+  expect(screen.queryByText("Your cooking session")).not.toBeInTheDocument();
+
+  rerender(<CookWorkspace controller={controller()} />);
+  expect(screen.getByText("Your cooking session")).toBeVisible();
+});
+
 test("shows hands-on work without a countdown and advances explicitly", async () => {
   const current = controller();
   const user = userEvent.setup();
@@ -140,9 +163,13 @@ test("shows hands-on work without a countdown and advances explicitly", async ()
 
   expect(screen.getByRole("heading", { name: "Mapo tofu" })).toBeVisible();
   expect(screen.queryByRole("timer")).not.toBeInTheDocument();
+  expect(screen.getByText("About 2 min · From recipe · Hands-on")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "Complete step" }));
 
   expect(current.applyAction).toHaveBeenCalledWith("tofu", "step-tofu", "complete");
+  expect(screen.getByText("Step updated. Undo is available for 10 seconds.")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "Undo" }));
+  expect(current.applyAction).toHaveBeenLastCalledWith("tofu", "step-tofu", "reopen");
 });
 
 test("keeps every dish visible in stable order and switches focus", async () => {
@@ -201,6 +228,9 @@ test("adds, removes, finishes, and discards through explicit session controls", 
   const current = controller();
   const user = userEvent.setup();
   const { rerender } = render(<CookWorkspace controller={current} />);
+
+  await user.click(screen.getByRole("checkbox", { name: "Play a timer sound" }));
+  expect(current.updatePreferences).toHaveBeenCalledWith({ sound: false });
 
   await user.click(screen.getByRole("button", { name: "Add dish" }));
   await user.click(await screen.findByRole("checkbox", { name: "Miso soup" }));
