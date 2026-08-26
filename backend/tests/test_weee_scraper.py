@@ -1,6 +1,8 @@
 import asyncio
+import sys
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from types import ModuleType
 from typing import Any
 
 import pytest
@@ -98,7 +100,7 @@ class BrowserHarness:
         self.max_open_pages = 0
         self._open_pages = 0
 
-    def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def install(self, monkeypatch: pytest.MonkeyPatch, *, patch_classifier: bool = True) -> None:
         harness = self
 
         class Response:
@@ -120,7 +122,7 @@ class BrowserHarness:
                 return Response(self.attempt.http_status)
 
             async def evaluate(self, *args: Any, **kwargs: Any) -> object:
-                return None
+                return self.attempt.page_state
 
             async def wait_for_timeout(self, *args: Any, **kwargs: Any) -> None:
                 return None
@@ -181,7 +183,8 @@ class BrowserHarness:
             return None
 
         monkeypatch.setattr(weee_scraper, "_launch_browser", launch_browser)
-        monkeypatch.setattr(weee_scraper, "_classify_search_page", classify)
+        if patch_classifier:
+            monkeypatch.setattr(weee_scraper, "_classify_search_page", classify)
         monkeypatch.setattr(weee_scraper, "_extract_weee_search_products", extract)
         monkeypatch.setattr(weee_scraper.asyncio, "sleep", no_sleep)
         monkeypatch.setattr(weee_scraper, "_shared_browser", None)
@@ -224,7 +227,7 @@ async def test_explicit_no_results_stops_without_another_attempt(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("state", ["challenge", "unexpected_route", "http_error"])
+@pytest.mark.parametrize("state", ["challenge"])
 async def test_untrusted_page_states_exhaust_as_typed_failure(monkeypatch, state):
     harness = BrowserHarness([Attempt.page_state(state)] * 3)
     harness.install(monkeypatch)
@@ -243,11 +246,74 @@ async def test_redirected_product_route_is_never_accepted_as_search_results(monk
             cards=[SEARCH_CARD],
         )
     ] * 3)
-    harness.install(monkeypatch)
+    harness.install(monkeypatch, patch_classifier=False)
 
     with pytest.raises(weee_scraper.StoreScrapeError):
         await weee_scraper.scrape_weee_products("tofu", "en")
     assert harness.context_count == 3
+
+
+@pytest.mark.asyncio
+async def test_http_error_response_exhausts_as_typed_failure(monkeypatch):
+    harness = BrowserHarness([Attempt(http_status=503)] * 3)
+    harness.install(monkeypatch, patch_classifier=False)
+
+    with pytest.raises(weee_scraper.StoreScrapeError, match="HTTP 503"):
+        await weee_scraper.scrape_weee_products("tofu", "en")
+    assert harness.context_count == 3
+    assert harness.closed_contexts == 3
+
+
+@pytest.mark.asyncio
+async def test_results_with_empty_extraction_exhaust_as_typed_failure(monkeypatch):
+    harness = BrowserHarness([Attempt.results([])] * 3)
+    harness.install(monkeypatch)
+
+    with pytest.raises(weee_scraper.StoreScrapeError, match="no usable products"):
+        await weee_scraper.scrape_weee_products("tofu", "en")
+    assert harness.context_count == 3
+
+
+@pytest.mark.asyncio
+async def test_results_with_only_invalid_cards_exhaust_as_typed_failure(monkeypatch):
+    invalid_card = {**SEARCH_CARD, "href": "https://sayweee.com.evil.test/product/tofu"}
+    harness = BrowserHarness([Attempt.results([invalid_card])] * 3)
+    harness.install(monkeypatch)
+
+    with pytest.raises(weee_scraper.StoreScrapeError, match="no usable products"):
+        await weee_scraper.scrape_weee_products("tofu", "en")
+    assert harness.context_count == 3
+
+
+@pytest.mark.asyncio
+async def test_launch_failure_stops_started_playwright(monkeypatch):
+    stopped = False
+
+    class Chromium:
+        async def launch(self, **kwargs: Any) -> object:
+            raise RuntimeError("Chromium launch failed")
+
+    class Playwright:
+        chromium = Chromium()
+
+        async def stop(self) -> None:
+            nonlocal stopped
+            stopped = True
+
+    class Starter:
+        async def start(self) -> Playwright:
+            return Playwright()
+
+    playwright_module = ModuleType("playwright")
+    async_api_module = ModuleType("playwright.async_api")
+    async_api_module.async_playwright = Starter  # type: ignore[attr-defined]
+    playwright_module.async_api = async_api_module  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright", playwright_module)
+    monkeypatch.setitem(sys.modules, "playwright.async_api", async_api_module)
+
+    with pytest.raises(RuntimeError, match="Chromium launch failed"):
+        await weee_scraper._launch_browser()
+    assert stopped
 
 
 @pytest.mark.asyncio

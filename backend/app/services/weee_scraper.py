@@ -173,7 +173,11 @@ async def _launch_browser() -> tuple[Any, Any]:
     except ModuleNotFoundError as exc:
         raise StoreScrapeError("Playwright is not installed.") from exc
     playwright = await async_playwright().start()
-    browser = await playwright.chromium.launch(headless=True)
+    try:
+        browser = await playwright.chromium.launch(headless=True)
+    except BaseException:
+        await playwright.stop()
+        raise
     logger.info("weee_scraper: launched shared Playwright browser")
     return playwright, browser
 
@@ -360,6 +364,8 @@ async def _scrape_once(query_text: str, language: Language, attempt_number: int)
             if isinstance(card, dict)
             if (product := _normalize_weee_product(card, prefer_zh=language == "zh")) is not None
         ]
+        if not products:
+            raise StoreScrapeError("Weee search results contained no usable products.")
         return validate_products(products)
     except asyncio.CancelledError:
         raise
