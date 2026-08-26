@@ -53,7 +53,7 @@ const messages: Record<string, string> = {
   "planner.phoneFriendlyDesc": "Tap any meal slot to choose from your saved recipes.",
   "planner.phoneFriendlyTitle": "Phone-friendly planning",
   "planner.planYourWeek": "to plan your week.",
-  "planner.savedRecipes": "Your saved recipes",
+  "planner.savedRecipes": "Recipe Library",
   "planner.savedRecipesDesc": "Drag recipes into your week.",
   "planner.saveFailed": "Could not save your planner change. Your previous plan was restored.",
   "planner.retryLoad": "Retry loading plan",

@@ -4,7 +4,7 @@
 
 .workspace {
   display: grid;
-  height: clamp(32rem, calc(100dvh - 14.75rem), 48rem);
+  height: clamp(32rem, calc(100dvh - 13.25rem), 50rem);
   min-height: 0;
   align-items: stretch;
   gap: 1rem;
@@ -91,9 +91,14 @@
 }
 
 .page :global(.planner-editorial__sidebar-head h2) {
+  justify-self: start;
   margin: 0;
-  font-size: 1.35rem;
-  font-weight: 600;
+  font-family: var(--cw-type-ui-family), var(--cw-type-ui-fallback);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  text-align: left;
 }
 
 .page :global(.planner-editorial__search) {
@@ -126,6 +131,23 @@
   display: flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+.page :global(.planner-filter-bar .tag-filter-popover__panel) {
+  width: calc(15rem - 2rem);
+  max-height: min(56dvh, 30rem);
+}
+
+.page :global(.planner-filter-bar .tag-filter-popover__group-options) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.35rem;
+}
+
+.page :global(.planner-filter-bar .tag-filter-popover__group-options .tag-filter-popover__option) {
+  width: 100%;
+  text-align: left;
+  white-space: nowrap;
 }
 
 .page :global(.planner-editorial__sidebar-scroll) {
@@ -334,7 +356,7 @@
   background: var(--cw-color-canvas);
   color: inherit;
   cursor: pointer;
-  grid-template-columns: 2.75rem minmax(0, 1fr);
+  grid-template-columns: 5rem minmax(0, 1fr);
 }
 
 .page :global(.planner-meal-card__img) {

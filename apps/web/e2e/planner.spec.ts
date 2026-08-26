@@ -114,6 +114,7 @@ test.beforeEach(async ({ page }) => {
 test("renders a day-by-meal matrix with compact multi-recipe states", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Desktop matrix geometry is verified once.");
 
+  await expect(page.getByRole("heading", { name: "Recipe Library" })).toBeVisible();
   await expect(page.getByRole("table", { name: "Weekly meal plan" })).toBeVisible();
   await expect(page.getByTestId("planner-day-row")).toHaveCount(7);
   await expect(page.getByTestId("planner-meal-slot")).toHaveCount(21);
@@ -167,8 +168,8 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
     ),
     JSON.stringify(workspaceMetrics),
   ).toBeLessThanOrEqual(1);
-  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeGreaterThanOrEqual(24);
-  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeLessThanOrEqual(72);
+  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeGreaterThanOrEqual(16);
+  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeLessThanOrEqual(36);
 
   const mealCardMetrics = await page
     .getByRole("button", { name: /Open Recipe 01/ })
@@ -187,14 +188,44 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
         titleWhiteSpace: getComputedStyle(title).whiteSpace,
       };
     });
-  expect(mealCardMetrics.imageWidth, JSON.stringify(mealCardMetrics)).toBeGreaterThanOrEqual(42);
-  expect(mealCardMetrics.titleVisibleRatio, JSON.stringify(mealCardMetrics)).toBeGreaterThan(0.72);
+  expect(mealCardMetrics.imageWidth, JSON.stringify(mealCardMetrics)).toBeGreaterThanOrEqual(76);
+  expect(mealCardMetrics.titleVisibleRatio, JSON.stringify(mealCardMetrics)).toBeGreaterThan(0.58);
   expect(mealCardMetrics.titleWhiteSpace).toBe("nowrap");
 
   await expect(page).toHaveScreenshot("planner-matrix.png", {
     animations: "disabled",
     fullPage: true,
   });
+});
+
+test("keeps every planner tag fully inside the recipe rail", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Desktop tag geometry is verified once.");
+
+  await page.getByRole("button", { name: "Filter planner recipes by tag" }).click();
+  const panel = page.getByRole("dialog", { name: "Filter planner recipes by tag" });
+  await expect(panel).toBeVisible();
+
+  const tagMetrics = await panel.evaluate((element) => {
+    const panelRect = element.getBoundingClientRect();
+    const railRect = element.closest<HTMLElement>(".planner-editorial__sidebar")!.getBoundingClientRect();
+    const options = Array.from(element.querySelectorAll<HTMLElement>(".tag-filter-popover__option"));
+    return {
+      panelRight: panelRect.right,
+      railRight: railRect.right,
+      panelScrollWidth: element.scrollWidth,
+      panelClientWidth: element.clientWidth,
+      clippedLabels: options
+        .filter((option) => {
+          const optionRect = option.getBoundingClientRect();
+          return optionRect.left < panelRect.left || optionRect.right > railRect.right || option.scrollWidth > option.clientWidth;
+        })
+        .map((option) => option.textContent?.trim()),
+    };
+  });
+
+  expect(tagMetrics.panelRight, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(tagMetrics.railRight);
+  expect(tagMetrics.panelScrollWidth, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(tagMetrics.panelClientWidth);
+  expect(tagMetrics.clippedLabels).toEqual([]);
 });
 
 test("preserves picker, remove, drag, and open interactions", async ({ page }, testInfo) => {
