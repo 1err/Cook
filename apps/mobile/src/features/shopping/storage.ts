@@ -98,13 +98,33 @@ export function parseSmartProductsStored(
   if (!stored.open || typeof stored.open !== "object") return null;
   if (!stored.products || typeof stored.products !== "object") return null;
   if (!stored.errors || typeof stored.errors !== "object") return null;
+  const open: Record<string, boolean> = {};
   const products: Record<string, StoreProductsResponse> = {};
+  const errors: Record<string, string | null> = {};
+  const queries: Record<string, string> = {};
+  const rememberLegacyQuery = (rawKey: string) => {
+    const key = canonicalStoreProductKey(rawKey);
+    const query = cleanStoreProductQuery(rawKey);
+    if (key && query && !(key in queries)) queries[key] = query;
+  };
+  for (const [rawKey, value] of Object.entries(stored.open)) {
+    const key = canonicalStoreProductKey(rawKey);
+    if (!key || typeof value !== "boolean") continue;
+    open[key] = value;
+    rememberLegacyQuery(rawKey);
+  }
   for (const [rawKey, value] of Object.entries(stored.products)) {
     const key = canonicalStoreProductKey(rawKey);
     if (!key || !isFreshStoredProductResponse(value, nowMs)) continue;
     products[key] = { products: value.products.slice(0, 3), expires_at: value.expires_at };
+    rememberLegacyQuery(rawKey);
   }
-  const queries: Record<string, string> = {};
+  for (const [rawKey, value] of Object.entries(stored.errors)) {
+    const key = canonicalStoreProductKey(rawKey);
+    if (!key || (value !== null && typeof value !== "string")) continue;
+    errors[key] = value;
+    rememberLegacyQuery(rawKey);
+  }
   if (stored.queries && typeof stored.queries === "object") {
     for (const [rawKey, rawQuery] of Object.entries(stored.queries)) {
       const key = canonicalStoreProductKey(rawKey);
@@ -113,17 +133,9 @@ export function parseSmartProductsStored(
     }
   }
   return {
-    open: Object.fromEntries(
-      Object.entries(stored.open)
-        .map(([key, value]) => [canonicalStoreProductKey(key), value] as const)
-        .filter(([key, value]) => !!key && typeof value === "boolean"),
-    ),
+    open,
     products,
-    errors: Object.fromEntries(
-      Object.entries(stored.errors)
-        .map(([key, value]) => [canonicalStoreProductKey(key), value] as const)
-        .filter(([key, value]) => !!key && (value === null || typeof value === "string")),
-    ) as Record<string, string | null>,
+    errors,
     queries,
   };
 }

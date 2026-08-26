@@ -44,7 +44,7 @@ test("keeps only persisted positives with a valid authoritative future expiry", 
       },
     },
     errors: {},
-    queries: {},
+    queries: { fresh: "fresh", exact: "exact", missing: "missing" },
   });
 });
 
@@ -96,4 +96,38 @@ test("parses legacy product payloads without query metadata", () => {
   expect(
     parseSmartProductsStored({ open: {}, products: {}, errors: {} }),
   ).toEqual({ open: {}, products: {}, errors: {}, queries: {} });
+});
+
+test("does not derive query metadata from invalid legacy entries", () => {
+  expect(
+    parseSmartProductsStored({
+      open: { RICE: "yes" },
+      products: { RICE: { products: [], expires_at: null } },
+      errors: { RICE: 42 },
+    }),
+  ).toEqual({ open: {}, products: {}, errors: {}, queries: {} });
+});
+
+test("derives the first cleaned query from a valid nonempty legacy key", () => {
+  const now = Date.parse("2026-08-15T12:00:00.000Z");
+
+  expect(
+    parseSmartProductsStored(
+      {
+        open: { RICE: true, " rice ": false },
+        products: {
+          RICE: { products: [product], expires_at: "2026-08-15T12:00:00.001Z" },
+        },
+        errors: { RICE: null },
+      },
+      now,
+    ),
+  ).toEqual({
+    open: { rice: false },
+    products: {
+      rice: { products: [product], expires_at: "2026-08-15T12:00:00.001Z" },
+    },
+    errors: { rice: null },
+    queries: { rice: "RICE" },
+  });
 });

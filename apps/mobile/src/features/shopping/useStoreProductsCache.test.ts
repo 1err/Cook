@@ -433,6 +433,29 @@ test("hydrates the persisted first spelling for exact-expiry reloads", async () 
   expect(mockStoreProducts).toHaveBeenCalledWith("RICE");
 });
 
+test("migrates a nonempty legacy raw key into persistence and exact-expiry reloads", async () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date("2026-08-15T12:00:00.000Z"));
+  mockReadSmartProducts.mockResolvedValue({
+    open: { RICE: true },
+    products: { RICE: response([RICE], "2026-08-15T12:00:01.000Z") },
+    errors: { RICE: null },
+  });
+  mockStoreProducts.mockResolvedValue(response([]));
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+
+  await waitFor(() => expect(result.current.products.rice).toEqual([RICE]));
+  await waitFor(() => {
+    const latest = mockWriteSmartProducts.mock.calls.at(-1)?.[1];
+    expect(latest?.queries).toEqual({ rice: "RICE" });
+  });
+  await act(async () => {
+    jest.advanceTimersByTime(1_000);
+    await Promise.resolve();
+  });
+  expect(mockStoreProducts).toHaveBeenCalledWith("RICE");
+});
+
 test("week changes suppress queued publications and reset bulk progress", async () => {
   const pending = deferred<StoreProductsResponse>();
   mockStoreProductsBatch.mockResolvedValue({

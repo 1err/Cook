@@ -479,29 +479,41 @@ export function useStoreProductsCache(weekStart: string | null) {
       const open: Record<string, boolean> = {};
       const errors: Record<string, string | null> = {};
       const queries: Record<string, string> = {};
+      const rememberLegacyQuery = (rawKey: string) => {
+        const key = canonicalStoreProductKey(rawKey);
+        const query = cleanStoreProductQuery(rawKey);
+        if (key && query && !(key in queries)) queries[key] = query;
+      };
+      for (const [rawKey, value] of Object.entries(cached.open)) {
+        const key = canonicalStoreProductKey(rawKey);
+        if (key && !(key in open) && typeof value === "boolean") {
+          open[key] = value;
+          rememberLegacyQuery(rawKey);
+        }
+      }
       for (const [rawKey, value] of Object.entries(cached.products)) {
         const key = canonicalStoreProductKey(rawKey);
         if (key && !products[key] && isFreshStoredProductResponse(value, nowMs)) {
           products[key] = { products: value.products.slice(0, 3), expires_at: value.expires_at };
+          rememberLegacyQuery(rawKey);
         }
-      }
-      for (const [rawKey, rawQuery] of Object.entries(cached.queries ?? {})) {
-        const key = canonicalStoreProductKey(rawKey);
-        const query = cleanStoreProductQuery(rawQuery);
-        if (key && query && canonicalStoreProductKey(query) === key && !(key in queries)) {
-          queries[key] = query;
-          firstQueryByKeyRef.current.set(key, query);
-        }
-      }
-      for (const [rawKey, value] of Object.entries(cached.open)) {
-        const key = canonicalStoreProductKey(rawKey);
-        if (key && !(key in open) && typeof value === "boolean") open[key] = value;
       }
       for (const [rawKey, value] of Object.entries(cached.errors)) {
         const key = canonicalStoreProductKey(rawKey);
         if (key && !(key in errors) && (value === null || typeof value === "string")) {
           errors[key] = value;
+          rememberLegacyQuery(rawKey);
         }
+      }
+      for (const [rawKey, rawQuery] of Object.entries(cached.queries ?? {})) {
+        const key = canonicalStoreProductKey(rawKey);
+        const query = cleanStoreProductQuery(rawQuery);
+        if (key && query && canonicalStoreProductKey(query) === key) {
+          queries[key] = query;
+        }
+      }
+      for (const [key, query] of Object.entries(queries)) {
+        firstQueryByKeyRef.current.set(key, query);
       }
       const hydrated: SmartProductsStored = { open, products, errors, queries };
       dispatch({ type: "hydrate", payload: hydrated, weekStart });
