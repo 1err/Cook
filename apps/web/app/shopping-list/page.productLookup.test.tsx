@@ -142,8 +142,8 @@ test("bulk loading renders fresh cache hits before serial misses and advances pr
       return Promise.resolve(jsonResponse({
         entries: [
           { query: "Rice", status: "fresh", products: [{ name: "Cached rice", price: "$1", image: "", url: "https://www.sayweee.com/product/cached-rice" }], expires_at: "2099-01-01T00:00:00.000Z" },
-          { query: "Beans", status: "fresh", products: [{ name: "Cached beans", price: "$2", image: "", url: "https://www.sayweee.com/product/cached-beans" }], expires_at: "2099-01-01T00:00:00.000Z" },
           { query: "Milk", status: "missing", products: [], expires_at: null },
+          { query: "Beans", status: "fresh", products: [{ name: "Cached beans", price: "$2", image: "", url: "https://www.sayweee.com/product/cached-beans" }], expires_at: "2099-01-01T00:00:00.000Z" },
           { query: "Eggs", status: "missing", products: [], expires_at: null },
         ],
       }));
@@ -427,6 +427,10 @@ test("successful smart-list preparation survives a sessionStorage removal error"
 test("clears a displayed result and revalidates at the exact backend expiry", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-08-15T12:00:00.000Z"));
+  const maximumSafeTimerDelay = 2_147_483_647;
+  const expiryAfterRearm = 1_000;
+  const expiry = new Date(Date.now() + maximumSafeTimerDelay + expiryAfterRearm).toISOString();
+  const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
   const storage = stubSessionStorage();
   storage.set(
     "smartShoppingList:2026-08-10",
@@ -461,7 +465,7 @@ test("clears a displayed result and revalidates at the exact backend expiry", as
                 url: "https://www.sayweee.com/product/rice",
               },
             ],
-            "2026-08-15T12:00:01.000Z",
+            expiry,
           ),
         );
       }
@@ -484,9 +488,17 @@ test("clears a displayed result and revalidates at the exact backend expiry", as
     await Promise.resolve();
   });
   expect(screen.getByText("Fresh rice")).toBeVisible();
+  expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), maximumSafeTimerDelay);
 
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(999);
+    await vi.advanceTimersByTimeAsync(maximumSafeTimerDelay);
+  });
+  expect(screen.getByText("Fresh rice")).toBeVisible();
+  expect(productCalls).toBe(1);
+  expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), expiryAfterRearm);
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(expiryAfterRearm - 1);
   });
   expect(screen.getByText("Fresh rice")).toBeVisible();
   expect(productCalls).toBe(1);

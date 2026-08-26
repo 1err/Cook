@@ -38,6 +38,7 @@ import {
 
 const SMART_SHOPPING_LIST_PREFIX = "smartShoppingList";
 const SMART_SHOPPING_PRODUCTS_PREFIX = "smartShoppingProducts";
+const MAX_SAFE_TIMER_DELAY_MS = 2_147_483_647;
 
 function smartListStorageKey(weekStart: string) {
   return `${SMART_SHOPPING_LIST_PREFIX}:${weekStart}`;
@@ -284,7 +285,10 @@ function ShoppingListPageContent() {
         if (remaining > 0) {
           const current = timers.get(key);
           if (!current || current.expiresAt !== state.expiresAt) return;
-          current.timer = setTimeout(fireAtExpiry, remaining);
+          current.timer = setTimeout(
+            fireAtExpiry,
+            Math.min(remaining, MAX_SAFE_TIMER_DELAY_MS),
+          );
           return;
         }
         timers.delete(key);
@@ -298,7 +302,10 @@ function ShoppingListPageContent() {
         }
         void productLookupCoordinator.request(key, generation);
       };
-      const timer = setTimeout(fireAtExpiry, Math.max(0, expiresAtMs - Date.now()));
+      const timer = setTimeout(
+        fireAtExpiry,
+        Math.min(Math.max(0, expiresAtMs - Date.now()), MAX_SAFE_TIMER_DELAY_MS),
+      );
       timers.set(key, { expiresAt: state.expiresAt, generation, timer });
     }
 

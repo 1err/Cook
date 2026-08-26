@@ -108,12 +108,16 @@ export function createProductLookupCoordinator({
     }
   }
 
-  function finish(entry: QueueEntry, state: ProductLookupState) {
+  function finish(
+    entry: QueueEntry,
+    state: ProductLookupState,
+    shouldPump = true,
+  ) {
     pendingByIdentity.delete(entry.id);
     if (entry.started) active = 0;
     publish(entry, state);
     entry.resolve(state);
-    pump();
+    if (shouldPump) pump();
   }
 
   function start(entry: QueueEntry) {
@@ -159,10 +163,10 @@ export function createProductLookupCoordinator({
     }
   }
 
-  function enqueue(entry: QueueEntry) {
+  function enqueue(entry: QueueEntry, shouldPump = true) {
     if (entry.priority === "interactive") interactiveQueue.push(entry);
     else bulkQueue.push(entry);
-    pump();
+    if (shouldPump) pump();
   }
 
   function createEntry(
@@ -315,12 +319,15 @@ export function createProductLookupCoordinator({
             });
             return;
           }
+          const misses: QueueEntry[] = [];
           for (const entry of newEntries) {
             if (pendingByIdentity.get(entry.id) !== entry) continue;
             const state = parsed.get(entry.key)!;
-            if (state.status === "queued") enqueue(entry);
-            else finish(entry, state);
+            if (state.status === "queued") misses.push(entry);
+            else finish(entry, state, false);
           }
+          misses.forEach((entry) => enqueue(entry, false));
+          pump();
         },
         () => {
           if (!shouldPublish(generation)) {

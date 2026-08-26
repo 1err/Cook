@@ -86,6 +86,36 @@ test("publishes batch hits before draining misses serially in visual order", asy
   expect(peak).toBe(1);
 });
 
+test("publishes interleaved fresh batch hits before a missing entry starts loading", async () => {
+  const release = deferred<StoreProductsResponse>();
+  const transitions: Array<[string, string]> = [];
+  const load = vi.fn(() => release.promise);
+  const coordinator = createProductLookupCoordinator({
+    load,
+    loadBatch: vi.fn().mockResolvedValue({
+      entries: [
+        { query: "Rice", status: "fresh", products: [product("Cached rice")], expires_at: FUTURE_EXPIRES_AT },
+        { query: "Beans", status: "missing", products: [], expires_at: null },
+        { query: "Milk", status: "fresh", products: [product("Cached milk")], expires_at: FUTURE_EXPIRES_AT },
+      ],
+    } satisfies StoreProductsBatchResponse),
+    shouldPublish: () => true,
+    onState: (key, state) => transitions.push([key, state.status]),
+  });
+
+  const requests = coordinator.requestBulk(["Rice", "Beans", "Milk"], 1);
+  await vi.waitFor(() => expect(load).toHaveBeenCalledWith("Beans"));
+  expect(transitions).toEqual(expect.arrayContaining([
+    ["rice", "success"],
+    ["milk", "success"],
+  ]));
+  expect(transitions.findIndex(([key, state]) => key === "beans" && state === "loading")).toBeGreaterThan(
+    transitions.findIndex(([key, state]) => key === "milk" && state === "success"),
+  );
+  release.resolve(response([product("Beans")]));
+  await Promise.all(requests);
+});
+
 test("mechanically equivalent visual inputs join one request using the first cleaned spelling", async () => {
   const release = deferred<StoreProductsResponse>();
   const load = vi.fn(() => release.promise);
