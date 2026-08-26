@@ -7,9 +7,18 @@ interface Props {
   values: string[];
   onChange: (next: string[]) => void;
   collapsed?: boolean;
+  disabled?: boolean;
 }
 
-export function StringListEditor({ label, addLabel, placeholder, values, onChange, collapsed = false }: Props) {
+export function StringListEditor({
+  label,
+  addLabel,
+  placeholder,
+  values,
+  onChange,
+  collapsed = false,
+  disabled = false,
+}: Props) {
   const updateAt = (i: number, v: string) => {
     const arr = values.slice();
     arr[i] = v;
@@ -28,12 +37,13 @@ export function StringListEditor({ label, addLabel, placeholder, values, onChang
               placeholder={placeholder}
               value={v}
               onChange={(e) => updateAt(i, e.target.value)}
+              disabled={disabled}
             />
-            <button type="button" onClick={() => removeAt(i)} aria-label="remove">×</button>
+            <button type="button" onClick={() => removeAt(i)} aria-label="remove" disabled={disabled}>×</button>
           </li>
         ))}
       </ul>
-      <button type="button" className="add-row-btn" onClick={append}>+ {addLabel}</button>
+      <button type="button" className="add-row-btn" onClick={append} disabled={disabled}>+ {addLabel}</button>
     </>
   );
 

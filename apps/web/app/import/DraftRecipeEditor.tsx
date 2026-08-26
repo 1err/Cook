@@ -38,6 +38,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
   const t = useT();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tutorialValid, setTutorialValid] = useState(true);
   const draftTags = draft.library_tags ?? [];
 
   function toggleDraftTag(tag: RecipeTagSlug) {
@@ -66,6 +67,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
   }
 
   async function handleSaveRecipe() {
+    if (!tutorialValid) return;
     setError(null);
     setSaving(true);
     try {
@@ -87,7 +89,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
   }
 
   return (
-    <div className={styles.review}>
+    <div className={styles.review} aria-busy={saving || undefined}>
       <div className={styles.reviewBackRow}>
         <button type="button" aria-label="Back to source" onClick={onBack} disabled={saving}>← Back to source</button>
       </div>
@@ -98,7 +100,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
           type="button"
           className={styles.saveButton}
           onClick={() => void handleSaveRecipe()}
-          disabled={saving}
+          disabled={saving || !tutorialValid}
         >
           {saving ? t("common.saving") : t("import.saveRecipe")}
         </button>
@@ -156,7 +158,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
             </div>
           </div>
 
-          <fieldset className={styles.tagPicker}>
+          <fieldset className={styles.tagPicker} disabled={saving}>
             <legend>{t("common.tags")}</legend>
             {RECIPE_TAG_GROUPS.map((group) => (
               <div key={group.id}>
@@ -182,7 +184,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
           <section className={styles.editorSection}>
             <div className={styles.sectionHeader}>
               <h2 className="cw-display">{t("common.ingredients")}</h2>
-              <button type="button" onClick={addDraftIngredient}>+ {t("common.add")}</button>
+              <button type="button" onClick={addDraftIngredient} disabled={saving}>+ {t("common.add")}</button>
             </div>
             <div className={styles.ingredientRows}>
               {draft.ingredients.map((ingredient, index) => (
@@ -193,6 +195,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
                     placeholder={t("recipe.qty")}
                     value={ingredient.quantity}
                     onChange={(event) => updateDraftIngredient(index, "quantity", event.target.value)}
+                    disabled={saving}
                   />
                   <input
                     type="text"
@@ -200,12 +203,14 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
                     placeholder={t("recipe.ingredient")}
                     value={ingredient.name}
                     onChange={(event) => updateDraftIngredient(index, "name", event.target.value)}
+                    disabled={saving}
                   />
                   <button
                     type="button"
                     className={styles.removeButton}
                     onClick={() => removeDraftIngredient(index)}
                     aria-label={t("recipe.removeIngredient")}
+                    disabled={saving}
                   >
                     ×
                   </button>
@@ -217,6 +222,8 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
           <StepListEditor
             steps={draft.steps ?? []}
             onChange={(steps) => onChange({ ...draft, steps })}
+            onValidityChange={setTutorialValid}
+            disabled={saving}
           />
 
           <StringListEditor
@@ -226,6 +233,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
             values={draft.tips ?? []}
             onChange={(tips) => onChange({ ...draft, tips })}
             collapsed
+            disabled={saving}
           />
 
           <StringListEditor
@@ -235,6 +243,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
             values={draft.equipment ?? []}
             onChange={(equipment) => onChange({ ...draft, equipment })}
             collapsed
+            disabled={saving}
           />
         </div>
       </div>

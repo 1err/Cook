@@ -40,7 +40,7 @@ def _row_to_recipe(row: RecipeModel) -> Recipe:
         catalog_source_recipe_id=row.catalog_source_recipe_id,
         description=row.description,
         total_time_minutes=row.total_time_minutes,
-        steps=coerce_steps(steps_raw),
+        steps=coerce_steps(steps_raw, row.total_time_minutes),
         tips=coerce_string_list(tips_raw),
         equipment=coerce_string_list(equipment_raw),
     )
@@ -51,7 +51,9 @@ async def save_recipe(session: AsyncSession, recipe: Recipe, user_id: uuid.UUID)
         [i.model_dump() if hasattr(i, "model_dump") else i for i in recipe.ingredients]
     )
     tags = coerce_library_tags(getattr(recipe, "library_tags", None) or recipe.library_category)
-    steps_list = coerce_steps(getattr(recipe, "steps", None))
+    steps_list = coerce_steps(
+        getattr(recipe, "steps", None), getattr(recipe, "total_time_minutes", None)
+    )
     tips_list = coerce_string_list(getattr(recipe, "tips", None))
     equipment_list = coerce_string_list(getattr(recipe, "equipment", None))
     model = RecipeModel(

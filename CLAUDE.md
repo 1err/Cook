@@ -6,14 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Product summary
 
-A personal cooking assistant. Each user has an account and a private library of recipes. They populate the library by either (a) pasting a written transcript or (b) submitting a YouTube video link (captions only — there is no audio/Whisper path). They then assign recipes to days of the week in the planner (breakfast / lunch / dinner slots). The centered desktop Planner keeps the complete week in one viewport; each populated meal slot adaptively fills one to three compact recipe rows and scrolls in place for a fourth or later recipe. Its saved-recipe rail has no footer action (the empty-state import guidance remains). The desktop recipe picker uses a three-column, image-rich card grid with a visible Add action for each result. The shopping list page aggregates ingredients across the planned week inside the same restrained 1120px shell and title rhythm as Library, and can produce a "smart" grouped grocery list via an LLM call plus suggested store products from Weee backed by a multi-layer cache.
+A personal cooking assistant. Each user has an account and a private library of recipes. They populate the library by either (a) pasting a written transcript or (b) submitting a YouTube video link (captions only — there is no audio/Whisper path). Both imports first produce an editable draft; extraction preserves the source procedure while adding duration, provenance, attention, and action metadata to each tutorial step. Web and mobile import review let the user correct that metadata before explicitly saving. Recipe detail then renders transparent timing labels plus an existing step image or a shared action pictogram, and offers a focused tutorial editor. There is no Cook/session/timer/progress surface yet.
+
+Users can also assign recipes to days of the week in the planner (breakfast / lunch / dinner slots). The centered desktop Planner keeps the complete week in one viewport; each populated meal slot adaptively fills one to three compact recipe rows and scrolls in place for a fourth or later recipe. Its saved-recipe rail has no footer action (the empty-state import guidance remains). The desktop recipe picker uses a three-column, image-rich card grid with a visible Add action for each result. The shopping list page aggregates ingredients across the planned week inside the same restrained 1120px shell and title rhythm as Library, and can produce a "smart" grouped grocery list via an LLM call plus suggested store products from Weee backed by a multi-layer cache.
 
 The cache is shared across all users: when one user triggers a fresh scrape, every subsequent user gets the cached row instantly. A background warmer keeps the most common queries hot.
 
 ## Repo shape (npm workspaces + Python)
 
-- `apps/web` — Next.js 14 App Router (`@cooking/web`). Cookie-based auth. Source of nearly all real product UI today. Pages: `import/`, `library/{,[id]}`, `library/friends/{,[userId]/{,[recipeId]}}` (friend library search + read-only browse + copy), `planner/`, `shopping-list/`, `recipe/[id]`, `preview/` (admin cache console), `settings/` ("Share my library" toggle), `login/`, `register/`. Settings link lives in the NavAuth dropdown.
-- `apps/mobile` — Expo / React Native iOS app (`@cooking/mobile`). Bottom tab bar (Library / Planner / Shopping / Profile) over per-tab native stacks, with Import as a root-level modal. Source layout is feature-folders + a small design system (see "Mobile structure" below). All product surfaces ship: auth flow, Library list with **segmented control between "My Library" and "Public Library"** (catalog browse + one-tap copy-to-library, already-copied detection via `catalog_source_recipe_id`), **friend library sharing** (search icon in Library header → `FriendSearchScreen` (email lookup) → `FriendLibraryScreen` (list + copy with already-copied detection); Profile toggle "Share my library" flips `users.is_library_public`), Recipe detail (with editor-only "Add/Remove public library" item in the action menu, gated by `/recipes/catalog/editor-status`), Recipe edit, Planner (week navigation + bottom-sheet recipe picker), Shopping (smart list + per-ingredient Weee product picks + **"Load top picks from Weee" bulk-scrape button** that opens all panels and fetches at concurrency 3 + per-category **"Already have" subsection for checked items** + planner-stale detection), Import (YouTube link + transcript with image upload).
+- `apps/web` — Next.js 14 App Router (`@cooking/web`). Cookie-based auth. Source of nearly all real product UI today. Pages: `import/`, `library/{,[id]}`, `library/friends/{,[userId]/{,[recipeId]}}` (friend library search + read-only browse + copy), `planner/`, `shopping-list/`, `recipe/[id]` (timed tutorial read view), `recipe/[id]/tutorial/edit` (focused tutorial editing and preview-only enrichment), `preview/` (admin cache console), `settings/` ("Share my library" toggle), `login/`, `register/`. Settings link lives in the NavAuth dropdown.
+- `apps/mobile` — Expo / React Native iOS app (`@cooking/mobile`). Bottom tab bar (Library / Planner / Shopping / Profile) over per-tab native stacks, with Import as a root-level modal. Source layout is feature-folders + a small design system (see "Mobile structure" below). All product surfaces ship: auth flow, Library list with **segmented control between "My Library" and "Public Library"** (catalog browse + one-tap copy-to-library, already-copied detection via `catalog_source_recipe_id`), **friend library sharing** (search icon in Library header → `FriendSearchScreen` (email lookup) → `FriendLibraryScreen` (list + copy with already-copied detection); Profile toggle "Share my library" flips `users.is_library_public`), Recipe detail (timed tutorial labels, images/pictograms, and an Edit tutorial action; also the editor-only "Add/Remove public library" menu item gated by `/recipes/catalog/editor-status`), focused or full Recipe edit, Planner (week navigation + bottom-sheet recipe picker), Shopping (smart list + per-ingredient Weee product picks + **"Load top picks from Weee" bulk-scrape button** that opens all panels and fetches at concurrency 3 + per-category **"Already have" subsection for checked items** + planner-stale detection), Import (YouTube link + transcript with image upload and tutorial metadata review).
 - `packages/shared` — types, week/meal-plan/ingredient/category helpers, store enum, i18n strings (`packages/shared/src/messages/{en,zh}.json`). **Single source for these helpers** — pages import from `@cooking/shared` directly; no per-app re-export shims under `apps/web/app/lib/`.
 - `packages/api-client` — `createApiClient({ baseUrl, auth })`. `auth.kind: "cookie"` adds `credentials: "include"`; `auth.kind: "bearer"` reads a token via `getToken()` and adds `Authorization: Bearer …`.
 - `backend/` — FastAPI + async SQLAlchemy + Alembic. **Postgres only** (asyncpg).
@@ -136,9 +138,14 @@ npm run web:lint           # next lint — only configured lint in repo
 npm run mobile:start       # expo start
 npm run mobile:ios         # expo start --ios
 npm run mobile:android
+npm run test:web          # web Vitest suite
+npm run test:mobile       # mobile Jest suite
+npm --workspace @cooking/web run test:e2e  # web Playwright suite (starts Next dev)
+npx tsc -p apps/web/tsconfig.json --noEmit
+npx tsc -p apps/mobile/tsconfig.json --noEmit
 ```
 
-There are **no test scripts** anywhere in this repo (no Jest/Vitest/pytest config, no `__tests__`/`tests/` dirs). When the user asks to "run tests," verify what they mean before assuming.
+The web unit suite uses Vitest, native mobile uses Jest/RNTL, browser flows use Playwright, and the backend uses pytest. A focused test can be passed after `--`, for example `npm --workspace @cooking/web test -- StepListEditor.test.tsx` or `npm --workspace @cooking/web run test:e2e -- tutorial.spec.ts`.
 
 ### Backend (run from `backend/`)
 
@@ -147,7 +154,7 @@ Requires Python 3.11, 3.12, or 3.13 (3.14 is not supported — pydantic-core Rus
 ```bash
 cd backend
 python3.12 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 playwright install chromium    # store scraper uses Playwright
 
 cp .env.example .env
@@ -156,13 +163,14 @@ cp .env.example .env
 
 alembic upgrade head           # apply migrations
 python run.py                  # uvicorn on :8000 with reload
+.venv/bin/python -m pytest -q  # full backend pytest suite
 ```
 
 `AUTH_SECRET` must be ≥16 characters (`backend/app/core/security.py::_get_secret`) — auth endpoints raise at runtime otherwise. The `.env.example` placeholder must be replaced.
 
 `DATABASE_URL` must be `postgresql+asyncpg://...`; startup hard-fails on SQLite or missing URL (`backend/app/core/config.py::Settings.require_postgres`). Special characters in the password (notably `%`) must be URL-encoded.
 
-Alembic head is `20260514_recipe_tut` (chain tail: `20260416_store_cache` → `20260510_user_lib` → `20260514_recipe_tut`; see `backend/alembic/versions/`). New revisions: `alembic revision -m "msg"` then edit the generated file.
+Alembic head is `20260825_step_meta` (chain tail: `20260416_store_cache` → `20260510_user_lib` → `20260514_recipe_tut` → `20260825_step_meta`; see `backend/alembic/versions/`). The head is a data migration over the existing JSON-in-Text `recipes.steps` column; it adds no SQL column. New revisions: `alembic revision -m "msg"` then edit the generated file.
 
 ### Docker
 
@@ -201,6 +209,7 @@ Mounted in `backend/app/main.py`. All routes except `/auth/{register,login,logou
 | POST | `/recipes` | Create |
 | GET | `/recipes/{id}` | |
 | PATCH | `/recipes/{id}` | Partial update of `title`, `thumbnail_url`, `ingredients`, `library_tags`, `description`, `total_time_minutes`, `steps`, `tips`, `equipment` |
+| POST | `/recipes/{id}/tutorial/estimate` | Owned-recipe check plus preview-only enrichment of submitted `{steps}`. Returns `{steps}` without saving; only a later `PATCH /recipes/{id}` persists the user's draft. |
 | DELETE | `/recipes/{id}` | 204 |
 | GET | `/recipes/catalog` | Public recipe catalog |
 | GET | `/recipes/catalog/editor-status` | `{ can_manage: bool }` based on `PUBLIC_LIBRARY_EDITOR_EMAILS` |
@@ -247,7 +256,9 @@ Don’t add automatic refine triggers — token cost is intentional.
 
 ### Import flow (two-step)
 
-`apps/web/app/import/page.tsx` calls `/recipes/parse/{link,transcript}` to get a draft Recipe, lets the user edit ingredients / tags / image / title, then calls `POST /recipes` to save. There is no single-step "import + save" endpoint anymore (the legacy `/recipes/import/*` routes were removed). The link path is YouTube-only via `youtube-transcript-api`; uploaded video files (Whisper) are not supported.
+`apps/web/app/import/page.tsx` calls `/recipes/parse/{link,transcript}` to get a draft Recipe, lets the user edit recipe fields and every tutorial step's text, duration, attention type, and action illustration, then calls `POST /recipes` only after review. Mobile follows the same two-step behavior in its Import modal. There is no single-step "import + save" endpoint anymore (the legacy `/recipes/import/*` routes were removed). The link path is YouTube-only via `youtube-transcript-api`; uploaded video files (Whisper) are not supported. A pasted written recipe or video transcript belongs in the Transcript source field, not in the ingredient editor.
+
+Normal extraction asks the existing model call for step metadata without making a second enrichment call. It may infer metadata but must preserve supplied instruction text/order and must not add, split, merge, or invent procedural steps. Missing or malformed metadata remains editable and is normalized to a transparent fallback rather than failing the whole draft.
 
 ### Store-product lookup has three layers
 
@@ -316,29 +327,51 @@ Two parallel concepts on `RecipeModel`:
 
 ### Recipe tutorial fields
 
-`Recipe` carries five optional, backward-compatible fields beyond the base ingredients/title set:
-`description`, `total_time_minutes`, `steps`, `tips`, `equipment`. Stored as five new columns on
-`recipes` (added in migration `20260514_recipe_tut`): the list-shaped fields are JSON-in-Text (same
-pattern as `library_tags`); `description` is `Text NULL`; `total_time_minutes` is `Integer NULL`.
+`Recipe` carries five backward-compatible fields beyond the base ingredients/title set:
+`description`, `total_time_minutes`, `steps`, `tips`, and `equipment`. They are stored in columns
+added by `20260514_recipe_tut`; list-shaped fields remain JSON-in-Text, `description` is `Text NULL`,
+and `total_time_minutes` is `Integer NULL`. Migration `20260825_step_meta` canonically backfills the
+existing step JSON in place and is idempotent.
 
-Each `RecipeStep` is `{ text, duration_seconds?, image_url? }`. **No stable IDs** — steps are
-array-position only. If sub-project C (multi-modal extraction) later needs stable references to
-enrich a specific step with a frame, add an `id` field then with on-read backfill; legacy entries
-won't break.
+The canonical `RecipeStep` contract is:
 
-Legacy recipes render gracefully with the new fields empty; no backfill job is wired up.
+```text
+id: UUID string
+text: non-empty string
+duration_seconds: whole number
+duration_source: stated | estimated | user | fallback
+attention_type: hands_on | passive
+action_type: prep | chop | mix | season | sear | simmer | boil | bake | rest | drain | assemble | plate | other
+image_url: string | null
+```
+
+Old strings and partial dictionaries remain accepted at request/repository boundaries. Canonical
+normalization trims/drops empty instructions, preserves unique valid IDs and existing images, and
+generates a stable UUID for missing/duplicate IDs. A legacy numeric duration with no provenance is
+`stated`; malformed metadata becomes `fallback` / `hands_on` / `other`. Generated, stated, and
+fallback durations clamp to 15–86,400 seconds; explicit user edits clamp to 1–86,400 seconds.
+Missing durations use positive remaining stated total time (distributed across missing steps with a
+60-second minimum), otherwise the median known duration, otherwise 300 seconds. A source-stated
+`total_time_minutes` is preserved; only an absent total is derived as the rounded-up normalized
+duration sum.
+
+Web and mobile import review plus saved-recipe tutorial editing preserve step IDs, order, metadata,
+and hidden `image_url` values. Changing duration sets `duration_source="user"`. Existing images take
+precedence in detail; missing/broken images use the shared vector pictogram. "Estimate missing
+tutorial details" only updates local editor state through the preview endpoint; Cancel performs no
+PATCH, and Save PATCHes the steps. Reading a recipe or opening a future cooking flow must never
+silently rewrite tutorial metadata.
 
 ### Recipe view skin (sub-project E)
 
-The recipe detail view (web `apps/web/app/recipe/[id]/page.tsx` + `.recipe-editorial*`
-rules in `globals.css`; mobile `RecipeDetailScreen.tsx`) uses a "Warm Cookbook" skin
-**scoped to the recipe view only** — it does not change app chrome or other pages. Web
-defines the palette as `--recipe-*` custom properties on `.recipe-editorial`; mobile uses
-warm tokens in `apps/mobile/src/theme/` (`recipePaper`, `recipeCard`, `recipeLine`,
-`accent`, `accentSoft`, `tipsCallout`) + the `typography.recipeTitle` serif preset. Web
-is two-column (sticky meta/ingredients/equipment rail + steps/tips main) above 900px and
-single column below; mobile is always single column. A future app-wide restyle (E2) would
-make this skin global and is tracked as a follow-up. Presentation-only: no schema/API.
+Recipe detail uses the cross-platform Culinary Workbench system from the UI reset. Web
+`apps/web/app/recipe/[id]/page.tsx` keeps its route styling in `RecipeDetail.module.css`
+(not `globals.css`), with a two-column ingredients/tutorial layout above its responsive
+breakpoint and a single column below. `RecipeTutorial.tsx` owns the timed step read view;
+`recipe/[id]/tutorial/edit/page.tsx` owns focused editing. Mobile
+`RecipeDetailScreen.tsx` and `RecipeEditScreen.tsx` provide the same read/edit behavior
+through native theme primitives and a vertical phone layout. Web SVG and native
+`react-native-svg` render the same action primitive data from `@cooking/shared`.
 
 ### Meal plan storage
 
@@ -392,12 +425,8 @@ These are tracked here — not in commit messages — so each session can pick t
 - **`@react-navigation` v6 → v7 (deferred):** mobile is on `@react-navigation/native@^6.1.18`, `@react-navigation/native-stack@^6.11.0`, `@react-navigation/bottom-tabs@^6.6.1`. v7 is the current line; v6 still works on RN 0.81 + React 19 but won't get new features. Bump as a separate focused session — types tighten between v6 and v7 and most `ParamList` definitions need a sweep.
 - **Smoke-test the mobile app on real hardware:** the SDK 54 upgrade unblocks Expo Go on a physical phone (App Store Expo Go is SDK 54-only). Before leaning on this for daily testing, run a full pass on a phone over LAN to confirm planner bottom-sheet animations, smart-list reorder, and image upload all work under the New Architecture (Reanimated v4). The simulator passed but the bottom-sheet is the highest-risk area under New Arch.
 - **`@gorhom/bottom-sheet` was force-bumped 5.1.1 → 5.2.13** during the SDK 54 upgrade (auto-resolved during `expo install --fix`). Watch for animation regressions over a few days; if anything feels off in the planner picker, that's the place to look.
-- **i18n parity for mobile:** the web app strings are in `packages/shared/src/messages/{en,zh}.json` and surfaced via `useT()` from `apps/web/app/lib/i18n.tsx`. Mobile is currently English-only — when Chinese parity is needed, lift the `I18nProvider` / `useT()` hooks into a small `apps/mobile/src/lib/i18n.tsx` (or a shared `packages/shared-react/`) and gate language toggle in Profile. Defer until product asks for it.
+- **Remaining mobile i18n coverage:** mobile already has `apps/mobile/src/lib/i18n.tsx` with `I18nProvider` / `useT()`, persists `cooking-ui-language`, and exposes the English/Chinese toggle in Profile. Tutorial, navigation, and core account surfaces use the shared message catalog, but some legacy/development-only mobile strings remain hard-coded. Migrate those strings to `useT()` as their screens are touched.
 - **EAS submit credentials:** `apps/mobile/eas.json::submit.production.ios` has `REPLACE_WITH_*` placeholders for `appleId`, `ascAppId`, and `appleTeamId`. Fill these in before the first `eas submit -p ios`.
-- **Stable step IDs:** Steps in `RecipeStep` are array-position only. Sub-project C (multi-modal
-  extraction) will likely want stable IDs to attach extracted frames to specific steps. Add an
-  optional `id: str` field to `RecipeStep`, generate ids on read for legacy rows, then drop the
-  fallback once all rows are normalized.
 
 ## Updating this file
 

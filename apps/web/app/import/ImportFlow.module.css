@@ -278,6 +278,10 @@
   min-width: 0;
 }
 
+.editorFieldset {
+  margin: 0;
+}
+
 .sectionHeader {
   display: flex;
   align-items: center;
@@ -294,6 +298,7 @@
 
 .sectionHeader button,
 .contentColumn :global(.add-row-btn) {
+  min-height: 2.75rem;
   padding: 0.4rem 0.55rem;
   border: 0;
   background: transparent;
@@ -340,8 +345,8 @@
 .rowActions button,
 .contentColumn :global(.string-row button) {
   display: grid;
-  width: 2rem;
-  height: 2rem;
+  width: 2.75rem;
+  height: 2.75rem;
   padding: 0;
   border: 0;
   border-radius: var(--cw-radius-control);
@@ -388,13 +393,119 @@
   resize: vertical;
 }
 
-.stepDuration {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
+.stepMetadata {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-subtle-surface);
   color: var(--cw-color-muted-ink);
   font-size: 0.75rem;
   font-weight: 700;
+}
+
+.stepMetadataField {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.metadataSource {
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--cw-radius-round);
+  background: var(--cw-color-surface);
+  color: var(--cw-color-action);
+  font-size: 0.7rem;
+}
+
+.durationField {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.durationField input {
+  width: 4.25rem;
+  min-height: 2.75rem;
+  padding: 0.55rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-canvas);
+  color: var(--cw-color-ink);
+  font: inherit;
+  text-align: center;
+}
+
+.durationField input:focus,
+.attentionControl button:focus-visible,
+.actionControl select:focus {
+  border-color: var(--cw-color-action);
+  outline: 3px solid color-mix(in srgb, var(--cw-color-action) 22%, transparent);
+  outline-offset: 1px;
+}
+
+.durationField input[aria-invalid="true"] {
+  border-color: var(--cw-color-error);
+}
+
+.durationError {
+  margin: 0.35rem 0 0;
+  color: var(--cw-color-error);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.attentionControl {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.attentionControl legend,
+.actionControl > span {
+  margin-bottom: 0.35rem;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.72rem;
+}
+
+.attentionControl > div {
+  display: grid;
+  gap: 0.4rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.attentionControl button {
+  min-height: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-surface);
+  color: var(--cw-color-muted-ink);
+  cursor: pointer;
+  font: inherit;
+}
+
+.attentionControl button[aria-pressed="true"] {
+  border-color: var(--cw-color-action);
+  background: color-mix(in srgb, var(--cw-color-action) 9%, var(--cw-color-surface));
+  color: var(--cw-color-action);
+}
+
+.actionControl {
+  display: grid;
+}
+
+.actionControl select {
+  min-height: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-surface);
+  color: var(--cw-color-ink);
+  font: inherit;
 }
 
 .stepImage {

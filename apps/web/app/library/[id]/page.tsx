@@ -31,6 +31,7 @@ function RecipeEditContent() {
   const [description, setDescription] = useState("");
   const [totalTimeMinutes, setTotalTimeMinutes] = useState<number | null>(null);
   const [steps, setSteps] = useState<RecipeStep[]>([]);
+  const [stepsValid, setStepsValid] = useState(true);
   const [tips, setTips] = useState<string[]>([]);
   const [equipment, setEquipment] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,7 +133,7 @@ function RecipeEditContent() {
   }
 
   async function handleSave() {
-    if (!id) return;
+    if (!id || !stepsValid) return;
     setSaving(true);
     setError(null);
     try {
@@ -212,7 +213,12 @@ function RecipeEditContent() {
           <button type="button" className={styles.cancelButton} onClick={() => router.push("/library")}>
             {t("common.cancel")}
           </button>
-          <button type="button" className={styles.saveButton} onClick={handleSave} disabled={saving}>
+          <button
+            type="button"
+            className={styles.saveButton}
+            onClick={handleSave}
+            disabled={saving || !stepsValid}
+          >
             {saving ? t("common.saving") : t("common.save")}
           </button>
         </div>
@@ -360,6 +366,7 @@ function RecipeEditContent() {
             steps={steps}
             onChange={setSteps}
             uploadImage={(file) => uploadRecipeImage(file, t("common.upload"))}
+            onValidityChange={setStepsValid}
           />
         </div>
 

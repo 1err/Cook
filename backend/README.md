@@ -2,7 +2,7 @@
 
 Production-ready FastAPI app with async SQLAlchemy, Alembic migrations, and layered structure.
 
-For **end-to-end product flow**, Docker, and frontend integration, see the repo root **`CODEBASE_WALKTHROUGH.md`**.
+For **end-to-end product flow**, Docker, and frontend integration, see the repo root **`CLAUDE.md`**.
 
 ## Setup
 
@@ -20,7 +20,11 @@ Postgres only. `DATABASE_URL` is required and must be a Postgres URL (e.g. `post
 
 ```bash
 alembic upgrade head
+alembic current
 ```
+
+The current Alembic head is `20260825_step_meta`. It canonically backfills stable IDs and tutorial
+metadata inside the existing JSON-in-Text `recipes.steps` column; it adds no SQL column.
 
 ## Run locally
 
@@ -44,12 +48,24 @@ Run the same commands from `backend/`. For the stricter local release gate, prom
 .venv/bin/python -W error -m pytest -q
 ```
 
-## Docker
-
-From repo root. Backend requires Postgres; use the postgres profile so the database is running:
+Focused tutorial timing and persistence checks:
 
 ```bash
-docker compose --profile postgres up -d postgres
+.venv/bin/python -m pytest \
+  tests/test_tutorial.py \
+  tests/test_tutorial_step_migration.py \
+  tests/test_recipe_tutorial_repository.py \
+  tests/test_extract_tutorial.py \
+  tests/test_tutorial_estimation.py \
+  tests/test_recipe_tutorial_routes.py -q
+```
+
+## Docker
+
+From repo root. Backend requires the Compose `postgres` service to be running:
+
+```bash
+docker compose up -d postgres
 docker compose run --rm backend alembic upgrade head   # first time or after schema change
 docker compose up backend
 ```
@@ -57,7 +73,7 @@ docker compose up backend
 Or bring everything up (including postgres) with:
 
 ```bash
-docker compose --profile postgres up --build
+docker compose up --build
 ```
 
 ## Image uploads
@@ -66,7 +82,7 @@ docker compose --profile postgres up --build
 
 **Without S3** (local dev default): `POST /recipes/upload-image` saves the file under `./uploads` (or `LOCAL_IMAGE_UPLOAD_DIR`), serves it at `/uploads/...`, returns `upload_url: ""` and a full `file_url`. The frontend skips the PUT when `upload_url` is empty.
 
-See `CODEBASE_WALKTHROUGH.md` for Docker volume `./backend/uploads`.
+See the root `CLAUDE.md` for Docker volume `./backend/uploads`.
 
 ## Structure
 

@@ -19,10 +19,11 @@ from app.db.models import UserModel
 from app.db.session import get_session
 from app.extract import (
     _parse_youtube_video_id,
+    estimate_tutorial_step_metadata,
     extract_recipe_from_text,
     fetch_transcript_from_video_link,
 )
-from app.models import IngredientItem, Recipe
+from app.models import IngredientItem, Recipe, RecipeStep, coerce_steps
 from app.services.storage_service import (
     generate_image_upload_url,
     save_recipe_image_local,
@@ -202,6 +203,32 @@ async def recipe_get(
     return r
 
 
+class EstimateTutorialBody(BaseModel):
+    steps: StepList
+
+
+class EstimateTutorialResponse(BaseModel):
+    steps: list[RecipeStep]
+
+
+@router.post(
+    "/{recipe_id}/tutorial/estimate",
+    response_model=EstimateTutorialResponse,
+)
+async def recipe_estimate_tutorial(
+    recipe_id: str,
+    body: EstimateTutorialBody,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserModel = Depends(get_current_user),
+):
+    recipe = await repo_recipes.get_recipe(session, recipe_id, current_user.id)
+    if not recipe:
+        raise HTTPException(404, "Recipe not found")
+    draft_steps = coerce_steps(body.steps, recipe.total_time_minutes)
+    estimated_steps = await estimate_tutorial_step_metadata(draft_steps)
+    return EstimateTutorialResponse(steps=estimated_steps)
+
+
 @router.post("/{recipe_id}/catalog", response_model=Recipe)
 async def recipe_set_catalog_visibility(
     recipe_id: str,
@@ -251,7 +278,7 @@ async def recipe_update(
     if not r:
         raise HTTPException(404, "Recipe not found")
     updates = body.model_dump(exclude_unset=True)
-    updated = r.model_copy(update=updates)
+    updated = Recipe.model_validate({**r.model_dump(), **updates})
     await repo_recipes.save_recipe(session, updated, current_user.id)
     return updated
 

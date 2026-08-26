@@ -1,4 +1,4 @@
-import type { MealPlanDay, Recipe, RecipeTagSlug, ShoppingListItem, User } from "@cooking/shared";
+import type { MealPlanDay, Recipe, RecipeStep, RecipeTagSlug, ShoppingListItem, User } from "@cooking/shared";
 
 export type AuthStrategy =
   | { kind: "cookie" }
@@ -110,6 +110,11 @@ export function createApiClient(options: ApiClientOptions) {
         json<Recipe>("/recipes", { method: "POST", body: JSON.stringify(payload) }),
       update: (id: string, payload: Partial<Recipe>) =>
         json<Recipe>(`/recipes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(payload) }),
+      estimateTutorial: (id: string, steps: RecipeStep[]) =>
+        json<{ steps: RecipeStep[] }>(
+          `/recipes/${encodeURIComponent(id)}/tutorial/estimate`,
+          { method: "POST", body: JSON.stringify({ steps }) },
+        ),
       remove: (id: string) => request(`/recipes/${encodeURIComponent(id)}`, { method: "DELETE" }),
       catalog: () => json<Recipe[]>("/recipes/catalog"),
       copyCatalog: (id: string) => json<Recipe>(`/recipes/catalog/${encodeURIComponent(id)}/copy`, { method: "POST" }),

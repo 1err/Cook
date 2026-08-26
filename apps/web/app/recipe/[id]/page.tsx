@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { formatIngredientQuantity, formatStepDuration } from "@cooking/shared";
+import { formatIngredientQuantity } from "@cooking/shared";
 import { PageShell } from "../../components/PageShell";
 import { RequireAuth } from "../../components/RequireAuth";
 import { apiFetch } from "../../lib/api";
@@ -12,6 +12,7 @@ import { CATEGORY_LABELS } from "../../lib/recipeCategories";
 import { getRecipeTags } from "../../lib/recipeTags";
 import type { Recipe } from "../../types";
 import styles from "./RecipeDetail.module.css";
+import { RecipeTutorial } from "./RecipeTutorial";
 
 function RecipeDetailContent() {
   const params = useParams();
@@ -70,6 +71,7 @@ function RecipeDetailContent() {
         <div className={styles.topbar}>
           <Link href="/library" className={styles.back}>← {t("nav.library")}</Link>
           <div className={styles.actions}>
+            <Link href="/planner">{t("recipe.mealPlanner")}</Link>
             <Link href={`/library/${id}`} className={styles.primaryAction}>{t("common.edit")}</Link>
             <button type="button" onClick={handleDelete} disabled={deleting}>
               {deleting ? t("recipe.deleting") : t("common.delete")}
@@ -133,27 +135,7 @@ function RecipeDetailContent() {
           </aside>
 
           <div className={styles.method}>
-            <section>
-              <h2 className="cw-display">{t("recipe.steps")}</h2>
-              {(recipe.steps ?? []).length ? (
-                <ol>
-                  {recipe.steps!.map((step, index) => (
-                    <li key={`${step.text}-${index}`}>
-                      <span className={styles.stepNumber}>{index + 1}</span>
-                      <div>
-                        {step.duration_seconds && step.duration_seconds > 0 ? (
-                          <small>{formatStepDuration(step.duration_seconds)}</small>
-                        ) : null}
-                        <p>{step.text}</p>
-                        {step.image_url ? <img src={step.image_url} alt="" /> : null}
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className={styles.status}>{t("recipe.recipe")}</p>
-              )}
-            </section>
+            <RecipeTutorial recipe={recipe} />
 
             {(recipe.tips ?? []).length ? (
               <section className={styles.tips}>

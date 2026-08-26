@@ -11,7 +11,15 @@ from dataclasses import dataclass
 from typing import Optional
 
 from app.core.llm import get_openai_client
-from app.models import IngredientItem, Recipe
+from app.models import IngredientItem, Recipe, RecipeStep
+from app.tutorial import (
+    ACTION_TYPES,
+    ATTENTION_TYPES,
+    DURATION_SOURCES,
+    GENERATED_MIN_SECONDS,
+    MAX_STEP_SECONDS,
+    classify_step_metadata,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -141,14 +149,18 @@ Extract the following JSON:
 - total_time_minutes: integer total minutes, or null if unclear.
 - ingredients: list of {{name, quantity, notes}}.
 - equipment: list of distinct tools/pans named in the transcript. [] if none mentioned.
-- steps: ordered list of {{text, duration_seconds}}. duration_seconds is integer or null. Each step is one short instruction. If the transcript is thin or doesn't describe procedure, return []. DO NOT invent steps.
+- steps: ordered list of {{text, duration_seconds, duration_source, attention_type, action_type}}. Each step is one short instruction copied from the source. If the transcript is thin or doesn't describe procedure, return []. DO NOT add, split, merge, or invent procedural steps. DO NOT invent procedure.
+  - duration_seconds: positive whole seconds from 15 to 86400. Use a source-stated duration when explicit; otherwise estimate a plausible duration for that exact step.
+  - duration_source: "stated" only when the source explicitly states the duration; otherwise "estimated".
+  - attention_type: "hands_on" or "passive". hands_on means the cook is actively working; passive means they may safely leave the step until attention is needed.
+  - action_type: one of "prep", "chop", "mix", "season", "sear", "simmer", "boil", "bake", "rest", "drain", "assemble", "plate", or "other".
 - tips: list of chef tips/tricks explicitly mentioned (e.g., "press tofu first"). [] if none.
 
 Language rules:
 - If the source names ingredients/steps/tips in Chinese, keep them in Chinese. English in parens is optional.
 - Quantities and durations may stay in the source language.
 
-Do not invent details that are not suggested by the text.
+Metadata may be inferred, but DO NOT invent details or procedural steps that are not suggested by the text.
 
 --- TRANSCRIPT ---
 {body}
@@ -158,7 +170,7 @@ Respond with a JSON object only, no markdown:
 {{ "title": "...", "description": null, "total_time_minutes": null,
    "ingredients": [{{ "name": "...", "quantity": "...", "notes": null }}],
    "equipment": [],
-   "steps": [{{ "text": "...", "duration_seconds": null }}],
+   "steps": [{{ "text": "...", "duration_seconds": 480, "duration_source": "stated", "attention_type": "passive", "action_type": "simmer" }}],
    "tips": []
 }}"""
 
@@ -190,6 +202,8 @@ def parse_llm_recipe_response(raw: str) -> dict:
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
+        data = None
+    if not isinstance(data, dict):
         return {
             "title": "Imported Recipe",
             "description": None,
@@ -200,42 +214,199 @@ def parse_llm_recipe_response(raw: str) -> dict:
             "tips": [],
         }
 
-    title = data.get("title") or "Untitled Recipe"
+    title = _extraction_string(data.get("title"), "Untitled Recipe")
 
-    ingredients_raw = data.get("ingredients") or []
+    ingredients_raw = data.get("ingredients")
+    if not isinstance(ingredients_raw, list):
+        ingredients_raw = []
     ingredients: list[dict] = []
     for i in ingredients_raw:
         if isinstance(i, dict):
-            quantity, metric_quantity = _split_dual_quantity(i.get("quantity") or "")
+            quantity, metric_quantity = _split_dual_quantity(
+                _extraction_string(i.get("quantity"))
+            )
             ingredients.append({
-                "name": i.get("name") or "",
+                "name": _extraction_string(i.get("name")),
                 "quantity": quantity,
                 "metric_quantity": metric_quantity,
-                "notes": i.get("notes"),
+                "notes": _extraction_optional_string(i.get("notes")),
             })
         else:
             ingredients.append({"name": str(i), "quantity": "", "notes": None})
 
-    steps_raw = data.get("steps") or []
+    steps_raw = data.get("steps")
+    if not isinstance(steps_raw, list):
+        steps_raw = []
     steps: list[dict] = []
     for s in steps_raw:
         if isinstance(s, dict):
             steps.append({
                 "text": s.get("text") or "",
                 "duration_seconds": s.get("duration_seconds"),
+                "duration_source": _extraction_metadata(
+                    s.get("duration_source"), DURATION_SOURCES, "fallback"
+                ),
+                "attention_type": _extraction_metadata(
+                    s.get("attention_type"), ATTENTION_TYPES, "hands_on"
+                ),
+                "action_type": _extraction_metadata(
+                    s.get("action_type"), ACTION_TYPES, "other"
+                ),
             })
         elif isinstance(s, str):
-            steps.append({"text": s, "duration_seconds": None})
+            steps.append({
+                "text": s,
+                "duration_seconds": None,
+                "duration_source": "fallback",
+                "attention_type": "hands_on",
+                "action_type": "other",
+            })
 
     return {
         "title": title,
-        "description": data.get("description"),
+        "description": _extraction_optional_string(data.get("description")),
         "total_time_minutes": data.get("total_time_minutes"),
         "ingredients": ingredients,
-        "equipment": data.get("equipment") or [],
+        "equipment": _extraction_string_list(data.get("equipment")),
         "steps": steps,
-        "tips": data.get("tips") or [],
+        "tips": _extraction_string_list(data.get("tips")),
     }
+
+
+def _extraction_string(value: object, default: str = "") -> str:
+    if value is None:
+        return default
+    return value if isinstance(value, str) else str(value)
+
+
+def _extraction_optional_string(value: object) -> str | None:
+    return None if value is None else _extraction_string(value)
+
+
+def _extraction_string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _extraction_metadata(value: object, allowed: frozenset[str], fallback: str) -> str:
+    """Accept only the metadata enum values supported by tutorial normalization."""
+    if not isinstance(value, str):
+        return fallback
+    value = value.strip()
+    return value if value in allowed else fallback
+
+
+def _build_tutorial_estimation_prompt(steps: list[RecipeStep]) -> str:
+    records = [
+        {
+            "number": index,
+            "id": step.id,
+            "text": step.text,
+            "duration_seconds": step.duration_seconds,
+            "duration_source": step.duration_source,
+            "attention_type": step.attention_type,
+            "action_type": step.action_type,
+        }
+        for index, step in enumerate(steps, start=1)
+    ]
+    return f"""Estimate tutorial metadata for these existing cooking steps.
+
+Return a JSON array with exactly one object per supplied step. Each object may contain only:
+- id: copy the supplied ID exactly
+- duration_seconds: a positive whole number from 15 to 86400
+- attention_type: "hands_on" or "passive"
+- action_type: one of {", ".join(sorted(ACTION_TYPES))}
+
+Do not return text. Do not add, delete, reorder, split, or merge steps.
+
+STEPS:
+{json.dumps(records, ensure_ascii=False)}
+"""
+
+
+def _parse_tutorial_estimates(raw: str) -> dict[str, dict[str, object]] | None:
+    text = raw.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```\w*\n?", "", text)
+        text = re.sub(r"\n?```\s*$", "", text)
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if isinstance(data, dict):
+        data = data.get("steps")
+    if not isinstance(data, list):
+        return None
+
+    counts: dict[str, int] = {}
+    candidates: dict[str, dict[str, object]] = {}
+    for item in data:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            continue
+        step_id = item["id"]
+        counts[step_id] = counts.get(step_id, 0) + 1
+        candidates[step_id] = item
+    return {
+        step_id: item
+        for step_id, item in candidates.items()
+        if counts[step_id] == 1
+    }
+
+
+def _valid_estimated_duration(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    if not GENERATED_MIN_SECONDS <= value <= MAX_STEP_SECONDS:
+        return None
+    return value
+
+
+async def estimate_tutorial_step_metadata(steps: list[RecipeStep]) -> list[RecipeStep]:
+    """Preview metadata suggestions without changing step identity or content."""
+    if not steps:
+        return []
+
+    estimates: dict[str, dict[str, object]] = {}
+    client = get_openai_client()
+    if client is not None:
+        try:
+            response = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": _build_tutorial_estimation_prompt(steps),
+                    }
+                ],
+            )
+            raw = response.choices[0].message.content or "[]"
+            estimates = _parse_tutorial_estimates(raw) or {}
+        except Exception as exc:
+            logger.warning("Tutorial metadata estimation failed; using local defaults: %s", exc)
+
+    merged: list[RecipeStep] = []
+    for step in steps:
+        local_attention, local_action = classify_step_metadata(step.text)
+        estimate = estimates.get(step.id or "", {})
+        attention = _extraction_metadata(
+            estimate.get("attention_type"), ATTENTION_TYPES, local_attention
+        )
+        action = _extraction_metadata(
+            estimate.get("action_type"), ACTION_TYPES, local_action
+        )
+        updates: dict[str, object] = {
+            "attention_type": attention,
+            "action_type": action,
+        }
+        estimated_duration = _valid_estimated_duration(
+            estimate.get("duration_seconds")
+        )
+        if step.duration_source == "fallback" and estimated_duration is not None:
+            updates["duration_seconds"] = estimated_duration
+            updates["duration_source"] = "estimated"
+        merged.append(RecipeStep(**{**step.model_dump(), **updates}))
+    return merged
 
 
 async def extract_recipe_from_text(transcript: str) -> Recipe:
@@ -282,11 +453,41 @@ def _stub_extraction(input_text: str) -> dict:
             ],
             "equipment": ["wok", "spatula"],
             "steps": [
-                {"text": "Dice the tofu into 2 cm cubes and let it sit in lightly salted hot water.", "duration_seconds": 180},
-                {"text": "Sear ground pork in the wok until browned and crispy at the edges.", "duration_seconds": 240},
-                {"text": "Add doubanjiang and garlic; stir-fry until fragrant.", "duration_seconds": 60},
-                {"text": "Drain the tofu, slide it into the wok, and simmer gently with stock.", "duration_seconds": 180},
-                {"text": "Thicken with a cornstarch slurry, finish with green onion and Sichuan pepper.", "duration_seconds": 60},
+                {
+                    "text": "Dice the tofu into 2 cm cubes and let it sit in lightly salted hot water.",
+                    "duration_seconds": 180,
+                    "duration_source": "estimated",
+                    "attention_type": "hands_on",
+                    "action_type": "chop",
+                },
+                {
+                    "text": "Sear ground pork in the wok until browned and crispy at the edges.",
+                    "duration_seconds": 240,
+                    "duration_source": "estimated",
+                    "attention_type": "hands_on",
+                    "action_type": "sear",
+                },
+                {
+                    "text": "Add doubanjiang and garlic; stir-fry until fragrant.",
+                    "duration_seconds": 60,
+                    "duration_source": "estimated",
+                    "attention_type": "hands_on",
+                    "action_type": "season",
+                },
+                {
+                    "text": "Drain the tofu, slide it into the wok, and simmer gently with stock.",
+                    "duration_seconds": 180,
+                    "duration_source": "estimated",
+                    "attention_type": "passive",
+                    "action_type": "simmer",
+                },
+                {
+                    "text": "Thicken with a cornstarch slurry, finish with green onion and Sichuan pepper.",
+                    "duration_seconds": 60,
+                    "duration_source": "estimated",
+                    "attention_type": "hands_on",
+                    "action_type": "assemble",
+                },
             ],
             "tips": ["Drain the tofu well before adding it — it absorbs sauce better."],
         }
