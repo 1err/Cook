@@ -31,6 +31,7 @@ import {
 import {
   buildProductLookupStorage,
   canonicalIngredientKey,
+  cleanIngredientQuery,
   createProductLookupCoordinator,
   parseStoreProductsResponse,
   parseProductLookupStorage,
@@ -201,9 +202,12 @@ function ShoppingListPageContent() {
   const [menuOpenFor, setMenuOpenFor] = useState<number | null>(null);
   const [openProductsByIngredient, setOpenProductsByIngredient] = useState<Record<string, boolean>>({});
   const [lookupByIngredient, setLookupByIngredient] = useState<Record<string, ProductLookupState>>({});
+  const [productQueryByKey, setProductQueryByKey] = useState<Record<string, string>>({});
   const productLoadGenerationRef = useRef(0);
   const lookupByIngredientRef = useRef(lookupByIngredient);
   lookupByIngredientRef.current = lookupByIngredient;
+  const productQueryByKeyRef = useRef(productQueryByKey);
+  productQueryByKeyRef.current = productQueryByKey;
   const productExpiryTimersRef = useRef(
     new Map<
       string,
@@ -248,6 +252,8 @@ function ShoppingListPageContent() {
     productExpiryTimersRef.current.clear();
     setOpenProductsByIngredient({});
     setLookupByIngredient({});
+    productQueryByKeyRef.current = {};
+    setProductQueryByKey({});
     setBulkLoadingProducts(false);
     setBulkLoadProgress(null);
   }
@@ -300,7 +306,10 @@ function ShoppingListPageContent() {
         ) {
           return;
         }
-        void productLookupCoordinator.request(key, generation);
+        void productLookupCoordinator.request(
+          productQueryByKeyRef.current[key] ?? key,
+          generation,
+        );
       };
       const timer = setTimeout(
         fireAtExpiry,
@@ -430,18 +439,27 @@ function ShoppingListPageContent() {
         clearProductResults();
         return;
       }
-      const parsed = parseProductLookupStorage(raw);
+      const seedQueries: Record<string, string> = {};
+      for (const { name } of activeRefinedData.purchase_items) {
+        const query = cleanIngredientQuery(name);
+        const key = canonicalIngredientKey(query);
+        if (key && !seedQueries[key]) seedQueries[key] = query;
+      }
+      const parsed = parseProductLookupStorage(raw, Date.now(), seedQueries);
       if (!parsed) {
         clearProductResults();
         return;
       }
+      productQueryByKeyRef.current = parsed.queries;
+      setProductQueryByKey(parsed.queries);
+      const generation = productLoadGenerationRef.current;
+      productLookupCoordinator.seedQueries(parsed.queries, generation);
       setOpenProductsByIngredient(parsed.open);
       setLookupByIngredient(parsed.lookup);
       setBulkLoadingProducts(false);
       setBulkLoadProgress(null);
-      const generation = productLoadGenerationRef.current;
-      for (const key of parsed.revalidate) {
-        void productLookupCoordinator.request(key, generation);
+      for (const query of parsed.revalidate) {
+        void productLookupCoordinator.request(query, generation);
       }
     } catch {
       clearProductResults();
@@ -453,9 +471,10 @@ function ShoppingListPageContent() {
     const payload = buildProductLookupStorage(
       openProductsByIngredient,
       lookupByIngredient,
+      productQueryByKey,
     );
     writeSessionStorage(smartProductsStorageKey(start), JSON.stringify(payload));
-  }, [activeRefinedData, lookupByIngredient, openProductsByIngredient, start]);
+  }, [activeRefinedData, lookupByIngredient, openProductsByIngredient, productQueryByKey, start]);
 
   useEffect(() => {
     if (!activeRefinedData || !activeSavedPlannerFingerprint) return;
@@ -602,8 +621,18 @@ function ShoppingListPageContent() {
     openPanel = true,
     forceRetry = false
   ) {
-    const key = canonicalIngredientKey(ingredientName);
+    const cleanedQuery = cleanIngredientQuery(ingredientName);
+    const key = canonicalIngredientKey(cleanedQuery);
     if (!key) return;
+    const rememberedQuery = productQueryByKeyRef.current[key] ?? cleanedQuery;
+    if (!productQueryByKeyRef.current[key]) {
+      const nextQueries = {
+        ...productQueryByKeyRef.current,
+        [key]: rememberedQuery,
+      };
+      productQueryByKeyRef.current = nextQueries;
+      setProductQueryByKey(nextQueries);
+    }
 
     if (openPanel) {
       setOpenProductsByIngredient((prev) => ({ ...prev, [key]: true }));
@@ -614,7 +643,8 @@ function ShoppingListPageContent() {
     }
 
     const generation = productLoadGenerationRef.current;
-    await productLookupCoordinator.request(ingredientName, generation);
+    productLookupCoordinator.seedQueries({ [key]: rememberedQuery }, generation);
+    await productLookupCoordinator.request(rememberedQuery, generation);
   }
 
   async function handleToggleProducts(ingredientName: string) {
@@ -636,37 +666,47 @@ function ShoppingListPageContent() {
 
   async function handleLoadAllProducts() {
     const seen = new Set<string>();
-    const keys = buildVisualProductQueue(productQueueGroups).filter((key) => {
-      const canonicalKey = canonicalIngredientKey(key);
+    const keys = buildVisualProductQueue(productQueueGroups).filter((query) => {
+      const canonicalKey = canonicalIngredientKey(query);
       if (!canonicalKey || seen.has(canonicalKey)) return false;
       seen.add(canonicalKey);
       return true;
     });
     if (!keys.length) return;
     const generation = productLoadGenerationRef.current;
+    const rememberedQueries = { ...productQueryByKeyRef.current };
+    const preparedKeys = keys.map((query) => {
+      const canonicalKey = canonicalIngredientKey(query);
+      const remembered = rememberedQueries[canonicalKey] ?? cleanIngredientQuery(query);
+      rememberedQueries[canonicalKey] = remembered;
+      return remembered;
+    });
+    productQueryByKeyRef.current = rememberedQueries;
+    setProductQueryByKey(rememberedQueries);
+    productLookupCoordinator.seedQueries(rememberedQueries, generation);
     setOpenProductsByIngredient((current) => ({
       ...current,
-      ...Object.fromEntries(keys.map((key) => [canonicalIngredientKey(key), true])),
+      ...Object.fromEntries(preparedKeys.map((query) => [canonicalIngredientKey(query), true])),
     }));
-    const unresolvedKeys = keys.filter((key) => {
-      const state = lookupByIngredient[canonicalIngredientKey(key)];
+    const unresolvedKeys = preparedKeys.filter((query) => {
+      const state = lookupByIngredient[canonicalIngredientKey(query)];
       return !(
         state?.status === "success" &&
         typeof state.expiresAt === "string" &&
         Date.parse(state.expiresAt) > Date.now()
       );
     });
-    let completed = keys.length - unresolvedKeys.length;
+    let completed = preparedKeys.length - unresolvedKeys.length;
     if (!unresolvedKeys.length) return;
     setBulkLoadingProducts(true);
-    setBulkLoadProgress({ current: completed, total: keys.length });
+    setBulkLoadProgress({ current: completed, total: preparedKeys.length });
     try {
       await Promise.all(
         productLookupCoordinator.requestBulk(unresolvedKeys, generation).map(async (request) => {
           await request;
           if (productLoadGenerationRef.current !== generation) return;
           completed += 1;
-          setBulkLoadProgress({ current: completed, total: keys.length });
+          setBulkLoadProgress({ current: completed, total: preparedKeys.length });
         }),
       );
     } finally {

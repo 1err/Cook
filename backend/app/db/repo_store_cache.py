@@ -5,14 +5,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-import re
 from collections.abc import Sequence
 
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import CachedStoreProductModel
-from app.core.store_products import normalize_weee_product_url
+from app.core.store_products import normalize_store_products
 
 
 @dataclass(frozen=True)
@@ -34,35 +33,7 @@ def is_cache_entry_fresh(
 def normalize_cached_store_products(data: object) -> list[dict[str, str]] | None:
     if not isinstance(data, list):
         return None
-    products: list[dict[str, str]] = []
-    for row in data:
-        if not isinstance(row, dict):
-            continue
-        name = row.get("name")
-        price = row.get("price")
-        image = row.get("image")
-        url = row.get("url")
-        if not all(isinstance(value, str) for value in (name, price, image, url)):
-            continue
-        safe_url = normalize_weee_product_url(url)
-        if safe_url is None:
-            continue
-        products.append(
-            {
-                "name": name,
-                "price": price,
-                "image": image,
-                "url": safe_url,
-            }
-        )
-    return products
-
-
-def _normalize_product_name(name: str) -> str:
-    normalized = name.lower()
-    normalized = re.sub(r"\d+(\.\d+)?\s*(lb|lbs|oz|g|kg)", "", normalized)
-    normalized = re.sub(r"[^a-z0-9\s\u4e00-\u9fff]", "", normalized)
-    return normalized.strip()
+    return normalize_store_products(data)
 
 
 async def get_cached_store_products(
@@ -236,15 +207,6 @@ async def upsert_cached_store_products(
     normalized = normalize_cached_store_products(data)
     if not normalized:
         return
-    seen: set[str] = set()
-    deduped: list[dict[str, str]] = []
-    for product in normalized:
-        key = _normalize_product_name(product["name"])
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(product)
-    normalized = deduped[:3]
     if row is None:
         row = CachedStoreProductModel(
             query=query,

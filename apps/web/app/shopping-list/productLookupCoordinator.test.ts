@@ -34,10 +34,12 @@ function response(products: StoreProduct[]): StoreProductsResponse {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 test("canonicalizes ingredient identity across spelling aliases", () => {
@@ -135,6 +137,25 @@ test("mechanically equivalent visual inputs join one request using the first cle
   await expect(first).resolves.toMatchObject({ status: "success" });
 });
 
+test("seeded query metadata controls hydration, retry, and later aliases", async () => {
+  const load = vi.fn().mockResolvedValue(response([product("Jasmine rice")]));
+  const coordinator = createProductLookupCoordinator({
+    load,
+    loadBatch: vi.fn(),
+    shouldPublish: () => true,
+    onState: vi.fn(),
+  });
+
+  coordinator.seedQueries({ "jasmine rice": "Jasmine Rice" }, 7);
+  await coordinator.request(" jasmine   rice ", 7);
+  await coordinator.request("JASMINE RICE", 7);
+
+  expect(load.mock.calls.map(([query]) => query)).toEqual([
+    "Jasmine Rice",
+    "Jasmine Rice",
+  ]);
+});
+
 test("a manual request queued behind an active bulk miss runs before the next bulk miss", async () => {
   const releases = new Map<string, ReturnType<typeof deferred<StoreProductsResponse>>>();
   const load = vi.fn((query: string) => {
@@ -215,6 +236,86 @@ test.each([
   expect(load.mock.calls.map(([query]) => query)).toEqual(["Rice", "Beans"]);
 });
 
+test.each([
+  {
+    name: "empty with null expiry",
+    entry: { query: "Rice", status: "fresh", products: [], expires_at: null },
+  },
+  {
+    name: "empty with future expiry",
+    entry: { query: "Rice", status: "fresh", products: [], expires_at: FUTURE_EXPIRES_AT },
+  },
+  {
+    name: "positive with null expiry",
+    entry: { query: "Rice", status: "fresh", products: [product("Rice")], expires_at: null },
+  },
+  {
+    name: "positive with expired expiry",
+    entry: { query: "Rice", status: "fresh", products: [product("Rice")], expires_at: "2000-01-01T00:00:00.000Z" },
+  },
+  {
+    name: "unsafe positive",
+    entry: {
+      query: "Rice",
+      status: "fresh",
+      products: [{ name: "Unsafe", price: "$1", image: "", url: "https://evil.test/product/rice" }],
+      expires_at: FUTURE_EXPIRES_AT,
+    },
+  },
+  {
+    name: "malformed products",
+    entry: { query: "Rice", status: "fresh", products: null, expires_at: FUTURE_EXPIRES_AT },
+  },
+])("fresh batch entry falls back to GET when it is $name", async ({ entry }) => {
+  const transitions: ProductLookupState[] = [];
+  const load = vi.fn().mockResolvedValue(response([product("Live rice")]));
+  const coordinator = createProductLookupCoordinator({
+    load,
+    loadBatch: vi.fn().mockResolvedValue({ entries: [entry] }),
+    shouldPublish: () => true,
+    onState: (_key, state) => transitions.push(state),
+  });
+
+  await Promise.all(coordinator.requestBulk(["Rice"], 1));
+
+  expect(load).toHaveBeenCalledWith("Rice");
+  expect(transitions).not.toContainEqual({ status: "empty", products: [] });
+  expect(transitions.at(-1)).toEqual({
+    status: "success",
+    products: [product("Live rice")],
+    expiresAt: FUTURE_EXPIRES_AT,
+  });
+});
+
+test.each(["rejected", "malformed"])(
+  "batch %s fallback enqueues every entry before pumping promoted work",
+  async (outcome) => {
+    const preflight = deferred<StoreProductsBatchResponse>();
+    const started: string[] = [];
+    const load = vi.fn((query: string) => {
+      started.push(query);
+      return Promise.resolve(response([product(query)]));
+    });
+    const coordinator = createProductLookupCoordinator({
+      load,
+      loadBatch: () => preflight.promise,
+      shouldPublish: () => true,
+      onState: vi.fn(),
+    });
+
+    const bulk = coordinator.requestBulk(["Earlier", "Later"], 1);
+    const promoted = coordinator.request(" later ", 1);
+    if (outcome === "rejected") {
+      preflight.reject(new Error("cache unavailable"));
+    } else {
+      preflight.resolve({ entries: [] });
+    }
+    await Promise.all([...bulk, promoted]);
+
+    expect(started).toEqual(["Later", "Earlier"]);
+  },
+);
+
 test("a non-empty server response containing no safe products becomes error", async () => {
   const coordinator = createProductLookupCoordinator({
     load: vi.fn().mockResolvedValue({
@@ -293,6 +394,7 @@ test("a completed empty lookup can be retried through the same coordinator", asy
   });
 
   expect(load).toHaveBeenCalledTimes(2);
+  expect(load.mock.calls.map(([query]) => query)).toEqual(["Rice", "Rice"]);
   expect(transitions.map(({ status }) => status)).toEqual([
     "queued",
     "loading",
@@ -395,10 +497,22 @@ test("stores only canonical terminal states and strips technical errors", () => 
       Beans: { status: "empty", products: [] },
       Milk: { status: "error", error: "Network unavailable" },
     },
+    {
+      " rice ": " Rice ",
+      tofu: "Tofu",
+      beans: "Beans",
+      milk: "Milk",
+    },
   );
 
   expect(stored).toEqual({
     open: { rice: true, tofu: true },
+    queries: {
+      rice: "Rice",
+      tofu: "Tofu",
+      beans: "Beans",
+      milk: "Milk",
+    },
     lookup: {
       tofu: {
         status: "success",
@@ -415,20 +529,20 @@ test("retains unexpired stored positives and revalidates every open key without 
   const hydrated = parseProductLookupStorage(
     JSON.stringify({
       open: {
-        Rice: true,
-        " rice ": true,
+        "jasmine rice": true,
+        " jasmine rice ": true,
         Waiting: true,
         Queued: true,
         Missing: true,
         Legacy: true,
       },
       lookup: {
-        Rice: {
+        "jasmine rice": {
           status: "success",
-          products: [product("Rice")],
+          products: [product("Jasmine Rice")],
           expiresAt: FUTURE_EXPIRES_AT,
         },
-        " rice ": { status: "error", error: "old technical detail" },
+        " jasmine rice ": { status: "error", error: "old technical detail" },
         Waiting: { status: "loading" },
         Queued: { status: "queued" },
         Legacy: {
@@ -438,26 +552,51 @@ test("retains unexpired stored positives and revalidates every open key without 
         Closed: { status: "empty", products: [] },
       },
     }),
+    Date.now(),
+    { "jasmine rice": "Jasmine Rice" },
   );
 
   expect(hydrated).toEqual({
     open: {
-      rice: true,
+      "jasmine rice": true,
       waiting: true,
       queued: true,
       missing: true,
       legacy: true,
     },
     lookup: {
-      rice: {
+      "jasmine rice": {
         status: "success",
-        products: [product("Rice")],
+        products: [product("Jasmine Rice")],
         expiresAt: FUTURE_EXPIRES_AT,
       },
       closed: { status: "empty", products: [] },
     },
-    revalidate: ["waiting", "queued", "missing", "legacy"],
+    queries: {
+      "jasmine rice": "Jasmine Rice",
+      waiting: "Waiting",
+      queued: "Queued",
+      missing: "Missing",
+      legacy: "Legacy",
+      closed: "Closed",
+    },
+    revalidate: ["Waiting", "Queued", "Missing", "Legacy"],
   });
+});
+
+test("preserves persisted first-query spelling ahead of current-list aliases", () => {
+  const hydrated = parseProductLookupStorage(
+    JSON.stringify({
+      open: { "jasmine rice": true },
+      lookup: {},
+      queries: { "jasmine rice": "Jasmine Rice" },
+    }),
+    Date.now(),
+    { "jasmine rice": "jasmine rice" },
+  );
+
+  expect(hydrated?.queries).toEqual({ "jasmine rice": "Jasmine Rice" });
+  expect(hydrated?.revalidate).toEqual(["Jasmine Rice"]);
 });
 
 test("rejects missing, invalid, and expired authoritative expiry metadata", () => {
@@ -505,7 +644,25 @@ test("does not persist a success at the exact authoritative expiry boundary", ()
     },
   };
 
-  expect(buildProductLookupStorage({}, input, now).lookup).toEqual({
+  expect(buildProductLookupStorage({}, input, {}, now).lookup).toEqual({
     tofu: input.Tofu,
   });
+});
+
+test("retains the legacy third-argument nowMs storage API", () => {
+  const now = Date.parse("2099-08-15T12:00:00.000Z");
+
+  expect(
+    buildProductLookupStorage(
+      {},
+      {
+        Rice: {
+          status: "success",
+          products: [product("Rice")],
+          expiresAt: "2099-08-15T12:00:00.000Z",
+        },
+      },
+      now,
+    ).lookup,
+  ).toEqual({});
 });

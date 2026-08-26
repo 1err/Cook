@@ -158,8 +158,46 @@ async def run_cache_warmer(
             _warmer_status["running"] = False
 
 
+def _prime_warmer_status(force_refresh: bool) -> None:
+    _warmer_status.update(
+        {
+            "running": True,
+            "current": 0,
+            "total": len(ALL_QUERIES),
+            "last_query": "",
+            "last_status": "",
+            "stale_only": not force_refresh,
+            "summary": None,
+        }
+    )
+
+
+def _start_tracked_cache_warmer(
+    *,
+    force_refresh: bool,
+) -> tuple[bool, asyncio.Task[dict[str, int]]]:
+    """Atomically create the sole manual-or-scheduled in-process run."""
+    global _warmer_task
+    existing = _warmer_task
+    if existing is not None and not existing.done():
+        return False, existing
+    _prime_warmer_status(force_refresh)
+    task = asyncio.create_task(run_cache_warmer(force_refresh=force_refresh))
+    _warmer_task = task
+
+    def clear(completed: asyncio.Task[dict[str, int]]) -> None:
+        global _warmer_task
+        if _warmer_task is completed:
+            _warmer_task = None
+
+    task.add_done_callback(clear)
+    return True, task
+
+
 async def _run_scheduled_cache_warmer() -> None:
-    await run_cache_warmer(force_refresh=True)
+    started, task = _start_tracked_cache_warmer(force_refresh=True)
+    if started:
+        await asyncio.shield(task)
 
 
 def get_cache_warmer_status() -> dict[str, Any]:
@@ -175,30 +213,28 @@ def get_cache_warmer_status() -> dict[str, Any]:
 
 
 def trigger_cache_warmer(*, force_refresh: bool) -> dict[str, Any]:
-    global _warmer_task
-    if _warmer_task is not None and not _warmer_task.done():
+    started, _ = _start_tracked_cache_warmer(force_refresh=force_refresh)
+    if not started:
         return {"started": False, "status": get_cache_warmer_status()}
-    _warmer_status.update(
-        {
-            "running": True,
-            "current": 0,
-            "total": len(ALL_QUERIES),
-            "last_query": "",
-            "last_status": "",
-            "stale_only": not force_refresh,
-            "summary": None,
-        }
-    )
-
-    async def runner() -> dict[str, int]:
-        try:
-            return await run_cache_warmer(force_refresh=force_refresh)
-        finally:
-            global _warmer_task
-            _warmer_task = None
-
-    _warmer_task = asyncio.create_task(runner())
     return {"started": True, "status": get_cache_warmer_status()}
+
+
+async def shutdown_cache_warmer() -> None:
+    """Cancel and await the one tracked run without swallowing cancellation."""
+    global _warmer_task
+    task = _warmer_task
+    if task is None:
+        return
+    if not task.done():
+        task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    finally:
+        if _warmer_task is task:
+            _warmer_task = None
+        _warmer_status["running"] = False
 
 
 def start_scheduler() -> AsyncIOScheduler:

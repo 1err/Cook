@@ -264,7 +264,7 @@ test("reload requeues an open product panel whose persisted lookup is missing", 
       remove: [],
       likely_pantry: [],
       purchase_items: [
-        { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+        { name: "Jasmine Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
       ],
       _ui: { hidden: [], checked: [] },
     }),
@@ -272,7 +272,7 @@ test("reload requeues an open product panel whose persisted lookup is missing", 
   storage.set(
     "smartShoppingProducts:2026-08-10:weee",
     JSON.stringify({
-      open: { rice: true },
+      open: { "jasmine rice": true },
       lookup: {},
     }),
   );
@@ -280,18 +280,18 @@ test("reload requeues an open product panel whose persisted lookup is missing", 
   const freshResponse = deferredResponse();
   mockApiFetch.mockImplementation((path: string) => {
     if (path.startsWith("/shopping-list?")) {
-      return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+      return Promise.resolve(jsonResponse([{ name: "Jasmine Rice", total_quantity: "1 bag" }]));
     }
     if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
     if (path === "/recipes") return Promise.resolve(jsonResponse([]));
-    if (path === "/store-products?query=rice") return freshResponse.promise;
+    if (path === "/store-products?query=Jasmine%20Rice") return freshResponse.promise;
     throw new Error(`Unexpected request: ${path}`);
   });
 
   render(<ShoppingListPage />);
 
   expect(await screen.findByText("Finding matches on Weee…")).toBeVisible();
-  expect(mockApiFetch).toHaveBeenCalledWith("/store-products?query=rice");
+  expect(mockApiFetch).toHaveBeenCalledWith("/store-products?query=Jasmine%20Rice");
 
   freshResponse.resolve(
     productResponse([
@@ -304,6 +304,12 @@ test("reload requeues an open product panel whose persisted lookup is missing", 
     ]),
   );
   expect(await screen.findByText("Fresh rice")).toBeVisible();
+  await waitFor(() => {
+    const persisted = JSON.parse(
+      storage.get("smartShoppingProducts:2026-08-10:weee") ?? "{}",
+    );
+    expect(persisted.queries).toEqual({ "jasmine rice": "Jasmine Rice" });
+  });
 });
 
 test("continues rendering and loading products when sessionStorage writes throw", async () => {
@@ -446,6 +452,7 @@ test("clears a displayed result and revalidates at the exact backend expiry", as
 
   const revalidation = deferredResponse();
   let productCalls = 0;
+  const productQueries: string[] = [];
   mockApiFetch.mockImplementation((path: string) => {
     if (path.startsWith("/shopping-list?")) {
       return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
@@ -454,6 +461,7 @@ test("clears a displayed result and revalidates at the exact backend expiry", as
     if (path === "/recipes") return Promise.resolve(jsonResponse([]));
     if (path.startsWith("/store-products?query=")) {
       productCalls += 1;
+      productQueries.push(decodeURIComponent(path.split("query=")[1]));
       if (productCalls === 1) {
         return Promise.resolve(
           productResponse(
@@ -509,6 +517,7 @@ test("clears a displayed result and revalidates at the exact backend expiry", as
   expect(screen.queryByText("Fresh rice")).not.toBeInTheDocument();
   expect(screen.getByText("Finding matches on Weee…")).toBeVisible();
   expect(productCalls).toBe(2);
+  expect(productQueries).toEqual(["Rice", "Rice"]);
 
   vi.useRealTimers();
 });

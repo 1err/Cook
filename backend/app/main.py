@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_cors_origins_list
 from app.core.logging import setup_logging
-from app.db.session import init_engine
+from app.db.session import dispose_engine, init_engine
 from app.api.auth import router as auth_router
 from app.api.routes_recipes import router as recipes_router
 from app.api.routes_mealplan import router as mealplan_router
@@ -25,7 +25,17 @@ from app.api.routes_shopping import router as shopping_router
 from app.api.routes_store import router as store_router
 from app.api.routes_users import router as users_router
 from app.api.admin import router as admin_router
-from app.jobs.cache_warmer import start_scheduler, stop_scheduler
+from app.jobs.cache_warmer import (
+    shutdown_cache_warmer,
+    start_scheduler,
+    stop_scheduler,
+)
+from app.services.store_product_service import (
+    shutdown_live_lookups,
+    start_live_lookup_admission,
+    stop_live_lookup_admission,
+)
+from app.services.weee_scraper import shutdown_weee_scraper
 from app.services.storage_service import get_local_upload_root
 
 setup_logging()
@@ -34,11 +44,17 @@ setup_logging()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_engine()
+    start_live_lookup_admission()
     start_scheduler()
     try:
         yield
     finally:
         stop_scheduler()
+        stop_live_lookup_admission()
+        await shutdown_cache_warmer()
+        await shutdown_live_lookups()
+        await shutdown_weee_scraper()
+        await dispose_engine()
 
 
 app = FastAPI(title="Cooking Recipe API", lifespan=lifespan)

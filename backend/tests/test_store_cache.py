@@ -120,6 +120,69 @@ async def test_empty_upsert_preserves_an_existing_positive_database_entry():
     assert session.flush_count == 0
 
 
+@pytest.mark.asyncio
+async def test_upsert_keeps_distinct_weights_and_uses_shared_safe_deduplication():
+    rice_one = {
+        "name": "Rice 1 lb",
+        "price": "$2",
+        "image": "",
+        "url": "https://www.weee.com/en/product/rice-one/1",
+    }
+    rice_two = {
+        "name": "Rice 2 lb",
+        "price": "$3",
+        "image": "",
+        "url": "https://www.weee.com/en/product/rice-two/1",
+    }
+    beans = {
+        "name": "Beans",
+        "price": "$4",
+        "image": "",
+        "url": "https://www.weee.com/en/product/beans/1",
+    }
+
+    class Scalars:
+        def one_or_none(self) -> None:
+            return None
+
+    class Result:
+        def scalars(self) -> Scalars:
+            return Scalars()
+
+    class Session:
+        added: list[object] = []
+
+        async def execute(self, *args: Any, **kwargs: Any) -> Result:
+            return Result()
+
+        def add(self, row: object) -> None:
+            self.added.append(row)
+
+        async def flush(self) -> None:
+            return None
+
+    session = Session()
+    await repo_store_cache.upsert_cached_store_products(
+        session,  # type: ignore[arg-type]
+        query="rice",
+        store="weee",
+        language="en",
+        cache_version="v7",
+        data=[
+            rice_one,
+            rice_two,
+            {**rice_one, "name": "RICE 1 LB"},
+            {"name": "Unsafe", "price": "$1", "image": "", "url": "https://evil.test/product/unsafe"},
+            beans,
+            PRODUCT,
+        ],
+        updated_at=datetime(2026, 8, 27, tzinfo=timezone.utc),
+    )
+
+    assert len(session.added) == 1
+    assert getattr(session.added[0], "data") == [rice_one, rice_two, beans]
+
+
 def test_store_scraper_is_a_public_compatibility_facade():
     assert store_scraper.__all__ == [
         "CACHE",

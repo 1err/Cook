@@ -38,6 +38,16 @@ def init_engine() -> None:
     )
 
 
+async def dispose_engine() -> None:
+    """Dispose the shared engine once and reset startup-owned DB resources."""
+    global _engine, async_session_maker
+    engine = _engine
+    _engine = None
+    async_session_maker = None
+    if engine is not None:
+        await engine.dispose()
+
+
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency: yield an async session; commit on success, rollback on error."""
     if async_session_maker is None:

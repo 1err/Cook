@@ -9,6 +9,7 @@ import type { ProductLookupState } from "./productLoading";
 export type ProductLookupStorage = {
   open: Record<string, boolean>;
   lookup: Record<string, ProductLookupState>;
+  queries: Record<string, string>;
 };
 
 export type HydratedProductLookupStorage = ProductLookupStorage & {
@@ -100,6 +101,7 @@ export function createProductLookupCoordinator({
   const interactiveQueue: QueueEntry[] = [];
   const bulkQueue: QueueEntry[] = [];
   const pendingByIdentity = new Map<string, QueueEntry>();
+  const preferredQueryByIdentity = new Map<string, string>();
   let active: 0 | 1 = 0;
 
   function publish(entry: QueueEntry, state: ProductLookupState) {
@@ -194,6 +196,35 @@ export function createProductLookupCoordinator({
     return entry;
   }
 
+  function rememberQuery(
+    queryInput: string,
+    key: string,
+    generation: number,
+  ): string {
+    const id = `${generation}:${key}`;
+    const existing = preferredQueryByIdentity.get(id);
+    if (existing) return existing;
+    const query = cleanIngredientQuery(queryInput);
+    preferredQueryByIdentity.set(id, query);
+    return query;
+  }
+
+  function seedQueries(
+    queryInput: Record<string, unknown>,
+    generation: number,
+  ) {
+    for (const [rawKey, rawQuery] of Object.entries(queryInput)) {
+      if (typeof rawQuery !== "string") continue;
+      const key = canonicalIngredientKey(rawKey);
+      const query = cleanIngredientQuery(rawQuery);
+      if (!key || !query || canonicalIngredientKey(query) !== key) continue;
+      const id = `${generation}:${key}`;
+      if (!preferredQueryByIdentity.has(id)) {
+        preferredQueryByIdentity.set(id, query);
+      }
+    }
+  }
+
   function promote(entry: QueueEntry) {
     if (entry.started || entry.priority === "interactive") return;
     entry.priority = "interactive";
@@ -231,16 +262,25 @@ export function createProductLookupCoordinator({
         throw new Error("Invalid batch product response");
       }
       if (batchEntry.status === "fresh") {
+        if (
+          !Array.isArray(batchEntry.products) ||
+          batchEntry.products.length === 0 ||
+          !batchEntry.products.every(isStoreProduct)
+        ) {
+          throw new Error("Invalid batch product response");
+        }
         const response = parseStoreProductsResponse({
           products: batchEntry.products,
           expires_at: batchEntry.expires_at,
         });
-        parsed.set(
-          key,
-          response.products.length && response.expires_at
-            ? { status: "success", products: response.products, expiresAt: response.expires_at }
-            : { status: "empty", products: [] },
-        );
+        if (!response.products.length || !response.expires_at) {
+          throw new Error("Invalid batch product response");
+        }
+        parsed.set(key, {
+          status: "success",
+          products: response.products,
+          expiresAt: response.expires_at,
+        });
       } else if (
         batchEntry.status === "missing" &&
         Array.isArray(batchEntry.products) &&
@@ -259,8 +299,8 @@ export function createProductLookupCoordinator({
     ingredientName: string,
     generation: number,
   ): Promise<ProductLookupState> {
-    const query = cleanIngredientQuery(ingredientName);
-    const key = canonicalIngredientKey(query);
+    const cleanedQuery = cleanIngredientQuery(ingredientName);
+    const key = canonicalIngredientKey(cleanedQuery);
     if (!key || !shouldPublish(generation)) {
       return Promise.resolve({ status: "idle" });
     }
@@ -272,6 +312,7 @@ export function createProductLookupCoordinator({
       return existing.promise;
     }
 
+    const query = rememberQuery(cleanedQuery, key, generation);
     const entry = createEntry(query, key, generation, "interactive");
     enqueue(entry);
     return entry.promise;
@@ -286,8 +327,8 @@ export function createProductLookupCoordinator({
     const newEntries: QueueEntry[] = [];
     const seen = new Set<string>();
     for (const ingredientName of ingredientNames) {
-      const query = cleanIngredientQuery(ingredientName);
-      const key = canonicalIngredientKey(query);
+      const cleanedQuery = cleanIngredientQuery(ingredientName);
+      const key = canonicalIngredientKey(cleanedQuery);
       if (!key || seen.has(key)) continue;
       seen.add(key);
       const id = `${generation}:${key}`;
@@ -296,6 +337,7 @@ export function createProductLookupCoordinator({
         requests.push(existing.promise);
         continue;
       }
+      const query = rememberQuery(cleanedQuery, key, generation);
       const entry = createEntry(query, key, generation, "bulk");
       newEntries.push(entry);
       requests.push(entry.promise);
@@ -314,9 +356,11 @@ export function createProductLookupCoordinator({
           try {
             parsed = parseBatch(batch, newEntries);
           } catch {
-            newEntries.forEach((entry) => {
-              if (pendingByIdentity.get(entry.id) === entry) enqueue(entry);
-            });
+            const fallback = newEntries.filter(
+              (entry) => pendingByIdentity.get(entry.id) === entry,
+            );
+            fallback.forEach((entry) => enqueue(entry, false));
+            pump();
             return;
           }
           const misses: QueueEntry[] = [];
@@ -334,15 +378,17 @@ export function createProductLookupCoordinator({
             newEntries.forEach(cancelPreflight);
             return;
           }
-          newEntries.forEach((entry) => {
-            if (pendingByIdentity.get(entry.id) === entry) enqueue(entry);
-          });
+          const fallback = newEntries.filter(
+            (entry) => pendingByIdentity.get(entry.id) === entry,
+          );
+          fallback.forEach((entry) => enqueue(entry, false));
+          pump();
         },
       );
     return requests;
   }
 
-  return { request, requestBulk };
+  return { request, requestBulk, seedQueries };
 }
 
 function terminalPriority(state: ProductLookupState): number {
@@ -387,44 +433,99 @@ function sanitizeTerminalState(
 export function buildProductLookupStorage(
   openInput: Record<string, unknown>,
   lookupInput: Record<string, unknown>,
+  queryInputOrNowMs: Record<string, unknown> | number = {},
   nowMs = Date.now(),
 ): ProductLookupStorage {
+  const queryInput =
+    typeof queryInputOrNowMs === "number" ? {} : queryInputOrNowMs;
+  const effectiveNowMs =
+    typeof queryInputOrNowMs === "number" ? queryInputOrNowMs : nowMs;
+  const queries: Record<string, string> = {};
+  function remember(rawKey: string, rawQuery: unknown) {
+    if (typeof rawQuery !== "string") return;
+    const key = canonicalIngredientKey(rawKey);
+    const query = cleanIngredientQuery(rawQuery);
+    if (
+      !key ||
+      !query ||
+      canonicalIngredientKey(query) !== key ||
+      queries[key]
+    ) {
+      return;
+    }
+    queries[key] = query;
+  }
+  for (const [rawKey, rawQuery] of Object.entries(queryInput)) {
+    remember(rawKey, rawQuery);
+  }
+
   const open: Record<string, boolean> = {};
   for (const [rawKey, value] of Object.entries(openInput)) {
     const key = canonicalIngredientKey(rawKey);
-    if (key && value === true) open[key] = true;
+    if (key && value === true) {
+      open[key] = true;
+      remember(rawKey, rawKey);
+    }
   }
 
   const lookup: Record<string, ProductLookupState> = {};
   for (const [rawKey, value] of Object.entries(lookupInput)) {
     const key = canonicalIngredientKey(rawKey);
-    const state = sanitizeTerminalState(value, nowMs);
+    const state = sanitizeTerminalState(value, effectiveNowMs);
     if (!key || !state) continue;
+    remember(rawKey, rawKey);
     const existing = lookup[key];
     if (!existing || terminalPriority(state) > terminalPriority(existing)) {
       lookup[key] = state;
     }
   }
-  return { open, lookup };
+  return { open, lookup, queries };
+}
+
+
+function mergeQueryMetadata(
+  primary: Record<string, unknown>,
+  fallback: Record<string, unknown>,
+): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const source of [primary, fallback]) {
+    for (const [rawKey, rawQuery] of Object.entries(source)) {
+      if (typeof rawQuery !== "string") continue;
+      const key = canonicalIngredientKey(rawKey);
+      const query = cleanIngredientQuery(rawQuery);
+      if (!key || canonicalIngredientKey(query) !== key || merged[key]) continue;
+      merged[key] = query;
+    }
+  }
+  return merged;
 }
 
 export function parseProductLookupStorage(
   raw: string,
   nowMs = Date.now(),
+  seedQueries: Record<string, unknown> = {},
 ): HydratedProductLookupStorage | null {
   try {
     const parsed = JSON.parse(raw) as {
       open?: Record<string, unknown>;
       lookup?: Record<string, unknown>;
+      queries?: Record<string, unknown>;
     };
     if (!parsed || typeof parsed !== "object") return null;
     if (!parsed.open || typeof parsed.open !== "object") return null;
     if (!parsed.lookup || typeof parsed.lookup !== "object") return null;
-    const stored = buildProductLookupStorage(parsed.open, parsed.lookup, nowMs);
+    const persistedQueries =
+      parsed.queries && typeof parsed.queries === "object" ? parsed.queries : {};
+    const stored = buildProductLookupStorage(
+      parsed.open,
+      parsed.lookup,
+      mergeQueryMetadata(persistedQueries, seedQueries),
+      nowMs,
+    );
     const revalidate: string[] = [];
     for (const [key, open] of Object.entries(stored.open)) {
       if (!open || stored.lookup[key]?.status === "success") continue;
-      revalidate.push(key);
+      revalidate.push(stored.queries[key] ?? key);
     }
     return { ...stored, revalidate };
   } catch {

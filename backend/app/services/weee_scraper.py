@@ -5,10 +5,11 @@ import asyncio
 import logging
 import random
 import re
+import time
 from typing import Any, Literal
-from urllib.parse import quote_plus, urljoin, urlsplit
+from urllib.parse import parse_qsl, quote_plus, urljoin, urlsplit
 
-from app.core.store_products import normalize_weee_product_url
+from app.core.store_products import normalize_store_products, normalize_weee_product_url
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,10 @@ PageOutcome = Literal["results", "no_results", "challenge", "pending"]
 MAX_RESULTS = 3
 WEEE_MAX_ATTEMPTS = 3
 PLAYWRIGHT_TIMEOUT_MS = 15_000
+SCRAPER_OPERATION_TIMEOUT_SECONDS = 20.0
+SCRAPER_CLEANUP_TIMEOUT_SECONDS = 5.0
+SCRAPER_ATTEMPT_TIMEOUT_SECONDS = 35.0
+SCRAPER_TOTAL_TIMEOUT_SECONDS = 110.0
 _PAGE_STATE_POLLS = 15
 _PAGE_STATE_POLL_MS = 500
 
@@ -31,6 +36,47 @@ _shared_browser: Any = None
 
 class StoreScrapeError(RuntimeError):
     """Weee did not produce a trustworthy result."""
+
+
+def _consume_background_task(task: asyncio.Task[Any]) -> None:
+    if not task.cancelled():
+        task.exception()
+
+
+async def _bounded_await(awaitable: Any, timeout_seconds: float, label: str) -> Any:
+    """Bound even cancellation-resistant Playwright awaits by a monotonic timer."""
+    if timeout_seconds <= 0:
+        if asyncio.iscoroutine(awaitable):
+            awaitable.close()
+        raise StoreScrapeError(f"Weee {label} timed out.")
+    task = asyncio.ensure_future(awaitable)
+    try:
+        done, _ = await asyncio.wait({task}, timeout=timeout_seconds)
+    except asyncio.CancelledError:
+        task.cancel()
+        task.add_done_callback(_consume_background_task)
+        raise
+    if task in done:
+        return task.result()
+    task.cancel()
+    task.add_done_callback(_consume_background_task)
+    raise StoreScrapeError(f"Weee {label} timed out.")
+
+
+async def _bounded_call(
+    factory: Any,
+    *,
+    deadline: float,
+    label: str,
+    limit_seconds: float | None = None,
+) -> Any:
+    remaining = deadline - time.monotonic()
+    operation_limit = (
+        SCRAPER_OPERATION_TIMEOUT_SECONDS
+        if limit_seconds is None
+        else limit_seconds
+    )
+    return await _bounded_await(factory(), min(operation_limit, remaining), label)
 
 
 def _normalize_space(value: str) -> str:
@@ -141,27 +187,7 @@ def _normalize_weee_product(candidate: dict[str, Any], *, prefer_zh: bool = Fals
 def validate_products(raw_products: object) -> list[dict[str, str]]:
     if not isinstance(raw_products, list):
         raise StoreScrapeError("Weee returned a non-list product payload.")
-    products: list[dict[str, str]] = []
-    seen_names: set[str] = set()
-    seen_urls: set[str] = set()
-    for raw in raw_products:
-        if not isinstance(raw, dict):
-            continue
-        values = tuple(raw.get(field) for field in ("name", "price", "image", "url"))
-        if not all(isinstance(value, str) for value in values):
-            continue
-        name, price, image, raw_url = (_normalize_space(value) for value in values)
-        url = normalize_weee_product_url(raw_url)
-        if not _is_valid_name(name) or url is None:
-            continue
-        normalized_name = name.casefold()
-        if normalized_name in seen_names or url in seen_urls:
-            continue
-        seen_names.add(normalized_name)
-        seen_urls.add(url)
-        products.append({"name": name, "price": price, "image": image, "url": url})
-        if len(products) == MAX_RESULTS:
-            break
+    products = normalize_store_products(raw_products)
     if raw_products and not products:
         raise StoreScrapeError("Weee returned no valid products.")
     return products
@@ -176,7 +202,14 @@ async def _launch_browser() -> tuple[Any, Any]:
     try:
         browser = await playwright.chromium.launch(headless=True)
     except BaseException:
-        await playwright.stop()
+        try:
+            await _bounded_await(
+                playwright.stop(),
+                SCRAPER_CLEANUP_TIMEOUT_SECONDS,
+                "Playwright startup cleanup",
+            )
+        except StoreScrapeError:
+            logger.warning("weee_scraper: Playwright startup cleanup timed out")
         raise
     logger.info("weee_scraper: launched shared Playwright browser")
     return playwright, browser
@@ -193,14 +226,26 @@ def _browser_is_connected(browser: Any) -> bool:
 async def _close_browser_resources(browser: Any, playwright: Any) -> None:
     if browser is not None:
         try:
-            await browser.close()
-        except Exception:
-            pass
+            await _bounded_await(
+                browser.close(),
+                SCRAPER_CLEANUP_TIMEOUT_SECONDS,
+                "browser cleanup",
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("weee_scraper: browser cleanup failed: %s", type(exc).__name__)
     if playwright is not None:
         try:
-            await playwright.stop()
-        except Exception:
-            pass
+            await _bounded_await(
+                playwright.stop(),
+                SCRAPER_CLEANUP_TIMEOUT_SECONDS,
+                "Playwright cleanup",
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("weee_scraper: Playwright cleanup failed: %s", type(exc).__name__)
 
 
 async def _invalidate_shared_browser(observed_browser: Any | None = None) -> None:
@@ -211,7 +256,12 @@ async def _invalidate_shared_browser(observed_browser: Any | None = None) -> Non
         browser, playwright = _shared_browser, _playwright_inst
         _shared_browser = None
         _playwright_inst = None
-        await _close_browser_resources(browser, playwright)
+    await _close_browser_resources(browser, playwright)
+
+
+async def shutdown_weee_scraper() -> None:
+    """Close the process-shared browser resources; safe to call repeatedly."""
+    await _invalidate_shared_browser()
 
 
 async def _ensure_shared_browser() -> Any:
@@ -246,36 +296,50 @@ def _weee_search_url(query_text: str, language: Language) -> str:
     return WEEE_SEARCH_URL.format(query=quote_plus(query_text))
 
 
-def _is_weee_search_route(url: str, language: Language) -> bool:
+def _is_weee_search_route(url: str, language: Language, expected_query: str) -> bool:
     try:
         parsed = urlsplit(url)
         hostname = (parsed.hostname or "").casefold()
+        port = parsed.port
+        query_pairs = parse_qsl(parsed.query, keep_blank_values=True, strict_parsing=True)
     except ValueError:
+        return False
+    if (
+        parsed.scheme.casefold() != "https"
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        return False
+    if port not in (None, 443):
         return False
     is_official_host = hostname in {"sayweee.com", "weee.com"} or hostname.endswith(
         (".sayweee.com", ".weee.com")
     )
-    path = parsed.path.rstrip("/").casefold()
-    return is_official_host and path == f"/{language}/search"
+    return (
+        is_official_host
+        and parsed.path == f"/{language}/search"
+        and query_pairs == [("keyword", expected_query)]
+    )
 
 
 async def _classify_search_page(page: Any) -> PageOutcome:
-    """Classify only visible signals, prioritising products over page copy."""
+    """Classify visible signals, with challenge and conflicts always untrusted."""
     result = await page.evaluate(
         """
         () => {
           const visible = (element) => Boolean(element) && !!(element.offsetWidth || element.offsetHeight || element.getClientRects().length);
+          const text = (document.body?.innerText || "").replace(/\\s+/g, " ").toLowerCase();
+          if (/captcha|verify you are human|access denied|unusual traffic|安全验证/.test(text)) return "challenge";
+
           const productAnchors = Array.from(document.querySelectorAll('[data-testid*="product"] a[href*="/product/"], a[href*="/product/"]'));
           if (productAnchors.some(visible)) return "results";
 
-          const text = (document.body?.innerText || "").replace(/\\s+/g, " ").toLowerCase();
           const noResultsSelector = [
-            '[data-testid*="no-result"]', '[data-testid*="empty"]',
-            '[class*="no-result"]', '[class*="empty-result"]'
+            '[data-testid*="no-result"]', '[data-testid*="no_result"]',
+            '[data-testid*="search-empty"]', '[class*="no-result"]',
+            '[class*="empty-result"]', '[class*="search-empty"]'
           ].some((selector) => Array.from(document.querySelectorAll(selector)).some(visible));
-          if (noResultsSelector || /no results|no products found|没有找到|暂无商品/.test(text)) return "no_results";
-
-          if (/captcha|verify you are human|access denied|unusual traffic|安全验证/.test(text)) return "challenge";
+          if (noResultsSelector) return "no_results";
           return "pending";
         }
         """
@@ -324,12 +388,21 @@ async def _extract_weee_search_products(page: Any, language: Language) -> list[A
     return raw_products
 
 
-async def _scrape_once(query_text: str, language: Language, attempt_number: int) -> list[dict[str, str]]:
+async def _scrape_once(
+    query_text: str,
+    language: Language,
+    attempt_number: int,
+    deadline: float,
+) -> list[dict[str, str]]:
     browser: Any = None
     context: Any = None
     page: Any = None
     try:
-        browser = await _ensure_shared_browser()
+        browser = await _bounded_call(
+            _ensure_shared_browser,
+            deadline=deadline,
+            label="browser acquisition",
+        )
         context_options: dict[str, Any] = {
             "locale": "zh-CN" if language == "zh" else "en-US",
             "user_agent": (
@@ -339,25 +412,49 @@ async def _scrape_once(query_text: str, language: Language, attempt_number: int)
         }
         if language == "zh":
             context_options["extra_http_headers"] = {"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"}
-        context = await browser.new_context(**context_options)
-        page = await context.new_page()
-        response = await page.goto(
-            _weee_search_url(query_text, language),
-            wait_until="domcontentloaded",
-            timeout=PLAYWRIGHT_TIMEOUT_MS,
+        context = await _bounded_call(
+            lambda: browser.new_context(**context_options),
+            deadline=deadline,
+            label="browser context creation",
+        )
+        page = await _bounded_call(
+            context.new_page,
+            deadline=deadline,
+            label="search page creation",
+        )
+        response = await _bounded_call(
+            lambda: page.goto(
+                _weee_search_url(query_text, language),
+                wait_until="domcontentloaded",
+                timeout=PLAYWRIGHT_TIMEOUT_MS,
+            ),
+            deadline=deadline,
+            label="search navigation",
         )
         status = getattr(response, "status", 200) if response is not None else 200
         if status >= 400:
             raise StoreScrapeError(f"Weee search returned HTTP {status}.")
-        if not _is_weee_search_route(str(getattr(page, "url", "")), language):
+        if not _is_weee_search_route(
+            str(getattr(page, "url", "")),
+            language,
+            query_text,
+        ):
             raise StoreScrapeError("Weee search was redirected to an unexpected route.")
 
-        outcome = await _wait_for_search_outcome(page)
+        outcome = await _bounded_call(
+            lambda: _wait_for_search_outcome(page),
+            deadline=deadline,
+            label="search page evaluation",
+        )
         if outcome == "no_results":
             return []
         if outcome != "results":
             raise StoreScrapeError(f"Weee search page was not trustworthy: {outcome}.")
-        raw_cards = await _extract_weee_search_products(page, language)
+        raw_cards = await _bounded_call(
+            lambda: _extract_weee_search_products(page, language),
+            deadline=deadline,
+            label="product extraction",
+        )
         products = [
             product
             for card in raw_cards
@@ -374,16 +471,31 @@ async def _scrape_once(query_text: str, language: Language, attempt_number: int)
             await _invalidate_shared_browser(browser)
         raise
     finally:
+        cleanup_failed = False
         if page is not None:
             try:
-                await page.close()
+                await _bounded_await(
+                    page.close(),
+                    SCRAPER_CLEANUP_TIMEOUT_SECONDS,
+                    "page cleanup",
+                )
+            except asyncio.CancelledError:
+                raise
             except Exception:
-                pass
+                cleanup_failed = True
         if context is not None:
             try:
-                await context.close()
+                await _bounded_await(
+                    context.close(),
+                    SCRAPER_CLEANUP_TIMEOUT_SECONDS,
+                    "context cleanup",
+                )
+            except asyncio.CancelledError:
+                raise
             except Exception:
-                pass
+                cleanup_failed = True
+        if cleanup_failed and browser is not None:
+            await _invalidate_shared_browser(browser)
 
 
 def _log_attempt(
@@ -406,9 +518,19 @@ def _log_attempt(
 
 async def scrape_weee_products(query_text: str, language: Language) -> list[dict[str, str]]:
     last_error: BaseException | None = None
+    total_deadline = time.monotonic() + SCRAPER_TOTAL_TIMEOUT_SECONDS
     for attempt_number in range(1, WEEE_MAX_ATTEMPTS + 1):
+        attempt_deadline = min(
+            total_deadline,
+            time.monotonic() + SCRAPER_ATTEMPT_TIMEOUT_SECONDS,
+        )
         try:
-            products = await _scrape_once(query_text, language, attempt_number)
+            products = await _scrape_once(
+                query_text,
+                language,
+                attempt_number,
+                attempt_deadline,
+            )
             _log_attempt(query_text, language, attempt_number, "empty" if not products else "success")
             return products
         except asyncio.CancelledError:
@@ -416,9 +538,18 @@ async def scrape_weee_products(query_text: str, language: Language) -> list[dict
         except Exception as exc:
             last_error = exc
             _log_attempt(query_text, language, attempt_number, "failure", exc)
-            if attempt_number == WEEE_MAX_ATTEMPTS:
+            if attempt_number == WEEE_MAX_ATTEMPTS or time.monotonic() >= total_deadline:
                 break
-            await asyncio.sleep((0.20 * attempt_number) + random.uniform(0.0, 0.10))
+            try:
+                await _bounded_call(
+                    lambda: asyncio.sleep((0.20 * attempt_number) + random.uniform(0.0, 0.10)),
+                    deadline=total_deadline,
+                    label="retry backoff",
+                    limit_seconds=1.0,
+                )
+            except StoreScrapeError as timeout:
+                last_error = timeout
+                break
     if isinstance(last_error, StoreScrapeError):
         raise last_error
     raise StoreScrapeError(f"Weee scraping failed for query {query_text!r}.") from last_error

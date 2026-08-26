@@ -6,6 +6,7 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+import pytest_asyncio
 
 from app.services import weee_scraper
 
@@ -70,10 +71,12 @@ class _PageState:
 class Attempt:
     _navigation_error: BaseException | None = None
     http_status: int = 200
-    final_url: str = "https://www.sayweee.com/en/search?keyword=tofu"
+    final_url: str | None = None
     _page_state: str = "results"
     cards: list[dict[str, str]] = field(default_factory=list)
     disconnect_browser: bool = False
+    hang_evaluate: bool = False
+    hang_page_close: bool = False
 
     navigation_error = _NavigationError()
     page_state = _PageState()
@@ -111,10 +114,12 @@ class BrowserHarness:
             def __init__(self, browser: "Browser", attempt: Attempt):
                 self.browser = browser
                 self.attempt = attempt
-                self.url = attempt.final_url
+                self.url = attempt.final_url or "about:blank"
                 self.closed = False
 
             async def goto(self, *args: Any, **kwargs: Any) -> Response:
+                if self.attempt.final_url is None:
+                    self.url = str(args[0])
                 if self.attempt.disconnect_browser:
                     self.browser.connected = False
                 if self.attempt.navigation_error is not None:
@@ -122,12 +127,16 @@ class BrowserHarness:
                 return Response(self.attempt.http_status)
 
             async def evaluate(self, *args: Any, **kwargs: Any) -> object:
+                if self.attempt.hang_evaluate:
+                    await asyncio.Event().wait()
                 return self.attempt.page_state
 
             async def wait_for_timeout(self, *args: Any, **kwargs: Any) -> None:
                 return None
 
             async def close(self) -> None:
+                if self.attempt.hang_page_close:
+                    await asyncio.Event().wait()
                 if not self.closed:
                     self.closed = True
                     harness._open_pages -= 1
@@ -189,6 +198,123 @@ class BrowserHarness:
         monkeypatch.setattr(weee_scraper.asyncio, "sleep", no_sleep)
         monkeypatch.setattr(weee_scraper, "_shared_browser", None)
         monkeypatch.setattr(weee_scraper, "_playwright_inst", None)
+
+
+@pytest_asyncio.fixture
+async def real_browser_page():
+    """Exercise the exact browser JavaScript used in production."""
+    from playwright.async_api import async_playwright
+
+    playwright = await async_playwright().start()
+    browser = await playwright.chromium.launch(headless=True)
+    page = await browser.new_page()
+    try:
+        yield page
+    finally:
+        await page.close()
+        await browser.close()
+        await playwright.stop()
+
+
+@pytest.mark.parametrize(
+    ("url", "expected_query", "accepted"),
+    [
+        ("https://www.sayweee.com/en/search?keyword=rice+noodles", "rice noodles", True),
+        ("https://shop.weee.com/zh/search?keyword=%E6%96%B0%E9%B2%9C+%E5%A4%A7%E8%92%9C", "新鲜 大蒜", True),
+        ("http://www.sayweee.com/en/search?keyword=rice", "rice", False),
+        ("https://user@www.sayweee.com/en/search?keyword=rice", "rice", False),
+        ("https://@www.sayweee.com/en/search?keyword=rice", "rice", False),
+        ("https://www.sayweee.com:444/en/search?keyword=rice", "rice", False),
+        ("https://www.sayweee.com/en/search", "rice", False),
+        ("https://www.sayweee.com/en/search?keyword=beans", "rice", False),
+        ("https://www.sayweee.com/en/search?keyword=rice&keyword=beans", "rice", False),
+        ("https://www.sayweee.com/en/product/rice?keyword=rice", "rice", False),
+    ],
+)
+def test_final_search_url_requires_the_exact_safe_query(
+    url: str,
+    expected_query: str,
+    accepted: bool,
+):
+    language = "zh" if "/zh/" in url else "en"
+    assert weee_scraper._is_weee_search_route(url, language, expected_query) is accepted
+
+
+@pytest.mark.asyncio
+async def test_real_dom_challenge_dominates_a_visible_product(real_browser_page):
+    await real_browser_page.set_content(
+        """
+        <main>
+          <p>Verify you are human</p>
+          <article data-testid="product-card">
+            <a href="https://www.sayweee.com/en/product/tofu/1">Tofu</a>
+          </article>
+        </main>
+        """
+    )
+    assert await weee_scraper._classify_search_page(real_browser_page) == "challenge"
+
+
+@pytest.mark.asyncio
+async def test_real_dom_challenge_dominates_a_visible_empty_state(real_browser_page):
+    await real_browser_page.set_content(
+        '<main><p>Captcha required</p><div data-testid="no-results">No results</div></main>'
+    )
+    assert await weee_scraper._classify_search_page(real_browser_page) == "challenge"
+
+
+@pytest.mark.asyncio
+async def test_real_dom_generic_empty_copy_is_not_authoritative(real_browser_page):
+    await real_browser_page.set_content(
+        "<main><h1>Search</h1><p>No products found in this featured collection.</p></main>"
+    )
+    assert await weee_scraper._classify_search_page(real_browser_page) == "pending"
+
+
+@pytest.mark.asyncio
+async def test_real_dom_unrelated_empty_element_is_not_authoritative(real_browser_page):
+    await real_browser_page.set_content(
+        '<main><div data-testid="empty-cart">Your cart is empty</div></main>'
+    )
+    assert await weee_scraper._classify_search_page(real_browser_page) == "pending"
+
+
+@pytest.mark.asyncio
+async def test_real_dom_visible_specific_empty_element_is_authoritative(real_browser_page):
+    await real_browser_page.set_content(
+        '<main><div data-testid="no-results">Nothing matched</div></main>'
+    )
+    assert await weee_scraper._classify_search_page(real_browser_page) == "no_results"
+
+
+@pytest.mark.asyncio
+async def test_real_dom_extracts_and_normalizes_a_visible_product(real_browser_page):
+    await real_browser_page.set_content(
+        """
+        <article data-testid="product-card">
+          <a href="https://www.sayweee.com/en/product/silken-tofu/1">
+            <img alt="Silken tofu" src="https://images.example.test/tofu.jpg" />
+            <h3>Silken tofu</h3>
+            <span>$2.99</span>
+          </a>
+        </article>
+        """
+    )
+    raw = await weee_scraper._extract_weee_search_products(real_browser_page, "en")
+    normalized = [
+        product
+        for card in raw
+        if isinstance(card, dict)
+        if (product := weee_scraper._normalize_weee_product(card)) is not None
+    ]
+    assert weee_scraper.validate_products(normalized) == [
+        {
+            "name": "Silken tofu",
+            "price": "$2.99",
+            "image": "https://images.example.test/tofu.jpg",
+            "url": "https://www.sayweee.com/en/product/silken-tofu/1",
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -283,6 +409,61 @@ async def test_results_with_only_invalid_cards_exhaust_as_typed_failure(monkeypa
     with pytest.raises(weee_scraper.StoreScrapeError, match="no usable products"):
         await weee_scraper.scrape_weee_products("tofu", "en")
     assert harness.context_count == 3
+
+
+@pytest.mark.asyncio
+async def test_hung_page_evaluation_exhausts_as_a_typed_timeout(monkeypatch):
+    harness = BrowserHarness([Attempt(hang_evaluate=True)] * 3)
+    harness.install(monkeypatch, patch_classifier=False)
+    monkeypatch.setattr(weee_scraper, "SCRAPER_OPERATION_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(weee_scraper, "SCRAPER_ATTEMPT_TIMEOUT_SECONDS", 0.03)
+    monkeypatch.setattr(weee_scraper, "SCRAPER_TOTAL_TIMEOUT_SECONDS", 0.15)
+
+    with pytest.raises(weee_scraper.StoreScrapeError, match="timed out"):
+        await asyncio.wait_for(
+            weee_scraper.scrape_weee_products("tofu", "en"),
+            timeout=0.5,
+        )
+    assert harness.context_count == 3
+    assert harness.closed_contexts == 3
+
+
+@pytest.mark.asyncio
+async def test_cleanup_timeout_does_not_prevent_the_next_attempt(monkeypatch):
+    harness = BrowserHarness([
+        Attempt(_page_state="pending", hang_page_close=True),
+        Attempt.results([SEARCH_CARD]),
+    ])
+    harness.install(monkeypatch)
+    monkeypatch.setattr(weee_scraper, "SCRAPER_CLEANUP_TIMEOUT_SECONDS", 0.01)
+
+    assert await asyncio.wait_for(
+        weee_scraper.scrape_weee_products("tofu", "en"),
+        timeout=0.5,
+    ) == [PRODUCT]
+    assert harness.context_count == 2
+    assert harness.closed_contexts == 2
+
+
+@pytest.mark.asyncio
+async def test_shared_browser_shutdown_is_idempotent(monkeypatch):
+    calls: list[str] = []
+
+    class Browser:
+        async def close(self) -> None:
+            calls.append("browser")
+
+    class Playwright:
+        async def stop(self) -> None:
+            calls.append("playwright")
+
+    monkeypatch.setattr(weee_scraper, "_shared_browser", Browser())
+    monkeypatch.setattr(weee_scraper, "_playwright_inst", Playwright())
+
+    await weee_scraper.shutdown_weee_scraper()
+    await weee_scraper.shutdown_weee_scraper()
+
+    assert calls == ["browser", "playwright"]
 
 
 @pytest.mark.asyncio

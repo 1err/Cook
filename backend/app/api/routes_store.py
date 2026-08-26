@@ -17,6 +17,7 @@ from app.services.store_product_service import (
     CACHE_TTL_SECONDS,
     fetch_cached_store_products_batch,
     fetch_store_products_with_metadata,
+    prepare_store_query,
 )
 from app.services.weee_scraper import StoreScrapeError
 
@@ -65,9 +66,15 @@ async def store_products(
 
     if store is not None and store.strip().lower() != "weee":
         raise HTTPException(status_code=400, detail="Unsupported store. Use weee.")
+    if prepare_store_query(query) is None:
+        raise HTTPException(status_code=422, detail="Query cannot be empty.")
 
     try:
-        result = await fetch_store_products_with_metadata(query, session=session)
+        result = await fetch_store_products_with_metadata(
+            query,
+            session=session,
+            release_read_session_on_miss=True,
+        )
     except StoreScrapeError as exc:
         raise HTTPException(
             status_code=503,
