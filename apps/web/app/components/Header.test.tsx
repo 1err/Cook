@@ -22,6 +22,7 @@ const messages: Record<string, string> = {
   "nav.appName": "Chef World",
   "nav.cachePreview": "Store cache",
   "nav.closeMenu": "Close navigation menu",
+  "nav.cook": "Cook",
   "nav.library": "Library",
   "nav.logOut": "Log out",
   "nav.openMenu": "Open navigation menu",
@@ -53,12 +54,17 @@ afterEach(() => {
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
 });
 
-test("keeps only core destinations in primary navigation and preserves the Add Recipe origin", () => {
+test("keeps Library first and places Cook between Planner and Shopping", () => {
   render(<Header />);
 
-  expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute("href", "/library");
+  const destinationLinks = screen.getByRole("navigation", { name: "Main" }).querySelectorAll("a");
+  expect([...destinationLinks].map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+    ["Library", "/library"],
+    ["Planner", "/planner"],
+    ["Cook", "/cook"],
+    ["Shopping", "/shopping-list"],
+  ]);
   expect(screen.getByRole("link", { name: "Planner" })).toHaveAttribute("aria-current", "page");
-  expect(screen.getByRole("link", { name: "Shopping" })).toHaveAttribute("href", "/shopping-list");
   expect(screen.getByRole("link", { name: "Add Recipe" })).toHaveAttribute(
     "href",
     "/import?from=%2Fplanner",

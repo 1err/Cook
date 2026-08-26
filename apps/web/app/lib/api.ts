@@ -1,7 +1,7 @@
 import { getApiBase } from "../config";
 import { createApiClient } from "@cooking/api-client";
 
-const webApiClient = createApiClient({
+export const webApiClient = createApiClient({
   baseUrl: getApiBase(),
   auth: { kind: "cookie" },
 });

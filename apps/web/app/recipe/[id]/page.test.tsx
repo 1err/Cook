@@ -3,7 +3,8 @@ import type React from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import RecipeDetailPage from "./page";
 
-const { mockApiFetch, mockPush, translate } = vi.hoisted(() => ({
+const { mockActive, mockApiFetch, mockPush, translate } = vi.hoisted(() => ({
+  mockActive: vi.fn(),
   mockApiFetch: vi.fn(),
   mockPush: vi.fn(),
   translate: (key: string, vars?: Record<string, string | number>) => {
@@ -36,10 +37,14 @@ vi.mock("next/navigation", () => ({
 vi.mock("../../components/RequireAuth", () => ({
   RequireAuth: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
-vi.mock("../../lib/api", () => ({ apiFetch: mockApiFetch }));
+vi.mock("../../lib/api", () => ({
+  apiFetch: mockApiFetch,
+  webApiClient: { cooking: { active: mockActive } },
+}));
 vi.mock("../../lib/i18n", () => ({ useT: () => translate }));
 
 beforeEach(() => {
+  mockActive.mockResolvedValue(null);
   mockApiFetch.mockReset().mockResolvedValue(new Response(JSON.stringify({
     id: "recipe-1",
     title: "Tomato noodles",
