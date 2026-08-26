@@ -259,7 +259,7 @@ test("loads batch cache hits before one serial miss and permits retry after a fa
         return;
       }
     }
-    await route.continue();
+    await route.fallback();
   });
 
   await page.getByRole("button", { name: "Prepare smart shopping list" }).click();
