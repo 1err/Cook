@@ -162,9 +162,16 @@ type QueueEntry = {
   generation: number;
   priority: Priority;
   started: boolean;
-  bulk: boolean;
+  settled: boolean;
   promise: Promise<void>;
   resolve: () => void;
+};
+
+type BulkTracker = {
+  generation: number;
+  done: number;
+  total: number;
+  completed: Set<string>;
 };
 
 const MAX_TIMEOUT_MS = 2_147_483_647;
@@ -179,6 +186,8 @@ export function useStoreProductsCache(weekStart: string | null) {
   const stateRef = useRef(state);
   stateRef.current = state;
   const generationRef = useRef(0);
+  const mountedRef = useRef(true);
+  const firstQueryByKeyRef = useRef(new Map<string, string>());
   const inFlightRef = useRef(new Map<string, QueueEntry>());
   const interactiveQueueRef = useRef<QueueEntry[]>([]);
   const bulkQueueRef = useRef<QueueEntry[]>([]);
@@ -186,45 +195,71 @@ export function useStoreProductsCache(weekStart: string | null) {
   const expiryTimersRef = useRef(
     new Map<string, { expiresAt: string; generation: number; timer: ReturnType<typeof setTimeout> }>(),
   );
-  const bulkProgressRef = useRef({ generation: 0, done: 0, total: 0 });
+  const bulkTrackerRef = useRef<BulkTracker | null>(null);
   const [bulkLoading, setBulkLoading] = useState<BulkLoadingState>({
     active: false,
     done: 0,
     total: 0,
   });
 
-  const completeBulkRef = useRef<(generation: number) => void>(() => {});
-  completeBulkRef.current = (generation) => {
-    const progress = bulkProgressRef.current;
-    if (generationRef.current !== generation || progress.generation !== generation) return;
-    progress.done += 1;
-    setBulkLoading({ active: progress.done < progress.total, done: progress.done, total: progress.total });
-  };
+  const completeBulkTracker = useCallback((tracker: BulkTracker, key: string) => {
+    if (tracker.completed.has(key)) return;
+    tracker.completed.add(key);
+    tracker.done += 1;
+    if (
+      mountedRef.current &&
+      generationRef.current === tracker.generation &&
+      bulkTrackerRef.current === tracker
+    ) {
+      setBulkLoading({
+        active: tracker.done < tracker.total,
+        done: tracker.done,
+        total: tracker.total,
+      });
+    }
+  }, []);
 
+  const useFirstQuery = useCallback((prepared: PreparedStoreProductQuery) => {
+    const first = firstQueryByKeyRef.current.get(prepared.key);
+    if (first) return { ...prepared, query: first };
+    firstQueryByKeyRef.current.set(prepared.key, prepared.query);
+    return prepared;
+  }, []);
+
+  const discardEntriesRef = useRef<() => void>(() => {});
   const pumpRef = useRef<() => void>(() => {});
   const finishRef = useRef<(entry: QueueEntry, response?: StoreProductsResponse, error?: string) => void>(
     () => {},
   );
   finishRef.current = (entry, response, error) => {
-    if (inFlightRef.current.get(entry.key) === entry) {
-      inFlightRef.current.delete(entry.key);
-    }
-    if (generationRef.current === entry.generation) {
+    if (entry.settled) return;
+    entry.settled = true;
+    if (inFlightRef.current.get(entry.key) === entry) inFlightRef.current.delete(entry.key);
+    if (mountedRef.current && generationRef.current === entry.generation) {
       if (response) dispatch({ type: "loadSucceeded", key: entry.key, response });
       else dispatch({ type: "loadFailed", key: entry.key, error: error ?? "Failed to load products" });
-      if (entry.bulk) completeBulkRef.current(entry.generation);
     }
     entry.resolve();
   };
 
+  discardEntriesRef.current = () => {
+    interactiveQueueRef.current = [];
+    bulkQueueRef.current = [];
+    for (const entry of inFlightRef.current.values()) finishRef.current(entry);
+    inFlightRef.current.clear();
+  };
+
   pumpRef.current = () => {
-    if (activeQueueRef.current) return;
+    if (!mountedRef.current || activeQueueRef.current) return;
     while (!activeQueueRef.current) {
       const entry = interactiveQueueRef.current.shift() ?? bulkQueueRef.current.shift();
       if (!entry) return;
-      if (inFlightRef.current.get(entry.key) !== entry || generationRef.current !== entry.generation) {
-        if (inFlightRef.current.get(entry.key) === entry) inFlightRef.current.delete(entry.key);
-        entry.resolve();
+      if (
+        entry.settled ||
+        inFlightRef.current.get(entry.key) !== entry ||
+        generationRef.current !== entry.generation
+      ) {
+        finishRef.current(entry);
         continue;
       }
       activeQueueRef.current = true;
@@ -239,19 +274,24 @@ export function useStoreProductsCache(weekStart: string | null) {
           ),
       ).finally(() => {
         activeQueueRef.current = false;
-        pumpRef.current();
+        if (mountedRef.current) pumpRef.current();
       });
     }
   };
 
-  const enqueue = useCallback((entry: QueueEntry) => {
-    if (entry.priority === "interactive") interactiveQueueRef.current.push(entry);
-    else bulkQueueRef.current.push(entry);
+  const enqueueMany = useCallback((entries: QueueEntry[]) => {
+    for (const entry of entries) {
+      if (entry.settled || inFlightRef.current.get(entry.key) !== entry) continue;
+      if (entry.priority === "interactive") interactiveQueueRef.current.push(entry);
+      else bulkQueueRef.current.push(entry);
+    }
     pumpRef.current();
   }, []);
 
+  const enqueue = useCallback((entry: QueueEntry) => enqueueMany([entry]), [enqueueMany]);
+
   const createEntry = useCallback(
-    (prepared: PreparedStoreProductQuery, priority: Priority, generation: number, bulk: boolean) => {
+    (prepared: PreparedStoreProductQuery, priority: Priority, generation: number) => {
       let resolve!: () => void;
       const promise = new Promise<void>((done) => {
         resolve = done;
@@ -261,7 +301,7 @@ export function useStoreProductsCache(weekStart: string | null) {
         generation,
         priority,
         started: false,
-        bulk,
+        settled: false,
         promise,
         resolve,
       };
@@ -289,26 +329,26 @@ export function useStoreProductsCache(weekStart: string | null) {
       force: boolean,
       priority: Priority,
       generation = generationRef.current,
-      bulk = false,
     ): Promise<void> => {
       if (generationRef.current !== generation) return Promise.resolve();
-      const existing = inFlightRef.current.get(prepared.key);
+      const firstPrepared = useFirstQuery(prepared);
+      const existing = inFlightRef.current.get(firstPrepared.key);
       if (existing?.generation === generation) {
         if (priority === "interactive") promote(existing);
         return existing.promise;
       }
       const snapshot = stateRef.current;
-      const expiresAt = snapshot.expiresAt[prepared.key];
+      const expiresAt = snapshot.expiresAt[firstPrepared.key];
       const alreadyLoaded =
-        snapshot.products[prepared.key] !== undefined &&
-        !snapshot.errors[prepared.key] &&
+        snapshot.products[firstPrepared.key] !== undefined &&
+        !snapshot.errors[firstPrepared.key] &&
         (!expiresAt || Date.parse(expiresAt) > Date.now());
       if (!force && alreadyLoaded) return Promise.resolve();
-      const entry = createEntry(prepared, priority, generation, bulk);
+      const entry = createEntry(firstPrepared, priority, generation);
       enqueue(entry);
       return entry.promise;
     },
-    [createEntry, enqueue, promote],
+    [createEntry, enqueue, promote, useFirstQuery],
   );
 
   const parseBatch = useCallback(
@@ -329,7 +369,11 @@ export function useStoreProductsCache(weekStart: string | null) {
           throw new Error("Invalid batch product response");
         }
         if (item.status === "fresh") {
-          parsed.set(key, parseStoreProductsResponse({ products: item.products, expires_at: item.expires_at }));
+          const response = parseStoreProductsResponse({ products: item.products, expires_at: item.expires_at });
+          if (!response.products.length || !response.expires_at) {
+            throw new Error("Invalid batch product response");
+          }
+          parsed.set(key, response);
         } else if (
           item.status === "missing" &&
           Array.isArray(item.products) &&
@@ -347,38 +391,44 @@ export function useStoreProductsCache(weekStart: string | null) {
   );
 
   const loadBatch = useCallback(
-    (preparedQueries: PreparedStoreProductQuery[], generation: number, trackBulk: boolean) => {
-      if (generationRef.current !== generation || preparedQueries.length === 0) return [] as Promise<void>[];
+    (preparedQueries: PreparedStoreProductQuery[], generation: number) => {
+      const promises = new Map<string, Promise<void>>();
+      if (generationRef.current !== generation || preparedQueries.length === 0) return promises;
       const newEntries: QueueEntry[] = [];
-      const promises: Promise<void>[] = [];
       for (const prepared of preparedQueries) {
-        const existing = inFlightRef.current.get(prepared.key);
+        const firstPrepared = useFirstQuery(prepared);
+        const existing = inFlightRef.current.get(firstPrepared.key);
         if (existing?.generation === generation) {
-          promises.push(existing.promise);
+          promises.set(firstPrepared.key, existing.promise);
           continue;
         }
         const snapshot = stateRef.current;
-        const expiry = snapshot.expiresAt[prepared.key];
-        if (snapshot.products[prepared.key] && expiry && Date.parse(expiry) > Date.now()) continue;
-        const entry = createEntry(prepared, "bulk", generation, trackBulk);
+        const expiry = snapshot.expiresAt[firstPrepared.key];
+        if (snapshot.products[firstPrepared.key] && expiry && Date.parse(expiry) > Date.now()) {
+          promises.set(firstPrepared.key, Promise.resolve());
+          continue;
+        }
+        const entry = createEntry(firstPrepared, "bulk", generation);
         newEntries.push(entry);
-        promises.push(entry.promise);
+        promises.set(firstPrepared.key, entry.promise);
       }
       if (!newEntries.length) return promises;
-      void apiClientRef.current.shopping.storeProductsBatch(newEntries.map((entry) => entry.query)).then(
+      void Promise.resolve()
+        .then(() => {
+          if (!mountedRef.current || generationRef.current !== generation) return undefined;
+          return apiClientRef.current.shopping.storeProductsBatch(newEntries.map((entry) => entry.query));
+        })
+        .then(
         (value) => {
           if (generationRef.current !== generation) {
-            newEntries.forEach((entry) => {
-              if (inFlightRef.current.get(entry.key) === entry) inFlightRef.current.delete(entry.key);
-              entry.resolve();
-            });
+            newEntries.forEach((entry) => finishRef.current(entry));
             return;
           }
           let parsed: Map<string, StoreProductsResponse | null>;
           try {
             parsed = parseBatch(value, newEntries);
           } catch {
-            newEntries.forEach((entry) => enqueue(entry));
+            enqueueMany(newEntries);
             return;
           }
           const misses: QueueEntry[] = [];
@@ -388,28 +438,27 @@ export function useStoreProductsCache(weekStart: string | null) {
             if (response) finishRef.current(entry, response);
             else misses.push(entry);
           }
-          misses.forEach(enqueue);
+          enqueueMany(misses);
         },
         () => {
           if (generationRef.current !== generation) {
-            newEntries.forEach((entry) => {
-              if (inFlightRef.current.get(entry.key) === entry) inFlightRef.current.delete(entry.key);
-              entry.resolve();
-            });
+            newEntries.forEach((entry) => finishRef.current(entry));
             return;
           }
-          newEntries.forEach((entry) => enqueue(entry));
+          enqueueMany(newEntries);
         },
       );
       return promises;
     },
-    [createEntry, enqueue, parseBatch],
+    [createEntry, enqueueMany, parseBatch, useFirstQuery],
   );
 
   useEffect(() => {
     const generation = generationRef.current + 1;
     generationRef.current = generation;
-    bulkProgressRef.current = { generation, done: 0, total: 0 };
+    discardEntriesRef.current();
+    firstQueryByKeyRef.current.clear();
+    bulkTrackerRef.current = null;
     setBulkLoading({ active: false, done: 0, total: 0 });
     for (const entry of expiryTimersRef.current.values()) clearTimeout(entry.timer);
     expiryTimersRef.current.clear();
@@ -452,7 +501,7 @@ export function useStoreProductsCache(weekStart: string | null) {
           .filter(([rawKey, value]) => value && !products[canonicalStoreProductKey(rawKey)])
           .map(([rawKey]) => rawKey),
       );
-      loadBatch(misses, generation, false);
+      void loadBatch(misses, generation);
     })();
     return () => {
       cancelled = true;
@@ -488,7 +537,12 @@ export function useStoreProductsCache(weekStart: string | null) {
           return;
         }
         dispatch({ type: "expired", key });
-        void loadOne({ key, query: key }, true, "interactive", generation);
+        void loadOne(
+          { key, query: firstQueryByKeyRef.current.get(key) ?? key },
+          true,
+          "interactive",
+          generation,
+        );
       };
       timers.set(key, {
         expiresAt,
@@ -503,13 +557,16 @@ export function useStoreProductsCache(weekStart: string | null) {
     }
   }, [loadOne, state.expiresAt, state.products]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      generationRef.current += 1;
+      discardEntriesRef.current();
       for (const entry of expiryTimersRef.current.values()) clearTimeout(entry.timer);
       expiryTimersRef.current.clear();
-    },
-    [],
-  );
+    };
+  }, []);
 
   useEffect(() => {
     if (!weekStart || state.hydratedWeekStart !== weekStart) return;
@@ -555,17 +612,30 @@ export function useStoreProductsCache(weekStart: string | null) {
       if (!prepared.length) return;
       const generation = generationRef.current;
       const nowMs = Date.now();
+      const tracker: BulkTracker = {
+        generation,
+        done: 0,
+        total: prepared.length,
+        completed: new Set(),
+      };
+      bulkTrackerRef.current = tracker;
       const unresolved = prepared.filter(({ key }) => {
         const expiresAt = stateRef.current.expiresAt[key];
         return !(stateRef.current.products[key] && expiresAt && Date.parse(expiresAt) > nowMs);
       });
-      const done = prepared.length - unresolved.length;
-      bulkProgressRef.current = { generation, done, total: prepared.length };
-      setBulkLoading({ active: unresolved.length > 0, done, total: prepared.length });
+      setBulkLoading({ active: true, done: 0, total: prepared.length });
+      for (const { key } of prepared) {
+        if (!unresolved.some((entry) => entry.key === key)) completeBulkTracker(tracker, key);
+      }
       if (!unresolved.length) return;
-      await Promise.all(loadBatch(unresolved, generation, true));
+      const promises = loadBatch(unresolved, generation);
+      await Promise.all(
+        unresolved.map(({ key }) =>
+          (promises.get(key) ?? Promise.resolve()).then(() => completeBulkTracker(tracker, key)),
+        ),
+      );
     },
-    [loadBatch],
+    [completeBulkTracker, loadBatch],
   );
 
   const retry = useCallback((rawName: string) => ensureLoaded(rawName, true), [ensureLoaded]);

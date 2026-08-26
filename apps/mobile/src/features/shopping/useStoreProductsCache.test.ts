@@ -411,3 +411,135 @@ test("week changes discard queued live misses before they start", async () => {
   await waitFor(() => expect(mockReadSmartProducts).toHaveBeenCalledWith("2026-08-17"));
   expect(mockStoreProducts.mock.calls.map(([query]) => query)).toEqual(["Rice"]);
 });
+
+test("bulk progress settles every key when it joins an existing manual lookup", async () => {
+  const rice = deferred<StoreProductsResponse>();
+  const beans = deferred<StoreProductsResponse>();
+  mockStoreProducts.mockImplementation((query: string) => query === "Rice" ? rice.promise : beans.promise);
+  mockStoreProductsBatch.mockResolvedValue({
+    entries: [{ query: "Beans", status: "missing", products: [], expires_at: null }],
+  });
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+
+  await act(async () => {
+    void result.current.togglePanel(" Rice ");
+  });
+  await waitFor(() => expect(mockStoreProducts).toHaveBeenCalledWith("Rice"));
+  await act(async () => {
+    void result.current.loadAll(["rice", "Beans"]);
+  });
+  await act(async () => {
+    rice.resolve(response([RICE]));
+    await rice.promise;
+  });
+  await waitFor(() => expect(mockStoreProducts).toHaveBeenCalledWith("Beans"));
+  await act(async () => {
+    beans.resolve(response([BEANS]));
+    await beans.promise;
+  });
+  await waitFor(() => expect(result.current.bulkLoading).toEqual({ active: false, done: 2, total: 2 }));
+});
+
+test("promoted preflight misses are queued before any bulk miss starts", async () => {
+  const batch = deferred<unknown>();
+  const rice = deferred<StoreProductsResponse>();
+  const beans = deferred<StoreProductsResponse>();
+  const started: string[] = [];
+  mockStoreProductsBatch.mockReturnValue(batch.promise);
+  mockStoreProducts.mockImplementation((query: string) => {
+    started.push(query);
+    return query === "Beans" ? beans.promise : rice.promise;
+  });
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+
+  await act(async () => {
+    void result.current.loadAll(["Rice", "Beans"]);
+  });
+  await act(async () => {
+    void result.current.togglePanel("Beans");
+  });
+  await act(async () => {
+    batch.resolve({
+      entries: [
+        { query: "Rice", status: "missing", products: [], expires_at: null },
+        { query: "Beans", status: "missing", products: [], expires_at: null },
+      ],
+    });
+    await batch.promise;
+  });
+  await waitFor(() => expect(started).toEqual(["Beans"]));
+  await act(async () => {
+    beans.resolve(response([BEANS]));
+    await beans.promise;
+  });
+  await waitFor(() => expect(started).toEqual(["Beans", "Rice"]));
+  await act(async () => {
+    rice.resolve(response([RICE]));
+    await rice.promise;
+  });
+});
+
+test("unmount settles active and queued bulk work without publishing or starting another GET", async () => {
+  const rice = deferred<StoreProductsResponse>();
+  mockStoreProductsBatch.mockResolvedValue({
+    entries: [
+      { query: "Rice", status: "missing", products: [], expires_at: null },
+      { query: "Beans", status: "missing", products: [], expires_at: null },
+    ],
+  });
+  mockStoreProducts.mockReturnValue(rice.promise);
+  const { result, unmount } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+  let work!: Promise<void>;
+
+  await act(async () => {
+    work = result.current.loadAll(["Rice", "Beans"]);
+  });
+  await waitFor(() => expect(mockStoreProducts).toHaveBeenCalledWith("Rice"));
+  await act(async () => {
+    unmount();
+    await Promise.resolve();
+  });
+  await act(async () => {
+    rice.resolve(response([RICE]));
+    await rice.promise;
+  });
+  await work;
+  expect(mockStoreProducts.mock.calls.map(([query]) => query)).toEqual(["Rice"]);
+});
+
+test("an empty fresh batch entry invalidates the whole batch and falls back live", async () => {
+  mockStoreProductsBatch.mockResolvedValue({
+    entries: [{ query: "Rice", status: "fresh", products: [], expires_at: null }],
+  });
+  mockStoreProducts.mockResolvedValue(response([RICE]));
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+
+  await act(async () => {
+    void result.current.loadAll(["Rice"]);
+  });
+  await waitFor(() => expect(mockStoreProducts).toHaveBeenCalledWith("Rice"));
+  await waitFor(() => expect(result.current.products.rice).toEqual([RICE]));
+});
+
+test("retries and expiry retain the first cleaned query spelling", async () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date("2026-08-15T12:00:00.000Z"));
+  mockStoreProducts
+    .mockResolvedValueOnce({ products: [{ ...RICE, url: "https://evil.test/rice" }], expires_at: FUTURE_EXPIRES_AT })
+    .mockResolvedValueOnce(response([RICE], "2026-08-15T12:00:01.000Z"))
+    .mockResolvedValueOnce(response([]));
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+
+  await act(async () => {
+    await result.current.togglePanel(" Rice ");
+  });
+  await act(async () => {
+    await result.current.retry("rice");
+  });
+  expect(mockStoreProducts.mock.calls.map(([query]) => query)).toEqual(["Rice", "Rice"]);
+  await act(async () => {
+    jest.advanceTimersByTime(1_000);
+    await Promise.resolve();
+  });
+  expect(mockStoreProducts.mock.calls.map(([query]) => query)).toEqual(["Rice", "Rice", "Rice"]);
+});

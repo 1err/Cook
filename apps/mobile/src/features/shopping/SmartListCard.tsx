@@ -57,8 +57,8 @@ export function SmartListCard({
         productsLoading={!!productsLoadingByName[key]}
         productsError={productsErrorByName[key] ?? null}
         products={productsByName[key]}
-        onTogglePanel={() => onTogglePanel(key)}
-        onRetryProducts={() => onRetryProducts(key)}
+        onTogglePanel={() => onTogglePanel(item.name)}
+        onRetryProducts={() => onRetryProducts(item.name)}
       />
     );
   };
