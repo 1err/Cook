@@ -205,8 +205,28 @@ class _LiveLookupCoordinator:
                     if self._jobs.get(job.key) is job:
                         self._jobs.pop(job.key, None)
 
+    async def reset_for_tests(self) -> None:
+        """Wait for an idle worker, then clear queue bookkeeping deterministically."""
+        async with self._lock:
+            if self._jobs:
+                raise RuntimeError("Cannot reset live lookups while jobs are still running.")
+            worker = self._worker
+        if worker is not None:
+            await asyncio.shield(worker)
+        async with self._lock:
+            if self._jobs:
+                raise RuntimeError("Cannot reset live lookups while jobs are still running.")
+            self._interactive.clear()
+            self._background.clear()
+            self._worker = None
+
 
 _live_lookups = _LiveLookupCoordinator()
+
+
+async def reset_for_tests() -> None:
+    """Reset the process-local lookup state for deterministic test isolation."""
+    await _live_lookups.reset_for_tests()
 
 
 async def _persist_positive_result(
