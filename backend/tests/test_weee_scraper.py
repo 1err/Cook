@@ -827,6 +827,90 @@ async def test_late_context_acquisition_is_closed_after_timeout(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_late_context_cleanup_failure_retires_its_browser_before_quiescence(
+    monkeypatch,
+):
+    acquisition_cancelled = asyncio.Event()
+    release_acquisition = asyncio.Event()
+    context_close_attempted = asyncio.Event()
+    closed: list[str] = []
+
+    class Context:
+        async def close(self) -> None:
+            context_close_attempted.set()
+            raise RuntimeError("late context close failed")
+
+    class Browser:
+        connected = True
+
+        def is_connected(self) -> bool:
+            return self.connected
+
+        async def new_context(self, **kwargs: Any) -> Context:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                acquisition_cancelled.set()
+                await release_acquisition.wait()
+            return Context()
+
+        async def close(self) -> None:
+            self.connected = False
+            closed.append("browser")
+
+    class Playwright:
+        async def stop(self) -> None:
+            closed.append("playwright")
+
+    browser = Browser()
+    playwright = Playwright()
+
+    async def get_browser() -> Browser:
+        return browser
+
+    monkeypatch.setattr(weee_scraper, "_ensure_shared_browser", get_browser)
+    monkeypatch.setattr(weee_scraper, "_shared_browser", browser)
+    monkeypatch.setattr(weee_scraper, "_playwright_inst", playwright)
+    monkeypatch.setattr(weee_scraper, "SCRAPER_OPERATION_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(weee_scraper, "SCRAPER_CLEANUP_TIMEOUT_SECONDS", 0.05)
+
+    try:
+        with pytest.raises(weee_scraper.StoreScrapeError, match="timed out"):
+            await weee_scraper._scrape_once(
+                "tofu",
+                "en",
+                1,
+                weee_scraper.time.monotonic() + 0.01,
+                weee_scraper.time.monotonic() + 0.2,
+            )
+        await acquisition_cancelled.wait()
+        release_acquisition.set()
+        await context_close_attempted.wait()
+
+        with pytest.raises(weee_scraper.StoreScrapeError, match="late.*cleanup"):
+            await weee_scraper.wait_for_scraper_quiescence()
+
+        assert closed == ["browser", "playwright"]
+        assert weee_scraper._shared_browser is None
+        assert weee_scraper._playwright_inst is None
+        assert not weee_scraper._detached_tasks
+    finally:
+        release_acquisition.set()
+        remaining = list(weee_scraper._detached_tasks)
+        for task in remaining:
+            task.cancel()
+        await asyncio.gather(*remaining, return_exceptions=True)
+        weee_scraper._detached_tasks.clear()
+        weee_scraper._detached_late_cleanups.clear()
+        weee_scraper._detached_cleanup_tasks.clear()
+        weee_scraper._detached_cleanup_failures.clear()
+        if browser.connected:
+            await browser.close()
+        if weee_scraper._playwright_inst is playwright:
+            await playwright.stop()
+
+
+@pytest.mark.asyncio
 async def test_quiescence_rechecks_done_callbacks_for_late_resource_cleanup():
     closed = asyncio.Event()
 

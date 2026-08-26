@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
 from app.db import repo_store_cache
 from app.services import store_product_service, store_scraper, weee_scraper
@@ -232,33 +233,21 @@ async def test_database_cache_read_rejects_unsafe_product_urls(
 
 @pytest.mark.asyncio
 async def test_empty_upsert_preserves_an_existing_positive_database_entry():
-    row = SimpleNamespace(data=[PRODUCT])
-
-    class Scalars:
-        def one_or_none(self) -> SimpleNamespace:
-            return row
-
-    class Result:
-        def scalars(self) -> Scalars:
-            return Scalars()
-
     class Session:
-        flush_count = 0
+        execute_count = 0
 
-        async def execute(self, *args: Any, **kwargs: Any) -> Result:
-            return Result()
-
-        async def flush(self) -> None:
-            self.flush_count += 1
+        async def execute(self, *args: Any, **kwargs: Any) -> object:
+            self.execute_count += 1
+            raise AssertionError("an empty candidate must never reach PostgreSQL")
 
     session = Session()
-    await repo_store_cache.upsert_cached_store_products(
+    written = await repo_store_cache.upsert_cached_store_products(
         session,  # type: ignore[arg-type]
         query="silken tofu", store="weee", language="en", cache_version="v7", data=[],
         updated_at=datetime(2026, 8, 16, 12, tzinfo=timezone.utc),
     )
-    assert row.data == [PRODUCT]
-    assert session.flush_count == 0
+    assert written is False
+    assert session.execute_count == 0
 
 
 @pytest.mark.asyncio
@@ -282,28 +271,19 @@ async def test_upsert_keeps_distinct_weights_and_uses_shared_safe_deduplication(
         "url": "https://www.weee.com/en/product/beans/1",
     }
 
-    class Scalars:
-        def one_or_none(self) -> None:
-            return None
-
     class Result:
-        def scalars(self) -> Scalars:
-            return Scalars()
+        def scalar_one_or_none(self) -> datetime:
+            return datetime(2026, 8, 27, tzinfo=timezone.utc)
 
     class Session:
-        added: list[object] = []
+        statement: Any = None
 
-        async def execute(self, *args: Any, **kwargs: Any) -> Result:
+        async def execute(self, statement: Any) -> Result:
+            self.statement = statement
             return Result()
 
-        def add(self, row: object) -> None:
-            self.added.append(row)
-
-        async def flush(self) -> None:
-            return None
-
     session = Session()
-    await repo_store_cache.upsert_cached_store_products(
+    written = await repo_store_cache.upsert_cached_store_products(
         session,  # type: ignore[arg-type]
         query="rice",
         store="weee",
@@ -320,34 +300,26 @@ async def test_upsert_keeps_distinct_weights_and_uses_shared_safe_deduplication(
         updated_at=datetime(2026, 8, 27, tzinfo=timezone.utc),
     )
 
-    assert len(session.added) == 1
-    assert getattr(session.added[0], "data") == [rice_one, rice_two, beans]
+    compiled = session.statement.compile(dialect=postgresql.dialect())
+    assert written is True
+    assert compiled.params["data"] == [rice_one, rice_two, beans]
 
 
 @pytest.mark.asyncio
-async def test_upsert_refuses_to_overwrite_a_newer_generation():
+async def test_upsert_is_one_atomic_strictly_monotonic_postgresql_statement():
     newer_at = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
     older_at = newer_at - timedelta(seconds=1)
-    row = SimpleNamespace(data=[PRODUCT], updated_at=newer_at)
-
-    class Scalars:
-        def one_or_none(self) -> SimpleNamespace:
-            return row
 
     class Result:
-        def scalars(self) -> Scalars:
-            return Scalars()
+        def scalar_one_or_none(self) -> None:
+            return None
 
     class Session:
-        flush_count = 0
-        statement: Any = None
+        statements: list[Any] = []
 
         async def execute(self, statement: Any) -> Result:
-            self.statement = statement
+            self.statements.append(statement)
             return Result()
-
-        async def flush(self) -> None:
-            self.flush_count += 1
 
     session = Session()
     written = await repo_store_cache.upsert_cached_store_products(
@@ -361,10 +333,6 @@ async def test_upsert_refuses_to_overwrite_a_newer_generation():
     )
 
     assert written is False
-    assert row.data == [PRODUCT]
-    assert row.updated_at == newer_at
-    assert session.flush_count == 0
-    assert session.statement._for_update_arg is not None
 
     equal_generation_written = await repo_store_cache.upsert_cached_store_products(
         session,  # type: ignore[arg-type]
@@ -377,9 +345,14 @@ async def test_upsert_refuses_to_overwrite_a_newer_generation():
     )
 
     assert equal_generation_written is False
-    assert row.data == [PRODUCT]
-    assert row.updated_at == newer_at
-    assert session.flush_count == 0
+    assert len(session.statements) == 2
+    for statement in session.statements:
+        sql = str(statement.compile(dialect=postgresql.dialect()))
+        assert "INSERT INTO cached_store_products" in sql
+        assert "ON CONFLICT (query, store, language, cache_version) DO UPDATE" in sql
+        assert "cached_store_products.updated_at < excluded.updated_at" in sql
+        assert "RETURNING cached_store_products.updated_at" in sql
+        assert "FOR UPDATE" not in sql
 
 
 def test_store_scraper_is_a_public_compatibility_facade():

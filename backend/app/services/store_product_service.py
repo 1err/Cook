@@ -128,12 +128,20 @@ def _memory_cache_set(
     _prune_memory_cache(now)
     normalized = normalize_store_products(products)
     if not normalized:
-        CACHE.pop(cache_key, None)
         return
     effective_timestamp = now if timestamp is None else timestamp
     if not _is_fresh_memory_timestamp(effective_timestamp, now):
-        CACHE.pop(cache_key, None)
         return
+    existing = CACHE.get(cache_key)
+    if existing is not None:
+        existing_timestamp = existing.get("timestamp")
+        existing_products = normalize_store_products(existing.get("data"))
+        if (
+            existing_products
+            and _is_fresh_memory_timestamp(existing_timestamp, now)
+            and existing_timestamp >= effective_timestamp
+        ):
+            return
     CACHE[cache_key] = {
         "data": normalized,
         "timestamp": effective_timestamp,
@@ -326,10 +334,18 @@ class _LiveLookupCoordinator:
         if watchdog is not None and watchdog is not asyncio.current_task() and not watchdog.done():
             watchdog.cancel()
 
+    def _has_waiting_background_locked(self) -> bool:
+        return any(
+            not candidate.started and candidate.priority == "background"
+            for candidate in self._jobs.values()
+        )
+
     def _remove_job_locked(self, job: _QueuedJob) -> None:
         if self._jobs.get(job.key) is job:
             self._jobs.pop(job.key, None)
         self._cancel_queue_watchdog(job)
+        if not self._has_waiting_background_locked():
+            self._interactive_streak = 0
 
     async def _expire_queued_job(self, job: _QueuedJob) -> None:
         delay = max(job.queued_at + LIVE_QUEUE_MAX_WAIT_SECONDS - time.perf_counter(), 0.0)
@@ -367,6 +383,7 @@ class _LiveLookupCoordinator:
                 queued.future.set_exception(self._temporary_unavailable_error())
         self._interactive.clear()
         self._background.clear()
+        self._interactive_streak = 0
 
     async def _enter_quarantine(self, job: _QueuedJob) -> None:
         async with self._lock:
@@ -446,6 +463,7 @@ class _LiveLookupCoordinator:
         if background is not None:
             self._interactive_streak = 0
             return self._next_valid(self._background, "background")
+        self._interactive_streak = 0
         return None
 
     def start_admission(self) -> None:
@@ -493,6 +511,8 @@ class _LiveLookupCoordinator:
             elif priority == "interactive" and job.priority == "background" and not job.started:
                 job.priority = "interactive"
                 self._interactive.append(job)
+                if not self._has_waiting_background_locked():
+                    self._interactive_streak = 0
             if self._worker is None or self._worker.done():
                 self._worker = asyncio.create_task(self._run())
                 self._worker.add_done_callback(self._worker_completed)
@@ -507,22 +527,30 @@ class _LiveLookupCoordinator:
                 timeout=LIVE_FRONT_DOOR_TIMEOUT_SECONDS,
             )
         except TimeoutError as exc:
-            await self._release_waiter(
+            caller_cancelled = await self._release_waiter_resilient(
                 job,
                 waiter_token,
                 front_door_timeout=True,
             )
             released = True
+            if caller_cancelled:
+                raise asyncio.CancelledError
             raise weee_scraper.StoreScrapeError(
                 "Store product lookup front door timed out."
             ) from exc
         except asyncio.CancelledError:
-            await self._release_waiter(job, waiter_token)
+            await self._release_waiter_resilient(job, waiter_token)
             released = True
             raise
         finally:
             if not released:
-                await self._release_waiter(job, waiter_token)
+                caller_cancelled = await self._release_waiter_resilient(
+                    job,
+                    waiter_token,
+                )
+                released = True
+                if caller_cancelled:
+                    raise asyncio.CancelledError
 
     def _worker_completed(self, task: asyncio.Task[None]) -> None:
         if self._worker is task:
@@ -554,20 +582,52 @@ class _LiveLookupCoordinator:
             job.waiter_tokens.remove(waiter_token)
             if job.waiter_tokens:
                 return
-            if front_door_timeout:
-                job.lease.invalidate("front door timeout")
-            if not job.started or front_door_timeout:
-                self._remove_job_locked(job)
-                if not job.started:
-                    job.lease.invalidate("no front-door waiters")
-                elif job.active_task is not None and not job.active_task.done():
-                    job.active_task.cancel()
-                if not job.future.done():
-                    job.future.set_exception(
-                        weee_scraper.StoreScrapeError(
-                            "Store product lookup no longer has an active waiter."
-                        )
+            if job.future.done():
+                return
+            reason = "front door timeout" if front_door_timeout else "no active waiters"
+            job.lease.invalidate(reason)
+            self._remove_job_locked(job)
+            active = job.active_task
+            if job.started and active is not None and not active.done():
+                self._contaminated = True
+                self._fail_queued_for_quarantine_locked(job)
+                active.cancel()
+            if not job.future.done():
+                job.future.set_exception(
+                    weee_scraper.StoreScrapeError(
+                        "Store product lookup no longer has an active waiter."
                     )
+                )
+
+    async def _release_waiter_resilient(
+        self,
+        job: _QueuedJob,
+        waiter_token: int,
+        *,
+        front_door_timeout: bool = False,
+    ) -> bool:
+        """Complete one identity-token release despite repeated caller cancellation."""
+        current = asyncio.current_task()
+        caller_cancelled = bool(current is not None and current.cancelling())
+        release_task = asyncio.create_task(
+            self._release_waiter(
+                job,
+                waiter_token,
+                front_door_timeout=front_door_timeout,
+            )
+        )
+        while not release_task.done():
+            try:
+                await asyncio.shield(release_task)
+            except asyncio.CancelledError:
+                current = asyncio.current_task()
+                caller_cancelled = caller_cancelled or bool(
+                    current is not None and current.cancelling()
+                )
+            except BaseException:
+                break
+        release_task.result()
+        return caller_cancelled
 
     async def _run(self) -> None:
         while True:
@@ -786,7 +846,7 @@ async def _persist_positive_result(
     if maker is None:
         raise RuntimeError("Database session maker is not initialized.")
     async with maker() as write_session:
-        committed = False
+        commit_started = False
         try:
             written = await repo_store_cache.upsert_cached_store_products(
                 write_session, query=cache_query, store="weee", language=language,
@@ -798,6 +858,7 @@ async def _persist_positive_result(
                 )
             if lease is not None:
                 lease.ensure_valid()
+            commit_started = True
             commit_task = asyncio.create_task(write_session.commit())
             caller_cancelled = False
             while not commit_task.done():
@@ -806,13 +867,12 @@ async def _persist_positive_result(
                 except asyncio.CancelledError:
                     caller_cancelled = True
             commit_task.result()
-            committed = True
             if lease is not None:
                 lease.ensure_valid()
             if caller_cancelled:
                 raise asyncio.CancelledError
         except BaseException:
-            if not committed:
+            if not commit_started:
                 await write_session.rollback()
             raise
 
@@ -857,14 +917,17 @@ async def fetch_store_products_with_metadata(
                         database_products,
                         timestamp=database.updated_at.timestamp(),
                     )
+                    winner = _memory_cache_get_with_metadata(cache_key)
+                    if winner is None:
+                        raise RuntimeError("A valid PostgreSQL cache hit did not populate L1.")
                     _log_event(
                         "postgres_hit",
                         cache_key,
                         priority=priority,
                         started_at=started_at,
-                        product_count=len(database_products),
+                        product_count=len(winner.products),
                     )
-                    return StoreProductsResult(database_products, database.updated_at)
+                    return winner
             memory = _memory_cache_get_with_metadata(cache_key)
             if memory is not None:
                 _log_event("memory_hit", cache_key, priority=priority, started_at=started_at, product_count=len(memory.products))
@@ -987,7 +1050,11 @@ async def fetch_cached_store_products_batch(
                 products,
                 timestamp=entry.updated_at.timestamp(),
             )
-            fresh[key] = StoreProductsResult(products, entry.updated_at)
+            winner = _memory_cache_get_with_metadata(
+                ("weee", prepared.language, CACHE_VERSION, prepared.cache_query)
+            )
+            if winner is not None:
+                fresh[key] = winner
 
     entries: list[BatchStoreProductsEntry] = []
     for key, prepared in prepared_by_key.items():

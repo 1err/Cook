@@ -71,7 +71,7 @@ async def test_database_engine_disposal_is_idempotent(monkeypatch: pytest.Monkey
 
 
 @pytest.mark.asyncio
-async def test_database_disposal_retains_resistant_engine_until_dispose_finishes(
+async def test_database_disposal_timeout_keeps_owned_task_and_coherent_factory_until_success(
     monkeypatch: pytest.MonkeyPatch,
 ):
     started = asyncio.Event()
@@ -82,29 +82,147 @@ async def test_database_disposal_retains_resistant_engine_until_dispose_finishes
         async def dispose(self) -> None:
             started.set()
             try:
-                await asyncio.Event().wait()
+                await release.wait()
             except asyncio.CancelledError:
                 cancelled.set()
-                await release.wait()
+                raise
 
     engine = Engine()
+    maker = object()
     monkeypatch.setattr(db_session, "_engine", engine)
-    monkeypatch.setattr(db_session, "async_session_maker", object())
-    disposing = asyncio.create_task(db_session.dispose_engine())
-    await started.wait()
-    disposing.cancel()
-    await cancelled.wait()
-    try:
-        assert db_session._engine is engine
-        assert db_session._engine_dispose_task is not None
-        assert not db_session._engine_dispose_task.done()
-    finally:
-        release.set()
-        await asyncio.gather(disposing, return_exceptions=True)
+    monkeypatch.setattr(db_session, "async_session_maker", maker)
+    monkeypatch.setattr(db_session, "DB_DISPOSE_TIMEOUT_SECONDS", 0.01)
 
+    await db_session.dispose_engine()
+
+    assert started.is_set()
+    assert not cancelled.is_set()
+    assert db_session._engine is engine
+    assert db_session.async_session_maker is maker
+    assert db_session._engine_dispose_task is not None
+    assert not db_session._engine_dispose_task.done()
+    with pytest.raises(RuntimeError, match="disposal is still running"):
+        db_session.init_engine()
+
+    release.set()
     await db_session.dispose_engine()
     assert db_session._engine is None
     assert db_session._engine_dispose_task is None
+    assert db_session.async_session_maker is None
+
+
+@pytest.mark.asyncio
+async def test_database_disposal_caller_cancellation_does_not_cancel_owned_dispose(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    started = asyncio.Event()
+    child_cancelled = asyncio.Event()
+    release = asyncio.Event()
+
+    class Engine:
+        async def dispose(self) -> None:
+            started.set()
+            try:
+                await release.wait()
+            except asyncio.CancelledError:
+                child_cancelled.set()
+                raise
+
+    engine = Engine()
+    maker = object()
+    monkeypatch.setattr(db_session, "_engine", engine)
+    monkeypatch.setattr(db_session, "async_session_maker", maker)
+    monkeypatch.setattr(db_session, "DB_DISPOSE_TIMEOUT_SECONDS", 1.0)
+
+    caller = asyncio.create_task(db_session.dispose_engine())
+    await started.wait()
+    caller.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await caller
+    await asyncio.sleep(0)
+
+    assert not child_cancelled.is_set()
+    assert db_session._engine is engine
+    assert db_session.async_session_maker is maker
+    assert db_session._engine_dispose_task is not None
+
+    release.set()
+    await db_session.dispose_engine()
+    assert db_session._engine is None
+    assert db_session.async_session_maker is None
+
+
+@pytest.mark.asyncio
+async def test_cancelled_dispose_child_restores_coherent_state_and_can_retry(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    started = asyncio.Event()
+    calls = 0
+
+    class Engine:
+        async def dispose(self) -> None:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                started.set()
+                await asyncio.Event().wait()
+
+    engine = Engine()
+    maker = object()
+    monkeypatch.setattr(db_session, "_engine", engine)
+    monkeypatch.setattr(db_session, "async_session_maker", maker)
+    monkeypatch.setattr(db_session, "DB_DISPOSE_TIMEOUT_SECONDS", 0.01)
+
+    await db_session.dispose_engine()
+    await started.wait()
+    owned = db_session._engine_dispose_task
+    assert owned is not None
+    owned.cancel()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    assert db_session._engine is engine
+    assert db_session.async_session_maker is maker
+    assert db_session._engine_dispose_task is None
+    db_session.init_engine()
+    assert db_session.async_session_maker is maker
+
+    await db_session.dispose_engine()
+    assert calls == 2
+    assert db_session._engine is None
+    assert db_session.async_session_maker is None
+
+
+@pytest.mark.asyncio
+async def test_failed_database_disposal_restores_coherent_state_and_retry_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    calls = 0
+
+    class Engine:
+        async def dispose(self) -> None:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("dispose failed")
+
+    engine = Engine()
+    maker = object()
+    monkeypatch.setattr(db_session, "_engine", engine)
+    monkeypatch.setattr(db_session, "async_session_maker", maker)
+
+    with pytest.raises(RuntimeError, match="dispose failed"):
+        await db_session.dispose_engine()
+
+    assert db_session._engine is engine
+    assert db_session.async_session_maker is maker
+    assert db_session._engine_dispose_task is None
+    db_session.init_engine()
+    assert db_session.async_session_maker is maker
+
+    await db_session.dispose_engine()
+    assert calls == 2
+    assert db_session._engine is None
     assert db_session.async_session_maker is None
 
 

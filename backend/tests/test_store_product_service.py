@@ -198,6 +198,40 @@ async def test_l2_miss_rechecks_l1_before_submitting_a_live_job(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_delayed_older_l2_hit_cannot_replace_or_return_over_newer_l1(monkeypatch):
+    database_started = asyncio.Event()
+    release_database = asyncio.Event()
+    now = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    older = now - timedelta(minutes=5)
+    newer_product = {**TOFU, "price": "$9.99"}
+    older_product = {**TOFU, "price": "$1.99"}
+    key = ("weee", "en", service.CACHE_VERSION, "silken tofu")
+    monkeypatch.setattr(service.time, "time", lambda: now.timestamp())
+
+    async def delayed_database_hit(*args: Any, **kwargs: Any) -> Any:
+        database_started.set()
+        await release_database.wait()
+        return repo_store_cache.CachedStoreProducts([older_product], older)
+
+    monkeypatch.setattr(
+        repo_store_cache,
+        "get_cached_store_products_with_metadata",
+        delayed_database_hit,
+    )
+    lookup = asyncio.create_task(
+        service.fetch_store_products_with_metadata("silken tofu", session=object())
+    )
+    await database_started.wait()
+    service._memory_cache_set(key, [newer_product], timestamp=now.timestamp())
+    release_database.set()
+
+    assert await lookup == service.StoreProductsResult([newer_product], now)
+    assert service._memory_cache_get_with_metadata(key) == service.StoreProductsResult(
+        [newer_product], now
+    )
+
+
+@pytest.mark.asyncio
 async def test_opt_in_read_session_is_released_before_waiting_for_live_work(monkeypatch):
     scrape_started = asyncio.Event()
     release_scrape = asyncio.Event()
@@ -1036,6 +1070,95 @@ async def test_fairness_state_resets_on_shutdown_and_start():
     assert coordinator._interactive_streak == 0
 
 
+def test_fairness_streak_resets_at_idle_and_fresh_work_prefers_interactive():
+    coordinator = service._LiveLookupCoordinator()
+    loop = asyncio.new_event_loop()
+
+    async def operation(
+        queue_wait_ms: float,
+        priority: service.LookupPriority,
+        lease: service._LiveJobLease,
+    ) -> service.StoreProductsResult:
+        return service.StoreProductsResult([TOFU], datetime.now(timezone.utc))
+
+    def queued(name: str, priority: service.LookupPriority) -> service._QueuedJob:
+        key = ("weee", "en", service.CACHE_VERSION, name)
+        return service._QueuedJob(
+            key,
+            operation,
+            loop.create_future(),
+            priority,
+            100.0,
+            service._LiveJobLease(1),
+        )
+
+    try:
+        coordinator._interactive_streak = service.MAX_INTERACTIVE_BURST
+        assert coordinator._choose_next(100.0) is None
+        assert coordinator._interactive_streak == 0
+
+        background = queued("background", "background")
+        interactive = queued("interactive", "interactive")
+        coordinator._jobs[background.key] = background
+        coordinator._jobs[interactive.key] = interactive
+        coordinator._background.append(background)
+        coordinator._interactive.append(interactive)
+
+        assert coordinator._choose_next(100.0) is interactive
+    finally:
+        loop.close()
+
+
+def test_removing_last_background_and_quarantine_clear_reset_fairness_streak():
+    coordinator = service._LiveLookupCoordinator()
+    loop = asyncio.new_event_loop()
+    futures: list[asyncio.Future[service.StoreProductsResult]] = []
+
+    async def operation(
+        queue_wait_ms: float,
+        priority: service.LookupPriority,
+        lease: service._LiveJobLease,
+    ) -> service.StoreProductsResult:
+        return service.StoreProductsResult([TOFU], datetime.now(timezone.utc))
+
+    def queued(name: str, priority: service.LookupPriority) -> service._QueuedJob:
+        key = ("weee", "en", service.CACHE_VERSION, name)
+        future: asyncio.Future[service.StoreProductsResult] = loop.create_future()
+        futures.append(future)
+        return service._QueuedJob(
+            key,
+            operation,
+            future,
+            priority,
+            100.0,
+            service._LiveJobLease(1),
+        )
+
+    try:
+        background = queued("old background", "background")
+        coordinator._jobs[background.key] = background
+        coordinator._background.append(background)
+        coordinator._interactive_streak = service.MAX_INTERACTIVE_BURST
+        coordinator._remove_job_locked(background)
+        assert coordinator._interactive_streak == 0
+
+        active = queued("active", "interactive")
+        queued_background = queued("queued background", "background")
+        coordinator._jobs[active.key] = active
+        coordinator._jobs[queued_background.key] = queued_background
+        coordinator._background.append(queued_background)
+        coordinator._interactive_streak = service.MAX_INTERACTIVE_BURST
+        coordinator._fail_queued_for_quarantine_locked(active)
+        assert coordinator._interactive_streak == 0
+    finally:
+        for future in futures:
+            if future.done() and not future.cancelled():
+                future.exception()
+            elif not future.done():
+                future.cancel()
+        loop.close()
+
+
 @pytest.mark.asyncio
 async def test_duplicate_lookup_joins_one_cancel_shielded_live_job(monkeypatch):
     started = asyncio.Event()
@@ -1060,6 +1183,82 @@ async def test_duplicate_lookup_joins_one_cancel_shielded_live_job(monkeypatch):
     release.set()
     assert await follower == [TOFU]
     assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelling_the_last_active_waiter_invalidates_and_cancels_its_flight(
+    monkeypatch,
+):
+    started = asyncio.Event()
+    child_cancelled = asyncio.Event()
+    release = asyncio.Event()
+    key = ("weee", "en", service.CACHE_VERSION, "orphan")
+
+    async def scrape(query_text: str, language: str) -> list[dict[str, str]]:
+        started.set()
+        try:
+            await release.wait()
+        finally:
+            child_cancelled.set()
+        return [product_for(query_text)]
+
+    monkeypatch.setattr(weee_scraper, "scrape_weee_products", scrape)
+    monkeypatch.setattr(service, "_persist_positive_result", async_noop)
+    lookup = asyncio.create_task(
+        service.fetch_store_products("orphan", force_refresh=True)
+    )
+    await started.wait()
+    lookup.cancel()
+    try:
+        with pytest.raises(asyncio.CancelledError):
+            await lookup
+        await asyncio.wait_for(child_cancelled.wait(), timeout=0.05)
+    finally:
+        release.set()
+        await asyncio.gather(lookup, return_exceptions=True)
+        await wait_until(lambda: service._live_lookups._worker is None)
+
+    assert key not in service._live_lookups._jobs
+    assert service._memory_cache_get(key) is None
+
+
+@pytest.mark.asyncio
+async def test_waiter_release_survives_repeated_cancellation_while_lock_is_held():
+    coordinator = service._LiveLookupCoordinator()
+    operation_started = asyncio.Event()
+    operation_cancelled = asyncio.Event()
+
+    async def operation(
+        queue_wait_ms: float,
+        priority: service.LookupPriority,
+        lease: service._LiveJobLease,
+    ) -> service.StoreProductsResult:
+        operation_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            operation_cancelled.set()
+
+    key = ("weee", "en", service.CACHE_VERSION, "repeated cancellation")
+    lookup = asyncio.create_task(coordinator.submit(key, "interactive", operation))
+    await operation_started.wait()
+    job = coordinator._jobs[key]
+    await coordinator._lock.acquire()
+    try:
+        for _ in range(4):
+            lookup.cancel()
+            await asyncio.sleep(0)
+        assert not lookup.done()
+    finally:
+        coordinator._lock.release()
+
+    with pytest.raises(asyncio.CancelledError):
+        await lookup
+    await asyncio.wait_for(operation_cancelled.wait(), timeout=0.05)
+    await wait_until(lambda: coordinator._worker is None)
+
+    assert job.waiter_tokens == set()
+    assert key not in coordinator._jobs
 
 
 @pytest.mark.asyncio
@@ -1255,7 +1454,9 @@ async def test_live_result_uses_precommit_timestamp_for_l1_and_metadata(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_failed_writer_rolls_back_closes_does_not_publish_and_allows_retry(monkeypatch):
+async def test_uncertain_commit_failure_closes_without_rollback_or_publication_and_allows_retry(
+    monkeypatch,
+):
     calls: list[str] = []
     attempts = 0
 
@@ -1295,11 +1496,48 @@ async def test_failed_writer_rolls_back_closes_does_not_publish_and_allows_retry
     key = ("weee", "en", service.CACHE_VERSION, "silken tofu")
     with pytest.raises(RuntimeError, match="commit failed"):
         await service.fetch_store_products("silken tofu", force_refresh=True)
-    assert calls == ["upsert", "commit", "rollback", "close"]
+    assert calls == ["upsert", "commit", "close"]
     assert service._memory_cache_get(key) is None
     await service.reset_for_tests()
     assert await service.fetch_store_products("silken tofu", force_refresh=True) == [TOFU]
-    assert calls == ["upsert", "commit", "rollback", "close", "upsert", "commit", "close"]
+    assert calls == ["upsert", "commit", "close", "upsert", "commit", "close"]
+
+
+@pytest.mark.asyncio
+async def test_precommit_failure_rolls_back_and_closes(monkeypatch):
+    calls: list[str] = []
+
+    class WriteSession:
+        async def commit(self) -> None:
+            calls.append("commit")
+
+        async def rollback(self) -> None:
+            calls.append("rollback")
+
+    class Context:
+        async def __aenter__(self) -> WriteSession:
+            calls.append("open")
+            return WriteSession()
+
+        async def __aexit__(self, *args: Any) -> None:
+            calls.append("close")
+
+    async def fail_upsert(*args: Any, **kwargs: Any) -> bool:
+        calls.append("upsert")
+        raise RuntimeError("upsert failed")
+
+    monkeypatch.setattr(db_session, "async_session_maker", lambda: Context())
+    monkeypatch.setattr(repo_store_cache, "upsert_cached_store_products", fail_upsert)
+
+    with pytest.raises(RuntimeError, match="upsert failed"):
+        await service._persist_positive_result(
+            "tofu",
+            "en",
+            [TOFU],
+            datetime.now(timezone.utc),
+        )
+
+    assert calls == ["open", "upsert", "rollback", "close"]
 
 
 @pytest.mark.asyncio
@@ -1449,6 +1687,38 @@ def test_l1_cache_rejects_future_and_non_finite_timestamps(monkeypatch, timestam
     assert key not in service.CACHE
 
 
+@pytest.mark.parametrize(
+    ("candidate_timestamp", "candidate_products"),
+    [
+        (99_999.0, [{**TOFU, "price": "$1.00"}]),
+        (100_000.0, [{**TOFU, "price": "$2.00"}]),
+        (100_000.000_001, [{**TOFU, "price": "$3.00"}]),
+        (99_999.5, [{"name": "unsafe", "url": "https://evil.test/product/1"}]),
+    ],
+    ids=["older", "equal", "future", "invalid-products"],
+)
+def test_l1_set_rejects_nonwinning_candidates_without_erasing_valid_entry(
+    monkeypatch,
+    candidate_timestamp,
+    candidate_products,
+):
+    monkeypatch.setattr(service.time, "time", lambda: 100_000.0)
+    key = ("weee", "en", service.CACHE_VERSION, "monotonic")
+    winner = {**TOFU, "price": "$9.99"}
+    service._memory_cache_set(key, [winner], timestamp=100_000.0)
+
+    service._memory_cache_set(
+        key,
+        candidate_products,
+        timestamp=candidate_timestamp,
+    )
+
+    assert service.CACHE[key] == {
+        "data": [winner],
+        "timestamp": 100_000.0,
+    }
+
+
 def test_l1_cache_accepts_zero_age_and_rejects_exactly_twenty_four_hours(monkeypatch):
     monkeypatch.setattr(service.time, "time", lambda: 100_000.0)
     current = ("weee", "en", service.CACHE_VERSION, "current")
@@ -1576,6 +1846,11 @@ async def test_cache_and_scrape_logs_include_distinguishable_parseable_fields(mo
 @pytest.mark.asyncio
 async def test_batch_cache_read_preserves_order_dedupes_and_never_scrapes(monkeypatch):
     rows = {("garlic", "en"): cached([GARLIC]), ("姜", "zh"): cached([GINGER])}
+    monkeypatch.setattr(
+        service.time,
+        "time",
+        lambda: datetime(2026, 8, 27, tzinfo=timezone.utc).timestamp(),
+    )
 
     async def unexpected_scrape(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
         raise AssertionError("batch reads must not scrape")

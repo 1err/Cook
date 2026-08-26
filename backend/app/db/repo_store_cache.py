@@ -9,6 +9,7 @@ from collections.abc import Sequence
 import math
 
 from sqlalchemy import func, select, tuple_
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import CachedStoreProductModel
@@ -209,32 +210,32 @@ async def upsert_cached_store_products(
     data: list[dict[str, str]],
     updated_at: datetime,
 ) -> bool:
-    result = await session.execute(
-        select(CachedStoreProductModel).where(
-            CachedStoreProductModel.query == query,
-            CachedStoreProductModel.store == store,
-            CachedStoreProductModel.language == language,
-            CachedStoreProductModel.cache_version == cache_version,
-        ).with_for_update()
-    )
-    row = result.scalars().one_or_none()
     normalized = normalize_cached_store_products(data)
     if not normalized:
         return False
-    if row is None:
-        row = CachedStoreProductModel(
-            query=query,
-            store=store,
-            language=language,
-            cache_version=cache_version,
-            data=normalized,
-            updated_at=updated_at,
-        )
-        session.add(row)
-    else:
-        if row.updated_at >= updated_at:
-            return False
-        row.data = normalized
-        row.updated_at = updated_at
-    await session.flush()
-    return True
+    candidate = postgresql_insert(CachedStoreProductModel).values(
+        query=query,
+        store=store,
+        language=language,
+        cache_version=cache_version,
+        data=normalized,
+        updated_at=updated_at,
+    )
+    statement = candidate.on_conflict_do_update(
+        index_elements=(
+            CachedStoreProductModel.query,
+            CachedStoreProductModel.store,
+            CachedStoreProductModel.language,
+            CachedStoreProductModel.cache_version,
+        ),
+        set_={
+            "data": candidate.excluded.data,
+            "updated_at": candidate.excluded.updated_at,
+        },
+        where=(
+            CachedStoreProductModel.updated_at
+            < candidate.excluded.updated_at
+        ),
+    ).returning(CachedStoreProductModel.updated_at)
+    result = await session.execute(statement)
+    return result.scalar_one_or_none() is not None

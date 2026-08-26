@@ -38,6 +38,7 @@ _shared_browser: Any = None
 _detached_tasks: set[asyncio.Task[Any]] = set()
 _detached_late_cleanups: dict[asyncio.Task[Any], Any] = {}
 _detached_cleanup_tasks: set[asyncio.Task[Any]] = set()
+_detached_cleanup_failures: list[BaseException] = []
 _browser_generation = 0
 
 
@@ -46,16 +47,27 @@ class StoreScrapeError(RuntimeError):
 
 
 def _consume_background_task(task: asyncio.Task[Any]) -> None:
+    was_cleanup = task in _detached_cleanup_tasks
     _detached_tasks.discard(task)
     _detached_cleanup_tasks.discard(task)
     cleanup = _detached_late_cleanups.pop(task, None)
     if task.cancelled():
+        if was_cleanup:
+            error = StoreScrapeError("Weee late resource cleanup was cancelled.")
+            _detached_cleanup_failures.append(error)
+            logger.error("weee_scraper: late resource cleanup was cancelled")
         return
     try:
         result = task.result()
     except asyncio.CancelledError:
         return
-    except Exception:
+    except BaseException as exc:
+        if was_cleanup:
+            _detached_cleanup_failures.append(exc)
+            logger.error(
+                "weee_scraper: late resource cleanup failed",
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
         return
     if cleanup is None:
         return
@@ -99,6 +111,19 @@ def _track_detached_task(
     if cleanup_task:
         _detached_cleanup_tasks.add(task)
     task.add_done_callback(_consume_background_task)
+
+
+def _raise_detached_cleanup_failures() -> None:
+    if not _detached_cleanup_failures:
+        return
+    failures = list(_detached_cleanup_failures)
+    _detached_cleanup_failures.clear()
+    if len(failures) == 1:
+        raise StoreScrapeError("Weee late resource cleanup failed.") from failures[0]
+    raise BaseExceptionGroup(
+        "Weee late resource cleanup failures.",
+        failures,
+    )
 
 
 async def _bounded_await(
@@ -356,7 +381,7 @@ async def _invalidate_shared_browser(
     observed_browser: Any | None = None,
     *,
     deadline: float | None = None,
-) -> None:
+) -> bool:
     global _shared_browser, _playwright_inst, _browser_generation
     lock_timeout = SCRAPER_CLEANUP_TIMEOUT_SECONDS
     if deadline is not None:
@@ -368,7 +393,7 @@ async def _invalidate_shared_browser(
     )
     try:
         if observed_browser is not None and _shared_browser is not observed_browser:
-            return
+            return False
         _browser_generation += 1
         browser, playwright = _shared_browser, _playwright_inst
         _shared_browser = None
@@ -376,6 +401,38 @@ async def _invalidate_shared_browser(
     finally:
         _browser_lock.release()
     await _close_browser_resources(browser, playwright, deadline=deadline)
+    return True
+
+
+async def _cleanup_late_browser_resource(
+    resource: Any,
+    browser: Any,
+    label: str,
+) -> None:
+    """Close a late page/context and retire the exact browser if that close fails."""
+    try:
+        await resource.close()
+        return
+    except BaseException as exc:
+        logger.error(
+            "weee_scraper: late %s failed; retiring its browser",
+            label,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+        try:
+            retired_shared = await _invalidate_shared_browser(browser)
+            if not retired_shared:
+                await _close_browser_resources(browser, None)
+        except BaseException as retirement_error:
+            logger.error(
+                "weee_scraper: browser retirement after late cleanup failure failed",
+                exc_info=(
+                    type(retirement_error),
+                    retirement_error,
+                    retirement_error.__traceback__,
+                ),
+            )
+        raise StoreScrapeError(f"Weee late {label} failed.") from exc
 
 
 async def _drain_detached_tasks() -> None:
@@ -387,6 +444,7 @@ async def _drain_detached_tasks() -> None:
         pending = {task for task in _detached_tasks if not task.done()}
         if not pending:
             if empty_passes >= 2:
+                _raise_detached_cleanup_failures()
                 return
             empty_passes += 1
             if asyncio.get_running_loop().time() >= deadline:
@@ -671,13 +729,25 @@ async def _scrape_once(
             lambda: browser.new_context(**context_options),
             deadline=deadline,
             label="browser context creation",
-            late_result_cleanup=lambda late_context: late_context.close(),
+            late_result_cleanup=lambda late_context, owned_browser=browser: (
+                _cleanup_late_browser_resource(
+                    late_context,
+                    owned_browser,
+                    "context cleanup",
+                )
+            ),
         )
         page = await _bounded_call(
             context.new_page,
             deadline=deadline,
             label="search page creation",
-            late_result_cleanup=lambda late_page: late_page.close(),
+            late_result_cleanup=lambda late_page, owned_browser=browser: (
+                _cleanup_late_browser_resource(
+                    late_page,
+                    owned_browser,
+                    "page cleanup",
+                )
+            ),
         )
         response = await _bounded_call(
             lambda: page.goto(
@@ -839,6 +909,7 @@ async def wait_for_scraper_quiescence() -> None:
             if empty_passes >= 2:
                 if caller_cancelled:
                     raise asyncio.CancelledError
+                _raise_detached_cleanup_failures()
                 return
             empty_passes += 1
             try:
