@@ -16,47 +16,50 @@ PRODUCT = {
 
 
 @pytest.mark.asyncio
-async def test_warmer_runs_two_queries_at_a_time_and_isolates_failures(
+async def test_warmer_runs_queries_serially_at_background_priority_and_isolates_failures(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    queries = ["hit", "miss one", "failure", "miss two"]
     active = 0
-    peak_active = 0
-    completed: list[str] = []
+    peak = 0
+    priorities: list[str] = []
 
-    async def warm_query(
+    async def fetch(
         query: str,
+        session: object | None = None,
         *,
         force_refresh: bool = False,
-    ) -> tuple[cache_warmer.WarmStatus, list[dict[str, str]]]:
-        nonlocal active, peak_active
-        assert force_refresh
+        priority: str = "interactive",
+    ) -> list[dict[str, str]]:
+        nonlocal active, peak
+        priorities.append(priority)
         active += 1
-        peak_active = max(peak_active, active)
+        peak = max(peak, active)
         await asyncio.sleep(0)
         active -= 1
         if query == "failure":
-            raise RuntimeError("controlled scrape failure")
-        completed.append(query)
-        return ("cache_hit" if query == "hit" else "cache_miss"), [PRODUCT]
+            from app.services.weee_scraper import StoreScrapeError
 
-    monkeypatch.setattr(cache_warmer, "ALL_QUERIES", queries)
-    monkeypatch.setattr(cache_warmer, "warm_cache_query", warm_query)
+            raise StoreScrapeError("controlled")
+        return [] if query == "empty" else [PRODUCT]
+
+    monkeypatch.setattr(cache_warmer, "ALL_QUERIES", ["one", "empty", "failure", "two"])
+    monkeypatch.setattr(cache_warmer, "fetch_store_products", fetch)
 
     summary = await cache_warmer.run_cache_warmer(force_refresh=True)
 
-    assert peak_active == 2
-    assert completed == ["hit", "miss one", "miss two"]
+    assert peak == 1
+    assert priorities == ["background"] * 4
     assert summary == {
-        "cache_hit": 1,
+        "cache_hit": 0,
         "cache_miss": 2,
+        "empty": 1,
         "skipped": 0,
         "failed": 1,
         "total": 4,
     }
 
 
-def test_scheduler_runs_daily_force_refresh_and_starts_stale_only(
+def test_scheduler_runs_daily_force_refresh_without_a_startup_warming_sweep(
     monkeypatch: pytest.MonkeyPatch,
 ):
     jobs: list[tuple[Callable[[], Awaitable[None]], dict[str, Any]]] = []
@@ -93,7 +96,7 @@ def test_scheduler_runs_daily_force_refresh_and_starts_stale_only(
     assert options["hours"] == 24
     assert options["max_instances"] == 1
     assert options["coalesce"] is True
-    assert startup_force_refresh == [False]
+    assert startup_force_refresh == []
 
 
 @pytest.mark.asyncio

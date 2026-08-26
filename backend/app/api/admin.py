@@ -16,7 +16,7 @@ from app.db.models import UserModel
 from app.db.session import get_session
 from app.jobs.cache_warmer import get_cache_warmer_status, trigger_cache_warmer
 from app.jobs.cache_warmer_queries import ALL_QUERIES
-from app.services.store_scraper import (
+from app.services.store_product_service import (
     CACHE_TTL_SECONDS,
     CACHE_VERSION,
     fetch_store_products,
@@ -191,7 +191,8 @@ async def cache_refresh_one(
     prepared = prepare_store_query(body.query)
     if prepared is None:
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
-    cleaned_query, language = prepared
+    cleaned_query = prepared.cache_query
+    language = prepared.language
     data = await fetch_store_products(body.query, session=session, force_refresh=True)
     await session.commit()
     row = await repo_store_cache.get_cached_store_product_entry(

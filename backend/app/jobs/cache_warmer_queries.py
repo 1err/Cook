@@ -3,7 +3,6 @@ Shared query catalog for cache warming.
 """
 from __future__ import annotations
 
-PRECOMPUTE_CONCURRENCY = 2
 DEFAULT_STORE = "weee"
 CANONICAL_MAP: dict[str, str] = {
     "onions": "onion",
