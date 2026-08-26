@@ -6,6 +6,7 @@ import { Card } from "../../components";
 import { colors, spacing, typography } from "../../theme";
 import type { PurchaseItem } from "./storage";
 import { SmartListItem } from "./SmartListItem";
+import { canonicalStoreProductKey } from "./storeProductIdentity";
 
 type Row = { item: PurchaseItem; origIndex: number };
 
@@ -43,7 +44,7 @@ export function SmartListCard({
   const got = checkedRows.length;
 
   const renderRow = ({ item, origIndex }: Row) => {
-    const key = item.name.trim();
+    const key = canonicalStoreProductKey(item.name);
     return (
       <SmartListItem
         key={origIndex}

@@ -1,6 +1,7 @@
 import type { StoreProduct, StoreProductsResponse } from "@cooking/api-client";
 import { isSafeWeeeProductUrl } from "@cooking/shared";
 import { ephemeral, json } from "../../lib/storage";
+import { canonicalStoreProductKey } from "./storeProductIdentity";
 
 export const SMART_SHOPPING_LIST_PREFIX = "smartShoppingList";
 export const SMART_SHOPPING_PRODUCTS_PREFIX = "smartShoppingProducts";
@@ -73,6 +74,20 @@ function validFutureExpiry(value: unknown, nowMs: number): value is string {
   return Number.isFinite(expiresAtMs) && expiresAtMs > nowMs;
 }
 
+export function isFreshStoredProductResponse(
+  value: unknown,
+  nowMs = Date.now(),
+): value is StoreProductsResponse {
+  if (!value || typeof value !== "object") return false;
+  const response = value as Partial<StoreProductsResponse>;
+  return (
+    Array.isArray(response.products) &&
+    response.products.length > 0 &&
+    response.products.every(isStoredProduct) &&
+    validFutureExpiry(response.expires_at, nowMs)
+  );
+}
+
 export function parseSmartProductsStored(
   parsed: unknown,
   nowMs = Date.now(),
@@ -84,24 +99,19 @@ export function parseSmartProductsStored(
   if (!stored.errors || typeof stored.errors !== "object") return null;
   return {
     open: Object.fromEntries(
-      Object.entries(stored.open).filter(([, value]) => typeof value === "boolean"),
+      Object.entries(stored.open)
+        .map(([key, value]) => [canonicalStoreProductKey(key), value] as const)
+        .filter(([key, value]) => !!key && typeof value === "boolean"),
     ),
     products: Object.fromEntries(
-      Object.entries(stored.products).filter(([, value]) => {
-        if (!value || typeof value !== "object") return false;
-        const response = value as Partial<StoreProductsResponse>;
-        return (
-          Array.isArray(response.products) &&
-          response.products.length > 0 &&
-          response.products.every(isStoredProduct) &&
-          validFutureExpiry(response.expires_at, nowMs)
-        );
-      }),
+      Object.entries(stored.products)
+        .map(([key, value]) => [canonicalStoreProductKey(key), value] as const)
+        .filter(([key, value]) => !!key && isFreshStoredProductResponse(value, nowMs)),
     ) as Record<string, StoreProductsResponse>,
     errors: Object.fromEntries(
-      Object.entries(stored.errors).filter(
-        ([, value]) => value === null || typeof value === "string",
-      ),
+      Object.entries(stored.errors)
+        .map(([key, value]) => [canonicalStoreProductKey(key), value] as const)
+        .filter(([key, value]) => !!key && (value === null || typeof value === "string")),
     ) as Record<string, string | null>,
   };
 }

@@ -1,5 +1,5 @@
 import type { StoreProduct } from "@cooking/api-client";
-import { parseSmartProductsStored } from "./storage";
+import { isFreshStoredProductResponse, parseSmartProductsStored } from "./storage";
 
 jest.mock("../../lib/storage", () => ({
   ephemeral: {},
@@ -45,4 +45,21 @@ test("keeps only persisted positives with a valid authoritative future expiry", 
     },
     errors: {},
   });
+});
+
+test("accepts stored positives only strictly before their authoritative expiry", () => {
+  const now = Date.parse("2026-08-15T12:00:00.000Z");
+
+  expect(
+    isFreshStoredProductResponse(
+      { products: [product], expires_at: "2026-08-15T12:00:00.001Z" },
+      now,
+    ),
+  ).toBe(true);
+  expect(
+    isFreshStoredProductResponse(
+      { products: [product], expires_at: "2026-08-15T12:00:00.000Z" },
+      now,
+    ),
+  ).toBe(false);
 });
