@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.api import admin, routes_store
 from app.db import repo_store_cache
+from app.services.store_product_service import BatchStoreProductsEntry
 
 
 PRODUCT = {
@@ -16,6 +17,95 @@ PRODUCT = {
     "image": "https://images.example.test/tofu.jpg",
     "url": "https://www.sayweee.com/product/tofu",
 }
+
+CACHED_AT = datetime(2026, 8, 27, tzinfo=timezone.utc)
+
+
+def authenticated_store_app() -> FastAPI:
+    app = FastAPI()
+    app.include_router(routes_store.router)
+    app.dependency_overrides[routes_store.get_session] = lambda: object()
+    app.dependency_overrides[routes_store.get_current_user] = lambda: object()
+    return app
+
+
+@pytest.mark.asyncio
+async def test_retryable_scrape_failure_maps_to_503_with_retry_after(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services.weee_scraper import StoreScrapeError
+
+    async def fail(*args: Any, **kwargs: Any) -> SimpleNamespace:
+        raise StoreScrapeError("selector never became trustworthy")
+
+    monkeypatch.setattr(routes_store, "fetch_store_products_with_metadata", fail)
+    app = authenticated_store_app()
+    with TestClient(app) as client:
+        response = client.get("/store-products", params={"query": "garlic"})
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "3"
+    assert response.json() == {"detail": {"code": "weee_temporarily_unavailable"}}
+
+
+def test_batch_route_returns_fresh_and_missing_in_cleaned_order(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def batch(*args: Any, **kwargs: Any) -> list[BatchStoreProductsEntry]:
+        return [
+            BatchStoreProductsEntry("Garlic", "fresh", [PRODUCT], CACHED_AT),
+            BatchStoreProductsEntry("ginger", "missing", [], None),
+        ]
+
+    monkeypatch.setattr(routes_store, "fetch_cached_store_products_batch", batch)
+    app = authenticated_store_app()
+    with TestClient(app) as client:
+        response = client.post(
+            "/store-products/batch",
+            json={"queries": [" Garlic ", "garlic", "", "ginger"]},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "entries": [
+            {
+                "query": "Garlic",
+                "status": "fresh",
+                "products": [PRODUCT],
+                "expires_at": "2026-08-28T00:00:00Z",
+            },
+            {"query": "ginger", "status": "missing", "products": [], "expires_at": None},
+        ]
+    }
+
+
+def test_batch_route_accepts_more_than_fifty_inputs_without_live_scraping(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    observed_queries: list[str] = []
+
+    async def batch(queries: list[str], *args: Any, **kwargs: Any) -> list[BatchStoreProductsEntry]:
+        observed_queries.extend(queries)
+        return [BatchStoreProductsEntry(query, "missing", [], None) for query in queries]
+
+    async def unexpected_live_scrape(*args: Any, **kwargs: Any) -> SimpleNamespace:
+        raise AssertionError("batch cache lookup must not invoke live scraping")
+
+    monkeypatch.setattr(routes_store, "fetch_cached_store_products_batch", batch)
+    monkeypatch.setattr(routes_store, "fetch_store_products_with_metadata", unexpected_live_scrape)
+    queries = [f"ingredient-{index}" for index in range(75)]
+    app = authenticated_store_app()
+    with TestClient(app) as client:
+        response = client.post("/store-products/batch", json={"queries": queries})
+
+    assert response.status_code == 200
+    assert observed_queries == queries
+    assert response.json() == {
+        "entries": [
+            {"query": query, "status": "missing", "products": [], "expires_at": None}
+            for query in queries
+        ]
+    }
 
 
 @pytest.mark.asyncio
