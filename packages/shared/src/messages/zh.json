@@ -74,6 +74,8 @@
   "cook.attention.needsAttention": "需要处理",
   "cook.timer.remaining": "剩余时间",
   "cook.timer.paused": "计时已暂停",
+  "cook.timer.tray": "正在计时",
+  "cook.timer.dishLabel": "{dish}计时，{time}",
   "cook.action.startTimer": "开始计时",
   "cook.action.pause": "暂停计时",
   "cook.action.resume": "继续计时",

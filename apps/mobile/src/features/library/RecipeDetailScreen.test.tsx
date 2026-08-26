@@ -6,8 +6,14 @@ import { RecipeDetailScreen } from "./RecipeDetailScreen";
 
 const mockGet = jest.fn();
 const mockEditorStatus = jest.fn().mockResolvedValue({ can_manage: false });
+const mockCookingActive = jest.fn().mockResolvedValue(null);
 let mockFocusEffect: (() => void | (() => void)) | undefined;
 const mockApiClient = {
+  cooking: {
+    active: mockCookingActive,
+    create: jest.fn(),
+    addDishes: jest.fn(),
+  },
   recipes: {
     get: mockGet,
     editorStatus: mockEditorStatus,

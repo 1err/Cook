@@ -28,6 +28,7 @@ import { resolveImageUrl } from "../../lib/imageUrl";
 import { useT } from "../../lib/i18n";
 import { colors, radii, spacing, typography } from "../../theme";
 import { haptics } from "../../lib/haptics";
+import { RecipeCookAction } from "./RecipeCookAction";
 import type {
   LibraryStackParamList,
   MainTabsParamList,
@@ -234,6 +235,15 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
           <Text style={styles.description}>{recipe.description}</Text>
         ) : null}
 
+        <RecipeCookAction
+          onEditTutorial={() => navigation.navigate("RecipeEdit", { recipeId: recipe.id, focus: "tutorial" })}
+          onOpenCook={(dishId) => navigation.navigate("Cook", {
+            screen: "CookHome",
+            params: dishId ? { dishId } : undefined,
+          })}
+          recipe={recipe}
+        />
+
         <View style={styles.metaCard}>
           {typeof recipe.total_time_minutes === "number" ? (
             <View style={styles.totalTimeChip}>
@@ -288,14 +298,16 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
         <View style={styles.card}>
           <View style={styles.tutorialHeader}>
             <Text style={styles.sectionTitle}>{t("recipe.steps")}</Text>
-            <Button
-              title={t("recipe.tutorial.edit")}
-              onPress={() => navigation.navigate("RecipeEdit", {
-                recipeId: recipe.id,
-                focus: "tutorial",
-              })}
-              variant="ghost"
-            />
+            {(recipe.steps ?? []).length ? (
+              <Button
+                title={t("recipe.tutorial.edit")}
+                onPress={() => navigation.navigate("RecipeEdit", {
+                  recipeId: recipe.id,
+                  focus: "tutorial",
+                })}
+                variant="ghost"
+              />
+            ) : null}
           </View>
           {(recipe.steps ?? []).length === 0 ? (
             <Text style={styles.subtle}>{t("recipe.tutorial.noSteps")}</Text>

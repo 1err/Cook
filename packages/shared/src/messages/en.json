@@ -74,6 +74,8 @@
   "cook.attention.needsAttention": "Needs attention",
   "cook.timer.remaining": "Time remaining",
   "cook.timer.paused": "Timer paused",
+  "cook.timer.tray": "Active timers",
+  "cook.timer.dishLabel": "{dish} timer, {time}",
   "cook.action.startTimer": "Start timer",
   "cook.action.pause": "Pause timer",
   "cook.action.resume": "Resume timer",

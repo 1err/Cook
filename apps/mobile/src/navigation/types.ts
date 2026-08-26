@@ -21,6 +21,10 @@ export type ShoppingStackParamList = {
   ShoppingList: { weekStart?: string } | undefined;
 };
 
+export type CookStackParamList = {
+  CookHome: { dishId?: string } | undefined;
+};
+
 export type ProfileStackParamList = {
   Profile: undefined;
   Settings: undefined;
@@ -30,6 +34,7 @@ export type ProfileStackParamList = {
 export type MainTabsParamList = {
   Library: NavigatorScreenParams<LibraryStackParamList> | undefined;
   Planner: NavigatorScreenParams<PlannerStackParamList> | undefined;
+  Cook: NavigatorScreenParams<CookStackParamList> | undefined;
   Shopping: NavigatorScreenParams<ShoppingStackParamList> | undefined;
 };
 
