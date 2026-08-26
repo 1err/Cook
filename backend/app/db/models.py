@@ -88,3 +88,132 @@ class CachedStoreProductModel(Base):
         server_default=sa.func.now(),
         onupdate=sa.func.now(),
     )
+
+
+class CookingSessionModel(Base):
+    __tablename__ = "cooking_sessions"
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_cooking_sessions_user_id"),
+        sa.CheckConstraint("version >= 1", name="ck_cooking_sessions_version"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(sa.Integer(), nullable=False, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now(), onupdate=sa.func.now()
+    )
+    dishes: Mapped[list["CookingSessionDishModel"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="CookingSessionDishModel.position",
+    )
+    mutations: Mapped[list["CookingSessionMutationModel"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class CookingSessionDishModel(Base):
+    __tablename__ = "cooking_session_dishes"
+    __table_args__ = (
+        UniqueConstraint("session_id", "position", name="uq_cooking_dishes_session_position"),
+        sa.CheckConstraint("position >= 0", name="ck_cooking_dishes_position"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), sa.ForeignKey("cooking_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    recipe_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    position: Mapped[int] = mapped_column(sa.Integer(), nullable=False)
+    title: Mapped[str] = mapped_column(String(1024), nullable=False)
+    thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ingredients: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False)
+    equipment: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    tips: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+    session: Mapped["CookingSessionModel"] = relationship(back_populates="dishes")
+    steps: Mapped[list["CookingSessionStepModel"]] = relationship(
+        back_populates="dish",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="CookingSessionStepModel.position",
+    )
+
+
+class CookingSessionStepModel(Base):
+    __tablename__ = "cooking_session_steps"
+    __table_args__ = (
+        UniqueConstraint("dish_id", "position", name="uq_cooking_steps_dish_position"),
+        sa.CheckConstraint("position >= 0", name="ck_cooking_steps_position"),
+        sa.CheckConstraint("duration_seconds BETWEEN 1 AND 86400", name="ck_cooking_steps_duration"),
+        sa.CheckConstraint(
+            "state IN ('locked','ready','timer_running','timer_paused','needs_attention','completed','skipped')",
+            name="ck_cooking_steps_state",
+        ),
+        sa.CheckConstraint(
+            "duration_source IN ('stated','estimated','user','fallback')",
+            name="ck_cooking_steps_duration_source",
+        ),
+        sa.CheckConstraint(
+            "attention_type IN ('hands_on','passive')", name="ck_cooking_steps_attention_type"
+        ),
+        sa.CheckConstraint(
+            "action_type IN ('prep','chop','mix','season','sear','simmer','boil','bake','rest','drain','assemble','plate','other')",
+            name="ck_cooking_steps_action_type",
+        ),
+        sa.CheckConstraint("revision >= 1", name="ck_cooking_steps_revision"),
+        sa.CheckConstraint(
+            "paused_remaining_seconds IS NULL OR paused_remaining_seconds >= 0",
+            name="ck_cooking_steps_paused_remaining",
+        ),
+        sa.Index("ix_cooking_steps_timer_ends_at", "timer_ends_at"),
+        sa.Index("ix_cooking_steps_state", "state"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dish_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), sa.ForeignKey("cooking_session_dishes.id", ondelete="CASCADE"), nullable=False
+    )
+    recipe_step_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    position: Mapped[int] = mapped_column(sa.Integer(), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    duration_seconds: Mapped[int] = mapped_column(sa.Integer(), nullable=False)
+    duration_source: Mapped[str] = mapped_column(String(16), nullable=False)
+    attention_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    action_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    state: Mapped[str] = mapped_column(String(24), nullable=False)
+    timer_started_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    timer_ends_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    paused_remaining_seconds: Mapped[int | None] = mapped_column(sa.Integer(), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    notification_owner_device_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    revision: Mapped[int] = mapped_column(sa.Integer(), nullable=False, default=1, server_default="1")
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now(), onupdate=sa.func.now()
+    )
+    dish: Mapped["CookingSessionDishModel"] = relationship(back_populates="steps")
+
+
+class CookingSessionMutationModel(Base):
+    __tablename__ = "cooking_session_mutations"
+    __table_args__ = (sa.Index("ix_cooking_mutations_session_id", "session_id"),)
+
+    mutation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), sa.ForeignKey("cooking_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    device_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    applied_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+    session: Mapped["CookingSessionModel"] = relationship(back_populates="mutations")
