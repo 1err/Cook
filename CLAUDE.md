@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Product summary
 
-A personal cooking assistant. Each user has an account and a private library of recipes. They populate the library by either (a) pasting a written transcript or (b) submitting a YouTube video link (captions only — there is no audio/Whisper path). Both imports first produce an editable draft; extraction preserves the source procedure while adding duration, provenance, attention, and action metadata to each tutorial step. Web and mobile import review let the user correct that metadata before explicitly saving. Recipe detail then renders transparent timing labels plus an existing step image or a shared action pictogram, and offers a focused tutorial editor. There is no Cook/session/timer/progress surface yet.
+A personal cooking assistant. Each user has an account and a private library of recipes. They populate the library by either (a) pasting a written transcript or (b) submitting a YouTube video link (captions only — there is no audio/Whisper path). Both imports first produce an editable draft; extraction preserves the source procedure while adding duration, provenance, attention, and action metadata to each tutorial step. Web and mobile import review let the user correct that metadata before explicitly saving. Recipe detail then renders transparent timing labels plus an existing step image or a shared action pictogram, and offers a focused tutorial editor. The backend now owns one normalized active cooking session per account, including immutable dish/step snapshots, explicit passive timers, revisions, and idempotent mutations; the web/mobile Cook workspaces are the next checkpoint and are not yet exposed in navigation.
 
 Users can also assign recipes to days of the week in the planner (breakfast / lunch / dinner slots). The centered desktop Planner keeps the complete week in one viewport; each populated meal slot adaptively fills one to three compact recipe rows and scrolls in place for a fourth or later recipe. Its saved-recipe rail has no footer action (the empty-state import guidance remains). The desktop recipe picker uses a three-column, image-rich card grid with a visible Add action for each result. The shopping list page aggregates ingredients across the planned week inside the same restrained 1120px shell and title rhythm as Library, and can produce a "smart" grouped grocery list via an LLM call plus suggested store products from Weee backed by a multi-layer cache.
 
@@ -170,7 +170,7 @@ python run.py                  # uvicorn on :8000 with reload
 
 `DATABASE_URL` must be `postgresql+asyncpg://...`; startup hard-fails on SQLite or missing URL (`backend/app/core/config.py::Settings.require_postgres`). Special characters in the password (notably `%`) must be URL-encoded.
 
-Alembic head is `20260825_step_meta` (chain tail: `20260416_store_cache` → `20260510_user_lib` → `20260514_recipe_tut` → `20260825_step_meta`; see `backend/alembic/versions/`). The head is a data migration over the existing JSON-in-Text `recipes.steps` column; it adds no SQL column. New revisions: `alembic revision -m "msg"` then edit the generated file.
+Alembic head is `20260827_cook_sess` (chain tail: `20260510_user_lib` → `20260514_recipe_tut` → `20260825_step_meta` → `20260827_cook_sess`; see `backend/alembic/versions/`). `20260825_step_meta` canonically backfills existing JSON tutorial steps; `20260827_cook_sess` adds normalized active-session, dish-snapshot, step-state, and mutation-idempotency tables. New revisions: `alembic revision -m "msg"` then edit the generated file.
 
 ### Docker
 
@@ -220,6 +220,13 @@ Mounted in `backend/app/main.py`. All routes except `/auth/{register,login,logou
 | POST | `/users/{user_id}/recipes/{recipe_id}/copy` | Idempotent clone into the caller's library. Sets `catalog_source_recipe_id` on the new row. |
 | GET | `/meal-plan?start=&end=` | Inclusive YYYY-MM-DD range |
 | PUT | `/meal-plan/{date}` | Body accepts `{breakfast,lunch,dinner: string[]}` **or** legacy `{recipe_ids: string[]}` (normalized into dinner slot) |
+| GET | `/cooking-session/active` | Current user's canonical active snapshot or `null`; persists elapsed running timers as `needs_attention` without completing them |
+| POST | `/cooking-session` | Body `{recipe_ids}`. Snapshots owned recipes; 409 `active_session_exists` when the account already has a session |
+| POST | `/cooking-session/{id}/dishes` | Add owned recipe snapshots to the active session |
+| DELETE | `/cooking-session/{id}/dishes/{dish_id}` | Remove a dish; removing the final dish discards the session |
+| POST | `/cooking-session/{id}/steps/{step_id}/actions` | Idempotent revision-checked transition: start/pause/resume/extend timer, complete, skip, reopen, or take alert ownership |
+| POST | `/cooking-session/{id}/finish` | Deletes an all-resolved session; unresolved work returns 409 `session_not_complete` |
+| DELETE | `/cooking-session/{id}` | Explicitly discard the active session |
 | GET | `/shopping-list?start=&end=` | Aggregates ingredients across week's meal plans |
 | POST | `/shopping-list/refine` | LLM grocery list. Stateless. Body `{items: [{name,quantity}]}`. Returns `{remove: [], likely_pantry: [], purchase_items: [...]}` — `remove`/`likely_pantry` are always empty (legacy contract; staples come back inside `purchase_items` with `category: "Pantry & Dry Goods"`) |
 | GET | `/store-products?query=` | Omitted `store` returns `{products, expires_at}`; explicit legacy `store=weee` returns `StoreProduct[]`; Amazon/unknown return 400 before lookup. In-memory L1 → Postgres L2 → Playwright scrape |
@@ -239,6 +246,12 @@ Admin endpoints are gated by `is_admin()` in `backend/app/core/admin.py`, which 
 `backend/app/api/auth.py::get_current_user` accepts **either** an `Authorization: Bearer` header (mobile) **or** the `access_token` HttpOnly cookie (web). `/auth/login` and `/auth/register` set the cookie *and* return `access_token` in the body so mobile can stash it in `expo-secure-store` (`apps/mobile/src/lib/auth.tsx`). New authenticated endpoints work for both clients automatically.
 
 For prod cross-origin (web on `chef-world.com`, API on `api.chef-world.com`), the cookie only survives if `COOKIE_SAMESITE=none` and `COOKIE_SECURE=true` — both are set in the live ECS task def. Locally, defaults `lax` / `false` are correct.
+
+### Cooking-session domain and concurrency
+
+`cooking_sessions.user_id` is unique, so an account has at most one active session. `cooking_session_dishes` and `cooking_session_steps` copy recipe title, image, ingredients, tutorial text, timing provenance, attention type, action type, and existing step image. They deliberately retain `recipe_id` only as provenance rather than a foreign key: later recipe edits/deletion cannot alter an in-progress cook. Finishing or discarding deletes the normalized session and all children; V1 keeps no history.
+
+Step mutations lock the user-scoped session row and require the step's current `revision`. Every request carries a random mutation UUID and device ID; `cooking_session_mutations` makes retries idempotent. Two devices can safely advance different dishes because revisions live on steps. A stale mutation returns a stable 409 `detail.{code,message}`; ownership misses use 404. Starting/resuming a passive timer records an absolute `timer_ends_at` plus alert owner. Reads turn elapsed running timers into `needs_attention`; they never auto-complete or advance the dish. Completing/skipping explicitly advances the earliest locked step. Time-weighted progress and deterministic attention ordering live in `packages/shared/src/cookingSession.ts` for both clients.
 
 ### Where LLM logic lives
 
@@ -404,7 +417,7 @@ Both backends share the `json.get/set` helpers for typed JSON read/write. Don't 
 
 - **No `load_dotenv` in modules.** Only `app/main.py` calls it. Modules read settings via `app.core.config.settings`.
 - **OpenAI client construction** is centralized in `app/core/llm.py::get_openai_client()` — don't re-implement the env-key check + `AsyncOpenAI(...)` constructor anywhere else.
-- **Layering:** routers (`app/api/*`) stay thin; orchestration in `app/services/*` (real services like `shopping_service`, `storage_service`, `store_scraper` — no thin re-export shims); SQL in `app/db/repo_*.py`; Pydantic models in `app/models.py`; SQLAlchemy in `app/db/models.py`. Don’t import session/engine into services or models. Reusable Pydantic types shared by routers live in `app/api/_types.py`.
+- **Layering:** routers (`app/api/*`) stay thin; orchestration in `app/services/*` (real services like `shopping_service`, `storage_service`, `store_scraper` — no thin re-export shims); SQL in `app/db/repo_*.py`; general Pydantic models in `app/models.py`; the cohesive cooking-session contracts/state machine live in `app/cooking.py`; SQLAlchemy lives in `app/db/models.py`. Don’t import session/engine into services or models. Reusable Pydantic types shared by routers live in `app/api/_types.py`.
 - **All recipe / meal-plan queries scope by `user_id`** (multi-tenant). Repos enforce this — never query `RecipeModel`/`MealPlanModel` directly without it.
 - **Recipe IDs are app-generated strings** (`uuid.uuid4().hex` from extract or random UUID from copy); user IDs are real `UUID(as_uuid=True)`.
 - **Frontend pages use plain CSS classes** from `apps/web/app/globals.css` (Material/Stitch-inspired palette + Material Symbols icons), not Tailwind. Some inline `style={{}}` objects are sprinkled in; Tailwind utility classes are **not** configured.
