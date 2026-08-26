@@ -23,6 +23,8 @@ SCRAPER_OPERATION_TIMEOUT_SECONDS = 20.0
 SCRAPER_CLEANUP_TIMEOUT_SECONDS = 5.0
 SCRAPER_ATTEMPT_TIMEOUT_SECONDS = 35.0
 SCRAPER_TOTAL_TIMEOUT_SECONDS = 110.0
+SCRAPER_TOTAL_CLEANUP_TIMEOUT_SECONDS = 15.0
+SCRAPER_DETACHED_DRAIN_TIMEOUT_SECONDS = 5.0
 _PAGE_STATE_POLLS = 15
 _PAGE_STATE_POLL_MS = 500
 
@@ -32,6 +34,7 @@ WEEE_SEARCH_URL = WEEE_BASE_URL + "/en/search?keyword={query}"
 _browser_lock = asyncio.Lock()
 _playwright_inst: Any = None
 _shared_browser: Any = None
+_detached_tasks: set[asyncio.Task[Any]] = set()
 
 
 class StoreScrapeError(RuntimeError):
@@ -39,8 +42,20 @@ class StoreScrapeError(RuntimeError):
 
 
 def _consume_background_task(task: asyncio.Task[Any]) -> None:
+    _detached_tasks.discard(task)
     if not task.cancelled():
-        task.exception()
+        try:
+            task.exception()
+        except asyncio.CancelledError:
+            pass
+
+
+def _track_detached_task(task: asyncio.Task[Any]) -> None:
+    if task.done():
+        _consume_background_task(task)
+        return
+    _detached_tasks.add(task)
+    task.add_done_callback(_consume_background_task)
 
 
 async def _bounded_await(awaitable: Any, timeout_seconds: float, label: str) -> Any:
@@ -54,12 +69,14 @@ async def _bounded_await(awaitable: Any, timeout_seconds: float, label: str) -> 
         done, _ = await asyncio.wait({task}, timeout=timeout_seconds)
     except asyncio.CancelledError:
         task.cancel()
-        task.add_done_callback(_consume_background_task)
+        _track_detached_task(task)
+        await asyncio.sleep(0)
         raise
     if task in done:
         return task.result()
     task.cancel()
-    task.add_done_callback(_consume_background_task)
+    _track_detached_task(task)
+    await asyncio.sleep(0)
     raise StoreScrapeError(f"Weee {label} timed out.")
 
 
@@ -223,12 +240,22 @@ def _browser_is_connected(browser: Any) -> bool:
         return False
 
 
-async def _close_browser_resources(browser: Any, playwright: Any) -> None:
+async def _close_browser_resources(
+    browser: Any,
+    playwright: Any,
+    *,
+    deadline: float | None = None,
+) -> None:
+    def cleanup_timeout() -> float:
+        if deadline is None:
+            return SCRAPER_CLEANUP_TIMEOUT_SECONDS
+        return min(SCRAPER_CLEANUP_TIMEOUT_SECONDS, deadline - time.monotonic())
+
     if browser is not None:
         try:
             await _bounded_await(
                 browser.close(),
-                SCRAPER_CLEANUP_TIMEOUT_SECONDS,
+                cleanup_timeout(),
                 "browser cleanup",
             )
         except asyncio.CancelledError:
@@ -239,7 +266,7 @@ async def _close_browser_resources(browser: Any, playwright: Any) -> None:
         try:
             await _bounded_await(
                 playwright.stop(),
-                SCRAPER_CLEANUP_TIMEOUT_SECONDS,
+                cleanup_timeout(),
                 "Playwright cleanup",
             )
         except asyncio.CancelledError:
@@ -248,20 +275,71 @@ async def _close_browser_resources(browser: Any, playwright: Any) -> None:
             logger.warning("weee_scraper: Playwright cleanup failed: %s", type(exc).__name__)
 
 
-async def _invalidate_shared_browser(observed_browser: Any | None = None) -> None:
+async def _invalidate_shared_browser(
+    observed_browser: Any | None = None,
+    *,
+    deadline: float | None = None,
+) -> None:
     global _shared_browser, _playwright_inst
-    async with _browser_lock:
+    lock_timeout = SCRAPER_CLEANUP_TIMEOUT_SECONDS
+    if deadline is not None:
+        lock_timeout = min(lock_timeout, deadline - time.monotonic())
+    await _bounded_await(
+        _browser_lock.acquire(),
+        lock_timeout,
+        "browser resource lock",
+    )
+    try:
         if observed_browser is not None and _shared_browser is not observed_browser:
             return
         browser, playwright = _shared_browser, _playwright_inst
         _shared_browser = None
         _playwright_inst = None
-    await _close_browser_resources(browser, playwright)
+    finally:
+        _browser_lock.release()
+    await _close_browser_resources(browser, playwright, deadline=deadline)
+
+
+async def _drain_detached_tasks() -> None:
+    tasks = {task for task in _detached_tasks if not task.done()}
+    if not tasks:
+        return
+    for task in tasks:
+        task.cancel()
+    done, _ = await asyncio.wait(
+        tasks,
+        timeout=SCRAPER_DETACHED_DRAIN_TIMEOUT_SECONDS,
+    )
+    for task in done:
+        _consume_background_task(task)
+    if tasks - done:
+        logger.error(
+            "weee_scraper: %s detached Playwright operation(s) outlived shutdown deadline",
+            len(tasks - done),
+        )
 
 
 async def shutdown_weee_scraper() -> None:
     """Close the process-shared browser resources; safe to call repeatedly."""
-    await _invalidate_shared_browser()
+    errors: list[BaseException] = []
+    caller_cancelled = False
+    for phase in (_invalidate_shared_browser, _drain_detached_tasks):
+        try:
+            await phase()
+        except asyncio.CancelledError as exc:
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                caller_cancelled = True
+            else:
+                errors.append(exc)
+        except BaseException as exc:
+            errors.append(exc)
+    if caller_cancelled:
+        raise asyncio.CancelledError
+    if len(errors) == 1:
+        raise errors[0]
+    if errors:
+        raise BaseExceptionGroup("Weee scraper shutdown failures", errors)
 
 
 async def _ensure_shared_browser() -> Any:
@@ -315,35 +393,72 @@ def _is_weee_search_route(url: str, language: Language, expected_query: str) -> 
     is_official_host = hostname in {"sayweee.com", "weee.com"} or hostname.endswith(
         (".sayweee.com", ".weee.com")
     )
+    expected_path = f"/{language}/search"
+    keyword_values = [value for key, value in query_pairs if key == "keyword"]
     return (
         is_official_host
-        and parsed.path == f"/{language}/search"
-        and query_pairs == [("keyword", expected_query)]
+        and parsed.path in {expected_path, f"{expected_path}/"}
+        and keyword_values == [expected_query]
     )
+
+
+def _weee_search_scope_javascript() -> str:
+    """Return the one DOM scope shared by classification and extraction."""
+    return r"""
+      const visible = (element) => Boolean(element) && !!(
+        element.offsetWidth || element.offsetHeight || element.getClientRects().length
+      );
+      const excludedRegionSelector = [
+        '[data-testid*="recommend" i]', '[data-testid*="carousel" i]',
+        '[data-section*="recommend" i]', '[data-section*="carousel" i]',
+        '[id*="recommend" i]', '[id*="carousel" i]',
+        '[aria-label*="recommend" i]', '[aria-label*="carousel" i]',
+        '[class*="recommend" i]', '[class*="carousel" i]',
+        '[class*="similar" i]', '[class*="recently" i]'
+      ].join(',');
+      const productCardSelector = [
+        '[data-testid*="product-card" i]',
+        '[data-testid*="search-product" i]',
+        '[data-testid*="search-result" i]',
+        '[class*="product-card" i]', '[class*="productCard"]',
+        '[class*="search-result" i]',
+        '[class*="SearchResult"]'
+      ].join(',');
+      const seenAnchors = new Set();
+      const scopedProducts = [];
+      for (const card of document.querySelectorAll(productCardSelector)) {
+        if (!visible(card) || card.closest(excludedRegionSelector)) continue;
+        const anchors = card.matches('a[href*="/product/"]')
+          ? [card, ...card.querySelectorAll('a[href*="/product/"]')]
+          : card.querySelectorAll('a[href*="/product/"]');
+        for (const anchor of anchors) {
+          if (!visible(anchor) || seenAnchors.has(anchor)) continue;
+          seenAnchors.add(anchor);
+          scopedProducts.push({anchor, card});
+        }
+      }
+    """
 
 
 async def _classify_search_page(page: Any) -> PageOutcome:
     """Classify visible signals, with challenge and conflicts always untrusted."""
-    result = await page.evaluate(
-        """
+    script = """
         () => {
-          const visible = (element) => Boolean(element) && !!(element.offsetWidth || element.offsetHeight || element.getClientRects().length);
           const text = (document.body?.innerText || "").replace(/\\s+/g, " ").toLowerCase();
           if (/captcha|verify you are human|access denied|unusual traffic|安全验证/.test(text)) return "challenge";
-
-          const productAnchors = Array.from(document.querySelectorAll('[data-testid*="product"] a[href*="/product/"], a[href*="/product/"]'));
-          if (productAnchors.some(visible)) return "results";
-
+          __WEEE_SEARCH_SCOPE__
           const noResultsSelector = [
             '[data-testid*="no-result"]', '[data-testid*="no_result"]',
             '[data-testid*="search-empty"]', '[class*="no-result"]',
             '[class*="empty-result"]', '[class*="search-empty"]'
           ].some((selector) => Array.from(document.querySelectorAll(selector)).some(visible));
+          if (scopedProducts.length && noResultsSelector) return "pending";
+          if (scopedProducts.length) return "results";
           if (noResultsSelector) return "no_results";
           return "pending";
         }
-        """
-    )
+        """.replace("__WEEE_SEARCH_SCOPE__", _weee_search_scope_javascript())
+    result = await page.evaluate(script)
     if result in ("results", "no_results", "challenge", "pending"):
         return result
     return "pending"
@@ -361,10 +476,9 @@ async def _wait_for_search_outcome(page: Any) -> PageOutcome:
 
 def _weee_extract_script() -> str:
     return """
-    () => Array.from(document.querySelectorAll('[data-testid*="product"] a[href*="/product/"], a[href*="/product/"]'))
-      .filter((anchor) => !!(anchor.offsetWidth || anchor.offsetHeight || anchor.getClientRects().length))
-      .map((anchor) => {
-        const card = anchor.closest('article, li, [data-testid], .product-card, .productCard, .search-result-card, [class*="Product"], [class*="product"], section') || anchor.parentElement || anchor;
+    () => {
+      __WEEE_SEARCH_SCOPE__
+      return scopedProducts.map(({anchor, card}) => {
         const image = anchor.querySelector('img') || card?.querySelector('img');
         const title = card?.querySelector('h2, h3, h4, [class*="ProductTitle"], [class*="product-title"], [class*="ProductName"], [class*="productName"]');
         return {
@@ -378,7 +492,8 @@ def _weee_extract_script() -> str:
         };
       })
       .filter((item) => /\\/product\\//i.test(item.href) && !/^javascript:/i.test(item.href));
-    """
+    }
+    """.replace("__WEEE_SEARCH_SCOPE__", _weee_search_scope_javascript())
 
 
 async def _extract_weee_search_products(page: Any, language: Language) -> list[Any]:
@@ -393,6 +508,7 @@ async def _scrape_once(
     language: Language,
     attempt_number: int,
     deadline: float,
+    cleanup_deadline: float,
 ) -> list[dict[str, str]]:
     browser: Any = None
     context: Any = None
@@ -468,7 +584,7 @@ async def _scrape_once(
         raise
     except Exception as error:
         if browser is not None and (not _browser_is_connected(browser) or _looks_like_browser_closure(error)):
-            await _invalidate_shared_browser(browser)
+            await _invalidate_shared_browser(browser, deadline=cleanup_deadline)
         raise
     finally:
         cleanup_failed = False
@@ -476,7 +592,10 @@ async def _scrape_once(
             try:
                 await _bounded_await(
                     page.close(),
-                    SCRAPER_CLEANUP_TIMEOUT_SECONDS,
+                    min(
+                        SCRAPER_CLEANUP_TIMEOUT_SECONDS,
+                        cleanup_deadline - time.monotonic(),
+                    ),
                     "page cleanup",
                 )
             except asyncio.CancelledError:
@@ -487,7 +606,10 @@ async def _scrape_once(
             try:
                 await _bounded_await(
                     context.close(),
-                    SCRAPER_CLEANUP_TIMEOUT_SECONDS,
+                    min(
+                        SCRAPER_CLEANUP_TIMEOUT_SECONDS,
+                        cleanup_deadline - time.monotonic(),
+                    ),
                     "context cleanup",
                 )
             except asyncio.CancelledError:
@@ -495,7 +617,7 @@ async def _scrape_once(
             except Exception:
                 cleanup_failed = True
         if cleanup_failed and browser is not None:
-            await _invalidate_shared_browser(browser)
+            await _invalidate_shared_browser(browser, deadline=cleanup_deadline)
 
 
 def _log_attempt(
@@ -519,6 +641,7 @@ def _log_attempt(
 async def scrape_weee_products(query_text: str, language: Language) -> list[dict[str, str]]:
     last_error: BaseException | None = None
     total_deadline = time.monotonic() + SCRAPER_TOTAL_TIMEOUT_SECONDS
+    cleanup_deadline = total_deadline + SCRAPER_TOTAL_CLEANUP_TIMEOUT_SECONDS
     for attempt_number in range(1, WEEE_MAX_ATTEMPTS + 1):
         attempt_deadline = min(
             total_deadline,
@@ -530,6 +653,7 @@ async def scrape_weee_products(query_text: str, language: Language) -> list[dict
                 language,
                 attempt_number,
                 attempt_deadline,
+                cleanup_deadline,
             )
             _log_attempt(query_text, language, attempt_number, "empty" if not products else "success")
             return products

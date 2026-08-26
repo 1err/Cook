@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 WarmStatus = Literal["skipped", "cache_hit", "cache_miss", "empty", "failed"]
 ProgressCallback = Callable[[int, int, str, WarmStatus], None | Awaitable[None]]
+WARMER_SHUTDOWN_TIMEOUT_SECONDS = 10.0
 
 _scheduler: AsyncIOScheduler | None = None
 _warmer_lock = asyncio.Lock()
@@ -187,6 +188,18 @@ def _start_tracked_cache_warmer(
 
     def clear(completed: asyncio.Task[dict[str, int]]) -> None:
         global _warmer_task
+        exception: BaseException | None = None
+        if not completed.cancelled():
+            try:
+                exception = completed.exception()
+            except asyncio.CancelledError:
+                exception = None
+        if exception is not None:
+            logger.error(
+                "tracked cache warmer task failed",
+                exc_info=(type(exception), exception, exception.__traceback__),
+                extra={"event": "cache_warmer_task_failed"},
+            )
         if _warmer_task is completed:
             _warmer_task = None
 
@@ -227,14 +240,26 @@ async def shutdown_cache_warmer() -> None:
         return
     if not task.done():
         task.cancel()
+    caller_cancelled = False
     try:
-        await task
+        await asyncio.wait_for(
+            asyncio.shield(task),
+            timeout=WARMER_SHUTDOWN_TIMEOUT_SECONDS,
+        )
     except asyncio.CancelledError:
-        pass
+        current = asyncio.current_task()
+        caller_cancelled = bool(current is not None and current.cancelling())
+    except TimeoutError:
+        logger.error(
+            "cache warmer did not stop before shutdown deadline",
+            extra={"event": "cache_warmer_shutdown_timeout"},
+        )
     finally:
-        if _warmer_task is task:
+        if task.done() and _warmer_task is task:
             _warmer_task = None
         _warmer_status["running"] = False
+    if caller_cancelled:
+        raise asyncio.CancelledError
 
 
 def start_scheduler() -> AsyncIOScheduler:

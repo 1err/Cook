@@ -46,16 +46,60 @@ export function canonicalIngredientKey(value: string): string {
   return cleanIngredientQuery(value).toLocaleLowerCase();
 }
 
+function normalizeProductText(value: string): string {
+  return value.trim().replace(/\s+/gu, " ");
+}
+
+function normalizeWeeeProductUrl(value: string): string | null {
+  const cleaned = normalizeProductText(value);
+  const authority = /^https:\/\/([^/?#]*)/iu.exec(cleaned)?.[1];
+  if (!authority || authority.includes("@") || !isSafeWeeeProductUrl(cleaned)) {
+    return null;
+  }
+  try {
+    const url = new URL(cleaned);
+    url.hostname = url.hostname.toLocaleLowerCase();
+    url.pathname = url.pathname.replace(/\/{2,}/gu, "/");
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+export function normalizeStoreProducts(value: unknown): StoreProduct[] {
+  if (!Array.isArray(value)) return [];
+  const products: StoreProduct[] = [];
+  const seenNames = new Set<string>();
+  const seenUrls = new Set<string>();
+  for (const row of value) {
+    if (!row || typeof row !== "object") continue;
+    const maybe = row as Partial<StoreProduct>;
+    if (
+      typeof maybe.name !== "string" ||
+      typeof maybe.price !== "string" ||
+      typeof maybe.image !== "string" ||
+      typeof maybe.url !== "string"
+    ) {
+      continue;
+    }
+    const name = normalizeProductText(maybe.name);
+    const price = normalizeProductText(maybe.price);
+    const image = normalizeProductText(maybe.image);
+    const url = normalizeWeeeProductUrl(maybe.url);
+    if (name.length < 1 || name.length > 120 || url === null) continue;
+    const nameKey = name.toLocaleLowerCase();
+    const urlKey = url.toLocaleLowerCase();
+    if (seenNames.has(nameKey) || seenUrls.has(urlKey)) continue;
+    seenNames.add(nameKey);
+    seenUrls.add(urlKey);
+    products.push({ name, price, image, url });
+    if (products.length === 3) break;
+  }
+  return products;
+}
+
 export function isStoreProduct(row: unknown): row is StoreProduct {
-  if (!row || typeof row !== "object") return false;
-  const maybe = row as Partial<StoreProduct>;
-  return (
-    typeof maybe.name === "string" &&
-    typeof maybe.price === "string" &&
-    typeof maybe.image === "string" &&
-    typeof maybe.url === "string" &&
-    isSafeWeeeProductUrl(maybe.url)
-  );
+  return normalizeStoreProducts([row]).length === 1;
 }
 
 function parseAuthoritativeExpiry(value: unknown, nowMs: number): string | null {
@@ -79,7 +123,7 @@ export function parseStoreProductsResponse(
   const response = value as Partial<StoreProductsResponse>;
   if (!Array.isArray(response.products)) throw new Error("Invalid product response");
   if (!("expires_at" in response)) throw new Error("Invalid product expiry");
-  const products = response.products.filter(isStoreProduct).slice(0, 3);
+  const products = normalizeStoreProducts(response.products);
   if (!products.length) {
     if (response.products.length > 0) throw new Error("Invalid product response");
     if (response.products.length === 0 && response.expires_at !== null) {
@@ -101,8 +145,15 @@ export function createProductLookupCoordinator({
   const interactiveQueue: QueueEntry[] = [];
   const bulkQueue: QueueEntry[] = [];
   const pendingByIdentity = new Map<string, QueueEntry>();
-  const preferredQueryByIdentity = new Map<string, string>();
+  const preferredQueryByKey = new Map<string, string>();
+  let preferredQueryGeneration: number | null = null;
   let active: 0 | 1 = 0;
+
+  function rotatePreferredQueries(generation: number) {
+    if (preferredQueryGeneration === generation) return;
+    preferredQueryByKey.clear();
+    preferredQueryGeneration = generation;
+  }
 
   function publish(entry: QueueEntry, state: ProductLookupState) {
     if (shouldPublish(entry.generation)) {
@@ -201,11 +252,11 @@ export function createProductLookupCoordinator({
     key: string,
     generation: number,
   ): string {
-    const id = `${generation}:${key}`;
-    const existing = preferredQueryByIdentity.get(id);
+    rotatePreferredQueries(generation);
+    const existing = preferredQueryByKey.get(key);
     if (existing) return existing;
     const query = cleanIngredientQuery(queryInput);
-    preferredQueryByIdentity.set(id, query);
+    preferredQueryByKey.set(key, query);
     return query;
   }
 
@@ -213,14 +264,15 @@ export function createProductLookupCoordinator({
     queryInput: Record<string, unknown>,
     generation: number,
   ) {
+    if (!shouldPublish(generation)) return;
+    rotatePreferredQueries(generation);
     for (const [rawKey, rawQuery] of Object.entries(queryInput)) {
       if (typeof rawQuery !== "string") continue;
       const key = canonicalIngredientKey(rawKey);
       const query = cleanIngredientQuery(rawQuery);
       if (!key || !query || canonicalIngredientKey(query) !== key) continue;
-      const id = `${generation}:${key}`;
-      if (!preferredQueryByIdentity.has(id)) {
-        preferredQueryByIdentity.set(id, query);
+      if (!preferredQueryByKey.has(key)) {
+        preferredQueryByKey.set(key, query);
       }
     }
   }
@@ -264,8 +316,7 @@ export function createProductLookupCoordinator({
       if (batchEntry.status === "fresh") {
         if (
           !Array.isArray(batchEntry.products) ||
-          batchEntry.products.length === 0 ||
-          !batchEntry.products.every(isStoreProduct)
+          batchEntry.products.length === 0
         ) {
           throw new Error("Invalid batch product response");
         }
@@ -304,6 +355,7 @@ export function createProductLookupCoordinator({
     if (!key || !shouldPublish(generation)) {
       return Promise.resolve({ status: "idle" });
     }
+    rotatePreferredQueries(generation);
 
     const id = `${generation}:${key}`;
     const existing = pendingByIdentity.get(id);
@@ -323,6 +375,7 @@ export function createProductLookupCoordinator({
     generation: number,
   ): Promise<ProductLookupState>[] {
     if (!shouldPublish(generation)) return [];
+    rotatePreferredQueries(generation);
     const requests: Promise<ProductLookupState>[] = [];
     const newEntries: QueueEntry[] = [];
     const seen = new Set<string>();
@@ -388,7 +441,12 @@ export function createProductLookupCoordinator({
     return requests;
   }
 
-  return { request, requestBulk, seedQueries };
+  return {
+    request,
+    requestBulk,
+    seedQueries,
+    preferredQueryCount: () => preferredQueryByKey.size,
+  };
 }
 
 function terminalPriority(state: ProductLookupState): number {
@@ -405,10 +463,10 @@ function sanitizeTerminalState(
   if (!value || typeof value !== "object") return null;
   const state = value as ProductLookupState;
   if (state.status === "success") {
+    const products = normalizeStoreProducts(state.products);
     if (
       !Array.isArray(state.products) ||
-      !state.products.length ||
-      !state.products.every(isStoreProduct) ||
+      !products.length ||
       typeof state.expiresAt !== "string"
     ) {
       return null;
@@ -418,7 +476,7 @@ function sanitizeTerminalState(
       if (expiresAt === null) return null;
       return {
         status: "success",
-        products: state.products.slice(0, 3),
+        products,
         expiresAt,
       };
     } catch {

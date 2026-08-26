@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
+import math
 import re
 import time
 from typing import Any, Literal
@@ -31,6 +32,7 @@ LIVE_OPERATION_TIMEOUT_SECONDS = 125.0
 LIVE_QUEUE_MAX_WAIT_SECONDS = 180.0
 LIVE_FRONT_DOOR_TIMEOUT_SECONDS = 240.0
 LIVE_WORKER_SHUTDOWN_TIMEOUT_SECONDS = 10.0
+LIVE_DETACHED_DRAIN_TIMEOUT_SECONDS = 10.0
 MAX_INTERACTIVE_BURST = 8
 BACKGROUND_MAX_WAIT_SECONDS = 30.0
 CACHE: OrderedDict[CacheKey, dict[str, Any]] = OrderedDict()
@@ -76,8 +78,20 @@ def prepare_store_query(query: str) -> PreparedStoreQuery | None:
 def _prune_memory_cache(now: float) -> None:
     for key, entry in list(CACHE.items()):
         timestamp = entry.get("timestamp")
-        if not isinstance(timestamp, (int, float)) or now - timestamp >= CACHE_TTL_SECONDS:
+        if not _is_fresh_memory_timestamp(timestamp, now):
             CACHE.pop(key, None)
+
+
+def _is_fresh_memory_timestamp(timestamp: object, now: float) -> bool:
+    if (
+        isinstance(timestamp, bool)
+        or not isinstance(timestamp, (int, float))
+        or not math.isfinite(timestamp)
+        or not math.isfinite(now)
+    ):
+        return False
+    age_seconds = now - timestamp
+    return math.isfinite(age_seconds) and 0 <= age_seconds < CACHE_TTL_SECONDS
 
 
 def _memory_cache_get_with_metadata(cache_key: CacheKey) -> StoreProductsResult | None:
@@ -88,7 +102,7 @@ def _memory_cache_get_with_metadata(cache_key: CacheKey) -> StoreProductsResult 
         return None
     timestamp = entry.get("timestamp")
     data = entry.get("data")
-    if not isinstance(timestamp, (int, float)) or now - timestamp >= CACHE_TTL_SECONDS:
+    if not _is_fresh_memory_timestamp(timestamp, now):
         CACHE.pop(cache_key, None)
         return None
     products = normalize_store_products(data)
@@ -116,9 +130,13 @@ def _memory_cache_set(
     if not normalized:
         CACHE.pop(cache_key, None)
         return
+    effective_timestamp = now if timestamp is None else timestamp
+    if not _is_fresh_memory_timestamp(effective_timestamp, now):
+        CACHE.pop(cache_key, None)
+        return
     CACHE[cache_key] = {
         "data": normalized,
-        "timestamp": now if timestamp is None else timestamp,
+        "timestamp": effective_timestamp,
     }
     CACHE.move_to_end(cache_key)
     while len(CACHE) > CACHE_MAX_ENTRIES:
@@ -156,12 +174,34 @@ def _log_event(
 
 
 @dataclass
+class _LiveJobLease:
+    generation: int
+    valid: bool = True
+    reason: str = ""
+
+    def invalidate(self, reason: str) -> None:
+        self.valid = False
+        self.reason = reason
+
+    def ensure_valid(self) -> None:
+        if not self.valid:
+            raise weee_scraper.StoreScrapeError(
+                f"Store product live job expired: {self.reason or 'lease invalidated'}."
+            )
+
+
+@dataclass
 class _QueuedJob:
     key: CacheKey
-    operation: Callable[[float], Awaitable[StoreProductsResult]]
+    operation: Callable[
+        [float, LookupPriority, _LiveJobLease],
+        Awaitable[StoreProductsResult],
+    ]
     future: asyncio.Future[StoreProductsResult]
     priority: LookupPriority
     queued_at: float
+    lease: _LiveJobLease
+    waiter_count: int = 0
     started: bool = False
 
 
@@ -174,18 +214,62 @@ class _LiveLookupCoordinator:
         self._interactive: deque[_QueuedJob] = deque()
         self._background: deque[_QueuedJob] = deque()
         self._worker: asyncio.Task[None] | None = None
+        self._detached_operations: set[asyncio.Task[StoreProductsResult]] = set()
         self._accepting = True
         self._interactive_streak = 0
+        self._next_generation = 1
 
     @staticmethod
     def _consume_exception(future: asyncio.Future[StoreProductsResult]) -> None:
         if not future.cancelled():
             future.exception()
 
-    @classmethod
+    def _consume_operation(
+        self,
+        task: asyncio.Task[StoreProductsResult],
+    ) -> None:
+        self._detached_operations.discard(task)
+        if not task.cancelled():
+            try:
+                task.exception()
+            except asyncio.CancelledError:
+                pass
+
+    def _track_detached_operation(
+        self,
+        task: asyncio.Task[StoreProductsResult],
+    ) -> None:
+        if task.done():
+            self._consume_operation(task)
+            return
+        self._detached_operations.add(task)
+        task.add_done_callback(self._consume_operation)
+
+    async def _drain_detached_operations(self) -> None:
+        tasks = {task for task in self._detached_operations if not task.done()}
+        if not tasks:
+            return
+        for task in tasks:
+            task.cancel()
+        done, _ = await asyncio.wait(
+            tasks,
+            timeout=LIVE_DETACHED_DRAIN_TIMEOUT_SECONDS,
+        )
+        for task in done:
+            self._consume_operation(task)
+        if tasks - done:
+            logger.error(
+                "store product detached operation(s) outlived shutdown deadline",
+                extra={
+                    "event": "store_products_detached_shutdown_timeout",
+                    "operation_count": len(tasks - done),
+                },
+            )
+
     async def _bounded_operation(
-        cls,
+        self,
         operation: Awaitable[StoreProductsResult],
+        lease: _LiveJobLease,
     ) -> StoreProductsResult:
         """Stop waiting at the deadline even if an awaitable resists cancellation."""
         task = asyncio.ensure_future(operation)
@@ -195,13 +279,19 @@ class _LiveLookupCoordinator:
                 timeout=LIVE_OPERATION_TIMEOUT_SECONDS,
             )
         except asyncio.CancelledError:
+            lease.invalidate("worker cancellation")
             task.cancel()
-            task.add_done_callback(cls._consume_exception)
+            self._track_detached_operation(task)
+            await asyncio.sleep(0)
             raise
         if task in done:
-            return task.result()
+            result = task.result()
+            lease.ensure_valid()
+            return result
+        lease.invalidate("operation timeout")
         task.cancel()
-        task.add_done_callback(cls._consume_exception)
+        self._track_detached_operation(task)
+        await asyncio.sleep(0)
         raise TimeoutError
 
     def _next_valid(self, queue: deque[_QueuedJob], priority: LookupPriority) -> _QueuedJob | None:
@@ -247,6 +337,7 @@ class _LiveLookupCoordinator:
 
     def start_admission(self) -> None:
         self._accepting = True
+        self._interactive_streak = 0
 
     def stop_admission(self) -> None:
         self._accepting = False
@@ -255,7 +346,10 @@ class _LiveLookupCoordinator:
         self,
         key: CacheKey,
         priority: LookupPriority,
-        operation: Callable[[float], Awaitable[StoreProductsResult]],
+        operation: Callable[
+            [float, LookupPriority, _LiveJobLease],
+            Awaitable[StoreProductsResult],
+        ],
     ) -> StoreProductsResult:
         if priority not in ("interactive", "background"):
             raise ValueError(f"Invalid lookup priority: {priority!r}")
@@ -268,7 +362,16 @@ class _LiveLookupCoordinator:
             if job is None:
                 future: asyncio.Future[StoreProductsResult] = asyncio.get_running_loop().create_future()
                 future.add_done_callback(self._consume_exception)
-                job = _QueuedJob(key, operation, future, priority, time.perf_counter())
+                lease = _LiveJobLease(self._next_generation)
+                self._next_generation += 1
+                job = _QueuedJob(
+                    key,
+                    operation,
+                    future,
+                    priority,
+                    time.perf_counter(),
+                    lease,
+                )
                 self._jobs[key] = job
                 (self._interactive if priority == "interactive" else self._background).append(job)
             elif priority == "interactive" and job.priority == "background" and not job.started:
@@ -276,16 +379,59 @@ class _LiveLookupCoordinator:
                 self._interactive.append(job)
             if self._worker is None or self._worker.done():
                 self._worker = asyncio.create_task(self._run())
+                self._worker.add_done_callback(self._worker_completed)
             future = job.future
+            job.waiter_count += 1
         try:
             return await asyncio.wait_for(
                 asyncio.shield(future),
                 timeout=LIVE_FRONT_DOOR_TIMEOUT_SECONDS,
             )
         except TimeoutError as exc:
+            await self._release_waiter(job, front_door_timeout=True)
             raise weee_scraper.StoreScrapeError(
                 "Store product lookup front door timed out."
             ) from exc
+        except asyncio.CancelledError:
+            await self._release_waiter(job)
+            raise
+        finally:
+            if future.done():
+                await self._release_waiter(job)
+
+    def _worker_completed(self, task: asyncio.Task[None]) -> None:
+        if self._worker is task:
+            self._worker = None
+        if not task.cancelled():
+            try:
+                task.exception()
+            except asyncio.CancelledError:
+                pass
+
+    async def _release_waiter(
+        self,
+        job: _QueuedJob,
+        *,
+        front_door_timeout: bool = False,
+    ) -> None:
+        async with self._lock:
+            if job.waiter_count > 0:
+                job.waiter_count -= 1
+            if job.waiter_count != 0:
+                return
+            if front_door_timeout:
+                job.lease.invalidate("front door timeout")
+            if not job.started or front_door_timeout:
+                if self._jobs.get(job.key) is job:
+                    self._jobs.pop(job.key, None)
+                if not job.started:
+                    job.lease.invalidate("no front-door waiters")
+                if not job.future.done():
+                    job.future.set_exception(
+                        weee_scraper.StoreScrapeError(
+                            "Store product lookup no longer has an active waiter."
+                        )
+                    )
 
     async def _run(self) -> None:
         while True:
@@ -293,10 +439,10 @@ class _LiveLookupCoordinator:
                 now = time.perf_counter()
                 job = self._choose_next(now)
                 if job is None:
-                    self._worker = None
                     return
                 queue_wait_seconds = now - job.queued_at
                 if queue_wait_seconds >= LIVE_QUEUE_MAX_WAIT_SECONDS:
+                    job.lease.invalidate("queue timeout")
                     if self._jobs.get(job.key) is job:
                         self._jobs.pop(job.key, None)
                     if not job.future.done():
@@ -305,13 +451,30 @@ class _LiveLookupCoordinator:
                                 "Store product lookup expired in the live queue."
                             )
                         )
+                    _log_event(
+                        "queue_expired",
+                        job.key,
+                        priority=job.priority,
+                        started_at=job.queued_at,
+                        queue_wait_ms=queue_wait_seconds * 1_000,
+                        error=weee_scraper.StoreScrapeError(
+                            "Store product lookup expired in the live queue."
+                        ),
+                    )
                     continue
                 job.started = True
+                selected_priority = job.priority
             try:
                 result = await self._bounded_operation(
-                    job.operation(queue_wait_seconds * 1_000),
+                    job.operation(
+                        queue_wait_seconds * 1_000,
+                        selected_priority,
+                        job.lease,
+                    ),
+                    job.lease,
                 )
             except asyncio.CancelledError:
+                job.lease.invalidate("shutdown")
                 if not job.future.done():
                     job.future.set_exception(
                         weee_scraper.StoreScrapeError(
@@ -320,7 +483,12 @@ class _LiveLookupCoordinator:
                     )
                 raise
             except TimeoutError:
-                await weee_scraper.shutdown_weee_scraper()
+                try:
+                    await weee_scraper.shutdown_weee_scraper()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception("failed to invalidate Weee browser after live timeout")
                 timeout_error = weee_scraper.StoreScrapeError(
                     "Store product live operation timed out."
                 )
@@ -334,7 +502,7 @@ class _LiveLookupCoordinator:
                 if not job.future.done():
                     job.future.set_exception(exc)
             else:
-                if not job.future.done():
+                if job.lease.valid and not job.future.done():
                     job.future.set_result(result)
             finally:
                 async with self._lock:
@@ -347,16 +515,20 @@ class _LiveLookupCoordinator:
         )
         async with self._lock:
             self._accepting = False
+            self._interactive_streak = 0
             jobs = list(self._jobs.values())
             self._jobs.clear()
             self._interactive.clear()
             self._background.clear()
             worker = self._worker
             for job in jobs:
+                job.lease.invalidate("shutdown")
                 if not job.future.done():
                     job.future.set_exception(error)
             if worker is not None and not worker.done():
                 worker.cancel()
+        caller_cancelled = False
+        shutdown_errors: list[BaseException] = []
         if worker is not None:
             try:
                 await asyncio.wait_for(
@@ -364,12 +536,34 @@ class _LiveLookupCoordinator:
                     timeout=LIVE_WORKER_SHUTDOWN_TIMEOUT_SECONDS,
                 )
             except asyncio.CancelledError:
-                pass
+                current = asyncio.current_task()
+                caller_cancelled = bool(current is not None and current.cancelling())
             except TimeoutError:
                 logger.error("store product worker did not stop before shutdown deadline")
+            except BaseException as exc:
+                shutdown_errors.append(exc)
+        try:
+            await self._drain_detached_operations()
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            caller_cancelled = caller_cancelled or bool(
+                current is not None and current.cancelling()
+            )
+        except BaseException as exc:
+            shutdown_errors.append(exc)
+        if worker is not None and worker.done():
             async with self._lock:
                 if self._worker is worker:
                     self._worker = None
+        if caller_cancelled:
+            raise asyncio.CancelledError
+        if len(shutdown_errors) == 1:
+            raise shutdown_errors[0]
+        if shutdown_errors:
+            raise BaseExceptionGroup(
+                "Store product live lookup shutdown failed.",
+                shutdown_errors,
+            )
 
     async def reset_for_tests(self) -> None:
         """Wait for an idle worker, then clear queue bookkeeping deterministically."""
@@ -378,7 +572,12 @@ class _LiveLookupCoordinator:
                 raise RuntimeError("Cannot reset live lookups while jobs are still running.")
             worker = self._worker
         if worker is not None:
-            await asyncio.shield(worker)
+            try:
+                await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                current = asyncio.current_task()
+                if current is not None and current.cancelling():
+                    raise
         async with self._lock:
             if self._jobs:
                 raise RuntimeError("Cannot reset live lookups while jobs are still running.")
@@ -416,7 +615,11 @@ async def _persist_positive_result(
     language: Language,
     products: list[dict[str, str]],
     cached_at: datetime,
+    *,
+    lease: _LiveJobLease | None = None,
 ) -> None:
+    if lease is not None:
+        lease.ensure_valid()
     maker = db_session.async_session_maker
     if maker is None:
         raise RuntimeError("Database session maker is not initialized.")
@@ -426,7 +629,11 @@ async def _persist_positive_result(
                 write_session, query=cache_query, store="weee", language=language,
                 cache_version=CACHE_VERSION, data=products, updated_at=cached_at,
             )
+            if lease is not None:
+                lease.ensure_valid()
             await write_session.commit()
+            if lease is not None:
+                lease.ensure_valid()
         except BaseException:
             await write_session.rollback()
             raise
@@ -490,31 +697,43 @@ async def fetch_store_products_with_metadata(
 
     _log_event("cache_miss", cache_key, priority=priority, started_at=started_at)
 
-    async def scrape_and_persist(queue_wait_ms: float) -> StoreProductsResult:
+    async def scrape_and_persist(
+        queue_wait_ms: float,
+        selected_priority: LookupPriority,
+        lease: _LiveJobLease,
+    ) -> StoreProductsResult:
         scrape_started_at = time.perf_counter()
         try:
             raw_products = await weee_scraper.scrape_weee_products(prepared.query_text, prepared.language)
-            current_task = asyncio.current_task()
-            if current_task is not None and current_task.cancelling():
-                raise asyncio.CancelledError
+            lease.ensure_valid()
             products = weee_scraper.validate_products(raw_products)
             if not products:
+                lease.ensure_valid()
                 _log_event(
                     "scrape_empty",
                     cache_key,
-                    priority=priority,
+                    priority=selected_priority,
                     started_at=scrape_started_at,
                     queue_wait_ms=queue_wait_ms,
                     product_count=0,
                 )
                 return StoreProductsResult(products=[], cached_at=None)
             cached_at = datetime.fromtimestamp(time.time(), tz=timezone.utc)
-            await _persist_positive_result(prepared.cache_query, prepared.language, products, cached_at)
+            lease.ensure_valid()
+            await _persist_positive_result(
+                prepared.cache_query,
+                prepared.language,
+                products,
+                cached_at,
+                lease=lease,
+            )
+            lease.ensure_valid()
             _memory_cache_set(cache_key, products, timestamp=cached_at.timestamp())
+            lease.ensure_valid()
             _log_event(
                 "scrape_success",
                 cache_key,
-                priority=priority,
+                priority=selected_priority,
                 started_at=scrape_started_at,
                 queue_wait_ms=queue_wait_ms,
                 product_count=len(products),
@@ -526,7 +745,7 @@ async def fetch_store_products_with_metadata(
             _log_event(
                 "scrape_failure",
                 cache_key,
-                priority=priority,
+                priority=selected_priority,
                 started_at=scrape_started_at,
                 queue_wait_ms=queue_wait_ms,
                 error=exc,

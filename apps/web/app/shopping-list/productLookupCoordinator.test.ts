@@ -48,6 +48,89 @@ test("canonicalizes ingredient identity across spelling aliases", () => {
   expect(canonicalIngredientKey("RICE")).toBe("rice");
 });
 
+test("normalizes, deduplicates, and caps live positive products mechanically", () => {
+  const raw = [
+    {
+      name: "  Rice   1 lb  ",
+      price: "  $2   / lb ",
+      image: "  https://images.example.test/rice.jpg  ",
+      url: " https://WWW.SAYWEEE.COM/en//product/rice-one/1 ",
+    },
+    {
+      name: "RICE 1 LB",
+      price: "$3",
+      image: "",
+      url: "https://www.sayweee.com/en/product/different/2",
+    },
+    {
+      name: "Rice 2 lb",
+      price: "$3",
+      image: "",
+      url: "https://www.sayweee.com/en/product/rice-two/2",
+    },
+    {
+      name: "Duplicate URL",
+      price: "$9",
+      image: "",
+      url: "HTTPS://WWW.SAYWEEE.COM/en/product/rice-two/2",
+    },
+    product("Beans"),
+    product("Fourth"),
+  ];
+
+  expect(
+    parseStoreProductsResponse(
+      { products: raw, expires_at: FUTURE_EXPIRES_AT },
+      Date.now(),
+    ),
+  ).toEqual({
+    products: [
+      {
+        name: "Rice 1 lb",
+        price: "$2 / lb",
+        image: "https://images.example.test/rice.jpg",
+        url: "https://www.sayweee.com/en/product/rice-one/1",
+      },
+      {
+        name: "Rice 2 lb",
+        price: "$3",
+        image: "",
+        url: "https://www.sayweee.com/en/product/rice-two/2",
+      },
+      product("Beans"),
+    ],
+    expires_at: FUTURE_EXPIRES_AT,
+  });
+});
+
+test.each([
+  ["ASCII blank", "   "],
+  ["Unicode-whitespace blank", "\u2003\u3000"],
+  ["over 120 characters", "x".repeat(121)],
+])("a live positive with an %s name is rejected", async (_caseName, name) => {
+  const coordinator = createProductLookupCoordinator({
+    load: vi.fn().mockResolvedValue({
+      products: [{ ...product("Rice"), name }],
+      expires_at: FUTURE_EXPIRES_AT,
+    }),
+    loadBatch: vi.fn(),
+    shouldPublish: () => true,
+    onState: vi.fn(),
+  });
+
+  await expect(coordinator.request("Rice", 1)).resolves.toEqual({ status: "error" });
+});
+
+test("a one-character CJK product name is a valid live positive", () => {
+  const ginger = { ...product("ginger"), name: "姜" };
+  expect(
+    parseStoreProductsResponse(
+      { products: [ginger], expires_at: FUTURE_EXPIRES_AT },
+      Date.now(),
+    ),
+  ).toEqual({ products: [ginger], expires_at: FUTURE_EXPIRES_AT });
+});
+
 test("publishes batch hits before draining misses serially in visual order", async () => {
   const releases = new Map<string, ReturnType<typeof deferred<StoreProductsResponse>>>();
   let active = 0;
@@ -266,6 +349,14 @@ test.each([
     name: "malformed products",
     entry: { query: "Rice", status: "fresh", products: null, expires_at: FUTURE_EXPIRES_AT },
   },
+  {
+    name: "blank-name positive",
+    entry: { query: "Rice", status: "fresh", products: [{ ...product("Rice"), name: "\u2003" }], expires_at: FUTURE_EXPIRES_AT },
+  },
+  {
+    name: "overlong-name positive",
+    entry: { query: "Rice", status: "fresh", products: [{ ...product("Rice"), name: "x".repeat(121) }], expires_at: FUTURE_EXPIRES_AT },
+  },
 ])("fresh batch entry falls back to GET when it is $name", async ({ entry }) => {
   const transitions: ProductLookupState[] = [];
   const load = vi.fn().mockResolvedValue(response([product("Live rice")]));
@@ -283,6 +374,41 @@ test.each([
   expect(transitions.at(-1)).toEqual({
     status: "success",
     products: [product("Live rice")],
+    expiresAt: FUTURE_EXPIRES_AT,
+  });
+});
+
+test("a fresh batch positive is normalized and deterministically deduplicated", async () => {
+  const load = vi.fn();
+  const transitions: ProductLookupState[] = [];
+  const coordinator = createProductLookupCoordinator({
+    load,
+    loadBatch: vi.fn().mockResolvedValue({
+      entries: [{
+        query: "Rice",
+        status: "fresh",
+        products: [
+          { ...product("first"), name: "  Rice   1 lb " },
+          { ...product("duplicate-name"), name: "RICE 1 LB" },
+          { ...product("second"), name: "姜" },
+          { ...product("second"), name: "Different name" },
+        ],
+        expires_at: FUTURE_EXPIRES_AT,
+      }],
+    }),
+    shouldPublish: () => true,
+    onState: (_key, state) => transitions.push(state),
+  });
+
+  await Promise.all(coordinator.requestBulk(["Rice"], 1));
+
+  expect(load).not.toHaveBeenCalled();
+  expect(transitions.at(-1)).toEqual({
+    status: "success",
+    products: [
+      { ...product("first"), name: "Rice 1 lb" },
+      { ...product("second"), name: "姜" },
+    ],
     expiresAt: FUTURE_EXPIRES_AT,
   });
 });
@@ -352,6 +478,23 @@ test("generation cancellation suppresses batch and GET completion publication", 
   get.resolve(response([product("Beans")]));
   await live;
   expect(transitions).not.toContain("success");
+});
+
+test("preferred query metadata rotates to one canonical-key map per generation", async () => {
+  let generation = 1;
+  const coordinator = createProductLookupCoordinator({
+    load: vi.fn().mockResolvedValue(response([product("Rice")])),
+    loadBatch: vi.fn(),
+    shouldPublish: (candidate) => candidate === generation,
+    onState: vi.fn(),
+  });
+
+  await coordinator.request("Jasmine Rice", 1);
+  expect(coordinator.preferredQueryCount()).toBe(1);
+
+  generation = 2;
+  await coordinator.request("jasmine rice", 2);
+  expect(coordinator.preferredQueryCount()).toBe(1);
 });
 
 test("seventy-five fresh cache hits resolve without a live GET", async () => {
@@ -521,6 +664,41 @@ test("stores only canonical terminal states and strips technical errors", () => 
       },
       beans: { status: "empty", products: [] },
       milk: { status: "error" },
+    },
+  });
+});
+
+test("persisted positives use the same normalization and invalid rows cannot survive", () => {
+  const stored = buildProductLookupStorage(
+    {},
+    {
+      Rice: {
+        status: "success",
+        products: [
+          { ...product("rice"), name: "  Rice   1 lb " },
+          { ...product("duplicate"), name: "RICE 1 LB" },
+          { ...product("bad"), name: "\u3000" },
+          { ...product("ginger"), name: "姜" },
+        ],
+        expiresAt: FUTURE_EXPIRES_AT,
+      },
+      Invalid: {
+        status: "success",
+        products: [{ ...product("invalid"), name: "x".repeat(121) }],
+        expiresAt: FUTURE_EXPIRES_AT,
+      },
+    },
+    {},
+  );
+
+  expect(stored.lookup).toEqual({
+    rice: {
+      status: "success",
+      products: [
+        { ...product("rice"), name: "Rice 1 lb" },
+        { ...product("ginger"), name: "姜" },
+      ],
+      expiresAt: FUTURE_EXPIRES_AT,
     },
   });
 });

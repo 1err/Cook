@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 from typing import Any
 
@@ -67,3 +68,85 @@ async def test_database_engine_disposal_is_idempotent(monkeypatch: pytest.Monkey
     assert calls == 1
     assert db_session._engine is None
     assert db_session.async_session_maker is None
+
+
+@pytest.mark.asyncio
+async def test_lifespan_runs_all_cleanup_phases_after_an_earlier_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    events: list[str] = []
+
+    monkeypatch.setattr(main, "init_engine", lambda: None)
+    monkeypatch.setattr(main, "start_live_lookup_admission", lambda: None)
+    monkeypatch.setattr(main, "start_scheduler", lambda: None)
+    monkeypatch.setattr(main, "stop_scheduler", lambda: events.append("scheduler"))
+    monkeypatch.setattr(main, "stop_live_lookup_admission", lambda: events.append("admission"))
+
+    async def fail_warmer() -> None:
+        events.append("warmer")
+        raise RuntimeError("warmer cleanup failed")
+
+    async def record(name: str) -> None:
+        events.append(name)
+
+    monkeypatch.setattr(main, "shutdown_cache_warmer", fail_warmer)
+    monkeypatch.setattr(main, "shutdown_live_lookups", lambda: record("live"))
+    monkeypatch.setattr(main, "shutdown_weee_scraper", lambda: record("browser"))
+    monkeypatch.setattr(main, "dispose_engine", lambda: record("database"))
+
+    with pytest.raises(RuntimeError, match="warmer cleanup failed"):
+        async with main.lifespan(SimpleNamespace()):  # type: ignore[arg-type]
+            pass
+
+    assert events == [
+        "scheduler",
+        "admission",
+        "warmer",
+        "live",
+        "browser",
+        "database",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_lifespan_finishes_later_cleanup_before_propagating_caller_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    events: list[str] = []
+    warmer_started = asyncio.Event()
+
+    monkeypatch.setattr(main, "init_engine", lambda: None)
+    monkeypatch.setattr(main, "start_live_lookup_admission", lambda: None)
+    monkeypatch.setattr(main, "start_scheduler", lambda: None)
+    monkeypatch.setattr(main, "stop_scheduler", lambda: events.append("scheduler"))
+    monkeypatch.setattr(main, "stop_live_lookup_admission", lambda: events.append("admission"))
+
+    async def wait_warmer() -> None:
+        events.append("warmer")
+        warmer_started.set()
+        await asyncio.Event().wait()
+
+    async def record(name: str) -> None:
+        events.append(name)
+
+    monkeypatch.setattr(main, "shutdown_cache_warmer", wait_warmer)
+    monkeypatch.setattr(main, "shutdown_live_lookups", lambda: record("live"))
+    monkeypatch.setattr(main, "shutdown_weee_scraper", lambda: record("browser"))
+    monkeypatch.setattr(main, "dispose_engine", lambda: record("database"))
+
+    context = main.lifespan(SimpleNamespace())  # type: ignore[arg-type]
+    await context.__aenter__()
+    closing = asyncio.create_task(context.__aexit__(None, None, None))
+    await warmer_started.wait()
+    closing.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await closing
+
+    assert events == [
+        "scheduler",
+        "admission",
+        "warmer",
+        "live",
+        "browser",
+        "database",
+    ]

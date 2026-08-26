@@ -11,6 +11,8 @@ from app.core.config import settings
 _ = settings.DATABASE_URL  # trigger validation before any DB code
 
 from contextlib import asynccontextmanager
+import asyncio
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -39,6 +41,49 @@ from app.services.weee_scraper import shutdown_weee_scraper
 from app.services.storage_service import get_local_upload_root
 
 setup_logging()
+logger = logging.getLogger(__name__)
+
+
+async def _shutdown_application_resources() -> None:
+    """Run every teardown phase, then propagate cancellation or failures."""
+    errors: list[BaseException] = []
+    caller_cancelled = False
+
+    for phase_name, phase in (
+        ("scheduler", stop_scheduler),
+        ("live admission", stop_live_lookup_admission),
+    ):
+        try:
+            phase()
+        except BaseException as exc:
+            errors.append(exc)
+            logger.exception("application %s shutdown failed", phase_name)
+
+    for phase_name, phase in (
+        ("cache warmer", shutdown_cache_warmer),
+        ("live lookup", shutdown_live_lookups),
+        ("Weee browser", shutdown_weee_scraper),
+        ("database", dispose_engine),
+    ):
+        try:
+            await phase()
+        except asyncio.CancelledError as exc:
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                caller_cancelled = True
+            else:
+                errors.append(exc)
+            logger.warning("application %s shutdown was cancelled", phase_name)
+        except BaseException as exc:
+            errors.append(exc)
+            logger.exception("application %s shutdown failed", phase_name)
+
+    if caller_cancelled:
+        raise asyncio.CancelledError
+    if len(errors) == 1:
+        raise errors[0]
+    if errors:
+        raise BaseExceptionGroup("application shutdown failures", errors)
 
 
 @asynccontextmanager
@@ -49,12 +94,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        stop_scheduler()
-        stop_live_lookup_admission()
-        await shutdown_cache_warmer()
-        await shutdown_live_lookups()
-        await shutdown_weee_scraper()
-        await dispose_engine()
+        await _shutdown_application_resources()
 
 
 app = FastAPI(title="Cooking Recipe API", lifespan=lifespan)

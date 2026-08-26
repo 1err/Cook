@@ -193,8 +193,12 @@ async def cache_refresh_one(
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
     cleaned_query = prepared.cache_query
     language = prepared.language
-    data = await fetch_store_products(body.query, session=session, force_refresh=True)
-    await session.commit()
+    data = await fetch_store_products(
+        body.query,
+        session=session,
+        force_refresh=True,
+        release_read_session_on_miss=True,
+    )
     row = await repo_store_cache.get_cached_store_product_entry(
         session,
         query=cleaned_query,

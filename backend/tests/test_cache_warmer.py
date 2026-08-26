@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable
+import logging
 from typing import Any
 
 import pytest
@@ -224,3 +225,64 @@ async def test_shutdown_cancels_and_awaits_the_tracked_warmer(
 
     assert cancelled.is_set()
     assert cache_warmer._warmer_task is None
+
+
+@pytest.mark.asyncio
+async def test_shutdown_propagates_caller_cancellation_and_keeps_resistant_task_tracked(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    started = asyncio.Event()
+    child_cancelled = asyncio.Event()
+    release = asyncio.Event()
+
+    async def run(*, force_refresh: bool) -> dict[str, int]:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            child_cancelled.set()
+            await release.wait()
+        return {"total": 0}
+
+    monkeypatch.setattr(cache_warmer, "run_cache_warmer", run)
+    cache_warmer.trigger_cache_warmer(force_refresh=True)
+    await started.wait()
+    tracked = cache_warmer._warmer_task
+    assert tracked is not None
+
+    shutdown = asyncio.create_task(cache_warmer.shutdown_cache_warmer())
+    await child_cancelled.wait()
+    shutdown.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await shutdown
+
+    assert cache_warmer._warmer_task is tracked
+    assert not tracked.done()
+    release.set()
+    await tracked
+    await cache_warmer.shutdown_cache_warmer()
+    assert cache_warmer._warmer_task is None
+
+
+@pytest.mark.asyncio
+async def test_unexpected_tracked_warmer_exception_is_consumed_and_logged(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    async def fail(*, force_refresh: bool) -> dict[str, int]:
+        raise RuntimeError("warmer exploded")
+
+    monkeypatch.setattr(cache_warmer, "run_cache_warmer", fail)
+    caplog.set_level(logging.ERROR, logger=cache_warmer.__name__)
+
+    assert cache_warmer.trigger_cache_warmer(force_refresh=True)["started"] is True
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    assert cache_warmer._warmer_task is None
+    record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "cache_warmer_task_failed"
+    )
+    assert record.exc_info is not None

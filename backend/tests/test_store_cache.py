@@ -48,6 +48,147 @@ async def test_database_cache_does_not_return_a_row_at_exactly_twenty_four_hours
     ) is None
 
 
+def test_cache_freshness_rejects_future_updated_at_without_clock_skew_allowance():
+    now = datetime(2026, 8, 15, 12, tzinfo=timezone.utc)
+
+    assert not repo_store_cache.is_cache_entry_fresh(
+        now + timedelta(microseconds=1),
+        now,
+        86_400,
+    )
+    assert repo_store_cache.is_cache_entry_fresh(now, now, 86_400)
+    for invalid in (float("nan"), float("inf"), float("-inf"), "invalid"):
+        assert not repo_store_cache.is_cache_entry_fresh(  # type: ignore[arg-type]
+            invalid,
+            now,
+            86_400,
+        )
+
+
+@pytest.mark.asyncio
+async def test_single_database_cache_rejects_future_and_invalid_updated_at(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    now = datetime(2026, 8, 15, 12, tzinfo=timezone.utc)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            return now
+
+    monkeypatch.setattr(repo_store_cache, "datetime", FrozenDateTime)
+
+    class Scalars:
+        def __init__(self, row: object):
+            self.row = row
+
+        def one_or_none(self) -> object:
+            return self.row
+
+    class Result:
+        def __init__(self, row: object):
+            self.row = row
+
+        def scalars(self) -> Scalars:
+            return Scalars(self.row)
+
+    class Session:
+        def __init__(self, row: object):
+            self.row = row
+
+        async def execute(self, *args: Any, **kwargs: Any) -> Result:
+            return Result(self.row)
+
+    for updated_at in (
+        now + timedelta(seconds=1),
+        float("nan"),
+        float("inf"),
+        float("-inf"),
+        "invalid",
+    ):
+        assert await repo_store_cache.get_cached_store_products_with_metadata(
+            Session(SimpleNamespace(data=[PRODUCT], updated_at=updated_at)),  # type: ignore[arg-type]
+            query="tofu",
+            store="weee",
+            language="en",
+            cache_version="v7",
+            max_age_seconds=86_400,
+        ) is None
+
+
+@pytest.mark.asyncio
+async def test_batch_database_cache_rejects_future_rows(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    now = datetime(2026, 8, 15, 12, tzinfo=timezone.utc)
+    rows = [
+        SimpleNamespace(
+            query="future",
+            language="en",
+            data=[PRODUCT],
+            updated_at=now + timedelta(microseconds=1),
+        ),
+        SimpleNamespace(
+            query="nan",
+            language="en",
+            data=[PRODUCT],
+            updated_at=float("nan"),
+        ),
+        SimpleNamespace(
+            query="infinity",
+            language="en",
+            data=[PRODUCT],
+            updated_at=float("inf"),
+        ),
+        SimpleNamespace(
+            query="invalid",
+            language="en",
+            data=[PRODUCT],
+            updated_at="invalid",
+        ),
+        SimpleNamespace(
+            query="current",
+            language="en",
+            data=[PRODUCT],
+            updated_at=now,
+        ),
+    ]
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            return now
+
+    class Scalars:
+        def all(self) -> list[object]:
+            return rows
+
+    class Result:
+        def scalars(self) -> Scalars:
+            return Scalars()
+
+    class Session:
+        async def execute(self, *args: Any, **kwargs: Any) -> Result:
+            return Result()
+
+    monkeypatch.setattr(repo_store_cache, "datetime", FrozenDateTime)
+    entries = await repo_store_cache.get_cached_store_products_batch(
+        Session(),  # type: ignore[arg-type]
+        keys=[
+            ("future", "en"),
+            ("nan", "en"),
+            ("infinity", "en"),
+            ("invalid", "en"),
+            ("current", "en"),
+        ],
+        store="weee",
+        cache_version="v7",
+        max_age_seconds=86_400,
+    )
+
+    assert set(entries) == {("current", "en")}
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "url",

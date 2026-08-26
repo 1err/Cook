@@ -7,9 +7,11 @@ import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import admin, routes_store
 from app.db import repo_store_cache
+from app.db import session as db_session
 from app.services.store_product_service import BatchStoreProductsEntry
 from app.services import store_product_service, weee_scraper
 
@@ -557,7 +559,7 @@ async def test_cache_refresh_one_always_uses_weee_service_and_cache_key(
         dummy_session.commit_calls += 1
 
     dummy_session.commit = commit
-    fetch_calls: list[tuple[str, object, bool]] = []
+    fetch_calls: list[tuple[str, object, bool, bool]] = []
     entry_calls: list[dict[str, Any]] = []
 
     async def fetch(
@@ -565,8 +567,11 @@ async def test_cache_refresh_one_always_uses_weee_service_and_cache_key(
         session: object | None = None,
         *,
         force_refresh: bool = False,
+        release_read_session_on_miss: bool = False,
     ) -> list[dict[str, str]]:
-        fetch_calls.append((query, session, force_refresh))
+        fetch_calls.append(
+            (query, session, force_refresh, release_read_session_on_miss)
+        )
         return [PRODUCT]
 
     async def get_entry(service_session: object, **kwargs: Any) -> None:
@@ -582,7 +587,7 @@ async def test_cache_refresh_one_always_uses_weee_service_and_cache_key(
         current_user=object(),  # type: ignore[arg-type]
     )
 
-    assert fetch_calls == [("Silken tofu", dummy_session, True)]
+    assert fetch_calls == [("Silken tofu", dummy_session, True, True)]
     assert entry_calls == [
         {
             "query": "silken tofu",
@@ -592,4 +597,81 @@ async def test_cache_refresh_one_always_uses_weee_service_and_cache_key(
         }
     ]
     assert response.store == "weee"
-    assert dummy_session.commit_calls == 1
+    assert dummy_session.commit_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_cache_refresh_one_closes_real_read_session_before_held_live_scrape(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    scrape_started = asyncio.Event()
+    release_scrape = asyncio.Event()
+    first_close = asyncio.Event()
+    dependency_teardown_close = asyncio.Event()
+
+    class TrackingAsyncSession(AsyncSession):
+        def __init__(self) -> None:
+            super().__init__()
+            self.close_calls = 0
+            self.commit_calls = 0
+
+        async def close(self) -> None:
+            self.close_calls += 1
+            if self.close_calls == 1:
+                first_close.set()
+            else:
+                dependency_teardown_close.set()
+            await super().close()
+
+        async def commit(self) -> None:
+            self.commit_calls += 1
+            await super().commit()
+
+    session = TrackingAsyncSession()
+
+    async def scrape(query_text: str, language: str) -> list[dict[str, str]]:
+        scrape_started.set()
+        assert first_close.is_set()
+        await release_scrape.wait()
+        return [PRODUCT]
+
+    async def get_entry(observed_session: object, **kwargs: Any) -> None:
+        assert observed_session is session
+        assert session.close_calls == 1
+        return None
+
+    async def no_persist(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(db_session, "async_session_maker", lambda: session)
+    monkeypatch.setattr(weee_scraper, "scrape_weee_products", scrape)
+    monkeypatch.setattr(store_product_service, "_persist_positive_result", no_persist)
+    monkeypatch.setattr(admin.repo_store_cache, "get_cached_store_product_entry", get_entry)
+    store_product_service.CACHE.clear()
+    store_product_service.start_live_lookup_admission()
+
+    app = FastAPI()
+    app.include_router(admin.router)
+    app.dependency_overrides[admin.require_admin] = lambda: object()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        request = asyncio.create_task(
+            client.post(
+                "/admin/cache-refresh-one",
+                json={"query": "silken tofu"},
+            )
+        )
+        await scrape_started.wait()
+        try:
+            assert session.close_calls == 1
+            assert not dependency_teardown_close.is_set()
+        finally:
+            release_scrape.set()
+            gathered = await asyncio.gather(request, return_exceptions=True)
+        response = gathered[0]
+        if isinstance(response, BaseException):
+            raise response
+
+    assert response.status_code == 200
+    assert session.commit_calls == 1
+    assert dependency_teardown_close.is_set()

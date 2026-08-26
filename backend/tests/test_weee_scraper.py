@@ -220,6 +220,8 @@ async def real_browser_page():
     ("url", "expected_query", "accepted"),
     [
         ("https://www.sayweee.com/en/search?keyword=rice+noodles", "rice noodles", True),
+        ("https://www.sayweee.com/en/search/?utm_source=qa&keyword=rice%20noodles&sort=popular", "rice noodles", True),
+        ("https://www.sayweee.com/en/search?keyword=%72ice&ref=header", "rice", True),
         ("https://shop.weee.com/zh/search?keyword=%E6%96%B0%E9%B2%9C+%E5%A4%A7%E8%92%9C", "新鲜 大蒜", True),
         ("http://www.sayweee.com/en/search?keyword=rice", "rice", False),
         ("https://user@www.sayweee.com/en/search?keyword=rice", "rice", False),
@@ -228,6 +230,8 @@ async def real_browser_page():
         ("https://www.sayweee.com/en/search", "rice", False),
         ("https://www.sayweee.com/en/search?keyword=beans", "rice", False),
         ("https://www.sayweee.com/en/search?keyword=rice&keyword=beans", "rice", False),
+        ("https://www.sayweee.com/en/search?keyword=rice&keyword=rice&utm_source=qa", "rice", False),
+        ("https://sayweee.com.evil.test/en/search/?keyword=rice&utm_source=qa", "rice", False),
         ("https://www.sayweee.com/en/product/rice?keyword=rice", "rice", False),
     ],
 )
@@ -285,6 +289,90 @@ async def test_real_dom_visible_specific_empty_element_is_authoritative(real_bro
         '<main><div data-testid="no-results">Nothing matched</div></main>'
     )
     assert await weee_scraper._classify_search_page(real_browser_page) == "no_results"
+
+
+@pytest.mark.asyncio
+async def test_real_dom_no_results_ignores_recommendation_carousel_products(real_browser_page):
+    await real_browser_page.set_content(
+        """
+        <main>
+          <div data-testid="no-results">Nothing matched</div>
+          <section data-testid="recommendation-carousel" aria-label="Recommended for you">
+            <article data-testid="product-card">
+              <a href="https://www.sayweee.com/en/product/recommended-tofu/1">
+                <img alt="Recommended tofu" />
+              </a>
+            </article>
+          </section>
+        </main>
+        """
+    )
+
+    assert await weee_scraper._classify_search_page(real_browser_page) == "no_results"
+    assert await weee_scraper._extract_weee_search_products(real_browser_page, "en") == []
+
+
+@pytest.mark.asyncio
+async def test_real_dom_no_results_ignores_data_section_recommendations(real_browser_page):
+    await real_browser_page.set_content(
+        """
+        <main>
+          <div data-testid="no-results">Nothing matched</div>
+          <section data-section="recommendations">
+            <article data-testid="product-card">
+              <a href="https://www.sayweee.com/en/product/recommended-beans/1">
+                <img alt="Recommended beans" />
+              </a>
+            </article>
+          </section>
+        </main>
+        """
+    )
+
+    assert await weee_scraper._classify_search_page(real_browser_page) == "no_results"
+    assert await weee_scraper._extract_weee_search_products(real_browser_page, "en") == []
+
+
+@pytest.mark.asyncio
+async def test_real_dom_conflicting_search_product_and_empty_marker_is_pending(real_browser_page):
+    await real_browser_page.set_content(
+        """
+        <main>
+          <div data-testid="search-empty">Nothing matched</div>
+          <article data-testid="product-card">
+            <a href="https://www.sayweee.com/en/product/scoped-rice/1">
+              <img alt="Scoped rice" />
+            </a>
+          </article>
+        </main>
+        """
+    )
+
+    assert await weee_scraper._classify_search_page(real_browser_page) == "pending"
+    extracted = await weee_scraper._extract_weee_search_products(real_browser_page, "en")
+    assert [row["href"] for row in extracted] == [
+        "https://www.sayweee.com/en/product/scoped-rice/1"
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "card_markup",
+    [
+        '<li class="search-result-card"><a href="https://www.sayweee.com/en/product/rice/1"><img alt="Rice" /></a></li>',
+        '<div data-testid="search-product-card"><a href="https://www.sayweee.com/en/product/beans/1"><h3>Beans</h3></a></div>',
+        '<article data-testid="product-card-42"><a href="https://www.sayweee.com/en/product/tofu/1"><img alt="Tofu" /></a></article>',
+        '<a data-testid="search-product-card" href="https://www.sayweee.com/en/product/ginger/1"><img alt="Ginger" /></a>',
+    ],
+)
+async def test_real_dom_realistic_scoped_search_cards_classify_and_extract(
+    real_browser_page,
+    card_markup: str,
+):
+    await real_browser_page.set_content(f"<main>{card_markup}</main>")
+
+    assert await weee_scraper._classify_search_page(real_browser_page) == "results"
+    assert len(await weee_scraper._extract_weee_search_products(real_browser_page, "en")) == 1
 
 
 @pytest.mark.asyncio
@@ -464,6 +552,117 @@ async def test_shared_browser_shutdown_is_idempotent(monkeypatch):
     await weee_scraper.shutdown_weee_scraper()
 
     assert calls == ["browser", "playwright"]
+
+
+@pytest.mark.asyncio
+async def test_scraper_shutdown_drains_detached_tasks_after_resource_close_error(monkeypatch):
+    events: list[str] = []
+
+    async def fail_close(*args, **kwargs) -> None:
+        events.append("close")
+        raise RuntimeError("browser close failed")
+
+    async def drain() -> None:
+        events.append("drain")
+
+    monkeypatch.setattr(weee_scraper, "_invalidate_shared_browser", fail_close)
+    monkeypatch.setattr(weee_scraper, "_drain_detached_tasks", drain)
+
+    with pytest.raises(RuntimeError, match="browser close failed"):
+        await weee_scraper.shutdown_weee_scraper()
+    assert events == ["close", "drain"]
+
+
+@pytest.mark.asyncio
+async def test_cancellation_resistant_playwright_task_is_tracked_and_drained(monkeypatch):
+    cancelled = asyncio.Event()
+    release = asyncio.Event()
+
+    async def resistant_operation() -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            while not release.is_set():
+                try:
+                    await release.wait()
+                except asyncio.CancelledError:
+                    continue
+
+    monkeypatch.setattr(weee_scraper, "SCRAPER_DETACHED_DRAIN_TIMEOUT_SECONDS", 0.01, raising=False)
+
+    try:
+        with pytest.raises(weee_scraper.StoreScrapeError, match="timed out"):
+            await weee_scraper._bounded_await(resistant_operation(), 0.01, "resistant operation")
+        assert cancelled.is_set()
+        assert weee_scraper._detached_tasks
+
+        await weee_scraper.shutdown_weee_scraper()
+        assert weee_scraper._detached_tasks
+    finally:
+        release.set()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+    assert not weee_scraper._detached_tasks
+
+
+@pytest.mark.asyncio
+async def test_scraper_shutdown_is_bounded_when_a_detached_acquisition_holds_the_lock(
+    monkeypatch,
+):
+    acquired = asyncio.Event()
+    cancelled = asyncio.Event()
+    release = asyncio.Event()
+
+    async def resistant_acquisition() -> None:
+        async with weee_scraper._browser_lock:
+            acquired.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                while not release.is_set():
+                    try:
+                        await release.wait()
+                    except asyncio.CancelledError:
+                        continue
+
+    monkeypatch.setattr(weee_scraper, "SCRAPER_CLEANUP_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(weee_scraper, "SCRAPER_DETACHED_DRAIN_TIMEOUT_SECONDS", 0.01)
+    acquisition = asyncio.create_task(resistant_acquisition())
+    weee_scraper._track_detached_task(acquisition)
+    await acquired.wait()
+
+    shutdown = asyncio.create_task(weee_scraper.shutdown_weee_scraper())
+    try:
+        with pytest.raises(weee_scraper.StoreScrapeError, match="resource lock"):
+            await asyncio.wait_for(asyncio.shield(shutdown), timeout=0.2)
+        assert cancelled.is_set()
+        assert not shutdown.cancelled()
+    finally:
+        acquisition.cancel()
+        release.set()
+        await asyncio.gather(acquisition, return_exceptions=True)
+        if not shutdown.done():
+            shutdown.cancel()
+        await asyncio.gather(shutdown, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_total_scraper_budget_explicitly_includes_bounded_cleanup(monkeypatch):
+    harness = BrowserHarness([Attempt(_page_state="pending", hang_page_close=True)] * 3)
+    harness.install(monkeypatch)
+    monkeypatch.setattr(weee_scraper, "SCRAPER_OPERATION_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(weee_scraper, "SCRAPER_ATTEMPT_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(weee_scraper, "SCRAPER_TOTAL_TIMEOUT_SECONDS", 0.02)
+    monkeypatch.setattr(weee_scraper, "SCRAPER_CLEANUP_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(weee_scraper, "SCRAPER_TOTAL_CLEANUP_TIMEOUT_SECONDS", 0.02, raising=False)
+
+    with pytest.raises(weee_scraper.StoreScrapeError):
+        await asyncio.wait_for(
+            weee_scraper.scrape_weee_products("tofu", "en"),
+            timeout=0.08,
+        )
 
 
 @pytest.mark.asyncio
