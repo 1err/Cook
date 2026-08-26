@@ -1,9 +1,13 @@
 import { useState } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Recipe } from "../types";
 import { DraftRecipeEditor } from "./DraftRecipeEditor";
+
+const { mockApiFetch } = vi.hoisted(() => ({ mockApiFetch: vi.fn() }));
+
+vi.mock("../lib/api", () => ({ apiFetch: mockApiFetch }));
 
 vi.mock("../lib/i18n", () => ({
   useT: () => (key: string, vars?: Record<string, string | number>) => {
@@ -78,6 +82,18 @@ const draft: Recipe = {
   library_tags: ["weeknight"],
 };
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
+beforeEach(() => {
+  mockApiFetch.mockReset();
+});
+
 afterEach(cleanup);
 
 describe("DraftRecipeEditor", () => {
@@ -123,5 +139,76 @@ describe("DraftRecipeEditor", () => {
 
     await user.type(screen.getByLabelText("Step 1 minutes"), "8");
     expect(save).toBeEnabled();
+  });
+
+  it("freezes the captured draft and all review controls while Save is pending", async () => {
+    const user = userEvent.setup();
+    const pending = deferred<Response>();
+    const onSaveSuccess = vi.fn();
+    let observedDraft = draft;
+    mockApiFetch.mockReturnValueOnce(pending.promise);
+
+    function ControlledDraft() {
+      const [value, setValue] = useState(draft);
+      return (
+        <DraftRecipeEditor
+          draft={value}
+          onChange={(next) => {
+            observedDraft = next;
+            setValue(next);
+          }}
+          onBack={vi.fn()}
+          onSaveSuccess={onSaveSuccess}
+        />
+      );
+    }
+
+    render(<ControlledDraft />);
+    const title = screen.getByLabelText("Recipe title");
+    const ingredient = screen.getByLabelText("Ingredient 1");
+    const instructions = screen.getByLabelText("Step 1");
+    await user.clear(title);
+    await user.type(title, "Captured braise");
+    await user.clear(ingredient);
+    await user.type(ingredient, "Captured tofu");
+    await user.clear(instructions);
+    await user.type(instructions, "Captured tutorial step.");
+
+    await user.click(screen.getByRole("button", { name: "Save recipe" }));
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledTimes(1));
+
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Back to source" })).toBeDisabled();
+    expect(title).toBeDisabled();
+    expect(ingredient).toBeDisabled();
+    expect(instructions).toBeDisabled();
+
+    await user.click(ingredient);
+    await user.keyboard("{Control>}a{/Control}Unsent ingredient mutation");
+    await user.click(instructions);
+    await user.keyboard("{Control>}a{/Control}Unsent tutorial mutation");
+
+    const [, request] = mockApiFetch.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(request.body))).toEqual({
+      ...draft,
+      title: "Captured braise",
+      ingredients: [{
+        ...draft.ingredients[0],
+        name: "Captured tofu",
+      }],
+      steps: [{
+        ...draft.steps?.[0],
+        text: "Captured tutorial step.",
+      }],
+    });
+
+    await act(async () => {
+      pending.resolve(new Response("", { status: 500 }));
+      await pending.promise;
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save recipe" })).toBeEnabled());
+    expect(observedDraft.ingredients[0].name).toBe("Captured tofu");
+    expect(observedDraft.steps?.[0].text).toBe("Captured tutorial step.");
+    expect(onSaveSuccess).not.toHaveBeenCalled();
   });
 });

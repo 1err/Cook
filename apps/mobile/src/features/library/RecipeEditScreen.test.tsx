@@ -6,8 +6,14 @@ import { RecipeEditScreen } from "./RecipeEditScreen";
 const mockGet = jest.fn();
 const mockUpdate = jest.fn();
 const mockEstimateTutorial = jest.fn();
+let mockLanguage: "en" | "zh" = "en";
 let mockPreventRemove = false;
 let mockPreventRemoveCallback: ((options: { data: { action: { type: string } } }) => void) | undefined;
+const mockTranslate = (key: string, variables?: Record<string, string | number>) => {
+  const { MESSAGE_MAP } = require("@cooking/shared") as typeof import("@cooking/shared");
+  const template = MESSAGE_MAP[mockLanguage][key] ?? MESSAGE_MAP.en[key] ?? key;
+  return template.replace(/\{(\w+)\}/g, (_, name: string) => String(variables?.[name] ?? ""));
+};
 const mockApiClient = {
   recipes: {
     get: mockGet,
@@ -32,11 +38,7 @@ jest.mock("@react-navigation/native", () => ({
 }));
 
 jest.mock("../../lib/i18n", () => ({
-  useT: () => (key: string, variables?: Record<string, string | number>) => {
-    const { MESSAGE_MAP } = require("@cooking/shared") as typeof import("@cooking/shared");
-    const template = MESSAGE_MAP.en[key] ?? key;
-    return template.replace(/\{(\w+)\}/g, (_, name: string) => String(variables?.[name] ?? ""));
-  },
+  useT: () => mockTranslate,
 }));
 
 const fallbackStep: RecipeStep = {
@@ -86,6 +88,7 @@ function route(focus: "recipe" | "tutorial" = "tutorial") {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockLanguage = "en";
   mockPreventRemove = false;
   mockPreventRemoveCallback = undefined;
   mockGet.mockResolvedValue(recipe);
@@ -164,8 +167,35 @@ test("keeps the tutorial draft after Estimate and Save failures", async () => {
   expect(instructions).toHaveProp("value", "Keep this local draft.");
 
   await fireEvent.press(screen.getByRole("button", { name: "Save tutorial" }));
-  expect(await screen.findByText("save failed")).toBeOnTheScreen();
+  expect(await screen.findByText("Couldn't save the tutorial. Try again.")).toBeOnTheScreen();
   expect(instructions).toHaveProp("value", "Keep this local draft.");
+  expect(nav.goBack).not.toHaveBeenCalled();
+});
+
+test.each([
+  ["en", "Couldn't load the tutorial."],
+  ["zh", "无法加载教程。"],
+] as const)("uses the localized %s tutorial load error", async (language, expected) => {
+  mockLanguage = language;
+  mockGet.mockRejectedValueOnce(new Error('{"detail":"raw transport failure"}'));
+
+  await render(<RecipeEditScreen navigation={navigation() as never} route={route()} />);
+
+  expect(await screen.findByText(expected)).toBeOnTheScreen();
+  expect(screen.queryByText(/raw transport failure/)).toBeNull();
+});
+
+test("uses the localized Chinese tutorial save error", async () => {
+  mockLanguage = "zh";
+  mockUpdate.mockRejectedValueOnce(new Error('{"detail":"raw save failure"}'));
+  const nav = navigation();
+  await render(<RecipeEditScreen navigation={nav as never} route={route()} />);
+
+  await screen.findByLabelText("步骤 1");
+  await fireEvent.press(screen.getByRole("button", { name: "保存教程" }));
+
+  expect(await screen.findByText("无法保存教程，请重试。")).toBeOnTheScreen();
+  expect(screen.queryByText(/raw save failure/)).toBeNull();
   expect(nav.goBack).not.toHaveBeenCalled();
 });
 
@@ -256,4 +286,16 @@ test("retains the existing full recipe PATCH payload outside tutorial focus", as
     tips: recipe.tips,
     equipment: recipe.equipment,
   }));
+});
+
+test("preserves a useful transport error when full recipe saving fails", async () => {
+  mockUpdate.mockRejectedValueOnce(new Error("The title is already in use"));
+  const nav = navigation();
+  await render(<RecipeEditScreen navigation={nav as never} route={route("recipe")} />);
+
+  await screen.findByLabelText("Title");
+  await fireEvent.press(screen.getByRole("button", { name: "Save changes" }));
+
+  expect(await screen.findByText("The title is already in use")).toBeOnTheScreen();
+  expect(nav.goBack).not.toHaveBeenCalled();
 });

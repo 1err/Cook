@@ -70,7 +70,11 @@ export function RecipeEditScreen({ navigation, route }: Props) {
         if (!cancelled) setDraft(copyRecipe(data));
       } catch (error) {
         if (!cancelled) {
-          setLoadError(error instanceof Error ? error.message : "Failed to load recipe");
+          setLoadError(tutorialOnly
+            ? t("recipe.tutorial.editor.loadError")
+            : error instanceof Error
+              ? error.message
+              : "Failed to load recipe");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -79,7 +83,7 @@ export function RecipeEditScreen({ navigation, route }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [apiClient, recipeId]);
+  }, [apiClient, recipeId, t, tutorialOnly]);
 
   const handleEstimate = useCallback(async () => {
     if (!draft || !recipeId || estimating || saving) return;
@@ -130,11 +134,15 @@ export function RecipeEditScreen({ navigation, route }: Props) {
       }
       setNavigateAfterSave(true);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Couldn't save changes");
+      setSaveError(tutorialOnly
+        ? t("recipe.tutorial.editor.saveError")
+        : error instanceof Error
+          ? error.message
+          : "Couldn't save changes");
     } finally {
       setSaving(false);
     }
-  }, [apiClient, draft, estimating, navigation, recipeId, saving, tutorialOnly]);
+  }, [apiClient, draft, estimating, navigation, recipeId, saving, t, tutorialOnly]);
 
   if (!recipeId) {
     return (
@@ -163,8 +171,10 @@ export function RecipeEditScreen({ navigation, route }: Props) {
       <View style={styles.center}>
         <EmptyState
           icon="alert-circle-outline"
-          title="Couldn't load recipe"
-          description={loadError ?? "The recipe wasn't found."}
+          title={tutorialOnly
+            ? loadError ?? t("recipe.tutorial.editor.loadError")
+            : "Couldn't load recipe"}
+          description={tutorialOnly ? undefined : loadError ?? "The recipe wasn't found."}
           actionLabel="Back"
           onAction={() => navigation.goBack()}
         />
