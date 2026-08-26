@@ -9,11 +9,15 @@ const mockEstimateTutorial = jest.fn();
 let mockLanguage: "en" | "zh" = "en";
 let mockPreventRemove = false;
 let mockPreventRemoveCallback: ((options: { data: { action: { type: string } } }) => void) | undefined;
-const mockTranslate = (key: string, variables?: Record<string, string | number>) => {
-  const { MESSAGE_MAP } = require("@cooking/shared") as typeof import("@cooking/shared");
-  const template = MESSAGE_MAP[mockLanguage][key] ?? MESSAGE_MAP.en[key] ?? key;
-  return template.replace(/\{(\w+)\}/g, (_, name: string) => String(variables?.[name] ?? ""));
-};
+const mockCreateTranslate = () => (
+  key: string,
+  variables?: Record<string, string | number>,
+) => {
+    const { MESSAGE_MAP } = require("@cooking/shared") as typeof import("@cooking/shared");
+    const template = MESSAGE_MAP[mockLanguage][key] ?? MESSAGE_MAP.en[key] ?? key;
+    return template.replace(/\{(\w+)\}/g, (_, name: string) => String(variables?.[name] ?? ""));
+  };
+let mockTranslate = mockCreateTranslate();
 const mockApiClient = {
   recipes: {
     get: mockGet,
@@ -78,17 +82,21 @@ function navigation() {
   return { setOptions: jest.fn(), goBack: jest.fn() };
 }
 
-function route(focus: "recipe" | "tutorial" = "tutorial") {
+function route(
+  focus: "recipe" | "tutorial" = "tutorial",
+  recipeId: string = recipe.id,
+) {
   return {
     key: "edit",
     name: "RecipeEdit",
-    params: { recipeId: recipe.id, focus },
+    params: { recipeId, focus },
   } as never;
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockLanguage = "en";
+  mockTranslate = mockCreateTranslate();
   mockPreventRemove = false;
   mockPreventRemoveCallback = undefined;
   mockGet.mockResolvedValue(recipe);
@@ -197,6 +205,56 @@ test("uses the localized Chinese tutorial save error", async () => {
   expect(await screen.findByText("无法保存教程，请重试。")).toBeOnTheScreen();
   expect(screen.queryByText(/raw save failure/)).toBeNull();
   expect(nav.goBack).not.toHaveBeenCalled();
+});
+
+test("preserves unsaved tutorial edits when the translator identity changes", async () => {
+  const nav = navigation();
+  const editRoute = route();
+  const view = await render(<RecipeEditScreen navigation={nav as never} route={editRoute} />);
+
+  const instructions = await screen.findByLabelText("Step 1");
+  await fireEvent.changeText(instructions, "Keep this unsaved translation-safe edit.");
+  expect(mockGet).toHaveBeenCalledTimes(1);
+
+  mockLanguage = "zh";
+  mockTranslate = mockCreateTranslate();
+  await act(async () => {
+    view.rerender(<RecipeEditScreen navigation={nav as never} route={editRoute} />);
+  });
+
+  expect(await screen.findByLabelText("步骤 1")).toHaveProp(
+    "value",
+    "Keep this unsaved translation-safe edit.",
+  );
+  expect(mockGet).toHaveBeenCalledTimes(1);
+});
+
+test("loads the new resource when recipeId changes", async () => {
+  const secondRecipe: Recipe = {
+    ...recipe,
+    id: "recipe-2",
+    title: "Second recipe",
+    steps: [{ ...fallbackStep, id: "bb786c6e-e55c-4905-ad02-b167925cb96d", text: "Cook the second recipe." }],
+  };
+  mockGet.mockImplementation((recipeId: string) => Promise.resolve(
+    recipeId === secondRecipe.id ? secondRecipe : recipe,
+  ));
+  const nav = navigation();
+  const view = await render(<RecipeEditScreen navigation={nav as never} route={route()} />);
+
+  await screen.findByLabelText("Step 1");
+  await act(async () => {
+    view.rerender(
+      <RecipeEditScreen navigation={nav as never} route={route("tutorial", secondRecipe.id)} />,
+    );
+  });
+
+  await waitFor(() => expect(screen.getByLabelText("Step 1")).toHaveProp(
+    "value",
+    "Cook the second recipe.",
+  ));
+  expect(mockGet).toHaveBeenNthCalledWith(1, recipe.id);
+  expect(mockGet).toHaveBeenNthCalledWith(2, secondRecipe.id);
 });
 
 test("locks tutorial mutations until a pending Estimate resolves", async () => {

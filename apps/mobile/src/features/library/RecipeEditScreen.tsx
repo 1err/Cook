@@ -12,6 +12,11 @@ import { DraftRecipeEditor } from "../import/DraftRecipeEditor";
 
 type Props = NativeStackScreenProps<LibraryStackParamList, "RecipeEdit">;
 
+type RecipeLoadError = {
+  kind: "transport";
+  detail: string;
+};
+
 function copySteps(steps: RecipeStep[] | undefined): RecipeStep[] {
   return Array.isArray(steps) ? steps.map((step) => ({ ...step })) : [];
 }
@@ -35,7 +40,7 @@ export function RecipeEditScreen({ navigation, route }: Props) {
   const tutorialOnly = focus === "tutorial";
   const [draft, setDraft] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<RecipeLoadError | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -60,9 +65,14 @@ export function RecipeEditScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     if (!recipeId) {
+      setDraft(null);
+      setLoadError(null);
       setLoading(false);
       return;
     }
+    setDraft(null);
+    setLoadError(null);
+    setLoading(true);
     let cancelled = false;
     void (async () => {
       try {
@@ -70,11 +80,10 @@ export function RecipeEditScreen({ navigation, route }: Props) {
         if (!cancelled) setDraft(copyRecipe(data));
       } catch (error) {
         if (!cancelled) {
-          setLoadError(tutorialOnly
-            ? t("recipe.tutorial.editor.loadError")
-            : error instanceof Error
-              ? error.message
-              : "Failed to load recipe");
+          setLoadError({
+            kind: "transport",
+            detail: error instanceof Error ? error.message : "Failed to load recipe",
+          });
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -83,7 +92,7 @@ export function RecipeEditScreen({ navigation, route }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [apiClient, recipeId, t, tutorialOnly]);
+  }, [apiClient, recipeId]);
 
   const handleEstimate = useCallback(async () => {
     if (!draft || !recipeId || estimating || saving) return;
@@ -172,9 +181,13 @@ export function RecipeEditScreen({ navigation, route }: Props) {
         <EmptyState
           icon="alert-circle-outline"
           title={tutorialOnly
-            ? loadError ?? t("recipe.tutorial.editor.loadError")
+            ? t("recipe.tutorial.editor.loadError")
             : "Couldn't load recipe"}
-          description={tutorialOnly ? undefined : loadError ?? "The recipe wasn't found."}
+          description={tutorialOnly
+            ? undefined
+            : loadError?.kind === "transport"
+              ? loadError.detail
+              : "The recipe wasn't found."}
           actionLabel="Back"
           onAction={() => navigation.goBack()}
         />
