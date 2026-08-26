@@ -6,8 +6,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import re
+from collections.abc import Sequence
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import CachedStoreProductModel
@@ -115,6 +116,36 @@ async def get_cached_store_products_with_metadata(
         return None
     products = normalize_cached_store_products(row.data)
     return CachedStoreProducts(products=products, updated_at=updated_at) if products else None
+
+
+async def get_cached_store_products_batch(
+    session: AsyncSession,
+    *,
+    keys: Sequence[tuple[str, str]],
+    store: str,
+    cache_version: str,
+    max_age_seconds: int,
+) -> dict[tuple[str, str], CachedStoreProducts]:
+    unique_keys = list(dict.fromkeys(keys))
+    if not unique_keys:
+        return {}
+    result = await session.execute(
+        select(CachedStoreProductModel).where(
+            CachedStoreProductModel.store == store,
+            CachedStoreProductModel.cache_version == cache_version,
+            tuple_(CachedStoreProductModel.query, CachedStoreProductModel.language).in_(unique_keys),
+        )
+    )
+    now = datetime.now(timezone.utc)
+    entries: dict[tuple[str, str], CachedStoreProducts] = {}
+    for row in result.scalars().all():
+        if row.updated_at is None:
+            continue
+        updated_at = row.updated_at.replace(tzinfo=timezone.utc) if row.updated_at.tzinfo is None else row.updated_at
+        products = normalize_cached_store_products(row.data)
+        if products and is_cache_entry_fresh(updated_at, now, max_age_seconds):
+            entries[(row.query, row.language)] = CachedStoreProducts(products, updated_at)
+    return entries
 
 
 async def get_cached_store_product_entry(
