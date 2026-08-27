@@ -81,8 +81,14 @@ describe("RootStack shared video bridge", () => {
     };
   });
 
-  it("opens one import modal after auth restoration and navigation readiness", async () => {
+  it("retains a pending intent through auth restoration until authenticated navigation", async () => {
     const view = await render(<RootStack />);
+
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockResetShareIntent).not.toHaveBeenCalled();
+
+    mockAuthState = { loading: false, token: null };
+    await view.rerender(<RootStack />);
 
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(mockResetShareIntent).not.toHaveBeenCalled();
@@ -100,6 +106,40 @@ describe("RootStack shared video bridge", () => {
 
     expect(mockNavigate).toHaveBeenCalledTimes(1);
     expect(mockResetShareIntent).toHaveBeenCalledTimes(1);
+  });
+
+  it("consumes a replayed intent once and still handles a genuinely new intent", async () => {
+    mockAuthState = { loading: false, token: "token" };
+    const view = await render(<RootStack />);
+
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockResetShareIntent).toHaveBeenCalledTimes(1);
+
+    const replayReset = jest.fn();
+    mockShareContext = {
+      ...mockShareContext,
+      resetShareIntent: replayReset,
+    };
+    await view.rerender(<RootStack />);
+
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(replayReset).not.toHaveBeenCalled();
+
+    const nextUrl = "https://vm.tiktok.com/ZMnextRecipe/";
+    mockShareContext = {
+      ...mockShareContext,
+      shareIntent: {
+        files: null,
+        type: "weburl",
+        webUrl: nextUrl,
+        text: null,
+      },
+    };
+    await view.rerender(<RootStack />);
+
+    expect(mockNavigate).toHaveBeenCalledTimes(2);
+    expect(mockNavigate).toHaveBeenLastCalledWith("ImportModal", { initialUrl: nextUrl });
+    expect(replayReset).toHaveBeenCalledTimes(1);
   });
 
   it("resets unsupported share content without navigating once the app is ready", async () => {

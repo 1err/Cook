@@ -1,4 +1,4 @@
-const URL_CANDIDATE = /\bhttps?:\/\/[^\s<>"']{1,2048}/gi;
+const URL_CANDIDATE = /\bhttps:\/\/[^\s<>"']{1,2048}/gi;
 const TRAILING_PROSE_PUNCTUATION = /[\])}>,.!?;:]+$/;
 
 const SUPPORTED_HOSTS = new Set([
@@ -22,7 +22,9 @@ function findSupportedUrl(value: string | null | undefined): string | null {
 
     try {
       const parsed = new URL(candidate);
-      if (SUPPORTED_HOSTS.has(parsed.hostname)) return parsed.toString();
+      if (parsed.protocol === "https:" && SUPPORTED_HOSTS.has(parsed.hostname)) {
+        return parsed.toString();
+      }
     } catch {
       // Ignore malformed candidates and continue looking for a supported URL.
     }

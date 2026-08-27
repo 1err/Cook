@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -27,19 +27,32 @@ export function RootStack() {
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
   const [navigationReady, setNavigationReady] = useState(false);
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
+  const consumedIntentKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (!hasShareIntent) {
+      consumedIntentKeyRef.current = null;
+      return;
+    }
+
     if (
       loading ||
       !token ||
       !navigationReady ||
-      !navigationRef.isReady() ||
-      !hasShareIntent
+      !navigationRef.isReady()
     ) {
       return;
     }
 
+    const intentKey = JSON.stringify([
+      shareIntent.type,
+      shareIntent.webUrl,
+      shareIntent.text,
+    ]);
+    if (consumedIntentKeyRef.current === intentKey) return;
+
     const initialUrl = extractSharedVideoUrl(shareIntent.webUrl, shareIntent.text);
+    consumedIntentKeyRef.current = intentKey;
     if (initialUrl) {
       navigationRef.navigate("ImportModal", { initialUrl });
     }
@@ -51,6 +64,7 @@ export function RootStack() {
     navigationRef,
     resetShareIntent,
     shareIntent.text,
+    shareIntent.type,
     shareIntent.webUrl,
     token,
   ]);

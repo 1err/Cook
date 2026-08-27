@@ -39,7 +39,7 @@ export default function App() {
   });
 
   return (
-    <ShareIntentProvider>
+    <ShareIntentProvider options={{ resetOnBackground: false }}>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <BottomSheetModalProvider>

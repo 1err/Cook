@@ -27,4 +27,11 @@ describe("extractSharedVideoUrl", () => {
     expect(extractSharedVideoUrl("https://youtube.com.example.com/watch?v=abc", null)).toBeNull();
     expect(extractSharedVideoUrl("ftp://youtu.be/dQw4w9WgXcQ", null)).toBeNull();
   });
+
+  it.each([
+    ["http://youtu.be/dQw4w9WgXcQ", null],
+    [null, "Watch http://www.tiktok.com/@chef/video/7412345678901234567"],
+  ])("rejects insecure shared video URLs", (webUrl, text) => {
+    expect(extractSharedVideoUrl(webUrl, text)).toBeNull();
+  });
 });
