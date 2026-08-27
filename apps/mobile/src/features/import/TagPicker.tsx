@@ -6,9 +6,10 @@ import { colors, radii, spacing, typography } from "../../theme";
 type TagPickerProps = {
   value: RecipeTagSlug[];
   onChange: (next: RecipeTagSlug[]) => void;
+  disabled?: boolean;
 };
 
-export function TagPicker({ value, onChange }: TagPickerProps) {
+export function TagPicker({ value, onChange, disabled = false }: TagPickerProps) {
   const selected = new Set(value);
   const toggle = (tag: RecipeTagSlug) => {
     const next = new Set(selected);
@@ -28,8 +29,9 @@ export function TagPicker({ value, onChange }: TagPickerProps) {
                 <Pressable
                   key={tag.id}
                   onPress={() => toggle(tag.id)}
+                  disabled={disabled}
                   accessibilityRole="checkbox"
-                  accessibilityState={{ checked: active }}
+                  accessibilityState={{ checked: active, disabled }}
                   style={({ pressed }) => [
                     styles.chip,
                     active && styles.chipActive,

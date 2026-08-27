@@ -81,9 +81,13 @@ type Props = CompositeScreenProps<
   NativeStackScreenProps<MainTabsParamList>
 >;
 
-export function ImportModalScreen({ navigation }: Props) {
+export function ImportModalScreen({ navigation, route }: Props) {
   const apiClient = useApiClient();
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [state, dispatch] = useReducer(
+    reducer,
+    route.params?.initialUrl,
+    (initialUrl): State => ({ ...initialState, mode: "link", url: initialUrl?.trim() ?? "" }),
+  );
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -95,7 +99,7 @@ export function ImportModalScreen({ navigation }: Props) {
 
   const handlePreview = useCallback(async () => {
     if (state.mode === "link" && !state.url.trim()) {
-      dispatch({ type: "previewFailed", error: "Paste a YouTube URL first." });
+      dispatch({ type: "previewFailed", error: "Paste a YouTube or TikTok URL first." });
       return;
     }
     if (state.mode === "transcript" && !state.transcript.trim()) {
@@ -169,7 +173,11 @@ export function ImportModalScreen({ navigation }: Props) {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
-      <ImportSourceTabs value={state.mode} onChange={(mode) => dispatch({ type: "setMode", mode })} />
+      <ImportSourceTabs
+        value={state.mode}
+        onChange={(mode) => dispatch({ type: "setMode", mode })}
+        disabled={state.parsing}
+      />
       {state.mode === "link" ? (
         <LinkInputForm
           url={state.url}
@@ -180,6 +188,7 @@ export function ImportModalScreen({ navigation }: Props) {
           onTitleChange={(title) => dispatch({ type: "patchInput", patch: { title } })}
           libraryTags={state.libraryTags}
           onTagsChange={(libraryTags) => dispatch({ type: "patchInput", patch: { libraryTags } })}
+          disabled={state.parsing}
         />
       ) : (
         <TranscriptInputForm
@@ -191,6 +200,7 @@ export function ImportModalScreen({ navigation }: Props) {
           onTitleChange={(title) => dispatch({ type: "patchInput", patch: { title } })}
           libraryTags={state.libraryTags}
           onTagsChange={(libraryTags) => dispatch({ type: "patchInput", patch: { libraryTags } })}
+          disabled={state.parsing}
         />
       )}
 

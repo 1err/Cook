@@ -16,7 +16,8 @@ test("keeps import hints collapsed until requested", async () => {
     />,
   );
 
-  expect(screen.getByLabelText("YouTube URL")).toBeOnTheScreen();
+  expect(screen.getByLabelText("YouTube or TikTok URL")).toBeOnTheScreen();
+  expect(screen.getByPlaceholderText("https://youtube.com/watch?v=… or https://tiktok.com/@…/video/…")).toBeOnTheScreen();
   expect(screen.queryByLabelText("Title (optional)")).not.toBeOnTheScreen();
 
   await fireEvent.press(screen.getByRole("button", { name: "Optional details" }));

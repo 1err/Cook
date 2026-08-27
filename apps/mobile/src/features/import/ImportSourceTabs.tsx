@@ -7,9 +7,10 @@ export type ImportMode = "link" | "transcript";
 type ImportSourceTabsProps = {
   value: ImportMode;
   onChange: (next: ImportMode) => void;
+  disabled?: boolean;
 };
 
-export function ImportSourceTabs({ value, onChange }: ImportSourceTabsProps) {
+export function ImportSourceTabs({ value, onChange, disabled = false }: ImportSourceTabsProps) {
   return (
     <View style={styles.wrap}>
       {(["link", "transcript"] as ImportMode[]).map((mode) => {
@@ -18,16 +19,17 @@ export function ImportSourceTabs({ value, onChange }: ImportSourceTabsProps) {
           <Pressable
             key={mode}
             onPress={() => onChange(mode)}
+            disabled={disabled}
             style={({ pressed }) => [
               styles.tab,
               active && styles.tabActive,
               pressed && styles.pressed,
             ]}
             accessibilityRole="tab"
-            accessibilityState={{ selected: active }}
+            accessibilityState={{ selected: active, disabled }}
           >
             <Text style={[styles.label, active && styles.labelActive]}>
-              {mode === "link" ? "YouTube link" : "Transcript"}
+              {mode === "link" ? "Video link" : "Transcript"}
             </Text>
           </Pressable>
         );

@@ -13,6 +13,7 @@ type OptionalImportDetailsProps = {
   onTitleChange: (next: string) => void;
   libraryTags: RecipeTagSlug[];
   onTagsChange: (next: RecipeTagSlug[]) => void;
+  disabled?: boolean;
 };
 
 export function OptionalImportDetails({
@@ -22,6 +23,7 @@ export function OptionalImportDetails({
   onTitleChange,
   libraryTags,
   onTagsChange,
+  disabled = false,
 }: OptionalImportDetailsProps) {
   const [open, setOpen] = useState(false);
 
@@ -32,6 +34,7 @@ export function OptionalImportDetails({
         accessibilityLabel="Optional details"
         accessibilityState={{ expanded: open }}
         onPress={() => setOpen((value) => !value)}
+        disabled={disabled}
         style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
       >
         <View>
@@ -51,6 +54,7 @@ export function OptionalImportDetails({
             placeholder="Override the auto-generated title"
             value={title}
             onChangeText={onTitleChange}
+            editable={!disabled}
             autoCapitalize="words"
           />
           <TextField
@@ -58,12 +62,13 @@ export function OptionalImportDetails({
             placeholder="Anything the parser should know?"
             value={notes}
             onChangeText={onNotesChange}
+            editable={!disabled}
             multiline
             numberOfLines={4}
             style={styles.multiline}
           />
           <Text style={styles.sectionLabel}>Tags (optional)</Text>
-          <TagPicker value={libraryTags} onChange={onTagsChange} />
+          <TagPicker value={libraryTags} onChange={onTagsChange} disabled={disabled} />
         </View>
       ) : null}
     </View>

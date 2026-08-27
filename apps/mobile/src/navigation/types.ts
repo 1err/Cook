@@ -41,7 +41,7 @@ export type MainTabsParamList = {
 export type RootStackParamList = {
   Auth: NavigatorScreenParams<AuthStackParamList> | undefined;
   Main: NavigatorScreenParams<MainTabsParamList> | undefined;
-  ImportModal: undefined;
+  ImportModal: { initialUrl?: string } | undefined;
   Account: NavigatorScreenParams<ProfileStackParamList> | undefined;
 };
 

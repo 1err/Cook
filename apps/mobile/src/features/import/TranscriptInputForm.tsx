@@ -13,6 +13,7 @@ type TranscriptInputFormProps = {
   onTitleChange: (next: string) => void;
   libraryTags: RecipeTagSlug[];
   onTagsChange: (next: RecipeTagSlug[]) => void;
+  disabled?: boolean;
 };
 
 export function TranscriptInputForm({
@@ -24,6 +25,7 @@ export function TranscriptInputForm({
   onTitleChange,
   libraryTags,
   onTagsChange,
+  disabled = false,
 }: TranscriptInputFormProps) {
   return (
     <View>
@@ -32,6 +34,7 @@ export function TranscriptInputForm({
         placeholder="Paste the recipe steps or transcript here…"
         value={transcript}
         onChangeText={onTranscriptChange}
+        editable={!disabled}
         multiline
         numberOfLines={8}
         style={styles.transcript}
@@ -43,6 +46,7 @@ export function TranscriptInputForm({
         onTitleChange={onTitleChange}
         libraryTags={libraryTags}
         onTagsChange={onTagsChange}
+        disabled={disabled}
       />
     </View>
   );

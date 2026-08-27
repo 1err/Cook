@@ -64,7 +64,7 @@ test("reviews imported tutorial metadata and saves user edits without dropping h
   const nav = navigation();
   await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
 
-  await fireEvent.changeText(screen.getByLabelText("YouTube URL"), "https://youtu.be/example");
+  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), "https://youtu.be/example");
   await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
 
   expect(await screen.findByText("About 5 min · Rough estimate · Hands-on")).toBeOnTheScreen();
@@ -87,7 +87,7 @@ test("does not save an import while a local tutorial duration is invalid", async
   const nav = navigation();
   await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
 
-  await fireEvent.changeText(screen.getByLabelText("YouTube URL"), "https://youtu.be/example");
+  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), "https://youtu.be/example");
   await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
   const minutes = await screen.findByLabelText("Step 1 minutes");
   await fireEvent.changeText(minutes, "");
@@ -95,4 +95,37 @@ test("does not save an import while a local tutorial duration is invalid", async
   expect(screen.getByRole("button", { name: "Save recipe" })).toBeDisabled();
   await fireEvent.press(screen.getByRole("button", { name: "Save recipe" }));
   expect(mockCreate).not.toHaveBeenCalled();
+});
+
+test("prefills a shared TikTok URL and previews it through the normal link flow", async () => {
+  const nav = navigation();
+  await render(
+    <ImportModalScreen
+      navigation={nav.value as never}
+      route={{ params: { initialUrl: "https://vm.tiktok.com/ZMrecipe/" } } as never}
+    />,
+  );
+
+  expect(screen.getByLabelText("YouTube or TikTok URL")).toHaveDisplayValue("https://vm.tiktok.com/ZMrecipe/");
+  expect(screen.getByRole("tab", { name: "Video link" })).toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
+
+  await waitFor(() =>
+    expect(mockParseLink).toHaveBeenCalledWith(expect.objectContaining({ url: "https://vm.tiktok.com/ZMrecipe/" })),
+  );
+});
+
+test("locks link input and source tabs while a preview is parsing", async () => {
+  const nav = navigation();
+  mockParseLink.mockImplementationOnce(() => new Promise<Recipe>(() => {}));
+
+  await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
+  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), "https://youtu.be/example");
+  fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
+
+  await waitFor(() => {
+    expect(screen.getByLabelText("YouTube or TikTok URL")).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Transcript" })).toBeDisabled();
+  });
+
 });

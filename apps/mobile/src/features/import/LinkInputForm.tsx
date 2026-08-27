@@ -13,6 +13,7 @@ type LinkInputFormProps = {
   onTitleChange: (next: string) => void;
   libraryTags: RecipeTagSlug[];
   onTagsChange: (next: RecipeTagSlug[]) => void;
+  disabled?: boolean;
 };
 
 export function LinkInputForm({
@@ -24,14 +25,16 @@ export function LinkInputForm({
   onTitleChange,
   libraryTags,
   onTagsChange,
+  disabled = false,
 }: LinkInputFormProps) {
   return (
     <View>
       <TextField
-        label="YouTube URL"
-        placeholder="https://youtube.com/watch?v=…"
+        label="YouTube or TikTok URL"
+        placeholder="https://youtube.com/watch?v=… or https://tiktok.com/@…/video/…"
         value={url}
         onChangeText={onUrlChange}
+        editable={!disabled}
         autoCapitalize="none"
         autoCorrect={false}
         keyboardType="url"
@@ -44,6 +47,7 @@ export function LinkInputForm({
         onTitleChange={onTitleChange}
         libraryTags={libraryTags}
         onTagsChange={onTagsChange}
+        disabled={disabled}
       />
     </View>
   );
