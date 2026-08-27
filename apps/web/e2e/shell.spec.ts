@@ -45,6 +45,7 @@ test("renders an accessible responsive authenticated shell", async ({ page }, te
   }
   await expect(page.getByRole("link", { name: "Library" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Planner" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Cook" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Shopping" })).toBeVisible();
   const results = await new AxeBuilder({ page }).include("header").analyze();
   expect(results.violations).toEqual([]);

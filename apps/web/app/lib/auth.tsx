@@ -3,6 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "./api";
+import { clearCookingStorage } from "../cook/cookingStorage";
 
 export type AuthUser = {
   id: string;
@@ -58,15 +59,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    const userId = user?.id;
     try {
       await apiFetch("/auth/logout", { method: "POST" });
     } catch {
       // ignore network errors
     } finally {
+      if (userId) clearCookingStorage(userId);
       setUser(null);
       router.push("/login");
     }
-  }, [router]);
+  }, [router, user?.id]);
 
   const setLibraryVisibility = useCallback(async (isPublic: boolean) => {
     const res = await apiFetch("/auth/library-visibility", {

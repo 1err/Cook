@@ -14,6 +14,7 @@ import { IconButton } from "./ui/IconButton";
 const PRIMARY_LINKS = [
   { href: "/library", key: "nav.library" },
   { href: "/planner", key: "nav.planner" },
+  { href: "/cook", key: "nav.cook" },
   { href: "/shopping-list", key: "nav.shopping" },
 ] as const;
 

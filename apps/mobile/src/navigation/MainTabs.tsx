@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { LibraryStack } from "./stacks/LibraryStack";
 import { PlannerStack } from "./stacks/PlannerStack";
+import { CookStack } from "./stacks/CookStack";
 import { ShoppingStack } from "./stacks/ShoppingStack";
 import { useT } from "../lib/i18n";
 import { colors } from "../theme";
@@ -22,12 +23,14 @@ type MainTabDefinition = {
 export const MAIN_TAB_DEFINITIONS = [
   { name: "Library", labelKey: "nav.library", active: "book", inactive: "book-outline" },
   { name: "Planner", labelKey: "nav.planner", active: "calendar", inactive: "calendar-outline" },
+  { name: "Cook", labelKey: "nav.cook", active: "restaurant", inactive: "restaurant-outline" },
   { name: "Shopping", labelKey: "nav.shopping", active: "cart", inactive: "cart-outline" },
 ] as const satisfies readonly MainTabDefinition[];
 
 const TAB_COMPONENTS = {
   Library: LibraryStack,
   Planner: PlannerStack,
+  Cook: CookStack,
   Shopping: ShoppingStack,
 };
 

@@ -1,4 +1,13 @@
-import type { MealPlanDay, Recipe, RecipeStep, RecipeTagSlug, ShoppingListItem, User } from "@cooking/shared";
+import type {
+  CookingActionPayload,
+  CookingSession,
+  MealPlanDay,
+  Recipe,
+  RecipeStep,
+  RecipeTagSlug,
+  ShoppingListItem,
+  User,
+} from "@cooking/shared";
 
 export type AuthStrategy =
   | { kind: "cookie" }
@@ -50,6 +59,39 @@ export type UploadImageResult = { upload_url: string; file_url: string };
 
 type RequestOptions = RequestInit & { skipJsonContentType?: boolean };
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code: string | null = null,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+function parseErrorPayload(text: string): { code: string | null; message: string } {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (parsed && typeof parsed === "object") {
+      const detail = "detail" in parsed ? (parsed as { detail?: unknown }).detail : parsed;
+      if (detail && typeof detail === "object") {
+        const code = "code" in detail && typeof (detail as { code?: unknown }).code === "string"
+          ? (detail as { code: string }).code
+          : null;
+        const message = "message" in detail && typeof (detail as { message?: unknown }).message === "string"
+          ? (detail as { message: string }).message
+          : text;
+        return { code, message };
+      }
+      if (typeof detail === "string") return { code: null, message: detail };
+    }
+  } catch {
+    // Plain-text failures remain valid API errors.
+  }
+  return { code: null, message: text };
+}
+
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
 }
@@ -86,7 +128,8 @@ export function createApiClient(options: ApiClientOptions) {
     const res = await request(path, requestOptions);
     if (!res.ok) {
       const message = await res.text();
-      throw new Error(message || `${res.status} ${res.statusText}`);
+      const parsed = parseErrorPayload(message || `${res.status} ${res.statusText}`);
+      throw new ApiError(parsed.message, res.status, parsed.code);
     }
     return (await res.json()) as T;
   }
@@ -158,6 +201,41 @@ export function createApiClient(options: ApiClientOptions) {
         json<MealPlanDay>(`/meal-plan/${encodeURIComponent(date)}`, {
           method: "PUT",
           body: JSON.stringify(payload),
+        }),
+    },
+    cooking: {
+      active: () => json<CookingSession | null>("/cooking-session/active"),
+      create: (recipeIds: string[]) =>
+        json<CookingSession>("/cooking-session", {
+          method: "POST",
+          body: JSON.stringify({ recipe_ids: recipeIds }),
+        }),
+      addDishes: (sessionId: string, recipeIds: string[]) =>
+        json<CookingSession>(
+          `/cooking-session/${encodeURIComponent(sessionId)}/dishes`,
+          {
+            method: "POST",
+            body: JSON.stringify({ recipe_ids: recipeIds }),
+          },
+        ),
+      removeDish: (sessionId: string, dishId: string) =>
+        json<CookingSession | null>(
+          `/cooking-session/${encodeURIComponent(sessionId)}/dishes/${encodeURIComponent(dishId)}`,
+          { method: "DELETE" },
+        ),
+      action: (sessionId: string, stepId: string, payload: CookingActionPayload) =>
+        json<CookingSession>(
+          `/cooking-session/${encodeURIComponent(sessionId)}/steps/${encodeURIComponent(stepId)}/actions`,
+          { method: "POST", body: JSON.stringify(payload) },
+        ),
+      finish: (sessionId: string) =>
+        json<{ ok: boolean }>(
+          `/cooking-session/${encodeURIComponent(sessionId)}/finish`,
+          { method: "POST" },
+        ),
+      discard: (sessionId: string) =>
+        json<{ ok: boolean }>(`/cooking-session/${encodeURIComponent(sessionId)}`, {
+          method: "DELETE",
         }),
     },
     shopping: {

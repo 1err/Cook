@@ -13,6 +13,7 @@ import { getRecipeTags } from "../../lib/recipeTags";
 import type { Recipe } from "../../types";
 import styles from "./RecipeDetail.module.css";
 import { RecipeTutorial } from "./RecipeTutorial";
+import { RecipeCookAction } from "./RecipeCookAction";
 
 function RecipeDetailContent() {
   const params = useParams();
@@ -71,6 +72,7 @@ function RecipeDetailContent() {
         <div className={styles.topbar}>
           <Link href="/library" className={styles.back}>← {t("nav.library")}</Link>
           <div className={styles.actions}>
+            <RecipeCookAction recipe={recipe} />
             <Link href="/planner">{t("recipe.mealPlanner")}</Link>
             <Link href={`/library/${id}`} className={styles.primaryAction}>{t("common.edit")}</Link>
             <button type="button" onClick={handleDelete} disabled={deleting}>

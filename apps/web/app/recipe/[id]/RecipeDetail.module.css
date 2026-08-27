@@ -48,6 +48,26 @@
   color: var(--cw-color-on-action);
 }
 
+.cookAction {
+  position: relative;
+  display: inline-flex;
+}
+
+.actionError {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 2;
+  width: max-content;
+  max-width: min(20rem, 80vw);
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-surface);
+  color: var(--cw-color-error);
+  box-shadow: var(--cw-elevation-overlay);
+  font-size: 0.78rem;
+}
+
 .hero {
   display: grid;
   overflow: hidden;
