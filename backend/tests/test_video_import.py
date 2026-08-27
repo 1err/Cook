@@ -1,3 +1,8 @@
+import json
+import socket
+from io import BytesIO
+from urllib.error import HTTPError, URLError
+
 import pytest
 from youtube_transcript_api._errors import (
     NoTranscriptFound,
@@ -9,9 +14,37 @@ import app.video_import as video_import
 from app.extract import TranscriptFetchResult, fetch_transcript_from_video_link
 from app.video_import import (
     UnsupportedVideoUrl,
+    fetch_tiktok_text,
     fetch_youtube_text,
     parse_video_source,
 )
+
+
+TIKTOK_SOURCE = parse_video_source("https://www.tiktok.com/@chef/video/7412345678901234567")
+
+
+class _FakeResponse:
+    def __init__(self, payload: bytes):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self, _size: int) -> bytes:
+        return self.payload
+
+
+def fake_json_response(payload: object):
+    raw = json.dumps(payload).encode()
+
+    def opener(_request, *, timeout: int):
+        assert timeout == 10
+        return _FakeResponse(raw)
+
+    return opener
 
 
 @pytest.mark.parametrize(
@@ -168,6 +201,114 @@ def test_fetch_youtube_text_reports_missing_dependency(monkeypatch):
     assert result.status == "dependency_missing"
     assert result.message == "YouTube transcript support is not available on the server right now."
     assert result.text == ""
+
+
+def test_fetch_tiktok_text_returns_public_caption_and_thumbnail():
+    payload = {
+        "version": "1.0",
+        "provider_name": "TikTok",
+        "type": "rich",
+        "title": "Crispy chili noodles: noodles, garlic, soy sauce; toss for two minutes.",
+        "author_name": "Chef Mei",
+        "thumbnail_url": "https://p16.example/cover.jpeg",
+        "html": "<script>must not be retained</script>",
+    }
+
+    result = fetch_tiktok_text(TIKTOK_SOURCE, opener=fake_json_response(payload))
+
+    assert result.status == "ok"
+    assert result.text == payload["title"]
+    assert result.thumbnail_url == payload["thumbnail_url"]
+    assert "html" not in result.text
+    assert "script" not in result.text
+
+
+def test_fetch_tiktok_text_rejects_attribution_only_title():
+    result = fetch_tiktok_text(
+        TIKTOK_SOURCE,
+        opener=fake_json_response(
+            {
+                "version": "1.0",
+                "provider_name": "TikTok",
+                "type": "rich",
+                "title": "Chef Mei on TikTok",
+                "author_name": "Chef Mei",
+            }
+        ),
+    )
+
+    assert result.status == "no_transcript"
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_thumbnail"),
+    [
+        (
+            {
+                "version": "1.0",
+                "provider_name": "TikTok",
+                "type": "rich",
+                "title": "Make ginger scallion noodles with soy sauce.",
+                "author_name": "Chef Mei",
+                "thumbnail_url": "http://p16.example/cover.jpeg",
+            },
+            None,
+        ),
+        (
+            {
+                "version": "1.0",
+                "provider_name": "TikTok",
+                "type": "rich",
+                "title": "Make ginger scallion noodles with soy sauce.",
+                "author_name": "Chef Mei",
+                "thumbnail_url": "javascript:alert(1)",
+            },
+            None,
+        ),
+    ],
+)
+def test_fetch_tiktok_text_ignores_unsafe_thumbnail_urls(payload, expected_thumbnail):
+    result = fetch_tiktok_text(TIKTOK_SOURCE, opener=fake_json_response(payload))
+
+    assert result.status == "ok"
+    assert result.thumbnail_url == expected_thumbnail
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        {"provider_name": "Not TikTok", "title": "Make noodles with garlic."},
+    ],
+)
+def test_fetch_tiktok_text_rejects_invalid_provider_payload(payload):
+    result = fetch_tiktok_text(TIKTOK_SOURCE, opener=fake_json_response(payload))
+
+    assert result.status == "fetch_failed"
+
+
+def test_fetch_tiktok_text_rejects_invalid_json():
+    result = fetch_tiktok_text(TIKTOK_SOURCE, opener=lambda *_args, **_kwargs: _FakeResponse(b"not json"))
+
+    assert result.status == "fetch_failed"
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_status"),
+    [
+        (HTTPError("https://www.tiktok.com/oembed", 404, "missing", None, BytesIO()), "no_transcript"),
+        (HTTPError("https://www.tiktok.com/oembed", 500, "server", None, BytesIO()), "fetch_failed"),
+        (URLError("offline"), "fetch_failed"),
+        (socket.timeout("timed out"), "fetch_failed"),
+    ],
+)
+def test_fetch_tiktok_text_classifies_upstream_failures(failure, expected_status):
+    def opener(*_args, **_kwargs):
+        raise failure
+
+    result = fetch_tiktok_text(TIKTOK_SOURCE, opener=opener)
+
+    assert result.status == expected_status
 
 
 def test_legacy_transcript_fetch_wrapper_exposes_compatibility_attributes(monkeypatch):

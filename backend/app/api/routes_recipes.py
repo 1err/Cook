@@ -18,16 +18,15 @@ from app.db import repo_mealplan, repo_recipes
 from app.db.models import UserModel
 from app.db.session import get_session
 from app.extract import (
-    _parse_youtube_video_id,
     estimate_tutorial_step_metadata,
     extract_recipe_from_text,
-    fetch_transcript_from_video_link,
 )
 from app.models import IngredientItem, Recipe, RecipeStep, coerce_steps
 from app.services.storage_service import (
     generate_image_upload_url,
     save_recipe_image_local,
 )
+from app.video_import import UnsupportedVideoUrl, fetch_video_text, parse_video_source
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
 logger = logging.getLogger(__name__)
@@ -94,6 +93,14 @@ def _apply_import_overrides(recipe: Recipe, title: str, library_tags: list[str])
     return recipe.model_copy(update=updates)
 
 
+def _has_meaningful_draft(recipe: Recipe) -> bool:
+    for ingredient in recipe.ingredients:
+        name = ingredient.name.strip()
+        if name and name.casefold() != "example ingredient":
+            return True
+    return any(step.text.strip() for step in recipe.steps)
+
+
 class ParseLinkBody(BaseModel):
     url: str = ""
     notes: str = ""
@@ -109,18 +116,26 @@ async def parse_from_link(
     url = (body.url or "").strip()
     if not url:
         raise HTTPException(400, "url is required")
-    transcript_result = fetch_transcript_from_video_link(url)
-    if transcript_result.status != "ok":
-        raise HTTPException(422, transcript_result.message or "Unable to import from this link.")
-    transcript = _append_import_notes(transcript_result.transcript, body.notes)
-    recipe = await extract_recipe_from_text(transcript)
-    if recipe.thumbnail_url is None:
-        video_id = _parse_youtube_video_id(url)
-        if video_id:
-            recipe = recipe.model_copy(
-                update={"thumbnail_url": f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"}
-            )
-    recipe = recipe.model_copy(update={"source_url": url})
+    try:
+        source = parse_video_source(url)
+    except UnsupportedVideoUrl as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    text_result = await fetch_video_text(source)
+    if text_result.status in {"fetch_failed", "dependency_missing"}:
+        raise HTTPException(503, text_result.message or "Video import is temporarily unavailable.")
+    if text_result.status != "ok":
+        raise HTTPException(422, text_result.message or "No usable recipe text was found.")
+
+    recipe = await extract_recipe_from_text(_append_import_notes(text_result.text, body.notes))
+    if source.provider == "tiktok" and not _has_meaningful_draft(recipe):
+        raise HTTPException(422, "This TikTok does not expose enough recipe text. Paste its transcript instead.")
+    recipe = recipe.model_copy(
+        update={
+            "source_url": source.canonical_url,
+            "thumbnail_url": recipe.thumbnail_url or text_result.thumbnail_url,
+        }
+    )
     return _apply_import_overrides(recipe, body.title, body.library_tags)
 
 

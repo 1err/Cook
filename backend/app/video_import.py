@@ -1,9 +1,13 @@
 """Provider-aware parsing and caption retrieval for supported video URLs."""
+import asyncio
 from dataclasses import dataclass
+import json
 import logging
 import re
 from typing import Literal
-from urllib.parse import parse_qs, urlsplit
+from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.request import Request, urlopen
 
 try:
     from youtube_transcript_api import YouTubeTranscriptApi
@@ -169,6 +173,88 @@ def fetch_youtube_text(source: VideoSource) -> VideoTextResult:
             "fetch_failed",
             "We could not fetch captions from YouTube for this video right now. Please try again or paste a transcript.",
         )
+
+
+def _safe_https_url(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    try:
+        parsed = urlsplit(candidate)
+    except ValueError:
+        return None
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        return None
+    return candidate
+
+
+def _meaningful_tiktok_text(title: str, author: str) -> str:
+    text = title.strip()
+    if not text:
+        return ""
+    attribution = f"{author.strip()} on TikTok".strip()
+    if text.casefold() in {"tiktok", attribution.casefold()}:
+        return ""
+    return text
+
+
+def fetch_tiktok_text(source: VideoSource, *, opener=urlopen) -> VideoTextResult:
+    """Fetch recipe-adjacent public text from TikTok's oEmbed endpoint."""
+    endpoint = "https://www.tiktok.com/oembed?" + urlencode({"url": source.original_url})
+    request = Request(endpoint, headers={"User-Agent": "ChefWorld/1.0"})
+    try:
+        with opener(request, timeout=10) as response:
+            raw = response.read(1_000_001)
+    except HTTPError as exc:
+        if 400 <= exc.code < 500:
+            return _failure(
+                source,
+                "no_transcript",
+                "This TikTok is unavailable or does not expose recipe text. Paste its transcript instead.",
+            )
+        return _failure(
+            source,
+            "fetch_failed",
+            "TikTok is temporarily unavailable. Please try again.",
+        )
+    except (URLError, TimeoutError, OSError):
+        return _failure(
+            source,
+            "fetch_failed",
+            "TikTok is temporarily unavailable. Please try again.",
+        )
+
+    if len(raw) > 1_000_000:
+        return _failure(source, "fetch_failed", "TikTok returned an invalid response. Please try again.")
+    try:
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return _failure(source, "fetch_failed", "TikTok returned an invalid response. Please try again.")
+    if not isinstance(payload, dict) or payload.get("provider_name") != "TikTok":
+        return _failure(source, "fetch_failed", "TikTok returned an invalid response. Please try again.")
+
+    title = payload.get("title") if isinstance(payload.get("title"), str) else ""
+    author = payload.get("author_name") if isinstance(payload.get("author_name"), str) else ""
+    text = _meaningful_tiktok_text(title, author)
+    if not text:
+        return _failure(
+            source,
+            "no_transcript",
+            "This TikTok does not expose enough recipe text. Paste its transcript instead.",
+        )
+    thumbnail = _safe_https_url(payload.get("thumbnail_url"))
+    logger.info(
+        "Video text fetch result provider=%s video_id=%s status=ok text_length=%d",
+        source.provider,
+        source.external_id,
+        len(text),
+    )
+    return VideoTextResult("ok", text, source, title=title, thumbnail_url=thumbnail)
+
+
+async def fetch_video_text(source: VideoSource) -> VideoTextResult:
+    fetcher = fetch_youtube_text if source.provider == "youtube" else fetch_tiktok_text
+    return await asyncio.to_thread(fetcher, source)
 
 
 def _youtube_id(host: str, path: str, query: dict[str, list[str]]) -> str | None:
