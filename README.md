@@ -1,6 +1,6 @@
 # Cooking Recipe Planner
 
-Video-first recipe planner: import from video link or transcript → recipe library → (later) meal plan → shopping list.
+Video-first recipe planner: import from a supported video link or pasted recipe text → review the draft → recipe library → meal plan → shopping list.
 
 ## Setup
 
@@ -35,7 +35,7 @@ pip install -r requirements.txt
 
 If you use [pyenv](https://github.com/pyenv/pyenv), run `pyenv install 3.12` (if needed), then `cd backend` and pyenv will use the version in `.python-version`.
 
-Copy `.env.example` to `.env` and set your API key (see [YouTube Transcript Support](#youtube-transcript-support) and env vars below):
+Copy `.env.example` to `.env` and set your API key (see [Video import support](#video-import-support) and env vars below):
 
 ```bash
 cp .env.example .env
@@ -70,23 +70,39 @@ For a fuller architecture, API table, Docker notes, and UI design pointers, see 
 
 ## Flow
 
-1. **Import** (`/import`): Video link (YouTube) or pasted transcript, with optional title + tag overrides at import time → extraction (LLM if `OPENAI_API_KEY` is set) → recipe saved.
+1. **Import** (`/import`): Supported YouTube or TikTok link, or pasted recipe text/transcript, with optional title + tag overrides → extraction (LLM if `OPENAI_API_KEY` is set) → draft review → explicit save.
 2. **Library** (`/library`, `/library/[id]`): Browse, edit, delete, optional thumbnail upload (local disk or S3), and copy curated recipes from the shared public library.
 3. **Planner** (`/planner`): Weekly meal plan; desktop drag recipes into breakfast / lunch / dinner, while phones use slot-based pickers; tied to `?week=` (Monday).
 4. **Shopping list** (`/shopping-list`): Confirms the week and planned meals, then **Prepare smart shopping list** (LLM refine on demand). Smart mode keeps its generated snapshot until the user refreshes, and warns when the planner changed later.
 
-## YouTube Transcript Support
+## Video import support
 
-YouTube links are supported **without** Google Cloud or OAuth. The backend uses the [youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api) Python library to fetch captions.
+Video-link import does not download audiovisual media. It sends provider-exposed text through the existing recipe extraction and review flow.
 
-- **How it works:** When you import by link, the backend parses the YouTube video ID, requests the caption track (preferring English or Chinese if available), and sends the combined transcript into the existing LLM extraction pipeline.
-- **Limitations:** Only YouTube is supported (TikTok/RedNote are not). Captions must exist and be available; some videos have captions disabled or region-locked. No authentication, so private or age-restricted videos will not work.
+| Provider | Text used | Current limitations |
+|----------|-----------|---------------------|
+| YouTube | Caption tracks from [`youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api), preferring English or Chinese and falling back to another available track | Captions must exist and be publicly available. Private, age-restricted, region-locked, unavailable, or captions-disabled videos may fail. |
+| TikTok | Public post title/caption returned by TikTok's oEmbed endpoint | This does **not** transcribe the video's speech. Sparse, attribution-only, private, or unavailable posts may not contain enough recipe detail. Arbitrary TikTok speech transcription needs a future provider. |
+
+- **Supported links:** Use public HTTPS YouTube or TikTok video URLs. RedNote and uploaded video files are not supported.
 - **Env:** Create a `backend/.env` file (see `.env.example`). Set `OPENAI_API_KEY=sk-...` for real recipe extraction; without it, the app still runs and uses stub extraction.
-- **Testing:** Paste a public YouTube cooking video URL (e.g. `https://www.youtube.com/watch?v=...`) on the Import page and click “Import recipe”. Check the backend terminal for log lines: “Fetching transcript for video_id=…”, “Transcript fetched successfully…”, or “Captions disabled / Video unavailable” if something fails.
-- **When captions are unavailable:** The app now stops with a clear error and suggests using “Paste transcript” instead.
+- **Fallback:** When provider text is unavailable or too sparse, paste the recipe or transcript manually. Manual URL entry remains the Share Sheet fallback and the supported Android path.
+
+### iOS Share Sheet
+
+The mobile app can receive public YouTube/TikTok URLs through “Import to Chef World,” but the share extension is native code. Expo Go cannot contain or test it. Build a custom iOS development client, then run Metro in dev-client mode:
+
+```bash
+cd apps/mobile
+eas build --profile development --platform ios
+npx expo start --dev-client
+```
+
+The current `development` EAS profile targets the iOS simulator; use the internal `preview` profile or an appropriately configured development-device profile for physical-device testing. Manual pasted-link import still works without the Share Sheet and remains the Android route.
 
 ## TODOs (integrations)
 
-- Transcript from video link: YouTube done via youtube-transcript-api; TikTok / RedNote not yet.
+- Arbitrary TikTok speech transcription via a future provider; current TikTok import uses public oEmbed title/caption text only.
+- RedNote link import.
 - Transcript from upload: Whisper (or similar) on uploaded video.
 - Optional OCR on frames that show ingredient lists.

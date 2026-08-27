@@ -20,11 +20,12 @@ const parsedDraft: Recipe = {
 };
 
 const mockParseLink = jest.fn();
+const mockParseTranscript = jest.fn();
 const mockCreate = jest.fn();
 const mockApiClient = {
   recipes: {
     parseLink: mockParseLink,
-    parseTranscript: jest.fn(),
+    parseTranscript: mockParseTranscript,
     create: mockCreate,
     uploadImage: jest.fn(),
   },
@@ -57,6 +58,7 @@ function navigation() {
 beforeEach(() => {
   jest.clearAllMocks();
   mockParseLink.mockResolvedValue(parsedDraft);
+  mockParseTranscript.mockResolvedValue(parsedDraft);
   mockCreate.mockResolvedValue({ ...parsedDraft, id: "saved-recipe" });
 });
 
@@ -127,5 +129,48 @@ test("locks link input and source tabs while a preview is parsing", async () => 
     expect(screen.getByLabelText("YouTube or TikTok URL")).toBeDisabled();
     expect(screen.getByRole("tab", { name: "Transcript" })).toBeDisabled();
   });
+});
 
+test("locks transcript and expanded optional controls while a preview is parsing", async () => {
+  const nav = navigation();
+  mockParseTranscript.mockImplementationOnce(() => new Promise<Recipe>(() => {}));
+
+  await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
+  await fireEvent.press(screen.getByRole("tab", { name: "Transcript" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Optional details" }));
+  await fireEvent.changeText(screen.getByLabelText("Transcript"), "Boil noodles, then toss with sauce.");
+  fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
+
+  await waitFor(() => {
+    expect(screen.getByRole("tab", { name: "Video link" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Transcript" })).toBeDisabled();
+    expect(screen.getByLabelText("Transcript")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Optional details" })).toBeDisabled();
+    expect(screen.getByLabelText("Title (optional)")).toBeDisabled();
+    expect(screen.getByLabelText("Notes (optional)")).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Quick" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Parsing…" })).toBeDisabled();
+  });
+});
+
+test("preserves a parse error until a source edit or mode change clears it", async () => {
+  const nav = navigation();
+  mockParseLink.mockRejectedValue(new Error("This TikTok does not expose enough recipe text."));
+
+  await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
+  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), "https://vm.tiktok.com/ZMrecipe/");
+  await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
+
+  expect(await screen.findByText("This TikTok does not expose enough recipe text.")).toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole("button", { name: "Optional details" }));
+  expect(screen.getByText("This TikTok does not expose enough recipe text.")).toBeOnTheScreen();
+
+  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), "https://youtu.be/dQw4w9WgXcQ");
+  expect(screen.queryByText("This TikTok does not expose enough recipe text.")).not.toBeOnTheScreen();
+
+  await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
+  expect(await screen.findByText("This TikTok does not expose enough recipe text.")).toBeOnTheScreen();
+
+  await fireEvent.press(screen.getByRole("tab", { name: "Transcript" }));
+  expect(screen.queryByText("This TikTok does not expose enough recipe text.")).not.toBeOnTheScreen();
 });

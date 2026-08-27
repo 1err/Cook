@@ -68,6 +68,45 @@ describe("ImportSourceStep", () => {
     expect(screen.queryByLabelText("Title (optional)")).not.toBeInTheDocument();
   });
 
+  it("locks transcript and expanded optional controls while parsing", async () => {
+    const user = userEvent.setup();
+    const transcriptValues: ImportSourceValues = {
+      ...values,
+      mode: "transcript",
+      transcript: "Boil noodles, then toss with sauce.",
+    };
+    const { rerender } = render(
+      <ImportSourceStep
+        values={transcriptValues}
+        parsing={false}
+        error={null}
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Optional details" }));
+
+    rerender(
+      <ImportSourceStep
+        values={transcriptValues}
+        parsing
+        error={null}
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("tab", { name: "Video link" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Paste recipe text" })).toBeDisabled();
+    expect(screen.getByLabelText("Recipe text")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Optional details" })).toBeDisabled();
+    expect(screen.getByLabelText("Title (optional)")).toBeDisabled();
+    expect(screen.getByLabelText("Notes (optional)")).toBeDisabled();
+    expect(screen.getByRole("group", { name: "Tags (optional)" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Quick" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Creating draft…" })).toBeDisabled();
+  });
+
   it("emits a source edit so the page can clear a prior error", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

@@ -3,6 +3,7 @@ import socket
 from http.client import IncompleteRead
 from io import BytesIO
 from urllib.error import HTTPError, URLError
+from urllib.request import Request
 
 import pytest
 from youtube_transcript_api._errors import (
@@ -332,6 +333,23 @@ def test_fetch_tiktok_text_rejects_redirect_without_second_request(monkeypatch):
     assert result.status == "fetch_failed"
     assert len(first_request_urls) == 1
     assert first_request_urls[0].startswith("https://www.tiktok.com/oembed?")
+
+
+def test_reject_redirects_handler_declines_follow_up_request():
+    request = Request("https://www.tiktok.com/oembed?url=recipe")
+
+    with pytest.raises(HTTPError) as exc_info:
+        video_import._RejectRedirects().redirect_request(
+            request,
+            BytesIO(),
+            302,
+            "Found",
+            {"Location": "http://127.0.0.1/private"},
+            "http://127.0.0.1/private",
+        )
+
+    assert exc_info.value.code == 302
+    assert exc_info.value.url == request.full_url
 
 
 def test_fetch_tiktok_text_classifies_protocol_read_failure_as_temporary():
