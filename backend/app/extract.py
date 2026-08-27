@@ -7,11 +7,16 @@ import json
 import logging
 import re
 import uuid
-from dataclasses import dataclass
 
 from app.core.llm import get_openai_client
 from app.models import IngredientItem, Recipe, RecipeStep
-from app.video_import import UnsupportedVideoUrl, parse_video_source
+from app.video_import import (
+    UnsupportedVideoUrl,
+    VideoSource,
+    VideoTextResult,
+    fetch_youtube_text,
+    parse_video_source,
+)
 from app.tutorial import (
     ACTION_TYPES,
     ATTENTION_TYPES,
@@ -33,12 +38,7 @@ _NON_METRIC_UNIT_RE = re.compile(
 )
 
 
-@dataclass(slots=True)
-class TranscriptFetchResult:
-    transcript: str
-    status: str
-    message: str | None = None
-    video_id: str | None = None
+TranscriptFetchResult = VideoTextResult
 
 
 def _parse_youtube_video_id(url: str) -> str | None:
@@ -51,84 +51,24 @@ def _parse_youtube_video_id(url: str) -> str | None:
 
 
 def fetch_transcript_from_video_link(url: str) -> TranscriptFetchResult:
-    """
-    Fetch captions for YouTube URLs using youtube-transcript-api (no Google Cloud).
-    Prefers English or Chinese. Returns a structured result so callers can decide whether to continue.
-    """
-    video_id = _parse_youtube_video_id(url)
-    if not video_id:
-        logger.info("Transcript fetch skipped: not a YouTube URL or could not parse video ID")
-        return TranscriptFetchResult(
-            transcript="",
+    """Compatibility wrapper for callers that still pass a raw YouTube URL."""
+    try:
+        source = parse_video_source(url)
+    except UnsupportedVideoUrl:
+        return VideoTextResult(
             status="unsupported_url",
+            text="",
+            source=VideoSource("youtube", url, url, None),
             message="Only YouTube links are supported right now. Paste a transcript for other platforms.",
         )
-
-    logger.info("Fetching transcript for video_id=%s", video_id)
-    try:
-        from youtube_transcript_api import YouTubeTranscriptApi
-        from youtube_transcript_api._errors import (
-            NoTranscriptFound,
-            TranscriptsDisabled,
-            VideoUnavailable,
+    if source.provider != "youtube":
+        return VideoTextResult(
+            status="unsupported_url",
+            text="",
+            source=source,
+            message="Only YouTube links are supported right now. Paste a transcript for other platforms.",
         )
-    except ModuleNotFoundError:
-        logger.warning(
-            "youtube-transcript-api not installed; run: pip install youtube-transcript-api"
-        )
-        return TranscriptFetchResult(
-            transcript="",
-            status="dependency_missing",
-            message="YouTube transcript support is not available on the server right now.",
-            video_id=video_id,
-        )
-
-    try:
-        api = YouTubeTranscriptApi()
-        fetched = api.fetch(
-            video_id,
-            languages=["en", "zh", "zh-Hans", "zh-Hant"],
-        )
-        combined = " ".join(snippet.text for snippet in fetched).strip()
-        logger.info(
-            "Transcript fetched, video_id=%s, language=%s, length=%d",
-            video_id,
-            getattr(fetched, "language_code", "?"),
-            len(combined),
-        )
-        return TranscriptFetchResult(transcript=combined, status="ok", video_id=video_id)
-    except TranscriptsDisabled:
-        logger.warning("Captions disabled for video_id=%s", video_id)
-        return TranscriptFetchResult(
-            transcript="",
-            status="captions_disabled",
-            message="This YouTube video has captions disabled. Paste a transcript instead.",
-            video_id=video_id,
-        )
-    except VideoUnavailable:
-        logger.warning("Video unavailable for video_id=%s", video_id)
-        return TranscriptFetchResult(
-            transcript="",
-            status="video_unavailable",
-            message="This YouTube video is unavailable or private. Try another link or paste a transcript.",
-            video_id=video_id,
-        )
-    except NoTranscriptFound:
-        logger.warning("No transcript found for video_id=%s", video_id)
-        return TranscriptFetchResult(
-            transcript="",
-            status="no_transcript",
-            message="No usable transcript was found for this YouTube video. Paste a transcript instead.",
-            video_id=video_id,
-        )
-    except Exception as e:
-        logger.exception("Transcript fetch failed for video_id=%s: %s", video_id, e)
-        return TranscriptFetchResult(
-            transcript="",
-            status="fetch_failed",
-            message="We could not fetch captions from YouTube for this video right now. Please try again or paste a transcript.",
-            video_id=video_id,
-        )
+    return fetch_youtube_text(source)
 
 
 def _build_extraction_prompt(transcript: str) -> str:
