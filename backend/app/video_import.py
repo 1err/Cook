@@ -5,12 +5,15 @@ import re
 from typing import Literal
 from urllib.parse import parse_qs, urlsplit
 
-from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api._errors import (
-    NoTranscriptFound,
-    TranscriptsDisabled,
-    VideoUnavailable,
-)
+try:
+    from youtube_transcript_api import YouTubeTranscriptApi
+    from youtube_transcript_api._errors import (
+        NoTranscriptFound,
+        TranscriptsDisabled,
+        VideoUnavailable,
+    )
+except ModuleNotFoundError:
+    YouTubeTranscriptApi = None
 
 
 logger = logging.getLogger(__name__)
@@ -100,6 +103,12 @@ def _failure(source: VideoSource, status: str, message: str) -> VideoTextResult:
 
 def fetch_youtube_text(source: VideoSource) -> VideoTextResult:
     """Fetch a YouTube transcript using the 0.6.3 ``list_transcripts`` API."""
+    if YouTubeTranscriptApi is None:
+        return _failure(
+            source,
+            "dependency_missing",
+            "YouTube transcript support is not available on the server right now.",
+        )
     try:
         tracks = YouTubeTranscriptApi.list_transcripts(source.external_id or "")
         try:

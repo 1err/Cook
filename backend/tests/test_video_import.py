@@ -6,6 +6,7 @@ from youtube_transcript_api._errors import (
 )
 
 import app.video_import as video_import
+from app.extract import TranscriptFetchResult, fetch_transcript_from_video_link
 from app.video_import import (
     UnsupportedVideoUrl,
     fetch_youtube_text,
@@ -157,3 +158,43 @@ def test_fetch_youtube_text_reports_unexpected_failures(monkeypatch):
     assert result.status == "fetch_failed"
     assert result.message == "We could not fetch captions from YouTube for this video right now. Please try again or paste a transcript."
     assert result.text == ""
+
+
+def test_fetch_youtube_text_reports_missing_dependency(monkeypatch):
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", None)
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
+
+    assert result.status == "dependency_missing"
+    assert result.message == "YouTube transcript support is not available on the server right now."
+    assert result.text == ""
+
+
+def test_legacy_transcript_fetch_wrapper_exposes_compatibility_attributes(monkeypatch):
+    class Track:
+        def fetch(self):
+            return [{"text": "Whisk the eggs."}]
+
+    class Tracks:
+        def find_transcript(self, languages):
+            return Track()
+
+    monkeypatch.setattr(video_import.YouTubeTranscriptApi, "list_transcripts", lambda video_id: Tracks())
+
+    result = fetch_transcript_from_video_link("https://youtu.be/dQw4w9WgXcQ")
+
+    assert isinstance(result, TranscriptFetchResult)
+    assert (result.transcript, result.status, result.message, result.video_id) == (
+        "Whisk the eggs.",
+        "ok",
+        None,
+        "dQw4w9WgXcQ",
+    )
+
+
+@pytest.mark.parametrize("url", ["https://www.tiktok.com/@chef/video/7412345678901234567", "not-a-url"])
+def test_legacy_transcript_fetch_wrapper_rejects_non_youtube_urls(url):
+    result = fetch_transcript_from_video_link(url)
+
+    assert (result.transcript, result.status, result.video_id) == ("", "unsupported_url", None)
+    assert result.message == "Only YouTube links are supported right now. Paste a transcript for other platforms."

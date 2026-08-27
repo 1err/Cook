@@ -65,7 +65,7 @@ def fetch_transcript_from_video_link(url: str) -> TranscriptFetchResult:
         return VideoTextResult(
             status="unsupported_url",
             text="",
-            source=source,
+            source=VideoSource("youtube", url, url, None),
             message="Only YouTube links are supported right now. Paste a transcript for other platforms.",
         )
     return fetch_youtube_text(source)
