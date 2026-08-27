@@ -66,7 +66,7 @@ App: http://localhost:3000.
 - **Phone on same Wi‑Fi:** Set `NEXT_PUBLIC_API_BASE=http://192.168.1.XX:8000` (your machine’s LAN IP).
 - **Docker Compose (browser on host):** Compose sets `NEXT_PUBLIC_API_BASE=http://localhost:8000` so the **browser** reaches the API on the host.
 
-For a fuller architecture, API table, Docker notes, and UI design pointers, see **`CODEBASE_WALKTHROUGH.md`**.
+For the authoritative architecture, API table, deployment notes, and codebase conventions, see **[CLAUDE.md](CLAUDE.md)**.
 
 ## Flow
 
