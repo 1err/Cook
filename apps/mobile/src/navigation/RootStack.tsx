@@ -1,11 +1,13 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { useShareIntentContext } from "expo-share-intent";
 import { useAuth } from "../lib/auth";
 import { AuthStack } from "./AuthStack";
 import { MainTabs } from "./MainTabs";
 import { ImportModalScreen } from "../features/import/ImportModalScreen";
+import { extractSharedVideoUrl } from "../features/import/sharedVideoUrl";
 import { AccountStack } from "./stacks/AccountStack";
 import { colors } from "../theme";
 import type { RootStackParamList } from "./types";
@@ -22,11 +24,41 @@ function SplashGate() {
 
 export function RootStack() {
   const { token, loading } = useAuth();
+  const navigationRef = useNavigationContainerRef<RootStackParamList>();
+  const [navigationReady, setNavigationReady] = useState(false);
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
+
+  useEffect(() => {
+    if (
+      loading ||
+      !token ||
+      !navigationReady ||
+      !navigationRef.isReady() ||
+      !hasShareIntent
+    ) {
+      return;
+    }
+
+    const initialUrl = extractSharedVideoUrl(shareIntent.webUrl, shareIntent.text);
+    if (initialUrl) {
+      navigationRef.navigate("ImportModal", { initialUrl });
+    }
+    resetShareIntent();
+  }, [
+    hasShareIntent,
+    loading,
+    navigationReady,
+    navigationRef,
+    resetShareIntent,
+    shareIntent.text,
+    shareIntent.webUrl,
+    token,
+  ]);
 
   if (loading) return <SplashGate />;
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef} onReady={() => setNavigationReady(true)}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!token ? (
           <Stack.Screen name="Auth" component={AuthStack} />

@@ -12,6 +12,7 @@ import {
 } from "@expo-google-fonts/source-serif-4";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { useFonts } from "expo-font";
+import { ShareIntentProvider } from "expo-share-intent";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -38,25 +39,27 @@ export default function App() {
   });
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <BottomSheetModalProvider>
-          {fontsLoaded ? (
-            <I18nProvider>
-              <AuthProvider>
+    <ShareIntentProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <BottomSheetModalProvider>
+            {fontsLoaded ? (
+              <I18nProvider>
+                <AuthProvider>
+                  <StatusBar style="dark" />
+                  <RootStack />
+                </AuthProvider>
+              </I18nProvider>
+            ) : (
+              <>
                 <StatusBar style="dark" />
-                <RootStack />
-              </AuthProvider>
-            </I18nProvider>
-          ) : (
-            <>
-              <StatusBar style="dark" />
-              <FontSplashGate />
-            </>
-          )}
-        </BottomSheetModalProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+                <FontSplashGate />
+              </>
+            )}
+          </BottomSheetModalProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ShareIntentProvider>
   );
 }
 

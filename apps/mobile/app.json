@@ -34,6 +34,19 @@
         {
           "photosPermission": "Chef World needs access to your photos so you can attach a recipe cover image."
         }
+      ],
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
+            "NSExtensionActivationSupportsText": true
+          },
+          "iosShareExtensionName": "Import to Chef World",
+          "iosAppGroupIdentifier": "group.com.chefworld.cooking.share",
+          "disableAndroid": true
+        }
       ]
     ],
     "extra": {
