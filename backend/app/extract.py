@@ -8,10 +8,10 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
-from typing import Optional
 
 from app.core.llm import get_openai_client
 from app.models import IngredientItem, Recipe, RecipeStep
+from app.video_import import UnsupportedVideoUrl, parse_video_source
 from app.tutorial import (
     ACTION_TYPES,
     ATTENTION_TYPES,
@@ -41,21 +41,13 @@ class TranscriptFetchResult:
     video_id: str | None = None
 
 
-def _parse_youtube_video_id(url: str) -> Optional[str]:
-    """Extract YouTube video ID from common URL forms. Returns None if not YouTube or unparseable."""
-    url = (url or "").strip()
-    if "youtube.com" not in url and "youtu.be" not in url:
+def _parse_youtube_video_id(url: str) -> str | None:
+    """Return a YouTube ID when a supported YouTube URL can be classified."""
+    try:
+        source = parse_video_source(url)
+    except UnsupportedVideoUrl:
         return None
-    m = re.search(r"youtu\.be/([a-zA-Z0-9_-]{11})(?:[?&#]|$)", url)
-    if m:
-        return m.group(1)
-    m = re.search(r"youtube\.com/embed/([a-zA-Z0-9_-]{11})", url)
-    if m:
-        return m.group(1)
-    m = re.search(r"[?&]v=([a-zA-Z0-9_-]{11})(?:&|#|$)", url)
-    if m:
-        return m.group(1)
-    return None
+    return source.external_id if source.provider == "youtube" else None
 
 
 def fetch_transcript_from_video_link(url: str) -> TranscriptFetchResult:
