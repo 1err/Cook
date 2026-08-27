@@ -15,12 +15,35 @@ CANONICAL_URL = "https://www.tiktok.com/@chef/video/7412345678901234567"
 POST_ID = "7412345678901234567"
 
 
-def _recipe(*, ingredients=None, steps=None) -> Recipe:
+def _recipe(*, title="Extracted", ingredients=None, steps=None) -> Recipe:
     return Recipe(
         id="draft",
-        title="Extracted",
+        title=title,
         ingredients=ingredients if ingredients is not None else [{"name": "Eggs", "quantity": "2"}],
         steps=steps if steps is not None else ["Whisk and fry."],
+    )
+
+
+def _mock_successful_tiktok_import(monkeypatch, *, source_title: str, recipe_title: str):
+    source = VideoSource("tiktok", RAW_URL, CANONICAL_URL, POST_ID)
+    monkeypatch.setattr(routes_recipes, "parse_video_source", lambda _: source)
+    monkeypatch.setattr(
+        routes_recipes,
+        "fetch_video_text",
+        AsyncMock(
+            return_value=VideoTextResult(
+                status="ok",
+                text="2 eggs. Whisk and fry.",
+                source=source,
+                title=source_title,
+                thumbnail_url="https://p16.example/cover.jpeg",
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        routes_recipes,
+        "extract_recipe_from_text",
+        AsyncMock(return_value=_recipe(title=recipe_title)),
     )
 
 
@@ -50,6 +73,52 @@ async def test_parse_link_uses_canonical_source_and_user_title(monkeypatch):
     assert result.title == "My omelet"
     assert result.source_url == CANONICAL_URL
     assert result.thumbnail_url == "https://p16.example/cover.jpeg"
+
+
+@pytest.mark.parametrize("recipe_title", ["", "  Imported Recipe  ", "UNTITLED RECIPE"])
+@pytest.mark.asyncio
+async def test_parse_link_uses_tiktok_source_title_for_generic_recipe_title(monkeypatch, recipe_title):
+    _mock_successful_tiktok_import(
+        monkeypatch,
+        source_title="Creator's crispy chili noodles",
+        recipe_title=recipe_title,
+    )
+
+    result = await routes_recipes.parse_from_link(
+        routes_recipes.ParseLinkBody(url=RAW_URL), _user=object()
+    )
+
+    assert result.title == "Creator's crispy chili noodles"
+
+
+@pytest.mark.asyncio
+async def test_parse_link_preserves_meaningful_extracted_recipe_title(monkeypatch):
+    _mock_successful_tiktok_import(
+        monkeypatch,
+        source_title="Creator's noodle caption",
+        recipe_title="Crispy Chili Noodles",
+    )
+
+    result = await routes_recipes.parse_from_link(
+        routes_recipes.ParseLinkBody(url=RAW_URL), _user=object()
+    )
+
+    assert result.title == "Crispy Chili Noodles"
+
+
+@pytest.mark.asyncio
+async def test_parse_link_explicit_user_title_wins_over_source_title(monkeypatch):
+    _mock_successful_tiktok_import(
+        monkeypatch,
+        source_title="Creator's noodle caption",
+        recipe_title="Imported Recipe",
+    )
+
+    result = await routes_recipes.parse_from_link(
+        routes_recipes.ParseLinkBody(url=RAW_URL, title="  My chili noodles  "), _user=object()
+    )
+
+    assert result.title == "My chili noodles"
 
 
 @pytest.mark.asyncio

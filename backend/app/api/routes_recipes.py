@@ -130,12 +130,14 @@ async def parse_from_link(
     recipe = await extract_recipe_from_text(_append_import_notes(text_result.text, body.notes))
     if source.provider == "tiktok" and not _has_meaningful_draft(recipe):
         raise HTTPException(422, "This TikTok does not expose enough recipe text. Paste its transcript instead.")
-    recipe = recipe.model_copy(
-        update={
-            "source_url": source.canonical_url,
-            "thumbnail_url": recipe.thumbnail_url or text_result.thumbnail_url,
-        }
-    )
+    updates = {
+        "source_url": source.canonical_url,
+        "thumbnail_url": recipe.thumbnail_url or text_result.thumbnail_url,
+    }
+    source_title = (text_result.title or "").strip()
+    if source_title and recipe.title.strip().casefold() in {"", "untitled recipe", "imported recipe"}:
+        updates["title"] = source_title
+    recipe = recipe.model_copy(update=updates)
     return _apply_import_overrides(recipe, body.title, body.library_tags)
 
 
