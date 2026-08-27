@@ -271,16 +271,16 @@ async def fetch_video_text(source: VideoSource) -> VideoTextResult:
 
 
 def _youtube_id(host: str, path: str, query: dict[str, list[str]]) -> str | None:
-    if host in {"www.youtube.com", "m.youtube.com", "youtube.com"}:
+    if host in {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"}:
         if path == "/watch":
             candidate = query.get("v", [None])[0]
         else:
-            match = re.fullmatch(r"/(?:shorts|embed)/([A-Za-z0-9_-]{11})/?", path)
+            match = re.fullmatch(r"/(?:shorts|live|embed)/([A-Za-z0-9_-]{11})/?", path)
             candidate = match.group(1) if match else None
     elif host == "youtu.be":
         match = re.fullmatch(r"/([A-Za-z0-9_-]{11})/?", path)
         candidate = match.group(1) if match else None
-    elif host == "www.youtube-nocookie.com":
+    elif host in {"youtube-nocookie.com", "www.youtube-nocookie.com"}:
         match = re.fullmatch(r"/embed/([A-Za-z0-9_-]{11})/?", path)
         candidate = match.group(1) if match else None
     else:
