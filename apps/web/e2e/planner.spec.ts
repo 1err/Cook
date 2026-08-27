@@ -149,16 +149,19 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
     const board = matrix.parentElement!;
     const mainRect = main.getBoundingClientRect();
     return {
+      documentHeight: document.documentElement.scrollHeight,
       documentWidth: document.documentElement.scrollWidth,
       leftGutter: mainRect.left,
       matrixBottom: matrix.getBoundingClientRect().bottom,
       railBottom: rail.getBoundingClientRect().bottom,
       rightGutter: window.innerWidth - mainRect.right,
       viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
       boardBottom: board.getBoundingClientRect().bottom,
       viewportBottomGap: window.innerHeight - board.getBoundingClientRect().bottom,
     };
   });
+  expect(workspaceMetrics.documentHeight).toBeLessThanOrEqual(workspaceMetrics.viewportHeight);
   expect(workspaceMetrics.documentWidth).toBeLessThanOrEqual(workspaceMetrics.viewportWidth);
   expect(Math.abs(workspaceMetrics.leftGutter - workspaceMetrics.rightGutter)).toBeLessThanOrEqual(1);
   expect(
@@ -168,9 +171,6 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
     ),
     JSON.stringify(workspaceMetrics),
   ).toBeLessThanOrEqual(1);
-  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeGreaterThanOrEqual(16);
-  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeLessThanOrEqual(36);
-
   const mealCardMetrics = await page
     .getByRole("button", { name: /Open Recipe 01/ })
     .evaluate((card) => {
@@ -188,9 +188,12 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
         titleWhiteSpace: getComputedStyle(title).whiteSpace,
       };
     });
-  expect(mealCardMetrics.imageWidth, JSON.stringify(mealCardMetrics)).toBeGreaterThanOrEqual(76);
+  expect(mealCardMetrics.imageWidth, JSON.stringify(mealCardMetrics)).toBeGreaterThanOrEqual(94);
+  expect(mealCardMetrics.imageWidth, JSON.stringify(mealCardMetrics)).toBeLessThanOrEqual(96);
   expect(mealCardMetrics.titleVisibleRatio, JSON.stringify(mealCardMetrics)).toBeGreaterThan(0.58);
   expect(mealCardMetrics.titleWhiteSpace).toBe("nowrap");
+  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeGreaterThanOrEqual(8);
+  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeLessThanOrEqual(20);
 
   await expect(page).toHaveScreenshot("planner-matrix.png", {
     animations: "disabled",
@@ -225,6 +228,54 @@ test("keeps every planner tag fully inside the recipe rail", async ({ page }, te
 
   expect(tagMetrics.panelRight, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(tagMetrics.railRight);
   expect(tagMetrics.panelScrollWidth, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(tagMetrics.panelClientWidth);
+  expect(tagMetrics.clippedLabels).toEqual([]);
+});
+
+test("uses the picker width for its tag menu and separates the first tag group", async (
+  { page },
+  testInfo,
+) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "Desktop picker geometry is verified once.",
+  );
+
+  await page.getByRole("button", { name: "Choose a recipe for breakfast on 2026-08-12" }).click();
+  const picker = page.getByRole("dialog", { name: "Choose recipe for meal slot" });
+  await picker.getByRole("button", { name: "Filter planner recipes by tag" }).click();
+  const panel = picker.getByRole("dialog", { name: "Filter planner recipes by tag" });
+  await expect(panel).toBeVisible();
+
+  const tagMetrics = await panel.evaluate((element) => {
+    const panelRect = element.getBoundingClientRect();
+    const sheetRect = element
+      .closest<HTMLElement>(".planner-mobile-picker__sheet")!
+      .getBoundingClientRect();
+    const allOptionRect = element
+      .querySelector<HTMLElement>(":scope > .tag-filter-popover__option")!
+      .getBoundingClientRect();
+    const firstGroupTitleRect = element
+      .querySelector<HTMLElement>(".tag-filter-popover__group-title")!
+      .getBoundingClientRect();
+    const options = Array.from(element.querySelectorAll<HTMLElement>(".tag-filter-popover__option"));
+    return {
+      clippedLabels: options
+        .filter((option) => option.scrollWidth > option.clientWidth)
+        .map((option) => option.textContent?.trim()),
+      firstGroupGap: firstGroupTitleRect.top - allOptionRect.bottom,
+      panelLeft: panelRect.left,
+      panelRight: panelRect.right,
+      panelWidth: panelRect.width,
+      sheetLeft: sheetRect.left,
+      sheetRight: sheetRect.right,
+    };
+  });
+
+  expect(tagMetrics.panelWidth, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(650);
+  expect(tagMetrics.panelLeft, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(tagMetrics.sheetLeft);
+  expect(tagMetrics.panelRight, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(tagMetrics.sheetRight);
+  expect(tagMetrics.firstGroupGap, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(18);
+  expect(tagMetrics.firstGroupGap, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(32);
   expect(tagMetrics.clippedLabels).toEqual([]);
 });
 

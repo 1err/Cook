@@ -1,10 +1,10 @@
 .page {
-  padding-block: 1.5rem;
+  padding: 1.5rem 0 0.75rem;
 }
 
 .workspace {
   display: grid;
-  height: clamp(32rem, calc(100dvh - 13.25rem), 50rem);
+  height: clamp(32rem, calc(100dvh - 12.5rem), 51rem);
   min-height: 0;
   align-items: stretch;
   gap: 1rem;
@@ -133,21 +133,31 @@
   gap: 0.4rem;
 }
 
-.page :global(.planner-filter-bar .tag-filter-popover__panel) {
+.page :global(.planner-editorial__sidebar-head .planner-filter-bar .tag-filter-popover__panel) {
   width: calc(15rem - 2rem);
   max-height: min(56dvh, 30rem);
 }
 
-.page :global(.planner-filter-bar .tag-filter-popover__group-options) {
+.page :global(.planner-editorial__sidebar-head .planner-filter-bar .tag-filter-popover__group-options) {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 0.35rem;
 }
 
-.page :global(.planner-filter-bar .tag-filter-popover__group-options .tag-filter-popover__option) {
+.page :global(.planner-editorial__sidebar-head .planner-filter-bar .tag-filter-popover__group-options .tag-filter-popover__option) {
   width: 100%;
   text-align: left;
   white-space: nowrap;
+}
+
+.page :global(.planner-mobile-picker__controls .tag-filter-popover__panel) {
+  width: min(44rem, calc(100vw - 2rem));
+}
+
+.page :global(.planner-mobile-picker__controls .tag-filter-popover__panel > .tag-filter-popover__group:first-of-type) {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--cw-color-divider) 70%, transparent);
 }
 
 .page :global(.planner-editorial__sidebar-scroll) {
@@ -356,7 +366,7 @@
   background: var(--cw-color-canvas);
   color: inherit;
   cursor: pointer;
-  grid-template-columns: 5rem minmax(0, 1fr);
+  grid-template-columns: 5.9375rem minmax(0, 1fr);
 }
 
 .page :global(.planner-meal-card__img) {
