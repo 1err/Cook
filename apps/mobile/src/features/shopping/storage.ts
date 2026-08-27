@@ -1,6 +1,7 @@
 import type { StoreProduct, StoreProductsResponse } from "@cooking/api-client";
 import { isSafeWeeeProductUrl } from "@cooking/shared";
 import { ephemeral, json } from "../../lib/storage";
+import { canonicalStoreProductKey, cleanStoreProductQuery } from "./storeProductIdentity";
 
 export const SMART_SHOPPING_LIST_PREFIX = "smartShoppingList";
 export const SMART_SHOPPING_PRODUCTS_PREFIX = "smartShoppingProducts";
@@ -30,6 +31,7 @@ export interface SmartProductsStored {
   open: Record<string, boolean>;
   products: Record<string, StoreProductsResponse>;
   errors: Record<string, string | null>;
+  queries: Record<string, string>;
 }
 
 export type ParsedSmartList = {
@@ -73,6 +75,20 @@ function validFutureExpiry(value: unknown, nowMs: number): value is string {
   return Number.isFinite(expiresAtMs) && expiresAtMs > nowMs;
 }
 
+export function isFreshStoredProductResponse(
+  value: unknown,
+  nowMs = Date.now(),
+): value is StoreProductsResponse {
+  if (!value || typeof value !== "object") return false;
+  const response = value as Partial<StoreProductsResponse>;
+  return (
+    Array.isArray(response.products) &&
+    response.products.length > 0 &&
+    response.products.every(isStoredProduct) &&
+    validFutureExpiry(response.expires_at, nowMs)
+  );
+}
+
 export function parseSmartProductsStored(
   parsed: unknown,
   nowMs = Date.now(),
@@ -82,27 +98,45 @@ export function parseSmartProductsStored(
   if (!stored.open || typeof stored.open !== "object") return null;
   if (!stored.products || typeof stored.products !== "object") return null;
   if (!stored.errors || typeof stored.errors !== "object") return null;
+  const open: Record<string, boolean> = {};
+  const products: Record<string, StoreProductsResponse> = {};
+  const errors: Record<string, string | null> = {};
+  const queries: Record<string, string> = {};
+  const rememberLegacyQuery = (rawKey: string) => {
+    const key = canonicalStoreProductKey(rawKey);
+    const query = cleanStoreProductQuery(rawKey);
+    if (key && query && !(key in queries)) queries[key] = query;
+  };
+  for (const [rawKey, value] of Object.entries(stored.open)) {
+    const key = canonicalStoreProductKey(rawKey);
+    if (!key || typeof value !== "boolean") continue;
+    open[key] = value;
+    rememberLegacyQuery(rawKey);
+  }
+  for (const [rawKey, value] of Object.entries(stored.products)) {
+    const key = canonicalStoreProductKey(rawKey);
+    if (!key || !isFreshStoredProductResponse(value, nowMs)) continue;
+    products[key] = { products: value.products.slice(0, 3), expires_at: value.expires_at };
+    rememberLegacyQuery(rawKey);
+  }
+  for (const [rawKey, value] of Object.entries(stored.errors)) {
+    const key = canonicalStoreProductKey(rawKey);
+    if (!key || (value !== null && typeof value !== "string")) continue;
+    errors[key] = value;
+    rememberLegacyQuery(rawKey);
+  }
+  if (stored.queries && typeof stored.queries === "object") {
+    for (const [rawKey, rawQuery] of Object.entries(stored.queries)) {
+      const key = canonicalStoreProductKey(rawKey);
+      const query = typeof rawQuery === "string" ? cleanStoreProductQuery(rawQuery) : "";
+      if (key && query && canonicalStoreProductKey(query) === key) queries[key] = query;
+    }
+  }
   return {
-    open: Object.fromEntries(
-      Object.entries(stored.open).filter(([, value]) => typeof value === "boolean"),
-    ),
-    products: Object.fromEntries(
-      Object.entries(stored.products).filter(([, value]) => {
-        if (!value || typeof value !== "object") return false;
-        const response = value as Partial<StoreProductsResponse>;
-        return (
-          Array.isArray(response.products) &&
-          response.products.length > 0 &&
-          response.products.every(isStoredProduct) &&
-          validFutureExpiry(response.expires_at, nowMs)
-        );
-      }),
-    ) as Record<string, StoreProductsResponse>,
-    errors: Object.fromEntries(
-      Object.entries(stored.errors).filter(
-        ([, value]) => value === null || typeof value === "string",
-      ),
-    ) as Record<string, string | null>,
+    open,
+    products,
+    errors,
+    queries,
   };
 }
 

@@ -3,21 +3,32 @@ Persistent cache access for store product lookups.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-import re
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from collections.abc import Sequence
+import math
+import time
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select, true, tuple_
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import CachedStoreProductModel
-from app.core.store_products import normalize_weee_product_url
+from app.core.store_products import normalize_store_products
+
+_DATETIME_TYPE = datetime
 
 
 @dataclass(frozen=True)
 class CachedStoreProducts:
     products: list[dict[str, str]]
     updated_at: datetime
+    observed_at: datetime | None = field(default=None, compare=False)
+    observation_anchor_monotonic: float | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
 
 
 def is_cache_entry_fresh(
@@ -25,43 +36,52 @@ def is_cache_entry_fresh(
     now: datetime,
     max_age_seconds: int,
 ) -> bool:
+    if not isinstance(updated_at, _DATETIME_TYPE) or not isinstance(now, _DATETIME_TYPE):
+        return False
     if updated_at.tzinfo is None:
         updated_at = updated_at.replace(tzinfo=timezone.utc)
-    return now - updated_at < timedelta(seconds=max_age_seconds)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    try:
+        age_seconds = (now - updated_at).total_seconds()
+    except (OverflowError, TypeError, ValueError):
+        return False
+    return (
+        math.isfinite(age_seconds)
+        and 0 <= age_seconds < max_age_seconds
+    )
 
 
 def normalize_cached_store_products(data: object) -> list[dict[str, str]] | None:
     if not isinstance(data, list):
         return None
-    products: list[dict[str, str]] = []
-    for row in data:
-        if not isinstance(row, dict):
-            continue
-        name = row.get("name")
-        price = row.get("price")
-        image = row.get("image")
-        url = row.get("url")
-        if not all(isinstance(value, str) for value in (name, price, image, url)):
-            continue
-        safe_url = normalize_weee_product_url(url)
-        if safe_url is None:
-            continue
-        products.append(
-            {
-                "name": name,
-                "price": price,
-                "image": image,
-                "url": safe_url,
-            }
-        )
-    return products
+    return normalize_store_products(data)
 
 
-def _normalize_product_name(name: str) -> str:
-    normalized = name.lower()
-    normalized = re.sub(r"\d+(\.\d+)?\s*(lb|lbs|oz|g|kg)", "", normalized)
-    normalized = re.sub(r"[^a-z0-9\s\u4e00-\u9fff]", "", normalized)
-    return normalized.strip()
+def _as_utc_datetime(value: object) -> datetime | None:
+    if not isinstance(value, _DATETIME_TYPE):
+        return None
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
+def _cache_observation_cte():
+    """One materialized volatile observation shared by every selected row."""
+    return (
+        select(func.clock_timestamp().label("observed_at"))
+        .cte("cache_observation")
+        .prefix_with("MATERIALIZED")
+    )
+
+
+def _unpack_observed_cache_row(value: object) -> tuple[object, datetime] | None:
+    if value is None:
+        return None
+    try:
+        row, observed_at = value  # type: ignore[misc]
+    except (TypeError, ValueError):
+        return None
+    observed_at = _as_utc_datetime(observed_at)
+    return (row, observed_at) if observed_at is not None else None
 
 
 async def get_cached_store_products(
@@ -93,28 +113,86 @@ async def get_cached_store_products_with_metadata(
     cache_version: str,
     max_age_seconds: int,
 ) -> CachedStoreProducts | None:
+    observation = _cache_observation_cte()
+    observation_anchor = time.monotonic()
     result = await session.execute(
-        select(CachedStoreProductModel).where(
+        select(CachedStoreProductModel, observation.c.observed_at).join(
+            observation,
+            true(),
+        ).where(
             CachedStoreProductModel.query == query,
             CachedStoreProductModel.store == store,
             CachedStoreProductModel.language == language,
             CachedStoreProductModel.cache_version == cache_version,
         )
     )
-    row = result.scalars().one_or_none()
-    if row is None or row.updated_at is None:
+    observed_row = _unpack_observed_cache_row(result.one_or_none())
+    if observed_row is None:
         return None
-    updated_at = row.updated_at
-    if updated_at.tzinfo is None:
-        updated_at = updated_at.replace(tzinfo=timezone.utc)
+    row, observed_at = observed_row
+    updated_at = _as_utc_datetime(row.updated_at)
+    if updated_at is None:
+        return None
     if not is_cache_entry_fresh(
         updated_at,
-        datetime.now(timezone.utc),
+        observed_at,
         max_age_seconds,
     ):
         return None
     products = normalize_cached_store_products(row.data)
-    return CachedStoreProducts(products=products, updated_at=updated_at) if products else None
+    return (
+        CachedStoreProducts(
+            products=products,
+            updated_at=updated_at,
+            observed_at=observed_at,
+            observation_anchor_monotonic=observation_anchor,
+        )
+        if products
+        else None
+    )
+
+
+async def get_cached_store_products_batch(
+    session: AsyncSession,
+    *,
+    keys: Sequence[tuple[str, str]],
+    store: str,
+    cache_version: str,
+    max_age_seconds: int,
+) -> dict[tuple[str, str], CachedStoreProducts]:
+    unique_keys = list(dict.fromkeys(keys))
+    if not unique_keys:
+        return {}
+    observation = _cache_observation_cte()
+    observation_anchor = time.monotonic()
+    result = await session.execute(
+        select(CachedStoreProductModel, observation.c.observed_at).join(
+            observation,
+            true(),
+        ).where(
+            CachedStoreProductModel.store == store,
+            CachedStoreProductModel.cache_version == cache_version,
+            tuple_(CachedStoreProductModel.query, CachedStoreProductModel.language).in_(unique_keys),
+        )
+    )
+    entries: dict[tuple[str, str], CachedStoreProducts] = {}
+    for result_row in result.all():
+        observed_row = _unpack_observed_cache_row(result_row)
+        if observed_row is None:
+            continue
+        row, observed_at = observed_row
+        updated_at = _as_utc_datetime(row.updated_at)
+        if updated_at is None:
+            continue
+        products = normalize_cached_store_products(row.data)
+        if products and is_cache_entry_fresh(updated_at, observed_at, max_age_seconds):
+            entries[(row.query, row.language)] = CachedStoreProducts(
+                products,
+                updated_at,
+                observed_at,
+                observation_anchor,
+            )
+    return entries
 
 
 async def get_cached_store_product_entry(
@@ -192,39 +270,85 @@ async def upsert_cached_store_products(
     cache_version: str,
     data: list[dict[str, str]],
     updated_at: datetime,
-) -> None:
-    result = await session.execute(
-        select(CachedStoreProductModel).where(
-            CachedStoreProductModel.query == query,
-            CachedStoreProductModel.store == store,
-            CachedStoreProductModel.language == language,
-            CachedStoreProductModel.cache_version == cache_version,
-        )
-    )
-    row = result.scalars().one_or_none()
+) -> CachedStoreProducts | None:
+    """Atomically persist a positive candidate and return the winning row.
+
+    A conflicting, newer nonfuture generation remains authoritative. PostgreSQL
+    waits for that conflict to settle before this transaction reads the winner.
+    PostgreSQL owns both candidate generation and observation. Incumbents later
+    than the volatile conflict-evaluation clock are invalid cache poison and may
+    be replaced; a transaction-start clock would corrupt a blocked conflict race.
+    """
     normalized = normalize_cached_store_products(data)
     if not normalized:
-        return
-    seen: set[str] = set()
-    deduped: list[dict[str, str]] = []
-    for product in normalized:
-        key = _normalize_product_name(product["name"])
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(product)
-    normalized = deduped[:3]
+        return None
+    candidate = postgresql_insert(CachedStoreProductModel).values(
+        query=query,
+        store=store,
+        language=language,
+        cache_version=cache_version,
+        data=normalized,
+        # Keep ``updated_at`` in the Python contract for compatibility with
+        # portable fakes; PostgreSQL is the generation authority in production.
+        updated_at=func.clock_timestamp(),
+    )
+    statement = candidate.on_conflict_do_update(
+        index_elements=(
+            CachedStoreProductModel.query,
+            CachedStoreProductModel.store,
+            CachedStoreProductModel.language,
+            CachedStoreProductModel.cache_version,
+        ),
+        set_={
+            "data": candidate.excluded.data,
+            "updated_at": candidate.excluded.updated_at,
+        },
+        where=or_(
+            CachedStoreProductModel.updated_at < candidate.excluded.updated_at,
+            CachedStoreProductModel.updated_at > func.clock_timestamp(),
+        ),
+    ).returning(
+        CachedStoreProductModel.data,
+        CachedStoreProductModel.updated_at,
+        func.clock_timestamp().label("observed_at"),
+    )
+    observation_anchor = time.monotonic()
+    result = await session.execute(statement)
+    row = result.one_or_none()
     if row is None:
-        row = CachedStoreProductModel(
-            query=query,
-            store=store,
-            language=language,
-            cache_version=cache_version,
-            data=normalized,
-            updated_at=updated_at,
+        observation_anchor = time.monotonic()
+        winner_result = await session.execute(
+            select(
+                CachedStoreProductModel.data,
+                CachedStoreProductModel.updated_at,
+                func.clock_timestamp().label("observed_at"),
+            ).where(
+                CachedStoreProductModel.query == query,
+                CachedStoreProductModel.store == store,
+                CachedStoreProductModel.language == language,
+                CachedStoreProductModel.cache_version == cache_version,
+            )
         )
-        session.add(row)
+        row = winner_result.one_or_none()
+    if row is None:
+        return None
+    mapping = getattr(row, "_mapping", None)
+    if mapping is not None:
+        winner_data = mapping["data"]
+        winner_updated_at = mapping["updated_at"]
+        winner_observed_at = mapping.get("observed_at", winner_updated_at)
     else:
-        row.data = normalized
-        row.updated_at = updated_at
-    await session.flush()
+        winner_data = row.data
+        winner_updated_at = row.updated_at
+        winner_observed_at = getattr(row, "observed_at", winner_updated_at)
+    winner_products = normalize_cached_store_products(winner_data)
+    winner_updated_at = _as_utc_datetime(winner_updated_at)
+    winner_observed_at = _as_utc_datetime(winner_observed_at)
+    if not winner_products or winner_updated_at is None or winner_observed_at is None:
+        return None
+    return CachedStoreProducts(
+        winner_products,
+        winner_updated_at,
+        winner_observed_at,
+        observation_anchor,
+    )

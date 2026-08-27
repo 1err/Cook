@@ -45,7 +45,9 @@ export function StoreProductPicks({
       </View>
     );
   }
-  const safeProducts = products.filter((product) => isSafeWeeeProductUrl(product.url));
+  const safeProducts = products
+    .filter((product) => isSafeWeeeProductUrl(product.url))
+    .slice(0, 3);
   if (safeProducts.length === 0) {
     return (
       <View style={styles.errorWrap}>

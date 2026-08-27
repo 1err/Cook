@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable
+import logging
 from typing import Any
 
 import pytest
@@ -15,48 +16,68 @@ PRODUCT = {
 }
 
 
+@pytest.fixture(autouse=True)
+async def reset_tracked_warmer():
+    task = cache_warmer._warmer_task
+    if task is not None and not task.done():
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    cache_warmer._warmer_task = None
+    yield
+    task = cache_warmer._warmer_task
+    if task is not None and not task.done():
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    cache_warmer._warmer_task = None
+
+
 @pytest.mark.asyncio
-async def test_warmer_runs_two_queries_at_a_time_and_isolates_failures(
+async def test_warmer_runs_queries_serially_at_background_priority_and_isolates_failures(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    queries = ["hit", "miss one", "failure", "miss two"]
     active = 0
-    peak_active = 0
-    completed: list[str] = []
+    peak = 0
+    priorities: list[str] = []
 
-    async def warm_query(
+    async def fetch(
         query: str,
+        session: object | None = None,
         *,
         force_refresh: bool = False,
-    ) -> tuple[cache_warmer.WarmStatus, list[dict[str, str]]]:
-        nonlocal active, peak_active
-        assert force_refresh
+        priority: str = "interactive",
+    ) -> list[dict[str, str]]:
+        nonlocal active, peak
+        priorities.append(priority)
         active += 1
-        peak_active = max(peak_active, active)
+        peak = max(peak, active)
         await asyncio.sleep(0)
         active -= 1
         if query == "failure":
-            raise RuntimeError("controlled scrape failure")
-        completed.append(query)
-        return ("cache_hit" if query == "hit" else "cache_miss"), [PRODUCT]
+            from app.services.weee_scraper import StoreScrapeError
 
-    monkeypatch.setattr(cache_warmer, "ALL_QUERIES", queries)
-    monkeypatch.setattr(cache_warmer, "warm_cache_query", warm_query)
+            raise StoreScrapeError("controlled")
+        return [] if query == "empty" else [PRODUCT]
+
+    monkeypatch.setattr(cache_warmer, "ALL_QUERIES", ["one", "empty", "failure", "two"])
+    monkeypatch.setattr(cache_warmer, "fetch_store_products", fetch)
 
     summary = await cache_warmer.run_cache_warmer(force_refresh=True)
 
-    assert peak_active == 2
-    assert completed == ["hit", "miss one", "miss two"]
+    assert peak == 1
+    assert priorities == ["background"] * 4
     assert summary == {
-        "cache_hit": 1,
+        "cache_hit": 0,
         "cache_miss": 2,
+        "empty": 1,
         "skipped": 0,
         "failed": 1,
         "total": 4,
     }
 
 
-def test_scheduler_runs_daily_force_refresh_and_starts_stale_only(
+def test_scheduler_runs_daily_force_refresh_without_a_startup_warming_sweep(
     monkeypatch: pytest.MonkeyPatch,
 ):
     jobs: list[tuple[Callable[[], Awaitable[None]], dict[str, Any]]] = []
@@ -93,7 +114,7 @@ def test_scheduler_runs_daily_force_refresh_and_starts_stale_only(
     assert options["hours"] == 24
     assert options["max_instances"] == 1
     assert options["coalesce"] is True
-    assert startup_force_refresh == [False]
+    assert startup_force_refresh == []
 
 
 @pytest.mark.asyncio
@@ -111,3 +132,158 @@ async def test_scheduled_warmer_force_refreshes_the_curated_queries(
     await cache_warmer._run_scheduled_cache_warmer()
 
     assert calls == [True]
+
+
+@pytest.mark.asyncio
+async def test_scheduled_start_during_manual_run_does_not_start_a_second_run(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls: list[bool] = []
+
+    async def run(*, force_refresh: bool) -> dict[str, int]:
+        calls.append(force_refresh)
+        started.set()
+        await release.wait()
+        return {"total": 0}
+
+    monkeypatch.setattr(cache_warmer, "run_cache_warmer", run)
+    assert cache_warmer.trigger_cache_warmer(force_refresh=False)["started"] is True
+    await started.wait()
+
+    await asyncio.wait_for(cache_warmer._run_scheduled_cache_warmer(), timeout=0.05)
+    assert calls == [False]
+    release.set()
+    assert cache_warmer._warmer_task is not None
+    await cache_warmer._warmer_task
+
+
+@pytest.mark.asyncio
+async def test_manual_start_during_scheduled_run_is_rejected_until_completion(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls: list[bool] = []
+
+    async def run(*, force_refresh: bool) -> dict[str, int]:
+        calls.append(force_refresh)
+        started.set()
+        await release.wait()
+        return {"total": 0}
+
+    monkeypatch.setattr(cache_warmer, "run_cache_warmer", run)
+    scheduled = asyncio.create_task(cache_warmer._run_scheduled_cache_warmer())
+    await started.wait()
+
+    trigger_result = cache_warmer.trigger_cache_warmer(force_refresh=False)
+    release.set()
+    await scheduled
+    tracked = cache_warmer._warmer_task
+    if tracked is not None:
+        await tracked
+
+    assert trigger_result["started"] is False
+    assert calls == [True]
+
+    follow_up_release = asyncio.Event()
+
+    async def follow_up(*, force_refresh: bool) -> dict[str, int]:
+        calls.append(force_refresh)
+        follow_up_release.set()
+        return {"total": 0}
+
+    monkeypatch.setattr(cache_warmer, "run_cache_warmer", follow_up)
+    assert cache_warmer.trigger_cache_warmer(force_refresh=False)["started"] is True
+    await follow_up_release.wait()
+    assert cache_warmer._warmer_task is not None
+    await cache_warmer._warmer_task
+    assert calls == [True, False]
+
+
+@pytest.mark.asyncio
+async def test_shutdown_cancels_and_awaits_the_tracked_warmer(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def run(*, force_refresh: bool) -> dict[str, int]:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    monkeypatch.setattr(cache_warmer, "run_cache_warmer", run)
+    cache_warmer.trigger_cache_warmer(force_refresh=True)
+    await started.wait()
+
+    await cache_warmer.shutdown_cache_warmer()
+
+    assert cancelled.is_set()
+    assert cache_warmer._warmer_task is None
+
+
+@pytest.mark.asyncio
+async def test_shutdown_propagates_caller_cancellation_and_keeps_resistant_task_tracked(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    started = asyncio.Event()
+    child_cancelled = asyncio.Event()
+    release = asyncio.Event()
+
+    async def run(*, force_refresh: bool) -> dict[str, int]:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            child_cancelled.set()
+            await release.wait()
+        return {"total": 0}
+
+    monkeypatch.setattr(cache_warmer, "run_cache_warmer", run)
+    cache_warmer.trigger_cache_warmer(force_refresh=True)
+    await started.wait()
+    tracked = cache_warmer._warmer_task
+    assert tracked is not None
+
+    shutdown = asyncio.create_task(cache_warmer.shutdown_cache_warmer())
+    await child_cancelled.wait()
+    shutdown.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await shutdown
+
+    assert cache_warmer._warmer_task is tracked
+    assert not tracked.done()
+    assert cache_warmer.get_cache_warmer_status()["running"] is True
+    release.set()
+    await tracked
+    await cache_warmer.shutdown_cache_warmer()
+    assert cache_warmer._warmer_task is None
+
+
+@pytest.mark.asyncio
+async def test_unexpected_tracked_warmer_exception_is_consumed_and_logged(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    async def fail(*, force_refresh: bool) -> dict[str, int]:
+        raise RuntimeError("warmer exploded")
+
+    monkeypatch.setattr(cache_warmer, "run_cache_warmer", fail)
+    caplog.set_level(logging.ERROR, logger=cache_warmer.__name__)
+
+    assert cache_warmer.trigger_cache_warmer(force_refresh=True)["started"] is True
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    assert cache_warmer._warmer_task is None
+    record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "cache_warmer_task_failed"
+    )
+    assert record.exc_info is not None

@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { createApiClient } from "@cooking/api-client";
+import { createApiClient, type StoreProductsBatchResponse } from "@cooking/api-client";
 import { isSafeWeeeProductUrl } from "@cooking/shared";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -26,6 +26,35 @@ test("requests Weee products without a store selector", async () => {
   expect(fetchMock).toHaveBeenCalledWith(
     "https://api.example.test/store-products?query=silken%20tofu",
     expect.objectContaining({ credentials: "include" }),
+  );
+});
+
+test("posts a cache-only product batch without a store selector", async () => {
+  const payload = {
+    entries: [
+      { query: "garlic", status: "missing", products: [], expires_at: null },
+    ],
+  } satisfies StoreProductsBatchResponse;
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  const client = createApiClient({
+    baseUrl: "https://api.example.test",
+    auth: { kind: "cookie" },
+  });
+
+  await expect(client.shopping.storeProductsBatch(["garlic"])).resolves.toEqual(payload);
+  expect(fetchMock).toHaveBeenCalledWith(
+    "https://api.example.test/store-products/batch",
+    expect.objectContaining({
+      method: "POST",
+      credentials: "include",
+      body: JSON.stringify({ queries: ["garlic"] }),
+    }),
   );
 });
 

@@ -14,13 +14,19 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.db import repo_store_cache
 from app.db import session as db_session
-from app.jobs.cache_warmer_queries import ALL_QUERIES, DEFAULT_STORE, PRECOMPUTE_CONCURRENCY
-from app.services.store_scraper import CACHE_TTL_SECONDS, CACHE_VERSION, fetch_store_products, prepare_store_query
+from app.jobs.cache_warmer_queries import ALL_QUERIES, DEFAULT_STORE
+from app.services.store_product_service import (
+    CACHE_TTL_SECONDS,
+    CACHE_VERSION,
+    fetch_store_products,
+    prepare_store_query,
+)
 
 logger = logging.getLogger(__name__)
 
-WarmStatus = Literal["skipped", "cache_hit", "cache_miss", "failed"]
+WarmStatus = Literal["skipped", "cache_hit", "cache_miss", "empty", "failed"]
 ProgressCallback = Callable[[int, int, str, WarmStatus], None | Awaitable[None]]
+WARMER_SHUTDOWN_TIMEOUT_SECONDS = 10.0
 
 _scheduler: AsyncIOScheduler | None = None
 _warmer_lock = asyncio.Lock()
@@ -44,24 +50,38 @@ async def warm_cache_query(
     prepared = prepare_store_query(query)
     if prepared is None:
         return "skipped", []
-    cleaned_query, language = prepared
+    if force_refresh:
+        products = await fetch_store_products(
+            query,
+            session=None,
+            force_refresh=True,
+            priority="background",
+        )
+        return ("empty" if not products else "cache_miss"), products
+
+    cleaned_query = prepared.cache_query
+    language = prepared.language
     if db_session.async_session_maker is None:
         raise RuntimeError("Database session maker is not initialized.")
     async with db_session.async_session_maker() as session:
-        if not force_refresh:
-            cached = await repo_store_cache.get_cached_store_products(
-                session,
-                query=cleaned_query,
-                store=DEFAULT_STORE,
-                language=language,
-                cache_version=CACHE_VERSION,
-                max_age_seconds=CACHE_TTL_SECONDS,
-            )
-            if cached is not None:
-                return "cache_hit", cached
-        products = await fetch_store_products(query, session=session, force_refresh=force_refresh)
+        cached = await repo_store_cache.get_cached_store_products(
+            session,
+            query=cleaned_query,
+            store=DEFAULT_STORE,
+            language=language,
+            cache_version=CACHE_VERSION,
+            max_age_seconds=CACHE_TTL_SECONDS,
+        )
+        if cached is not None:
+            return "cache_hit", cached
+        products = await fetch_store_products(
+            query,
+            session=session,
+            force_refresh=force_refresh,
+            priority="background",
+        )
         await session.commit()
-        return "cache_miss", products
+        return ("empty" if not products else "cache_miss"), products
 
 
 async def run_cache_warmer(
@@ -75,11 +95,11 @@ async def run_cache_warmer(
         summary = {
             "cache_hit": 0,
             "cache_miss": 0,
+            "empty": 0,
             "skipped": 0,
             "failed": 0,
             "total": len(ALL_QUERIES),
         }
-        semaphore = asyncio.Semaphore(PRECOMPUTE_CONCURRENCY)
         completed = 0
         _warmer_status.update(
             {
@@ -95,34 +115,38 @@ async def run_cache_warmer(
 
         async def warm(index: int, query: str) -> None:
             nonlocal completed
-            async with semaphore:
+            try:
+                status, _ = await warm_cache_query(query, force_refresh=force_refresh)
+            except Exception:
+                logger.exception("cache warmer query failed", extra={"query": query})
+                status = "failed"
+            summary[status] += 1
+            completed += 1
+            _warmer_status.update(
+                {
+                    "current": completed,
+                    "last_query": query,
+                    "last_status": status,
+                }
+            )
+            if progress_callback is not None:
                 try:
-                    status, _ = await warm_cache_query(query, force_refresh=force_refresh)
-                except Exception:
-                    logger.exception("cache warmer query failed", extra={"query": query})
-                    status = "failed"
-                summary[status] += 1
-                completed += 1
-                _warmer_status.update(
-                    {
-                        "current": completed,
-                        "last_query": query,
-                        "last_status": status,
-                    }
-                )
-                if progress_callback is not None:
                     maybe_awaitable = progress_callback(index, summary["total"], query, status)
                     if inspect.isawaitable(maybe_awaitable):
                         await maybe_awaitable
+                except Exception:
+                    logger.exception("cache warmer progress callback failed", extra={"query": query})
 
         try:
-            await asyncio.gather(*(warm(index, query) for index, query in enumerate(ALL_QUERIES, start=1)))
+            for index, query in enumerate(ALL_QUERIES, start=1):
+                await warm(index, query)
             elapsed = time.perf_counter() - started_at
             logger.info(
-                "cache warmer finished in %.2f seconds (hits=%s misses=%s skipped=%s failed=%s total=%s)",
+                "cache warmer finished in %.2f seconds (hits=%s misses=%s empty=%s skipped=%s failed=%s total=%s)",
                 elapsed,
                 summary["cache_hit"],
                 summary["cache_miss"],
+                summary["empty"],
                 summary["skipped"],
                 summary["failed"],
                 summary["total"],
@@ -135,26 +159,7 @@ async def run_cache_warmer(
             _warmer_status["running"] = False
 
 
-async def _run_scheduled_cache_warmer() -> None:
-    await run_cache_warmer(force_refresh=True)
-
-
-def get_cache_warmer_status() -> dict[str, Any]:
-    return {
-        "running": bool(_warmer_status["running"]),
-        "current": int(_warmer_status["current"]),
-        "total": int(_warmer_status["total"]),
-        "last_query": str(_warmer_status["last_query"] or ""),
-        "last_status": str(_warmer_status["last_status"] or ""),
-        "stale_only": bool(_warmer_status["stale_only"]),
-        "summary": _warmer_status["summary"],
-    }
-
-
-def trigger_cache_warmer(*, force_refresh: bool) -> dict[str, Any]:
-    global _warmer_task
-    if _warmer_task is not None and not _warmer_task.done():
-        return {"started": False, "status": get_cache_warmer_status()}
+def _prime_warmer_status(force_refresh: bool) -> None:
     _warmer_status.update(
         {
             "running": True,
@@ -167,15 +172,95 @@ def trigger_cache_warmer(*, force_refresh: bool) -> dict[str, Any]:
         }
     )
 
-    async def runner() -> dict[str, int]:
-        try:
-            return await run_cache_warmer(force_refresh=force_refresh)
-        finally:
-            global _warmer_task
+
+def _start_tracked_cache_warmer(
+    *,
+    force_refresh: bool,
+) -> tuple[bool, asyncio.Task[dict[str, int]]]:
+    """Atomically create the sole manual-or-scheduled in-process run."""
+    global _warmer_task
+    existing = _warmer_task
+    if existing is not None and not existing.done():
+        return False, existing
+    _prime_warmer_status(force_refresh)
+    task = asyncio.create_task(run_cache_warmer(force_refresh=force_refresh))
+    _warmer_task = task
+
+    def clear(completed: asyncio.Task[dict[str, int]]) -> None:
+        global _warmer_task
+        exception: BaseException | None = None
+        if not completed.cancelled():
+            try:
+                exception = completed.exception()
+            except asyncio.CancelledError:
+                exception = None
+        if exception is not None:
+            logger.error(
+                "tracked cache warmer task failed",
+                exc_info=(type(exception), exception, exception.__traceback__),
+                extra={"event": "cache_warmer_task_failed"},
+            )
+        if _warmer_task is completed:
             _warmer_task = None
 
-    _warmer_task = asyncio.create_task(runner())
+    task.add_done_callback(clear)
+    return True, task
+
+
+async def _run_scheduled_cache_warmer() -> None:
+    started, task = _start_tracked_cache_warmer(force_refresh=True)
+    if started:
+        await asyncio.shield(task)
+
+
+def get_cache_warmer_status() -> dict[str, Any]:
+    running = _warmer_task is not None and not _warmer_task.done()
+    return {
+        "running": running,
+        "current": int(_warmer_status["current"]),
+        "total": int(_warmer_status["total"]),
+        "last_query": str(_warmer_status["last_query"] or ""),
+        "last_status": str(_warmer_status["last_status"] or ""),
+        "stale_only": bool(_warmer_status["stale_only"]),
+        "summary": _warmer_status["summary"],
+    }
+
+
+def trigger_cache_warmer(*, force_refresh: bool) -> dict[str, Any]:
+    started, _ = _start_tracked_cache_warmer(force_refresh=force_refresh)
+    if not started:
+        return {"started": False, "status": get_cache_warmer_status()}
     return {"started": True, "status": get_cache_warmer_status()}
+
+
+async def shutdown_cache_warmer() -> None:
+    """Cancel and await the one tracked run without swallowing cancellation."""
+    global _warmer_task
+    task = _warmer_task
+    if task is None:
+        return
+    if not task.done():
+        task.cancel()
+    caller_cancelled = False
+    try:
+        await asyncio.wait_for(
+            asyncio.shield(task),
+            timeout=WARMER_SHUTDOWN_TIMEOUT_SECONDS,
+        )
+    except asyncio.CancelledError:
+        current = asyncio.current_task()
+        caller_cancelled = bool(current is not None and current.cancelling())
+    except TimeoutError:
+        logger.error(
+            "cache warmer did not stop before shutdown deadline",
+            extra={"event": "cache_warmer_shutdown_timeout"},
+        )
+    finally:
+        if task.done() and _warmer_task is task:
+            _warmer_task = None
+        _warmer_status["running"] = not task.done()
+    if caller_cancelled:
+        raise asyncio.CancelledError
 
 
 def start_scheduler() -> AsyncIOScheduler:
@@ -193,8 +278,6 @@ def start_scheduler() -> AsyncIOScheduler:
         coalesce=True,
     )
     scheduler.start()
-    # Startup fill stays stale-only so a restart does not immediately force-refresh every warm query.
-    trigger_cache_warmer(force_refresh=False)
     _scheduler = scheduler
     return scheduler
 

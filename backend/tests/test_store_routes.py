@@ -1,13 +1,19 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
+import asyncio
 
+import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import admin, routes_store
 from app.db import repo_store_cache
+from app.db import session as db_session
+from app.services.store_product_service import BatchStoreProductsEntry
+from app.services import store_product_service, weee_scraper
 
 
 PRODUCT = {
@@ -17,18 +23,112 @@ PRODUCT = {
     "url": "https://www.sayweee.com/product/tofu",
 }
 
+CACHED_AT = datetime(2026, 8, 27, tzinfo=timezone.utc)
+
+
+def authenticated_store_app() -> FastAPI:
+    app = FastAPI()
+    app.include_router(routes_store.router)
+    app.dependency_overrides[routes_store.get_session] = lambda: object()
+    app.dependency_overrides[routes_store.get_current_user] = lambda: object()
+    return app
+
+
+@pytest.mark.asyncio
+async def test_retryable_scrape_failure_maps_to_503_with_retry_after(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.services.weee_scraper import StoreScrapeError
+
+    async def fail(*args: Any, **kwargs: Any) -> SimpleNamespace:
+        raise StoreScrapeError("selector never became trustworthy")
+
+    monkeypatch.setattr(routes_store, "fetch_store_products_with_metadata", fail)
+    app = authenticated_store_app()
+    with TestClient(app) as client:
+        response = client.get("/store-products", params={"query": "garlic"})
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "3"
+    assert response.json() == {"detail": {"code": "weee_temporarily_unavailable"}}
+
+
+def test_batch_route_returns_fresh_and_missing_in_cleaned_order(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def batch(*args: Any, **kwargs: Any) -> list[BatchStoreProductsEntry]:
+        return [
+            BatchStoreProductsEntry("Garlic", "fresh", [PRODUCT], CACHED_AT),
+            BatchStoreProductsEntry("ginger", "missing", [], None),
+        ]
+
+    monkeypatch.setattr(routes_store, "fetch_cached_store_products_batch", batch)
+    app = authenticated_store_app()
+    with TestClient(app) as client:
+        response = client.post(
+            "/store-products/batch",
+            json={"queries": [" Garlic ", "garlic", "", "ginger"]},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "entries": [
+            {
+                "query": "Garlic",
+                "status": "fresh",
+                "products": [PRODUCT],
+                "expires_at": "2026-08-28T00:00:00Z",
+            },
+            {"query": "ginger", "status": "missing", "products": [], "expires_at": None},
+        ]
+    }
+
+
+def test_batch_route_accepts_more_than_fifty_inputs_without_live_scraping(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    observed_queries: list[str] = []
+
+    async def batch(queries: list[str], *args: Any, **kwargs: Any) -> list[BatchStoreProductsEntry]:
+        observed_queries.extend(queries)
+        return [BatchStoreProductsEntry(query, "missing", [], None) for query in queries]
+
+    async def unexpected_live_scrape(*args: Any, **kwargs: Any) -> SimpleNamespace:
+        raise AssertionError("batch cache lookup must not invoke live scraping")
+
+    monkeypatch.setattr(routes_store, "fetch_cached_store_products_batch", batch)
+    monkeypatch.setattr(routes_store, "fetch_store_products_with_metadata", unexpected_live_scrape)
+    queries = [f"ingredient-{index}" for index in range(75)]
+    app = authenticated_store_app()
+    with TestClient(app) as client:
+        response = client.post("/store-products/batch", json={"queries": queries})
+
+    assert response.status_code == 200
+    assert observed_queries == queries
+    assert response.json() == {
+        "entries": [
+            {"query": query, "status": "missing", "products": [], "expires_at": None}
+            for query in queries
+        ]
+    }
+
 
 @pytest.mark.asyncio
 async def test_store_products_omitted_store_returns_authoritative_expiry_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ):
     session = object()
-    calls: list[tuple[str, object | None]] = []
+    calls: list[tuple[str, object | None, bool]] = []
 
     cached_at = datetime(2026, 8, 15, 12, tzinfo=timezone.utc)
 
-    async def fetch(query: str, session: object | None = None) -> SimpleNamespace:
-        calls.append((query, session))
+    async def fetch(
+        query: str,
+        session: object | None = None,
+        *,
+        release_read_session_on_miss: bool = False,
+    ) -> SimpleNamespace:
+        calls.append((query, session, release_read_session_on_miss))
         return SimpleNamespace(products=[PRODUCT], cached_at=cached_at)
 
     monkeypatch.setattr(routes_store, "fetch_store_products_with_metadata", fetch)
@@ -42,7 +142,7 @@ async def test_store_products_omitted_store_returns_authoritative_expiry_metadat
 
     assert result.products == [routes_store.StoreProduct(**PRODUCT)]
     assert result.expires_at == cached_at + timedelta(seconds=86400)
-    assert calls == [("silken tofu", session)]
+    assert calls == [("silken tofu", session, True)]
 
 
 @pytest.mark.asyncio
@@ -52,11 +152,16 @@ async def test_store_products_explicit_legacy_weee_returns_the_product_array(
     store: str,
 ):
     session = object()
-    calls: list[tuple[str, object | None]] = []
+    calls: list[tuple[str, object | None, bool]] = []
     cached_at = datetime(2026, 8, 15, 12, tzinfo=timezone.utc)
 
-    async def fetch(query: str, session: object | None = None) -> SimpleNamespace:
-        calls.append((query, session))
+    async def fetch(
+        query: str,
+        session: object | None = None,
+        *,
+        release_read_session_on_miss: bool = False,
+    ) -> SimpleNamespace:
+        calls.append((query, session, release_read_session_on_miss))
         return SimpleNamespace(products=[PRODUCT], cached_at=cached_at)
 
     monkeypatch.setattr(routes_store, "fetch_store_products_with_metadata", fetch)
@@ -69,7 +174,7 @@ async def test_store_products_explicit_legacy_weee_returns_the_product_array(
     )
 
     assert result == [routes_store.StoreProduct(**PRODUCT)]
-    assert calls == [("silken tofu", session)]
+    assert calls == [("silken tofu", session, True)]
 
 
 def test_store_products_http_contract_and_openapi_describe_both_response_shapes(
@@ -139,6 +244,129 @@ async def test_store_products_rejects_explicit_unsupported_store_before_fetching
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "Unsupported store. Use weee."
     assert fetch_calls == 0
+
+
+@pytest.mark.parametrize("query", ["   ", "\t\n", "\u2003\u2009"])
+@pytest.mark.parametrize("store", [None, "weee"])
+def test_store_products_rejects_all_unicode_whitespace_at_the_route_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    store: str | None,
+):
+    calls = 0
+
+    async def unexpected_fetch(*args: Any, **kwargs: Any) -> SimpleNamespace:
+        nonlocal calls
+        calls += 1
+        return SimpleNamespace(products=[], cached_at=None)
+
+    monkeypatch.setattr(routes_store, "fetch_store_products_with_metadata", unexpected_fetch)
+    app = authenticated_store_app()
+    with TestClient(app) as client:
+        response = client.get(
+            "/store-products",
+            params={"query": query, **({"store": store} if store is not None else {})},
+        )
+
+    assert 400 <= response.status_code < 500
+    assert calls == 0
+
+
+@pytest.mark.asyncio
+async def test_unsupported_store_validation_precedes_whitespace_query_validation(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def unexpected_fetch(*args: Any, **kwargs: Any) -> SimpleNamespace:
+        raise AssertionError("invalid route input must not reach the service")
+
+    monkeypatch.setattr(routes_store, "fetch_store_products_with_metadata", unexpected_fetch)
+    with pytest.raises(HTTPException) as exc_info:
+        await routes_store.store_products(
+            query="\u2003",
+            store="amazon",
+            session=object(),  # type: ignore[arg-type]
+            current_user=object(),  # type: ignore[arg-type]
+        )
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Unsupported store. Use weee."
+
+
+@pytest.mark.asyncio
+async def test_cold_authenticated_routes_release_read_sessions_before_scrape_wait(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    sessions: list[object] = []
+    scrape_started = asyncio.Event()
+    release_scrape = asyncio.Event()
+
+    class ReadSession:
+        def __init__(self) -> None:
+            self.closed = asyncio.Event()
+
+        async def close(self) -> None:
+            self.closed.set()
+
+        async def commit(self) -> None:
+            return None
+
+        async def rollback(self) -> None:
+            return None
+
+    async def session_dependency():
+        session = ReadSession()
+        sessions.append(session)
+        yield session
+
+    async def database_miss(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    async def scrape(query_text: str, language: str) -> list[dict[str, str]]:
+        scrape_started.set()
+        await release_scrape.wait()
+        return [{
+            "name": query_text,
+            "price": "$1",
+            "image": "",
+            "url": f"https://www.weee.com/en/product/{query_text}/1",
+        }]
+
+    async def no_persist(
+        *args: Any,
+        **kwargs: Any,
+    ) -> repo_store_cache.CachedStoreProducts:
+        return repo_store_cache.CachedStoreProducts(args[2], args[3])
+
+    await store_product_service.reset_for_tests()
+    store_product_service.start_live_lookup_admission()
+    store_product_service.CACHE.clear()
+    monkeypatch.setattr(
+        repo_store_cache,
+        "get_cached_store_products_with_metadata",
+        database_miss,
+    )
+    monkeypatch.setattr(weee_scraper, "scrape_weee_products", scrape)
+    monkeypatch.setattr(store_product_service, "_persist_positive_result", no_persist)
+    app = FastAPI()
+    app.include_router(routes_store.router)
+    app.dependency_overrides[routes_store.get_session] = session_dependency
+    app.dependency_overrides[routes_store.get_current_user] = lambda: object()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        requests = [
+            asyncio.create_task(client.get("/store-products", params={"query": f"item-{index}"}))
+            for index in range(3)
+        ]
+        await scrape_started.wait()
+        for _ in range(100):
+            if len(sessions) == 3 and all(session.closed.is_set() for session in sessions):
+                break
+            await asyncio.sleep(0)
+        assert len(sessions) == 3
+        assert all(session.closed.is_set() for session in sessions)
+        release_scrape.set()
+        responses = await asyncio.gather(*requests)
+    assert [response.status_code for response in responses] == [200, 200, 200]
+    await store_product_service.reset_for_tests()
 
 
 @pytest.mark.asyncio
@@ -334,7 +562,7 @@ async def test_cache_refresh_one_always_uses_weee_service_and_cache_key(
         dummy_session.commit_calls += 1
 
     dummy_session.commit = commit
-    fetch_calls: list[tuple[str, object, bool]] = []
+    fetch_calls: list[tuple[str, object, bool, bool]] = []
     entry_calls: list[dict[str, Any]] = []
 
     async def fetch(
@@ -342,8 +570,11 @@ async def test_cache_refresh_one_always_uses_weee_service_and_cache_key(
         session: object | None = None,
         *,
         force_refresh: bool = False,
+        release_read_session_on_miss: bool = False,
     ) -> list[dict[str, str]]:
-        fetch_calls.append((query, session, force_refresh))
+        fetch_calls.append(
+            (query, session, force_refresh, release_read_session_on_miss)
+        )
         return [PRODUCT]
 
     async def get_entry(service_session: object, **kwargs: Any) -> None:
@@ -359,7 +590,7 @@ async def test_cache_refresh_one_always_uses_weee_service_and_cache_key(
         current_user=object(),  # type: ignore[arg-type]
     )
 
-    assert fetch_calls == [("Silken tofu", dummy_session, True)]
+    assert fetch_calls == [("Silken tofu", dummy_session, True, True)]
     assert entry_calls == [
         {
             "query": "silken tofu",
@@ -369,4 +600,84 @@ async def test_cache_refresh_one_always_uses_weee_service_and_cache_key(
         }
     ]
     assert response.store == "weee"
-    assert dummy_session.commit_calls == 1
+    assert dummy_session.commit_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_cache_refresh_one_closes_real_read_session_before_held_live_scrape(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    scrape_started = asyncio.Event()
+    release_scrape = asyncio.Event()
+    first_close = asyncio.Event()
+    dependency_teardown_close = asyncio.Event()
+
+    class TrackingAsyncSession(AsyncSession):
+        def __init__(self) -> None:
+            super().__init__()
+            self.close_calls = 0
+            self.commit_calls = 0
+
+        async def close(self) -> None:
+            self.close_calls += 1
+            if self.close_calls == 1:
+                first_close.set()
+            else:
+                dependency_teardown_close.set()
+            await super().close()
+
+        async def commit(self) -> None:
+            self.commit_calls += 1
+            await super().commit()
+
+    session = TrackingAsyncSession()
+
+    async def scrape(query_text: str, language: str) -> list[dict[str, str]]:
+        scrape_started.set()
+        assert first_close.is_set()
+        await release_scrape.wait()
+        return [PRODUCT]
+
+    async def get_entry(observed_session: object, **kwargs: Any) -> None:
+        assert observed_session is session
+        assert session.close_calls == 1
+        return None
+
+    async def no_persist(
+        *args: Any,
+        **kwargs: Any,
+    ) -> repo_store_cache.CachedStoreProducts:
+        return repo_store_cache.CachedStoreProducts(args[2], args[3])
+
+    monkeypatch.setattr(db_session, "async_session_maker", lambda: session)
+    monkeypatch.setattr(weee_scraper, "scrape_weee_products", scrape)
+    monkeypatch.setattr(store_product_service, "_persist_positive_result", no_persist)
+    monkeypatch.setattr(admin.repo_store_cache, "get_cached_store_product_entry", get_entry)
+    store_product_service.CACHE.clear()
+    store_product_service.start_live_lookup_admission()
+
+    app = FastAPI()
+    app.include_router(admin.router)
+    app.dependency_overrides[admin.require_admin] = lambda: object()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        request = asyncio.create_task(
+            client.post(
+                "/admin/cache-refresh-one",
+                json={"query": "silken tofu"},
+            )
+        )
+        await scrape_started.wait()
+        try:
+            assert session.close_calls == 1
+            assert not dependency_teardown_close.is_set()
+        finally:
+            release_scrape.set()
+            gathered = await asyncio.gather(request, return_exceptions=True)
+        response = gathered[0]
+        if isinstance(response, BaseException):
+            raise response
+
+    assert response.status_code == 200
+    assert session.commit_calls == 1
+    assert dependency_teardown_close.is_set()

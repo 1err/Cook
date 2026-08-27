@@ -22,6 +22,15 @@ export type StoreProductsResponse = {
   products: StoreProduct[];
   expires_at: string | null;
 };
+export type StoreProductsBatchEntry = {
+  query: string;
+  status: "fresh" | "missing";
+  products: StoreProduct[];
+  expires_at: string | null;
+};
+export type StoreProductsBatchResponse = {
+  entries: StoreProductsBatchEntry[];
+};
 
 export type ParseLinkPayload = {
   url: string;
@@ -161,6 +170,11 @@ export function createApiClient(options: ApiClientOptions) {
         }),
       storeProducts: (query: string) =>
         json<StoreProductsResponse>(`/store-products?query=${encodeURIComponent(query)}`),
+      storeProductsBatch: (queries: string[]) =>
+        json<StoreProductsBatchResponse>("/store-products/batch", {
+          method: "POST",
+          body: JSON.stringify({ queries }),
+        }),
     },
     admin: {
       cachePreview: (params: URLSearchParams) => json(`/admin/cache-preview?${params.toString()}`),
