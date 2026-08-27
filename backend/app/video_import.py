@@ -19,8 +19,8 @@ class UnsupportedVideoUrl(ValueError):
 
 def parse_video_source(raw_url: str) -> VideoSource:
     original = (raw_url or "").strip()
-    parsed = urlsplit(original)
     try:
+        parsed = urlsplit(original)
         port = parsed.port
     except ValueError as exc:
         raise UnsupportedVideoUrl("Paste a public YouTube or TikTok video link.") from exc

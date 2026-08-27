@@ -33,6 +33,8 @@ def test_parse_video_source_accepts_supported_forms(raw, provider, external_id, 
         "https://user@www.youtube.com/watch?v=dQw4w9WgXcQ",
         "https://www.youtube.com:444/watch?v=dQw4w9WgXcQ",
         "https://www.tiktok.com/@chef/photo/7412345678901234567",
+        "https://[::1",
+        "https://www.youtube.com／watch?v=dQw4w9WgXcQ",
     ],
 )
 def test_parse_video_source_rejects_unsafe_or_unsupported_urls(raw):
