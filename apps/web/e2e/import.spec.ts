@@ -93,15 +93,21 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/import");
 });
 
-test("keeps Source focused, then saves the streamlined Review draft", async ({ page }, testInfo) => {
+test("imports a TikTok link, then saves the streamlined Review draft", async ({ page }, testInfo) => {
   await expect(page.getByRole("heading", { name: "Import recipe" })).toBeVisible();
   await expect(page.getByLabel("Title (optional)")).toHaveCount(0);
   await page.getByRole("button", { name: "Optional details" }).click();
   await expect(page.getByLabel("Title (optional)")).toBeVisible();
   await page.getByRole("button", { name: "Optional details" }).click();
 
-  await page.getByLabel("YouTube URL").fill("https://www.youtube.com/watch?v=recipe");
+  await page.getByLabel("YouTube or TikTok URL").fill("https://www.tiktok.com/@chef/video/7412345678901234567");
+  const parseRequest = page.waitForRequest(
+    (request) => request.method() === "POST" && new URL(request.url()).pathname === "/recipes/parse/link",
+  );
   await page.getByRole("button", { name: "Create draft" }).click();
+  expect((await parseRequest).postDataJSON()).toMatchObject({
+    url: "https://www.tiktok.com/@chef/video/7412345678901234567",
+  });
 
   await expect(page.getByRole("button", { name: "Back to source" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Review recipe" })).toBeVisible();
@@ -158,4 +164,16 @@ test("keeps Source focused, then saves the streamlined Review draft", async ({ p
   await expect(page.getByRole("heading", { name: "Braised tofu" })).toBeVisible();
   await expect(page.getByText("Sear the tofu until golden.")).toBeVisible();
   await expect(page.getByText("About 9 min · Adjusted · Hands-on")).toBeVisible();
+});
+
+test("sends YouTube links to the link parser", async ({ page }) => {
+  await page.getByLabel("YouTube or TikTok URL").fill("https://www.youtube.com/watch?v=recipe");
+  const parseRequest = page.waitForRequest(
+    (request) => request.method() === "POST" && new URL(request.url()).pathname === "/recipes/parse/link",
+  );
+  await page.getByRole("button", { name: "Create draft" }).click();
+  expect((await parseRequest).postDataJSON()).toMatchObject({
+    url: "https://www.youtube.com/watch?v=recipe",
+  });
+  await expect(page.getByRole("heading", { name: "Review recipe" })).toBeVisible();
 });

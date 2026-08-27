@@ -45,6 +45,11 @@ export default function ImportPage() {
   const [error, setError] = useState<string | null>(null);
   const [draftRecipe, setDraftRecipe] = useState<Recipe | null>(null);
 
+  function handleValuesChange(next: ImportSourceValues) {
+    setValues(next);
+    setError(null);
+  }
+
   async function handleImportPreview() {
     setError(null);
     setLoading(true);
@@ -91,7 +96,7 @@ export default function ImportPage() {
               values={values}
               parsing={loading}
               error={error}
-              onChange={setValues}
+              onChange={handleValuesChange}
               onSubmit={() => void handleImportPreview()}
             />
           </>

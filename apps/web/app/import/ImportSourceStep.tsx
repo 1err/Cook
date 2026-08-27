@@ -59,14 +59,16 @@ export function ImportSourceStep({
           role="tab"
           aria-selected={values.mode === "link"}
           onClick={() => update("mode", "link")}
+          disabled={parsing}
         >
-          YouTube link
+          Video link
         </button>
         <button
           type="button"
           role="tab"
           aria-selected={values.mode === "transcript"}
           onClick={() => update("mode", "transcript")}
+          disabled={parsing}
         >
           Paste recipe text
         </button>
@@ -74,7 +76,7 @@ export function ImportSourceStep({
 
       {values.mode === "link" ? (
         <div className={styles.field} role="tabpanel">
-          <label htmlFor="import-source-url">YouTube URL</label>
+          <label htmlFor="import-source-url">YouTube or TikTok URL</label>
           <input
             id="import-source-url"
             type="url"
@@ -83,7 +85,7 @@ export function ImportSourceStep({
             onChange={(event) => update("url", event.target.value)}
             disabled={parsing}
           />
-          <small>The video needs captions so the recipe can be read accurately.</small>
+          <small>YouTube links need captions. TikTok imports use the public caption and title.</small>
         </div>
       ) : (
         <div className={styles.field} role="tabpanel">
@@ -104,6 +106,7 @@ export function ImportSourceStep({
         className={styles.optionalToggle}
         aria-expanded={detailsOpen}
         onClick={() => setDetailsOpen((open) => !open)}
+        disabled={parsing}
       >
         Optional details <span aria-hidden>{detailsOpen ? "−" : "+"}</span>
       </button>
@@ -130,7 +133,7 @@ export function ImportSourceStep({
               disabled={parsing}
             />
           </div>
-          <fieldset className={styles.tagPicker}>
+          <fieldset className={styles.tagPicker} disabled={parsing}>
             <legend>Tags (optional)</legend>
             {RECIPE_TAG_GROUPS.map((group) => (
               <div key={group.id}>
@@ -142,6 +145,7 @@ export function ImportSourceStep({
                       type="button"
                       aria-pressed={values.libraryTags.includes(tag.id)}
                       onClick={() => toggleTag(tag.id)}
+                      disabled={parsing}
                     >
                       {tag.label}
                     </button>

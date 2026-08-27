@@ -27,7 +27,7 @@ describe("ImportSourceStep", () => {
       />,
     );
 
-    expect(screen.getByRole("tab", { name: "YouTube link" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Video link" })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByLabelText("Title (optional)")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Optional details" }));
     expect(screen.getByLabelText("Title (optional)")).toBeVisible();
@@ -45,5 +45,43 @@ describe("ImportSourceStep", () => {
     );
 
     expect(screen.getByRole("button", { name: "Create draft" })).toBeDisabled();
+  });
+
+  it("accepts YouTube or TikTok links and locks every source control while parsing", async () => {
+    const user = userEvent.setup();
+    render(
+      <ImportSourceStep
+        values={{ ...values, url: "https://vm.tiktok.com/ZMrecipe/" }}
+        parsing
+        error="retry"
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("tab", { name: "Video link" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Paste recipe text" })).toBeDisabled();
+    expect(screen.getByLabelText("YouTube or TikTok URL")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Optional details" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Optional details" }));
+    expect(screen.queryByLabelText("Title (optional)")).not.toBeInTheDocument();
+  });
+
+  it("emits a source edit so the page can clear a prior error", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <ImportSourceStep
+        values={values}
+        parsing={false}
+        error="old error"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("YouTube or TikTok URL"), "https://youtu.be/dQw4w9WgXcQ");
+    expect(onChange).toHaveBeenCalled();
   });
 });
