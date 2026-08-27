@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from collections.abc import Sequence
 import math
 
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -209,10 +209,17 @@ async def upsert_cached_store_products(
     cache_version: str,
     data: list[dict[str, str]],
     updated_at: datetime,
-) -> bool:
+) -> CachedStoreProducts | None:
+    """Atomically persist a positive candidate and return the winning row.
+
+    A conflicting, newer nonfuture generation remains authoritative. PostgreSQL
+    waits for that conflict to settle before this transaction reads the winner.
+    Incumbents later than PostgreSQL's transaction clock are invalid cache poison
+    and may be replaced by the current candidate.
+    """
     normalized = normalize_cached_store_products(data)
     if not normalized:
-        return False
+        return None
     candidate = postgresql_insert(CachedStoreProductModel).values(
         query=query,
         store=store,
@@ -232,10 +239,41 @@ async def upsert_cached_store_products(
             "data": candidate.excluded.data,
             "updated_at": candidate.excluded.updated_at,
         },
-        where=(
-            CachedStoreProductModel.updated_at
-            < candidate.excluded.updated_at
+        where=or_(
+            CachedStoreProductModel.updated_at < candidate.excluded.updated_at,
+            CachedStoreProductModel.updated_at > func.current_timestamp(),
         ),
-    ).returning(CachedStoreProductModel.updated_at)
+    ).returning(
+        CachedStoreProductModel.data,
+        CachedStoreProductModel.updated_at,
+    )
     result = await session.execute(statement)
-    return result.scalar_one_or_none() is not None
+    row = result.one_or_none()
+    if row is None:
+        winner_result = await session.execute(
+            select(
+                CachedStoreProductModel.data,
+                CachedStoreProductModel.updated_at,
+            ).where(
+                CachedStoreProductModel.query == query,
+                CachedStoreProductModel.store == store,
+                CachedStoreProductModel.language == language,
+                CachedStoreProductModel.cache_version == cache_version,
+            )
+        )
+        row = winner_result.one_or_none()
+    if row is None:
+        return None
+    mapping = getattr(row, "_mapping", None)
+    if mapping is not None:
+        winner_data = mapping["data"]
+        winner_updated_at = mapping["updated_at"]
+    else:
+        winner_data = row.data
+        winner_updated_at = row.updated_at
+    winner_products = normalize_cached_store_products(winner_data)
+    if not winner_products or not isinstance(winner_updated_at, _DATETIME_TYPE):
+        return None
+    if winner_updated_at.tzinfo is None:
+        winner_updated_at = winner_updated_at.replace(tzinfo=timezone.utc)
+    return CachedStoreProducts(winner_products, winner_updated_at)

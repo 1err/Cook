@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass, field
 import inspect
 import logging
 import random
@@ -33,6 +34,7 @@ WEEE_BASE_URL = "https://www.sayweee.com"
 WEEE_SEARCH_URL = WEEE_BASE_URL + "/en/search?keyword={query}"
 
 _browser_lock = asyncio.Lock()
+_retirement_lock = asyncio.Lock()
 _playwright_inst: Any = None
 _shared_browser: Any = None
 _detached_tasks: set[asyncio.Task[Any]] = set()
@@ -40,10 +42,24 @@ _detached_late_cleanups: dict[asyncio.Task[Any], Any] = {}
 _detached_cleanup_tasks: set[asyncio.Task[Any]] = set()
 _detached_cleanup_failures: list[BaseException] = []
 _browser_generation = 0
+_retired_browser_resources: dict[int, "_BrowserRetirement"] = {}
 
 
 class StoreScrapeError(RuntimeError):
     """Weee did not produce a trustworthy result."""
+
+
+class _BrowserRetirementError(StoreScrapeError):
+    """A prior browser remains physically owned and blocks another launch."""
+
+
+@dataclass
+class _BrowserRetirement:
+    browser: Any
+    playwright: Any
+    resources: list[tuple[Any, str]] = field(default_factory=list)
+    browser_closed: bool = False
+    playwright_stopped: bool = False
 
 
 def _consume_background_task(task: asyncio.Task[Any]) -> None:
@@ -341,17 +357,169 @@ def _browser_is_connected(browser: Any) -> bool:
         return False
 
 
+def _cleanup_timeout(deadline: float | None) -> float:
+    if deadline is None:
+        return SCRAPER_CLEANUP_TIMEOUT_SECONDS
+    return min(SCRAPER_CLEANUP_TIMEOUT_SECONDS, deadline - time.monotonic())
+
+
+def _register_browser_retirement(
+    browser: Any,
+    playwright: Any,
+    resources: tuple[tuple[Any, str], ...] = (),
+) -> None:
+    if browser is None and playwright is None:
+        return
+    identity = id(browser) if browser is not None else id(playwright)
+    retirement = _retired_browser_resources.get(identity)
+    if retirement is None:
+        retirement = _BrowserRetirement(
+            browser=browser,
+            playwright=playwright,
+            browser_closed=browser is None,
+            playwright_stopped=playwright is None,
+        )
+        _retired_browser_resources[identity] = retirement
+    elif retirement.playwright is None and playwright is not None:
+        retirement.playwright = playwright
+        retirement.playwright_stopped = False
+    for resource, label in resources:
+        if resource is None:
+            continue
+        if any(owned is resource for owned, _ in retirement.resources):
+            continue
+        retirement.resources.append((resource, label))
+
+
+async def _attempt_browser_retirement(
+    retirement: _BrowserRetirement,
+    *,
+    deadline: float | None = None,
+) -> tuple[bool, bool]:
+    """Attempt every retirement substage and retain anything unconfirmed."""
+    caller_cancelled = False
+    remaining_resources: list[tuple[Any, str]] = []
+    for resource, label in list(retirement.resources):
+        try:
+            await _bounded_await(
+                resource.close(),
+                _cleanup_timeout(deadline),
+                label,
+            )
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            caller_cancelled = caller_cancelled or bool(
+                current is not None and current.cancelling()
+            )
+            remaining_resources.append((resource, label))
+        except BaseException as exc:
+            remaining_resources.append((resource, label))
+            logger.warning(
+                "weee_scraper: retained %s after cleanup failure: %s",
+                label,
+                type(exc).__name__,
+            )
+    retirement.resources = remaining_resources
+
+    browser = retirement.browser
+    if browser is not None and not retirement.browser_closed:
+        try:
+            await _bounded_await(
+                browser.close(),
+                _cleanup_timeout(deadline),
+                "browser retirement",
+            )
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            caller_cancelled = caller_cancelled or bool(
+                current is not None and current.cancelling()
+            )
+        except BaseException as exc:
+            if _browser_is_connected(browser):
+                logger.warning(
+                    "weee_scraper: retained connected browser after retirement failure: %s",
+                    type(exc).__name__,
+                )
+            else:
+                retirement.browser_closed = True
+        else:
+            retirement.browser_closed = True
+        if retirement.browser_closed or not _browser_is_connected(browser):
+            retirement.browser_closed = True
+            retirement.browser = None
+            retirement.resources.clear()
+
+    playwright = retirement.playwright
+    if playwright is not None and not retirement.playwright_stopped:
+        try:
+            await _bounded_await(
+                playwright.stop(),
+                _cleanup_timeout(deadline),
+                "retired Playwright cleanup",
+            )
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            caller_cancelled = caller_cancelled or bool(
+                current is not None and current.cancelling()
+            )
+        except BaseException as exc:
+            logger.warning(
+                "weee_scraper: retained Playwright after cleanup failure: %s",
+                type(exc).__name__,
+            )
+        else:
+            retirement.playwright_stopped = True
+            retirement.playwright = None
+
+    browser = retirement.browser
+    if browser is not None and not _browser_is_connected(browser):
+        retirement.browser_closed = True
+        retirement.browser = None
+        retirement.resources.clear()
+    complete = (
+        retirement.browser_closed
+        and retirement.playwright_stopped
+        and not retirement.resources
+    )
+    return complete, caller_cancelled
+
+
+async def _retry_retired_browser_resources(
+    *,
+    deadline: float | None = None,
+) -> None:
+    if any(not task.done() for task in _detached_tasks):
+        raise _BrowserRetirementError(
+            "Prior Weee browser cleanup is still in progress."
+        )
+    caller_cancelled = False
+    async with _retirement_lock:
+        if any(not task.done() for task in _detached_tasks):
+            raise _BrowserRetirementError(
+                "Prior Weee browser cleanup is still in progress."
+            )
+        for identity, retirement in list(_retired_browser_resources.items()):
+            complete, cancelled = await _attempt_browser_retirement(
+                retirement,
+                deadline=deadline,
+            )
+            caller_cancelled = caller_cancelled or cancelled
+            if complete and _retired_browser_resources.get(identity) is retirement:
+                _retired_browser_resources.pop(identity, None)
+    if caller_cancelled:
+        raise asyncio.CancelledError
+    if _retired_browser_resources:
+        raise _BrowserRetirementError(
+            "A prior Weee browser could not be retired; scraping is temporarily unavailable."
+        )
+
+
 async def _close_browser_resources(
     browser: Any,
     playwright: Any,
     *,
     deadline: float | None = None,
 ) -> None:
-    def cleanup_timeout() -> float:
-        if deadline is None:
-            return SCRAPER_CLEANUP_TIMEOUT_SECONDS
-        return min(SCRAPER_CLEANUP_TIMEOUT_SECONDS, deadline - time.monotonic())
-
     caller_cancelled = False
     substages = (
         (browser, "close", "browser cleanup"),
@@ -363,7 +531,7 @@ async def _close_browser_resources(
         try:
             await _bounded_await(
                 getattr(resource, method_name)(),
-                cleanup_timeout(),
+                _cleanup_timeout(deadline),
                 label,
             )
         except asyncio.CancelledError:
@@ -381,27 +549,35 @@ async def _invalidate_shared_browser(
     observed_browser: Any | None = None,
     *,
     deadline: float | None = None,
+    failed_resources: tuple[tuple[Any, str], ...] = (),
 ) -> bool:
     global _shared_browser, _playwright_inst, _browser_generation
-    lock_timeout = SCRAPER_CLEANUP_TIMEOUT_SECONDS
-    if deadline is not None:
-        lock_timeout = min(lock_timeout, deadline - time.monotonic())
-    await _bounded_await(
-        _browser_lock.acquire(),
-        lock_timeout,
-        "browser resource lock",
-    )
+    lock_timeout = _cleanup_timeout(deadline)
+    if lock_timeout <= 0:
+        raise StoreScrapeError("Weee browser resource lock timed out.")
+    try:
+        await asyncio.wait_for(_browser_lock.acquire(), timeout=lock_timeout)
+    except TimeoutError as exc:
+        raise StoreScrapeError("Weee browser resource lock timed out.") from exc
     try:
         if observed_browser is not None and _shared_browser is not observed_browser:
-            return False
-        _browser_generation += 1
-        browser, playwright = _shared_browser, _playwright_inst
-        _shared_browser = None
-        _playwright_inst = None
+            matched = False
+            browser, playwright = observed_browser, None
+        else:
+            matched = True
+            _browser_generation += 1
+            browser, playwright = _shared_browser, _playwright_inst
+            _shared_browser = None
+            _playwright_inst = None
+        _register_browser_retirement(
+            browser,
+            playwright,
+            failed_resources,
+        )
     finally:
         _browser_lock.release()
-    await _close_browser_resources(browser, playwright, deadline=deadline)
-    return True
+    await _retry_retired_browser_resources(deadline=deadline)
+    return matched
 
 
 async def _cleanup_late_browser_resource(
@@ -420,9 +596,10 @@ async def _cleanup_late_browser_resource(
             exc_info=(type(exc), exc, exc.__traceback__),
         )
         try:
-            retired_shared = await _invalidate_shared_browser(browser)
-            if not retired_shared:
-                await _close_browser_resources(browser, None)
+            await _invalidate_shared_browser(
+                browser,
+                failed_resources=((resource, label),),
+            )
         except BaseException as retirement_error:
             logger.error(
                 "weee_scraper: browser retirement after late cleanup failure failed",
@@ -444,6 +621,7 @@ async def _drain_detached_tasks() -> None:
         pending = {task for task in _detached_tasks if not task.done()}
         if not pending:
             if empty_passes >= 2:
+                await _retry_retired_browser_resources(deadline=deadline)
                 _raise_detached_cleanup_failures()
                 return
             empty_passes += 1
@@ -480,7 +658,11 @@ async def shutdown_weee_scraper() -> None:
     """Close the process-shared browser resources; safe to call repeatedly."""
     errors: list[BaseException] = []
     caller_cancelled = False
-    for phase in (_invalidate_shared_browser, _drain_detached_tasks):
+    for phase in (
+        _invalidate_shared_browser,
+        _drain_detached_tasks,
+        _retry_retired_browser_resources,
+    ):
         try:
             await phase()
         except asyncio.CancelledError as exc:
@@ -491,6 +673,12 @@ async def shutdown_weee_scraper() -> None:
                 errors.append(exc)
         except BaseException as exc:
             errors.append(exc)
+    if not _retired_browser_resources:
+        errors = [
+            error
+            for error in errors
+            if not isinstance(error, _BrowserRetirementError)
+        ]
     if caller_cancelled:
         raise asyncio.CancelledError
     if len(errors) == 1:
@@ -501,14 +689,24 @@ async def shutdown_weee_scraper() -> None:
 
 async def _ensure_shared_browser() -> Any:
     global _shared_browser, _playwright_inst
-    async with _browser_lock:
-        if _shared_browser is not None and _browser_is_connected(_shared_browser):
-            return _shared_browser
-        stale_browser, stale_playwright = _shared_browser, _playwright_inst
-        _shared_browser = None
-        _playwright_inst = None
-        generation = _browser_generation
-    await _close_browser_resources(stale_browser, stale_playwright)
+    while True:
+        await _retry_retired_browser_resources()
+        retry_retirement = False
+        async with _browser_lock:
+            if _retired_browser_resources:
+                retry_retirement = True
+            elif _shared_browser is not None and _browser_is_connected(_shared_browser):
+                return _shared_browser
+            else:
+                stale_browser, stale_playwright = _shared_browser, _playwright_inst
+                _shared_browser = None
+                _playwright_inst = None
+                generation = _browser_generation
+                _register_browser_retirement(stale_browser, stale_playwright)
+        if retry_retirement:
+            continue
+        await _retry_retired_browser_resources()
+        break
     playwright, browser = await _launch_browser()
     winner: Any = None
     publish = False
@@ -517,15 +715,18 @@ async def _ensure_shared_browser() -> Any:
         if (
             generation == _browser_generation
             and _shared_browser is None
+            and not _retired_browser_resources
             and not (current is not None and current.cancelling())
         ):
             _playwright_inst, _shared_browser = playwright, browser
             publish = True
         elif generation == _browser_generation and _browser_is_connected(_shared_browser):
             winner = _shared_browser
+        if not publish:
+            _register_browser_retirement(browser, playwright)
     if publish:
         return browser
-    await _close_browser_resources(browser, playwright)
+    await _retry_retired_browser_resources()
     if winner is not None:
         return winner
     raise StoreScrapeError("Weee browser acquisition was invalidated by lifecycle shutdown.")
@@ -798,7 +999,8 @@ async def _scrape_once(
             await _invalidate_shared_browser(browser, deadline=cleanup_deadline)
         raise
     finally:
-        cleanup_failed = False
+        failed_resources: list[tuple[Any, str]] = []
+        cleanup_error: BaseException | None = None
         caller_cancelled = False
         for resource, label in (
             (page, "page cleanup"),
@@ -820,20 +1022,42 @@ async def _scrape_once(
                 caller_cancelled = caller_cancelled or bool(
                     current is not None and current.cancelling()
                 )
-            except Exception:
-                cleanup_failed = True
-        if cleanup_failed and browser is not None:
+                failed_resources.append((resource, label))
+                cleanup_error = cleanup_error or StoreScrapeError(
+                    f"Weee {label} was cancelled before completion."
+                )
+            except Exception as exc:
+                failed_resources.append((resource, label))
+                cleanup_error = cleanup_error or StoreScrapeError(
+                    f"Weee {label} failed."
+                )
+                logger.warning(
+                    "weee_scraper: retained %s after attempt failure: %s",
+                    label,
+                    type(exc).__name__,
+                )
+        if failed_resources and browser is not None:
             try:
-                await _invalidate_shared_browser(browser, deadline=cleanup_deadline)
+                await _invalidate_shared_browser(
+                    browser,
+                    deadline=cleanup_deadline,
+                    failed_resources=tuple(failed_resources),
+                )
             except asyncio.CancelledError:
                 current = asyncio.current_task()
                 caller_cancelled = caller_cancelled or bool(
                     current is not None and current.cancelling()
                 )
-            except Exception:
-                logger.exception("failed to invalidate browser after attempt cleanup")
+            except BaseException as exc:
+                cleanup_error = exc
+                logger.warning(
+                    "weee_scraper: browser retirement remains fenced after attempt cleanup",
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
         if caller_cancelled:
             raise asyncio.CancelledError
+        if cleanup_error is not None:
+            raise cleanup_error
 
 
 def _log_attempt(
@@ -881,7 +1105,11 @@ async def scrape_weee_products(query_text: str, language: Language) -> list[dict
             await wait_for_scraper_quiescence()
             last_error = exc
             _log_attempt(query_text, language, attempt_number, "failure", exc)
-            if attempt_number == WEEE_MAX_ATTEMPTS or time.monotonic() >= total_deadline:
+            if (
+                isinstance(exc, _BrowserRetirementError)
+                or attempt_number == WEEE_MAX_ATTEMPTS
+                or time.monotonic() >= total_deadline
+            ):
                 break
             try:
                 await _bounded_call(
@@ -907,8 +1135,23 @@ async def wait_for_scraper_quiescence() -> None:
         tasks = {task for task in _detached_tasks if not task.done()}
         if not tasks:
             if empty_passes >= 2:
+                retirement_error: BaseException | None = None
+                try:
+                    await _retry_retired_browser_resources()
+                except asyncio.CancelledError:
+                    current = asyncio.current_task()
+                    caller_cancelled = caller_cancelled or bool(
+                        current is not None and current.cancelling()
+                    )
+                except BaseException as exc:
+                    retirement_error = exc
+                if any(not task.done() for task in _detached_tasks):
+                    empty_passes = 0
+                    continue
                 if caller_cancelled:
                     raise asyncio.CancelledError
+                if retirement_error is not None:
+                    raise retirement_error
                 _raise_detached_cleanup_failures()
                 return
             empty_passes += 1

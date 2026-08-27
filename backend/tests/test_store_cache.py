@@ -246,7 +246,7 @@ async def test_empty_upsert_preserves_an_existing_positive_database_entry():
         query="silken tofu", store="weee", language="en", cache_version="v7", data=[],
         updated_at=datetime(2026, 8, 16, 12, tzinfo=timezone.utc),
     )
-    assert written is False
+    assert written is None
     assert session.execute_count == 0
 
 
@@ -272,6 +272,12 @@ async def test_upsert_keeps_distinct_weights_and_uses_shared_safe_deduplication(
     }
 
     class Result:
+        def one_or_none(self) -> SimpleNamespace:
+            return SimpleNamespace(
+                data=[rice_one, rice_two, beans],
+                updated_at=datetime(2026, 8, 27, tzinfo=timezone.utc),
+            )
+
         def scalar_one_or_none(self) -> datetime:
             return datetime(2026, 8, 27, tzinfo=timezone.utc)
 
@@ -301,28 +307,42 @@ async def test_upsert_keeps_distinct_weights_and_uses_shared_safe_deduplication(
     )
 
     compiled = session.statement.compile(dialect=postgresql.dialect())
-    assert written is True
+    assert written == repo_store_cache.CachedStoreProducts(
+        [rice_one, rice_two, beans],
+        datetime(2026, 8, 27, tzinfo=timezone.utc),
+    )
     assert compiled.params["data"] == [rice_one, rice_two, beans]
 
 
 @pytest.mark.asyncio
-async def test_upsert_is_one_atomic_strictly_monotonic_postgresql_statement():
+async def test_upsert_conflict_loser_reads_and_returns_the_authoritative_winner():
     newer_at = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
     older_at = newer_at - timedelta(seconds=1)
+    newer_product = {**PRODUCT, "price": "$12.99"}
 
     class Result:
+        def __init__(self, row: object):
+            self.row = row
+
         def scalar_one_or_none(self) -> None:
             return None
 
+        def one_or_none(self) -> object:
+            return self.row
+
     class Session:
-        statements: list[Any] = []
+        def __init__(self, winner_at: datetime):
+            self.winner_at = winner_at
+            self.statements: list[Any] = []
 
         async def execute(self, statement: Any) -> Result:
             self.statements.append(statement)
-            return Result()
+            if len(self.statements) % 2:
+                return Result(None)
+            return Result(SimpleNamespace(data=[newer_product], updated_at=self.winner_at))
 
-    session = Session()
-    written = await repo_store_cache.upsert_cached_store_products(
+    session = Session(newer_at)
+    winner = await repo_store_cache.upsert_cached_store_products(
         session,  # type: ignore[arg-type]
         query="silken tofu",
         store="weee",
@@ -332,27 +352,52 @@ async def test_upsert_is_one_atomic_strictly_monotonic_postgresql_statement():
         updated_at=older_at,
     )
 
-    assert written is False
+    assert winner == repo_store_cache.CachedStoreProducts([newer_product], newer_at)
+    assert len(session.statements) == 2
+    insert_sql = str(session.statements[0].compile(dialect=postgresql.dialect()))
+    assert "INSERT INTO cached_store_products" in insert_sql
+    assert "ON CONFLICT (query, store, language, cache_version) DO UPDATE" in insert_sql
+    assert "cached_store_products.updated_at < excluded.updated_at" in insert_sql
+    assert "RETURNING cached_store_products.data, cached_store_products.updated_at" in insert_sql
+    assert "FOR UPDATE" not in insert_sql
+    select_sql = str(session.statements[1].compile(dialect=postgresql.dialect()))
+    assert "SELECT cached_store_products.data, cached_store_products.updated_at" in select_sql
 
-    equal_generation_written = await repo_store_cache.upsert_cached_store_products(
+
+@pytest.mark.asyncio
+async def test_upsert_atomically_replaces_a_future_poisoned_incumbent():
+    cached_at = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    candidate_product = {**PRODUCT, "price": "$4.99"}
+
+    class Result:
+        def scalar_one_or_none(self) -> datetime:
+            return cached_at
+
+        def one_or_none(self) -> SimpleNamespace:
+            return SimpleNamespace(data=[candidate_product], updated_at=cached_at)
+
+    class Session:
+        statement: Any = None
+
+        async def execute(self, statement: Any) -> Result:
+            self.statement = statement
+            return Result()
+
+    session = Session()
+    winner = await repo_store_cache.upsert_cached_store_products(
         session,  # type: ignore[arg-type]
         query="silken tofu",
         store="weee",
         language="en",
         cache_version="v7",
-        data=[{**PRODUCT, "price": "$8.99"}],
-        updated_at=newer_at,
+        data=[candidate_product],
+        updated_at=cached_at,
     )
 
-    assert equal_generation_written is False
-    assert len(session.statements) == 2
-    for statement in session.statements:
-        sql = str(statement.compile(dialect=postgresql.dialect()))
-        assert "INSERT INTO cached_store_products" in sql
-        assert "ON CONFLICT (query, store, language, cache_version) DO UPDATE" in sql
-        assert "cached_store_products.updated_at < excluded.updated_at" in sql
-        assert "RETURNING cached_store_products.updated_at" in sql
-        assert "FOR UPDATE" not in sql
+    assert winner == repo_store_cache.CachedStoreProducts([candidate_product], cached_at)
+    sql = str(session.statement.compile(dialect=postgresql.dialect()))
+    assert "cached_store_products.updated_at > CURRENT_TIMESTAMP" in sql
+    assert "cached_store_products.updated_at < excluded.updated_at" in sql
 
 
 def test_store_scraper_is_a_public_compatibility_facade():

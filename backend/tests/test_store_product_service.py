@@ -25,8 +25,8 @@ async def async_none(*args: Any, **kwargs: Any) -> None:
     return None
 
 
-async def async_noop(*args: Any, **kwargs: Any) -> None:
-    return None
+async def async_noop(*args: Any, **kwargs: Any) -> repo_store_cache.CachedStoreProducts:
+    return repo_store_cache.CachedStoreProducts(args[2], args[3])
 
 
 async def async_typed_failure(*args: Any, **kwargs: Any) -> list[dict[str, str]]:
@@ -1223,6 +1223,44 @@ async def test_cancelling_the_last_active_waiter_invalidates_and_cancels_its_fli
 
 
 @pytest.mark.asyncio
+async def test_last_waiter_cancellation_recovers_after_child_raises_ordinary_error(
+    monkeypatch,
+):
+    first_started = asyncio.Event()
+    first_cancelled = asyncio.Event()
+    calls: list[str] = []
+
+    async def scrape(query_text: str, language: str) -> list[dict[str, str]]:
+        calls.append(query_text)
+        if query_text == "orphan":
+            first_started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                first_cancelled.set()
+                raise RuntimeError("cleanup failed after cancellation")
+        return [product_for(query_text)]
+
+    monkeypatch.setattr(weee_scraper, "scrape_weee_products", scrape)
+    monkeypatch.setattr(service, "_persist_positive_result", async_noop)
+    orphan = asyncio.create_task(
+        service.fetch_store_products("orphan", force_refresh=True)
+    )
+    await first_started.wait()
+    orphan.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await orphan
+    await asyncio.wait_for(first_cancelled.wait(), timeout=0.05)
+    await wait_until(lambda: service._live_lookups._worker is None)
+
+    assert service._live_lookups._contaminated is False
+    assert await service.fetch_store_products("recovered", force_refresh=True) == [
+        product_for("recovered")
+    ]
+    assert calls == ["orphan", "recovered"]
+
+
+@pytest.mark.asyncio
 async def test_waiter_release_survives_repeated_cancellation_while_lock_is_held():
     coordinator = service._LiveLookupCoordinator()
     operation_started = asyncio.Event()
@@ -1305,7 +1343,7 @@ async def test_positive_result_persists_before_it_is_published(monkeypatch):
 
     async def upsert(*args, **kwargs):
         calls.append("upsert")
-        return None
+        return repo_store_cache.CachedStoreProducts([TOFU], kwargs["updated_at"])
 
     monkeypatch.setattr(weee_scraper, "scrape_weee_products", async_return([TOFU]))
     monkeypatch.setattr(db_session, "async_session_maker", lambda: Context())
@@ -1321,6 +1359,98 @@ async def test_positive_result_persists_before_it_is_published(monkeypatch):
     release.set()
     assert await asyncio.gather(task, follower) == [[TOFU], [TOFU]]
     assert calls == ["upsert", "commit", "close"]
+
+
+@pytest.mark.asyncio
+async def test_conflict_loser_commits_and_publishes_the_authoritative_newer_winner(
+    monkeypatch,
+):
+    base = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    newer_at = base + timedelta(seconds=10)
+    newer_product = {**TOFU, "price": "$12.99"}
+    clock = {"seconds": base.timestamp()}
+    calls: list[str] = []
+
+    class WriteSession:
+        async def commit(self) -> None:
+            calls.append("commit")
+
+        async def rollback(self) -> None:
+            calls.append("rollback")
+
+    class Context:
+        async def __aenter__(self) -> WriteSession:
+            calls.append("open")
+            return WriteSession()
+
+        async def __aexit__(self, *args: Any) -> None:
+            calls.append("close")
+
+    async def upsert(*args: Any, **kwargs: Any) -> repo_store_cache.CachedStoreProducts:
+        calls.append("upsert")
+        assert kwargs["updated_at"] == base
+        clock["seconds"] = (base + timedelta(seconds=20)).timestamp()
+        return repo_store_cache.CachedStoreProducts([newer_product], newer_at)
+
+    monkeypatch.setattr(service.time, "time", lambda: clock["seconds"])
+    monkeypatch.setattr(weee_scraper, "scrape_weee_products", async_return([TOFU]))
+    monkeypatch.setattr(db_session, "async_session_maker", lambda: Context())
+    monkeypatch.setattr(repo_store_cache, "upsert_cached_store_products", upsert)
+
+    result = await service.fetch_store_products_with_metadata(
+        "silken tofu",
+        force_refresh=True,
+    )
+
+    assert result == service.StoreProductsResult([newer_product], newer_at)
+    assert calls == ["open", "upsert", "commit", "close"]
+    assert service._memory_cache_get_with_metadata(
+        ("weee", "en", service.CACHE_VERSION, "silken tofu")
+    ) == result
+    assert await service.fetch_store_products("SILKEN TOFU") == [newer_product]
+
+
+@pytest.mark.asyncio
+async def test_future_poison_replacement_is_returned_and_warms_the_next_lookup(
+    monkeypatch,
+):
+    now = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    future_poison = now + timedelta(days=36_500)
+    recovered = {**TOFU, "price": "$3.49"}
+    state = {"updated_at": future_poison, "products": [STALE_PRODUCT]}
+
+    class WriteSession:
+        async def commit(self) -> None:
+            return None
+
+        async def rollback(self) -> None:
+            raise AssertionError("a valid replacement must commit")
+
+    class Context:
+        async def __aenter__(self) -> WriteSession:
+            return WriteSession()
+
+        async def __aexit__(self, *args: Any) -> None:
+            return None
+
+    async def upsert(*args: Any, **kwargs: Any) -> repo_store_cache.CachedStoreProducts:
+        assert state["updated_at"] == future_poison
+        state["updated_at"] = kwargs["updated_at"]
+        state["products"] = kwargs["data"]
+        return repo_store_cache.CachedStoreProducts(
+            state["products"],
+            state["updated_at"],
+        )
+
+    monkeypatch.setattr(service.time, "time", lambda: now.timestamp())
+    monkeypatch.setattr(weee_scraper, "scrape_weee_products", async_return([recovered]))
+    monkeypatch.setattr(db_session, "async_session_maker", lambda: Context())
+    monkeypatch.setattr(repo_store_cache, "upsert_cached_store_products", upsert)
+
+    first = await service.fetch_store_products_with_metadata("silken tofu", force_refresh=True)
+    assert first == service.StoreProductsResult([recovered], now)
+    assert state == {"updated_at": now, "products": [recovered]}
+    assert await service.fetch_store_products("silken tofu") == [recovered]
 
 
 @pytest.mark.asyncio
@@ -1344,10 +1474,11 @@ async def test_invalidated_job_lease_blocks_persistence_before_commit(monkeypatc
         async def __aexit__(self, *args: Any) -> None:
             calls.append("close")
 
-    async def upsert(*args: Any, **kwargs: Any) -> None:
+    async def upsert(*args: Any, **kwargs: Any) -> repo_store_cache.CachedStoreProducts:
         calls.append("upsert")
         upsert_started.set()
         await release_upsert.wait()
+        return repo_store_cache.CachedStoreProducts([TOFU], kwargs["updated_at"])
 
     lease = service._LiveJobLease(generation=1)
     monkeypatch.setattr(db_session, "async_session_maker", lambda: Context())
@@ -1395,9 +1526,9 @@ async def test_invalidation_during_irrevocable_commit_never_rolls_back_or_publis
         async def __aexit__(self, *args: Any) -> None:
             calls.append("close")
 
-    async def upsert(*args: Any, **kwargs: Any) -> bool:
+    async def upsert(*args: Any, **kwargs: Any) -> repo_store_cache.CachedStoreProducts:
         calls.append("upsert")
-        return True
+        return repo_store_cache.CachedStoreProducts([TOFU], kwargs["updated_at"])
 
     lease = service._LiveJobLease(generation=7)
     monkeypatch.setattr(db_session, "async_session_maker", lambda: Context())
@@ -1439,8 +1570,12 @@ async def test_live_result_uses_precommit_timestamp_for_l1_and_metadata(monkeypa
         async def __aexit__(self, *args: Any) -> None:
             return None
 
-    async def capture_upsert(session: object, **kwargs: Any) -> None:
+    async def capture_upsert(
+        session: object,
+        **kwargs: Any,
+    ) -> repo_store_cache.CachedStoreProducts:
         captured.append(kwargs["updated_at"])
+        return repo_store_cache.CachedStoreProducts(kwargs["data"], kwargs["updated_at"])
 
     monkeypatch.setattr(service.time, "time", lambda: clock["seconds"])
     monkeypatch.setattr(weee_scraper, "scrape_weee_products", async_return([TOFU]))
@@ -1487,8 +1622,9 @@ async def test_uncertain_commit_failure_closes_without_rollback_or_publication_a
         attempts += 1
         return Context(WriteSession(fail_commit=attempts == 1))
 
-    async def upsert(*args: Any, **kwargs: Any) -> None:
+    async def upsert(*args: Any, **kwargs: Any) -> repo_store_cache.CachedStoreProducts:
         calls.append("upsert")
+        return repo_store_cache.CachedStoreProducts([TOFU], kwargs["updated_at"])
 
     monkeypatch.setattr(weee_scraper, "scrape_weee_products", async_return([TOFU]))
     monkeypatch.setattr(db_session, "async_session_maker", session_maker)
@@ -1631,8 +1767,12 @@ async def test_validation_deduplicates_and_limits_products_before_persistence(mo
     fourth = {"name": "Tofu skin", "price": "$3.49", "image": "", "url": "https://www.weee.com/en/product/tofu-skin/1"}
     persisted: list[list[dict[str, str]]] = []
 
-    async def capture_persist(*args: Any, **kwargs: Any) -> None:
+    async def capture_persist(
+        *args: Any,
+        **kwargs: Any,
+    ) -> repo_store_cache.CachedStoreProducts:
         persisted.append(args[2])
+        return repo_store_cache.CachedStoreProducts(args[2], args[3])
 
     monkeypatch.setattr(weee_scraper, "scrape_weee_products", async_return([TOFU, duplicate, {"name": 123}, second, third, fourth]))
     monkeypatch.setattr(service, "_persist_positive_result", capture_persist)

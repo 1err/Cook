@@ -330,8 +330,11 @@ async def test_cold_authenticated_routes_release_read_sessions_before_scrape_wai
             "url": f"https://www.weee.com/en/product/{query_text}/1",
         }]
 
-    async def no_persist(*args: Any, **kwargs: Any) -> None:
-        return None
+    async def no_persist(
+        *args: Any,
+        **kwargs: Any,
+    ) -> repo_store_cache.CachedStoreProducts:
+        return repo_store_cache.CachedStoreProducts(args[2], args[3])
 
     await store_product_service.reset_for_tests()
     store_product_service.start_live_lookup_admission()
@@ -640,8 +643,11 @@ async def test_cache_refresh_one_closes_real_read_session_before_held_live_scrap
         assert session.close_calls == 1
         return None
 
-    async def no_persist(*args: Any, **kwargs: Any) -> None:
-        return None
+    async def no_persist(
+        *args: Any,
+        **kwargs: Any,
+    ) -> repo_store_cache.CachedStoreProducts:
+        return repo_store_cache.CachedStoreProducts(args[2], args[3])
 
     monkeypatch.setattr(db_session, "async_session_maker", lambda: session)
     monkeypatch.setattr(weee_scraper, "scrape_weee_products", scrape)

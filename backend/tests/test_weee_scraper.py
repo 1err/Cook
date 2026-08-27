@@ -654,6 +654,125 @@ async def test_cleanup_timeout_does_not_prevent_the_next_attempt(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_failed_child_cleanup_and_browser_retirement_fence_the_next_launch(
+    monkeypatch,
+):
+    allow_retirement = False
+    browsers: list[Any] = []
+    peak_connected = 0
+
+    class Response:
+        status = 200
+
+    class Page:
+        def __init__(self, browser: "Browser"):
+            self.browser = browser
+            self.url = "about:blank"
+            self.closed = False
+
+        async def goto(self, url: str, **kwargs: Any) -> Response:
+            self.url = url
+            return Response()
+
+        async def close(self) -> None:
+            if self.browser.number == 1 and not allow_retirement:
+                raise RuntimeError("page close failed")
+            self.closed = True
+
+    class Context:
+        def __init__(self, browser: "Browser"):
+            self.browser = browser
+            self.page: Page | None = None
+
+        async def new_page(self) -> Page:
+            self.page = Page(self.browser)
+            self.browser.pages.append(self.page)
+            return self.page
+
+        async def close(self) -> None:
+            return None
+
+    class Browser:
+        def __init__(self, number: int):
+            self.number = number
+            self.connected = True
+            self.close_calls = 0
+            self.pages: list[Page] = []
+
+        def is_connected(self) -> bool:
+            return self.connected
+
+        async def new_context(self, **kwargs: Any) -> Context:
+            return Context(self)
+
+        async def close(self) -> None:
+            self.close_calls += 1
+            if self.number == 1 and not allow_retirement:
+                raise RuntimeError("browser close failed while still connected")
+            self.connected = False
+            for page in self.pages:
+                page.closed = True
+
+    class Playwright:
+        def __init__(self):
+            self.stop_calls = 0
+
+        async def stop(self) -> None:
+            self.stop_calls += 1
+
+    async def launch_browser() -> tuple[Playwright, Browser]:
+        nonlocal peak_connected
+        browser = Browser(len(browsers) + 1)
+        browsers.append(browser)
+        peak_connected = max(
+            peak_connected,
+            sum(candidate.is_connected() for candidate in browsers),
+        )
+        return Playwright(), browser
+
+    async def outcome(page: Page, expected_query: str) -> str:
+        return "pending" if page.browser.number == 1 else "results"
+
+    async def extract(page: Page, language: str) -> list[dict[str, str]]:
+        return [SEARCH_CARD]
+
+    monkeypatch.setattr(weee_scraper, "_launch_browser", launch_browser)
+    monkeypatch.setattr(weee_scraper, "_wait_for_search_outcome", outcome)
+    monkeypatch.setattr(weee_scraper, "_extract_weee_search_products", extract)
+    monkeypatch.setattr(weee_scraper, "WEEE_MAX_ATTEMPTS", 2)
+    monkeypatch.setattr(weee_scraper.random, "uniform", lambda *args: -1.0)
+    monkeypatch.setattr(weee_scraper, "_shared_browser", None)
+    monkeypatch.setattr(weee_scraper, "_playwright_inst", None)
+
+    try:
+        with pytest.raises(weee_scraper.StoreScrapeError):
+            await weee_scraper.scrape_weee_products("tofu", "en")
+        assert len(browsers) == 1
+        assert peak_connected == 1
+        assert browsers[0].is_connected()
+
+        allow_retirement = True
+        assert await weee_scraper.scrape_weee_products("tofu", "en") == [PRODUCT]
+        assert len(browsers) == 2
+        assert peak_connected == 1
+        assert not browsers[0].is_connected()
+
+        await weee_scraper.shutdown_weee_scraper()
+        await weee_scraper.shutdown_weee_scraper()
+        assert not browsers[1].is_connected()
+        assert browsers[1].close_calls == 1
+    finally:
+        allow_retirement = True
+        try:
+            await weee_scraper.shutdown_weee_scraper()
+        except BaseException:
+            pass
+        for browser in browsers:
+            if browser.is_connected():
+                await browser.close()
+
+
+@pytest.mark.asyncio
 async def test_shared_browser_shutdown_is_idempotent(monkeypatch):
     calls: list[str] = []
 

@@ -721,9 +721,17 @@ class _LiveLookupCoordinator:
             except Exception as exc:
                 if not job.future.done():
                     job.future.set_exception(exc)
+                if self._contaminated and not job.lease.valid:
+                    caller_cancelled = await self._quarantine_until_quiescent(job)
+                    if caller_cancelled or not self._accepting:
+                        return
             else:
                 if job.lease.valid and not job.future.done():
                     job.future.set_result(result)
+                elif self._contaminated and not job.lease.valid:
+                    caller_cancelled = await self._quarantine_until_quiescent(job)
+                    if caller_cancelled or not self._accepting:
+                        return
             finally:
                 async with self._lock:
                     self._remove_job_locked(job)
@@ -839,7 +847,7 @@ async def _persist_positive_result(
     cached_at: datetime,
     *,
     lease: _LiveJobLease | None = None,
-) -> None:
+) -> repo_store_cache.CachedStoreProducts:
     if lease is not None:
         lease.ensure_valid()
     maker = db_session.async_session_maker
@@ -848,13 +856,13 @@ async def _persist_positive_result(
     async with maker() as write_session:
         commit_started = False
         try:
-            written = await repo_store_cache.upsert_cached_store_products(
+            winner = await repo_store_cache.upsert_cached_store_products(
                 write_session, query=cache_query, store="weee", language=language,
                 cache_version=CACHE_VERSION, data=products, updated_at=cached_at,
             )
-            if written is False:
+            if winner is None:
                 raise weee_scraper.StoreScrapeError(
-                    "Store product cache write was superseded by a newer result."
+                    "Store product cache write did not produce an authoritative winner."
                 )
             if lease is not None:
                 lease.ensure_valid()
@@ -871,6 +879,7 @@ async def _persist_positive_result(
                 lease.ensure_valid()
             if caller_cancelled:
                 raise asyncio.CancelledError
+            return winner
         except BaseException:
             if not commit_started:
                 await write_session.rollback()
@@ -961,7 +970,7 @@ async def fetch_store_products_with_metadata(
                 return StoreProductsResult(products=[], cached_at=None)
             cached_at = datetime.fromtimestamp(time.time(), tz=timezone.utc)
             lease.ensure_valid()
-            await _persist_positive_result(
+            winner = await _persist_positive_result(
                 prepared.cache_query,
                 prepared.language,
                 products,
@@ -969,17 +978,24 @@ async def fetch_store_products_with_metadata(
                 lease=lease,
             )
             lease.ensure_valid()
-            _memory_cache_set(cache_key, products, timestamp=cached_at.timestamp())
+            _memory_cache_set(
+                cache_key,
+                winner.products,
+                timestamp=winner.updated_at.timestamp(),
+            )
             lease.ensure_valid()
+            published = _memory_cache_get_with_metadata(cache_key)
+            if published is None:
+                raise RuntimeError("The authoritative cache winner did not populate L1.")
             _log_event(
                 "scrape_success",
                 cache_key,
                 priority=selected_priority,
                 started_at=scrape_started_at,
                 queue_wait_ms=queue_wait_ms,
-                product_count=len(products),
+                product_count=len(published.products),
             )
-            return StoreProductsResult(products, cached_at)
+            return published
         except asyncio.CancelledError:
             raise
         except Exception as exc:
