@@ -1,11 +1,13 @@
 from unittest.mock import AsyncMock
+from io import BytesIO
+from urllib.error import HTTPError
 
 import pytest
 from fastapi import HTTPException
 
 import app.api.routes_recipes as routes_recipes
 from app.models import Recipe
-from app.video_import import UnsupportedVideoUrl, VideoSource, VideoTextResult
+from app.video_import import UnsupportedVideoUrl, VideoSource, VideoTextResult, fetch_tiktok_text
 
 
 RAW_URL = "https://www.tiktok.com/@chef/video/7412345678901234567?is_from_webapp=1"
@@ -89,6 +91,25 @@ async def test_parse_link_rejects_temporary_provider_failure(monkeypatch):
         "fetch_video_text",
         AsyncMock(return_value=VideoTextResult("fetch_failed", "", source, message="Try again.")),
     )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await routes_recipes.parse_from_link(routes_recipes.ParseLinkBody(url=RAW_URL), _user=object())
+
+    assert exc_info.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_parse_link_maps_tiktok_redirect_rejection_to_service_unavailable(monkeypatch):
+    source = VideoSource("tiktok", RAW_URL, CANONICAL_URL, POST_ID)
+    monkeypatch.setattr(routes_recipes, "parse_video_source", lambda _: source)
+
+    def redirecting_opener(request, *, timeout: int):
+        raise HTTPError(request.full_url, 302, "Found", {"Location": "http://127.0.0.1/private"}, BytesIO())
+
+    async def redirect_rejection(_source):
+        return fetch_tiktok_text(_source, opener=redirecting_opener)
+
+    monkeypatch.setattr(routes_recipes, "fetch_video_text", redirect_rejection)
 
     with pytest.raises(HTTPException) as exc_info:
         await routes_recipes.parse_from_link(routes_recipes.ParseLinkBody(url=RAW_URL), _user=object())

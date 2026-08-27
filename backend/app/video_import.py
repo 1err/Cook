@@ -1,13 +1,14 @@
 """Provider-aware parsing and caption retrieval for supported video URLs."""
 import asyncio
 from dataclasses import dataclass
+from http.client import HTTPException
 import json
 import logging
 import re
 from typing import Literal
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 try:
     from youtube_transcript_api import YouTubeTranscriptApi
@@ -198,7 +199,19 @@ def _meaningful_tiktok_text(title: str, author: str) -> str:
     return text
 
 
-def fetch_tiktok_text(source: VideoSource, *, opener=urlopen) -> VideoTextResult:
+class _RejectRedirects(HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, redirect_url):
+        raise HTTPError(request.full_url, code, message, headers, response)
+
+
+_TIKTOK_OEMBED_OPENER = build_opener(_RejectRedirects())
+
+
+def _open_tiktok_oembed(request: Request, *, timeout: int):
+    return _TIKTOK_OEMBED_OPENER.open(request, timeout=timeout)
+
+
+def fetch_tiktok_text(source: VideoSource, *, opener=_open_tiktok_oembed) -> VideoTextResult:
     """Fetch recipe-adjacent public text from TikTok's oEmbed endpoint."""
     endpoint = "https://www.tiktok.com/oembed?" + urlencode({"url": source.original_url})
     request = Request(endpoint, headers={"User-Agent": "ChefWorld/1.0"})
@@ -206,7 +219,7 @@ def fetch_tiktok_text(source: VideoSource, *, opener=urlopen) -> VideoTextResult
         with opener(request, timeout=10) as response:
             raw = response.read(1_000_001)
     except HTTPError as exc:
-        if 400 <= exc.code < 500:
+        if 400 <= exc.code < 500 and exc.code not in {408, 429}:
             return _failure(
                 source,
                 "no_transcript",
@@ -217,7 +230,7 @@ def fetch_tiktok_text(source: VideoSource, *, opener=urlopen) -> VideoTextResult
             "fetch_failed",
             "TikTok is temporarily unavailable. Please try again.",
         )
-    except (URLError, TimeoutError, OSError):
+    except (HTTPException, URLError, TimeoutError, OSError):
         return _failure(
             source,
             "fetch_failed",

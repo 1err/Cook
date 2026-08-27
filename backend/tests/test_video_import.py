@@ -1,5 +1,6 @@
 import json
 import socket
+from http.client import IncompleteRead
 from io import BytesIO
 from urllib.error import HTTPError, URLError
 
@@ -24,8 +25,10 @@ TIKTOK_SOURCE = parse_video_source("https://www.tiktok.com/@chef/video/741234567
 
 
 class _FakeResponse:
-    def __init__(self, payload: bytes):
+    def __init__(self, payload: bytes, *, read_error: Exception | None = None):
         self.payload = payload
+        self.read_error = read_error
+        self.read_sizes: list[int] = []
 
     def __enter__(self):
         return self
@@ -33,8 +36,11 @@ class _FakeResponse:
     def __exit__(self, *_args):
         return False
 
-    def read(self, _size: int) -> bytes:
-        return self.payload
+    def read(self, size: int) -> bytes:
+        self.read_sizes.append(size)
+        if self.read_error is not None:
+            raise self.read_error
+        return self.payload[:size]
 
 
 def fake_json_response(payload: object):
@@ -293,10 +299,55 @@ def test_fetch_tiktok_text_rejects_invalid_json():
     assert result.status == "fetch_failed"
 
 
+def test_fetch_tiktok_text_rejects_oversized_oembed_response():
+    response = _FakeResponse(b"x" * 1_000_001)
+
+    result = fetch_tiktok_text(TIKTOK_SOURCE, opener=lambda *_args, **_kwargs: response)
+
+    assert result.status == "fetch_failed"
+    assert response.read_sizes == [1_000_001]
+
+
+def test_fetch_tiktok_text_rejects_redirect_without_second_request(monkeypatch):
+    first_request_urls: list[str] = []
+
+    class RedirectingOpener:
+        def open(self, request, *, timeout: int):
+            assert timeout == 10
+            first_request_urls.append(request.full_url)
+            raise HTTPError(
+                request.full_url,
+                302,
+                "Found",
+                {"Location": "http://127.0.0.1/private"},
+                BytesIO(),
+            )
+
+    default_opener = getattr(video_import, "_open_tiktok_oembed", None)
+    assert callable(default_opener), "TikTok default opener must reject redirects"
+    monkeypatch.setattr(video_import, "_TIKTOK_OEMBED_OPENER", RedirectingOpener())
+
+    result = fetch_tiktok_text(TIKTOK_SOURCE)
+
+    assert result.status == "fetch_failed"
+    assert len(first_request_urls) == 1
+    assert first_request_urls[0].startswith("https://www.tiktok.com/oembed?")
+
+
+def test_fetch_tiktok_text_classifies_protocol_read_failure_as_temporary():
+    response = _FakeResponse(b"", read_error=IncompleteRead(b"partial", 10))
+
+    result = fetch_tiktok_text(TIKTOK_SOURCE, opener=lambda *_args, **_kwargs: response)
+
+    assert result.status == "fetch_failed"
+
+
 @pytest.mark.parametrize(
     ("failure", "expected_status"),
     [
         (HTTPError("https://www.tiktok.com/oembed", 404, "missing", None, BytesIO()), "no_transcript"),
+        (HTTPError("https://www.tiktok.com/oembed", 408, "timeout", None, BytesIO()), "fetch_failed"),
+        (HTTPError("https://www.tiktok.com/oembed", 429, "rate limited", None, BytesIO()), "fetch_failed"),
         (HTTPError("https://www.tiktok.com/oembed", 500, "server", None, BytesIO()), "fetch_failed"),
         (URLError("offline"), "fetch_failed"),
         (socket.timeout("timed out"), "fetch_failed"),
