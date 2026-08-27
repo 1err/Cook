@@ -132,6 +132,71 @@ def test_fetch_youtube_text_uses_063_list_transcripts_and_language_fallback(monk
     assert calls == [["en", "zh", "zh-Hans", "zh-Hant"]]
 
 
+def test_fetch_youtube_text_tries_later_fallback_after_empty_track(monkeypatch):
+    class Track:
+        def __init__(self, snippets):
+            self.language_code = "fr"
+            self._snippets = snippets
+
+        def fetch(self):
+            return self._snippets
+
+    class Tracks:
+        def find_transcript(self, languages):
+            raise NoTranscriptFound("id", languages, [])
+
+        def __iter__(self):
+            return iter(
+                [
+                    Track([{"text": " "}, {"start": 1.2}]),
+                    Track([{"text": "Hachez l'ail."}, {"text": " Ajoutez-le. "}]),
+                ]
+            )
+
+    monkeypatch.setattr(
+        video_import.YouTubeTranscriptApi,
+        "list_transcripts",
+        lambda video_id: Tracks(),
+    )
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
+
+    assert result.status == "ok"
+    assert result.text == "Hachez l'ail. Ajoutez-le."
+
+
+def test_fetch_youtube_text_maps_terminal_error_from_fallback_track(monkeypatch):
+    class UnavailableTrack:
+        language_code = "fr"
+
+        def fetch(self):
+            raise VideoUnavailable("dQw4w9WgXcQ")
+
+    class UsableTrack:
+        language_code = "de"
+
+        def fetch(self):
+            return [{"text": "This track must not mask the terminal error."}]
+
+    class Tracks:
+        def find_transcript(self, languages):
+            raise NoTranscriptFound("id", languages, [])
+
+        def __iter__(self):
+            return iter([UnavailableTrack(), UsableTrack()])
+
+    monkeypatch.setattr(
+        video_import.YouTubeTranscriptApi,
+        "list_transcripts",
+        lambda video_id: Tracks(),
+    )
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
+
+    assert result.status == "video_unavailable"
+    assert result.text == ""
+
+
 def test_fetch_youtube_text_reports_disabled_captions(monkeypatch):
     monkeypatch.setattr(
         video_import.YouTubeTranscriptApi,

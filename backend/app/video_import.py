@@ -118,37 +118,33 @@ def fetch_youtube_text(source: VideoSource) -> VideoTextResult:
         tracks = YouTubeTranscriptApi.list_transcripts(source.external_id or "")
         try:
             track = tracks.find_transcript(["en", "zh", "zh-Hans", "zh-Hant"])
+            candidate_tracks = (track,)
         except NoTranscriptFound:
-            track = next(iter(tracks), None)
-            if track is None:
-                return _failure(
-                    source,
-                    "no_transcript",
-                    "No usable transcript was found for this YouTube video. Paste a transcript instead.",
-                )
-        snippets = track.fetch()
-        text = " ".join(
-            str(row.get("text", "")).strip()
-            for row in snippets
-            if isinstance(row, dict) and str(row.get("text", "")).strip()
-        )
-        if not text:
-            return _failure(
-                source,
-                "no_transcript",
-                "No usable transcript was found for this YouTube video. Paste a transcript instead.",
+            candidate_tracks = tracks
+        for track in candidate_tracks:
+            snippets = track.fetch()
+            text = " ".join(
+                str(row.get("text", "")).strip()
+                for row in snippets
+                if isinstance(row, dict) and str(row.get("text", "")).strip()
             )
-        logger.info(
-            "Video text fetch result provider=%s video_id=%s status=ok text_length=%d",
-            source.provider,
-            source.external_id,
-            len(text),
-        )
-        return VideoTextResult(
-            status="ok",
-            text=text,
-            source=source,
-            thumbnail_url=f"https://img.youtube.com/vi/{source.external_id}/hqdefault.jpg",
+            if text:
+                logger.info(
+                    "Video text fetch result provider=%s video_id=%s status=ok text_length=%d",
+                    source.provider,
+                    source.external_id,
+                    len(text),
+                )
+                return VideoTextResult(
+                    status="ok",
+                    text=text,
+                    source=source,
+                    thumbnail_url=f"https://img.youtube.com/vi/{source.external_id}/hqdefault.jpg",
+                )
+        return _failure(
+            source,
+            "no_transcript",
+            "No usable transcript was found for this YouTube video. Paste a transcript instead.",
         )
     except TranscriptsDisabled:
         return _failure(
