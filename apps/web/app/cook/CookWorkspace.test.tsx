@@ -218,7 +218,7 @@ test("shows an expired passive step as needing attention and can extend it", asy
   render(<CookWorkspace controller={current} />);
 
   const focus = screen.getByTestId("focused-step");
-  expect(within(focus).getByText("Needs attention")).toBeVisible();
+  expect(within(focus).getByRole("timer", { name: "Needs attention 0:00" })).toBeVisible();
   await user.click(within(focus).getByRole("button", { name: "+1 minute" }));
 
   expect(current.applyAction).toHaveBeenCalledWith("rice", "step-rice", "extend_timer", 60);
