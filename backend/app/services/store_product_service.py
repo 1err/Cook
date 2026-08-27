@@ -166,6 +166,7 @@ def _memory_cache_set(
     *,
     timestamp: float | None = None,
     authoritative_age_seconds: float | None = None,
+    authoritative_age_anchor_monotonic: float | None = None,
 ) -> None:
     now = time.time()
     monotonic_now = time.monotonic()
@@ -183,9 +184,22 @@ def _memory_cache_set(
             "timestamp": effective_timestamp,
         }
     else:
-        candidate_age = _finite_number(authoritative_age_seconds)
+        base_age = _finite_number(authoritative_age_seconds)
+        anchor = (
+            monotonic_now
+            if authoritative_age_anchor_monotonic is None
+            else _finite_number(authoritative_age_anchor_monotonic)
+        )
         if (
-            candidate_age is None
+            base_age is None
+            or anchor is None
+            or not math.isfinite(monotonic_now - anchor)
+            or monotonic_now - anchor < 0
+        ):
+            return
+        candidate_age = base_age + (monotonic_now - anchor)
+        if (
+            not math.isfinite(candidate_age)
             or not 0 <= candidate_age < CACHE_TTL_SECONDS
         ):
             return
@@ -194,8 +208,8 @@ def _memory_cache_set(
             # This translated wall timestamp is presentation metadata only;
             # monotonic age below owns expiry while the process is alive.
             "timestamp": now - candidate_age,
-            "authoritative_age_seconds": candidate_age,
-            "authoritative_age_anchor_monotonic": monotonic_now,
+            "authoritative_age_seconds": base_age,
+            "authoritative_age_anchor_monotonic": anchor,
         }
     existing = CACHE.get(cache_key)
     if existing is not None:
@@ -253,14 +267,38 @@ def _memory_cache_set_from_database_entry(
     age_seconds: float,
 ) -> None:
     """Publish DB-clock metadata, retaining legacy fake/read compatibility."""
-    if isinstance(getattr(entry, "observed_at", None), datetime):
+    observed_at = getattr(entry, "observed_at", None)
+    updated_at = getattr(entry, "updated_at", None)
+    observation_anchor = _finite_number(
+        getattr(entry, "observation_anchor_monotonic", None)
+    )
+    if (
+        isinstance(observed_at, datetime)
+        and isinstance(updated_at, datetime)
+        and observation_anchor is not None
+    ):
+        if observed_at.tzinfo is None:
+            observed_at = observed_at.replace(tzinfo=timezone.utc)
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        try:
+            base_age_seconds = (observed_at - updated_at).total_seconds()
+        except (OverflowError, TypeError, ValueError):
+            return
+        _memory_cache_set(
+            cache_key,
+            products,
+            authoritative_age_seconds=base_age_seconds,
+            authoritative_age_anchor_monotonic=observation_anchor,
+        )
+        return
+    if isinstance(observed_at, datetime):
         _memory_cache_set(
             cache_key,
             products,
             authoritative_age_seconds=age_seconds,
         )
         return
-    updated_at = getattr(entry, "updated_at", None)
     if isinstance(updated_at, datetime):
         _memory_cache_set(cache_key, products, timestamp=updated_at.timestamp())
 

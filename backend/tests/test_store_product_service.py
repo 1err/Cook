@@ -1925,6 +1925,33 @@ def test_l1_cache_accepts_zero_age_and_rejects_exactly_twenty_four_hours(monkeyp
     assert service._memory_cache_get(exact_expiry) is None
 
 
+def test_database_age_handoff_cannot_donate_time_at_exact_l1_expiry(monkeypatch):
+    database_observed_at = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    clocks = {"wall": 1_000_000.0, "monotonic": 100.0}
+    key = ("weee", "en", service.CACHE_VERSION, "handoff expiry")
+    entry = repo_store_cache.CachedStoreProducts(
+        [TOFU],
+        database_observed_at - timedelta(seconds=86_399),
+        database_observed_at,
+        clocks["monotonic"],
+    )
+    monkeypatch.setattr(service.time, "time", lambda: clocks["wall"])
+    monkeypatch.setattr(service.time, "monotonic", lambda: clocks["monotonic"])
+
+    measured_age = service._authoritative_cache_age_seconds(entry)
+    assert measured_age == 86_399
+    clocks["monotonic"] += 1
+    service._memory_cache_set_from_database_entry(
+        key,
+        entry.products,
+        entry,
+        measured_age,
+    )
+
+    assert service._memory_cache_get_with_metadata(key) is None
+    assert key not in service.CACHE
+
+
 def test_l1_cache_remains_bounded_under_high_cardinality_churn(monkeypatch):
     monkeypatch.setattr(service, "CACHE_MAX_ENTRIES", 5)
     monkeypatch.setattr(service.time, "time", lambda: 1_000.0)
@@ -2082,6 +2109,9 @@ async def test_batch_repository_uses_one_query_and_filters_exact_expiry(monkeypa
         def scalar_one(self):
             return now
 
+        def all(self):
+            return [(fresh, now), (expired, now)]
+
     class Session:
         async def execute(self, statement):
             nonlocal calls
@@ -2097,7 +2127,7 @@ async def test_batch_repository_uses_one_query_and_filters_exact_expiry(monkeypa
     result = await repo_store_cache.get_cached_store_products_batch(
         Session(), keys=[("garlic", "en"), ("old", "en")], store="weee", cache_version="v7", max_age_seconds=86_400
     )
-    assert calls == 2
+    assert calls == 1
     assert result == {("garlic", "en"): repo_store_cache.CachedStoreProducts([GARLIC], fresh.updated_at)}
 
 

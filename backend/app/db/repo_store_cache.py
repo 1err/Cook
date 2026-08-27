@@ -9,7 +9,7 @@ from collections.abc import Sequence
 import math
 import time
 
-from sqlalchemy import func, or_, select, tuple_
+from sqlalchemy import func, or_, select, true, tuple_
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -64,12 +64,24 @@ def _as_utc_datetime(value: object) -> datetime | None:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
-async def _database_observation(session: AsyncSession) -> tuple[datetime | None, float]:
-    """Read the volatile DB clock, charging the entire await against cache age."""
-    observation_anchor = time.monotonic()
-    result = await session.execute(select(func.clock_timestamp()))
-    observed_at = _as_utc_datetime(result.scalar_one())
-    return observed_at, observation_anchor
+def _cache_observation_cte():
+    """One materialized volatile observation shared by every selected row."""
+    return (
+        select(func.clock_timestamp().label("observed_at"))
+        .cte("cache_observation")
+        .prefix_with("MATERIALIZED")
+    )
+
+
+def _unpack_observed_cache_row(value: object) -> tuple[object, datetime] | None:
+    if value is None:
+        return None
+    try:
+        row, observed_at = value  # type: ignore[misc]
+    except (TypeError, ValueError):
+        return None
+    observed_at = _as_utc_datetime(observed_at)
+    return (row, observed_at) if observed_at is not None else None
 
 
 async def get_cached_store_products(
@@ -101,22 +113,25 @@ async def get_cached_store_products_with_metadata(
     cache_version: str,
     max_age_seconds: int,
 ) -> CachedStoreProducts | None:
+    observation = _cache_observation_cte()
+    observation_anchor = time.monotonic()
     result = await session.execute(
-        select(CachedStoreProductModel).where(
+        select(CachedStoreProductModel, observation.c.observed_at).join(
+            observation,
+            true(),
+        ).where(
             CachedStoreProductModel.query == query,
             CachedStoreProductModel.store == store,
             CachedStoreProductModel.language == language,
             CachedStoreProductModel.cache_version == cache_version,
         )
     )
-    row = result.scalars().one_or_none()
-    if row is None:
+    observed_row = _unpack_observed_cache_row(result.one_or_none())
+    if observed_row is None:
         return None
+    row, observed_at = observed_row
     updated_at = _as_utc_datetime(row.updated_at)
     if updated_at is None:
-        return None
-    observed_at, observation_anchor = await _database_observation(session)
-    if observed_at is None:
         return None
     if not is_cache_entry_fresh(
         updated_at,
@@ -148,19 +163,24 @@ async def get_cached_store_products_batch(
     unique_keys = list(dict.fromkeys(keys))
     if not unique_keys:
         return {}
+    observation = _cache_observation_cte()
+    observation_anchor = time.monotonic()
     result = await session.execute(
-        select(CachedStoreProductModel).where(
+        select(CachedStoreProductModel, observation.c.observed_at).join(
+            observation,
+            true(),
+        ).where(
             CachedStoreProductModel.store == store,
             CachedStoreProductModel.cache_version == cache_version,
             tuple_(CachedStoreProductModel.query, CachedStoreProductModel.language).in_(unique_keys),
         )
     )
-    rows = result.scalars().all()
-    observed_at, observation_anchor = await _database_observation(session)
-    if observed_at is None:
-        return {}
     entries: dict[tuple[str, str], CachedStoreProducts] = {}
-    for row in rows:
+    for result_row in result.all():
+        observed_row = _unpack_observed_cache_row(result_row)
+        if observed_row is None:
+            continue
+        row, observed_at = observed_row
         updated_at = _as_utc_datetime(row.updated_at)
         if updated_at is None:
             continue

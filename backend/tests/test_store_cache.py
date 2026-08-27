@@ -36,6 +36,9 @@ async def test_database_cache_does_not_return_a_row_at_exactly_twenty_four_hours
         def scalar_one(self) -> datetime:
             return now
 
+        def one_or_none(self) -> tuple[SimpleNamespace, datetime]:
+            return row, now
+
     class Session:
         async def execute(self, *args: Any, **kwargs: Any) -> Result:
             return Result()
@@ -98,6 +101,9 @@ async def test_single_database_cache_rejects_future_and_invalid_updated_at(
 
         def scalar_one(self) -> datetime:
             return now
+
+        def one_or_none(self) -> tuple[object, datetime]:
+            return self.row, now
 
     class Session:
         def __init__(self, row: object):
@@ -177,6 +183,9 @@ async def test_batch_database_cache_rejects_future_rows(
         def scalar_one(self) -> datetime:
             return now
 
+        def all(self) -> list[tuple[object, datetime]]:
+            return [(row, now) for row in rows]
+
     class Session:
         async def execute(self, *args: Any, **kwargs: Any) -> Result:
             return Result()
@@ -223,20 +232,22 @@ async def test_single_l2_freshness_uses_database_observation_not_host_clock(
         def scalars(self) -> RowScalars:
             return RowScalars()
 
-    class ClockResult:
-        def scalar_one(self) -> datetime:
-            return database_observed_at
+        def one_or_none(self) -> tuple[SimpleNamespace, datetime]:
+            return row, database_observed_at
 
     class Session:
-        calls = 0
+        statements: list[Any] = []
 
-        async def execute(self, *args: Any, **kwargs: Any) -> object:
-            self.calls += 1
-            return RowResult() if self.calls == 1 else ClockResult()
+        async def execute(self, statement: Any, **kwargs: Any) -> object:
+            self.statements.append(statement)
+            if len(self.statements) > 1:
+                raise AssertionError("single L2 lookup must observe the DB in one execute")
+            return RowResult()
 
     monkeypatch.setattr(repo_store_cache, "datetime", FrozenDateTime)
+    session = Session()
     entry = await repo_store_cache.get_cached_store_products_with_metadata(
-        Session(),  # type: ignore[arg-type]
+        session,  # type: ignore[arg-type]
         query="tofu",
         store="weee",
         language="en",
@@ -248,6 +259,10 @@ async def test_single_l2_freshness_uses_database_observation_not_host_clock(
     assert entry.products == [PRODUCT]
     assert entry.updated_at == database_observed_at - timedelta(seconds=1)
     assert getattr(entry, "observed_at", None) == database_observed_at
+    assert len(session.statements) == 1
+    sql = str(session.statements[0].compile(dialect=postgresql.dialect()))
+    assert "WITH cache_observation AS MATERIALIZED" in sql
+    assert sql.count("clock_timestamp()") == 1
 
 
 @pytest.mark.asyncio
@@ -284,20 +299,22 @@ async def test_batch_l2_uses_database_clock_without_extending_exact_expiry(
         def scalars(self) -> RowScalars:
             return RowScalars()
 
-    class ClockResult:
-        def scalar_one(self) -> datetime:
-            return database_observed_at
+        def all(self) -> list[tuple[SimpleNamespace, datetime]]:
+            return [(row, database_observed_at) for row in rows]
 
     class Session:
-        calls = 0
+        statements: list[Any] = []
 
-        async def execute(self, *args: Any, **kwargs: Any) -> object:
-            self.calls += 1
-            return RowResult() if self.calls == 1 else ClockResult()
+        async def execute(self, statement: Any, **kwargs: Any) -> object:
+            self.statements.append(statement)
+            if len(self.statements) > 1:
+                raise AssertionError("batch L2 lookup must observe the DB in one execute")
+            return RowResult()
 
     monkeypatch.setattr(repo_store_cache, "datetime", FrozenDateTime)
+    session = Session()
     entries = await repo_store_cache.get_cached_store_products_batch(
-        Session(),  # type: ignore[arg-type]
+        session,  # type: ignore[arg-type]
         keys=[("fresh", "en"), ("exact-expiry", "en")],
         store="weee",
         cache_version="v7",
@@ -309,6 +326,10 @@ async def test_batch_l2_uses_database_clock_without_extending_exact_expiry(
         database_observed_at - timedelta(seconds=1)
     )
     assert getattr(entries[("fresh", "en")], "observed_at", None) == database_observed_at
+    assert len(session.statements) == 1
+    sql = str(session.statements[0].compile(dialect=postgresql.dialect()))
+    assert "WITH cache_observation AS MATERIALIZED" in sql
+    assert sql.count("clock_timestamp()") == 1
 
 
 @pytest.mark.asyncio
@@ -330,19 +351,16 @@ async def test_database_observation_response_delay_cannot_extend_l1_ttl(
         def scalars(self) -> RowScalars:
             return RowScalars()
 
-    class ClockResult:
-        def scalar_one(self) -> datetime:
-            return observed_at
+        def one_or_none(self) -> tuple[SimpleNamespace, datetime]:
+            return row, observed_at
 
     class Session:
         calls = 0
 
         async def execute(self, *args: Any, **kwargs: Any) -> object:
             self.calls += 1
-            if self.calls == 1:
-                return RowResult()
             local_monotonic["seconds"] += 10
-            return ClockResult()
+            return RowResult()
 
     monkeypatch.setattr(
         repo_store_cache.time,
@@ -354,8 +372,9 @@ async def test_database_observation_response_delay_cannot_extend_l1_ttl(
         "monotonic",
         lambda: local_monotonic["seconds"],
     )
+    session = Session()
     entry = await repo_store_cache.get_cached_store_products_with_metadata(
-        Session(),  # type: ignore[arg-type]
+        session,  # type: ignore[arg-type]
         query="tofu",
         store="weee",
         language="en",
@@ -364,6 +383,7 @@ async def test_database_observation_response_delay_cannot_extend_l1_ttl(
     )
 
     assert entry is not None
+    assert session.calls == 1
     assert store_product_service._authoritative_cache_age_seconds(entry) is None
 
 
@@ -394,6 +414,9 @@ async def test_database_cache_read_rejects_unsafe_product_urls(
 
         def scalar_one(self) -> datetime:
             return now
+
+        def one_or_none(self) -> tuple[SimpleNamespace, datetime]:
+            return row, now
 
     class Session:
         async def execute(self, *args: Any, **kwargs: Any) -> Result:
