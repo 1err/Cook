@@ -73,6 +73,14 @@ test("keeps Library first and places Cook between Planner and Shopping", () => {
   expect(screen.queryByRole("link", { name: "Store cache" })).not.toBeInTheDocument();
 });
 
+test("uses the Chef World logo mark in the brand link", () => {
+  render(<Header />);
+
+  const brand = screen.getByRole("link", { name: "Chef World" });
+  expect(brand.querySelector("img")).toHaveAttribute("src", "/brand/chef-world-mark.svg");
+  expect(brand).not.toHaveTextContent("CW");
+});
+
 test("moves settings, language, admin tools, and logout into the account menu", async () => {
   const user = userEvent.setup();
   render(<Header />);

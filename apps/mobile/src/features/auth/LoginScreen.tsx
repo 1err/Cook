@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, StyleSheet, Text, TextInput, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useAuth } from "../../lib/auth";
 import { Button, Screen, TextField } from "../../components";
@@ -35,6 +35,11 @@ export function LoginScreen({ navigation }: Props) {
   return (
     <Screen scroll keyboardAvoiding contentContainerStyle={styles.content}>
       <View style={styles.hero}>
+        <Image
+          accessibilityIgnoresInvertColors
+          source={require("../../../assets/icon.png")}
+          style={styles.logo}
+        />
         <Text style={styles.brand}>Chef World</Text>
         <Text style={styles.title}>Welcome back</Text>
         <Text style={styles.subtitle}>Sign in to your kitchen</Text>
@@ -90,6 +95,7 @@ export function LoginScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   content: { flexGrow: 1, justifyContent: "center", paddingVertical: spacing["3xl"] },
   hero: { marginBottom: spacing["2xl"] },
+  logo: { width: 72, height: 72, marginBottom: spacing.md },
   brand: {
     ...typography.footnote,
     color: colors.primary,

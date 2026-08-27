@@ -23,16 +23,14 @@ export function AuthShell({
         <img className="auth-hero__img" src={HERO_IMAGE} alt="" />
         <div className="auth-hero__scrim" />
         <div className="auth-hero__brand">
-          <div className="auth-hero__mark" aria-hidden>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path
-                d="M8 3v18M16 3v18M4 8h16M4 16h16"
-                stroke="white"
-                strokeWidth="1.75"
-                strokeLinecap="round"
-              />
-            </svg>
-          </div>
+          <img
+            alt=""
+            aria-hidden="true"
+            className="auth-hero__mark"
+            height="40"
+            src="/brand/chef-world-mark.svg"
+            width="40"
+          />
           <span className="font-headline" style={{ fontSize: "1.25rem", fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>
             Chef World
           </span>

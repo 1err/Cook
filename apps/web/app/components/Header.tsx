@@ -45,9 +45,14 @@ export function Header() {
           className={styles.brand}
           href={user ? "/library" : "/login"}
         >
-          <span aria-hidden="true" className={styles.brandMark}>
-            CW
-          </span>
+          <img
+            alt=""
+            aria-hidden="true"
+            className={styles.brandMark}
+            height={38}
+            src="/brand/chef-world-mark.svg"
+            width={38}
+          />
           <span aria-hidden="true" className={styles.brandName}>
             {t("nav.appName")}
           </span>

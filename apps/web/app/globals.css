@@ -1902,12 +1902,7 @@ button:disabled {
 .auth-hero__mark {
   width: 40px;
   height: 40px;
-  border-radius: var(--radius-md);
-  background: var(--primary-gradient);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: var(--kitchen-glow-lg);
+  object-fit: contain;
 }
 
 .auth-hero__copy {

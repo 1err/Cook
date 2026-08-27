@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Chef World logo</title>
+  <desc id="desc">A sage leaf and terracotta grain sprig gathered above a dark brown serving bowl.</desc>
+
+  <!-- Leaf -->
+  <path fill="#687761" d="M86 259C90 151 153 80 250 65c-3 99-49 175-153 216 21-57 62-111 116-158-62 38-104 84-127 136Z"/>
+
+  <!-- Grain stem -->
+  <path fill="#A64B34" d="M331 93c34 64 48 131 36 204l-15-3c11-69-2-132-34-193l13-8Z"/>
+
+  <!-- Grain kernels -->
+  <path fill="#A64B34" d="M326 111c-27-7-43-27-45-58 31 7 48 25 51 54l-6 4Zm21 39c6-31 24-48 54-53-3 31-19 50-48 58l-6-5Zm-6 14c-31-2-51-17-62-45 31 1 52 15 64 40l-2 5Zm18 39c10-29 30-44 61-45-7 30-25 47-55 51l-6-6Zm-4 14c-31 3-54-8-69-34 31-4 54 6 70 29l-1 5Zm11 39c14-27 36-39 66-36-11 28-32 42-62 42l-4-6Zm-8 12c-30 8-55 1-74-22 29-9 54-2 74 18v4Z"/>
+
+  <!-- Serving bowl -->
+  <path fill="#2F2621" d="M72 320c47 25 109 38 184 38s137-13 184-38c-17 80-83 131-184 131S89 400 72 320Z"/>
+  <path fill="#2F2621" d="M210 447h92c9 0 16 7 16 16v8H194v-8c0-9 7-16 16-16Z"/>
+</svg>

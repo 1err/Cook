@@ -32,17 +32,8 @@
 }
 
 .brandMark {
-  align-items: center;
-  background: var(--cw-color-action);
-  border-radius: var(--cw-radius-control);
-  color: var(--cw-color-on-action);
-  display: inline-flex;
-  font-family: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
-  font-size: 0.875rem;
-  font-weight: 700;
   height: 38px;
-  justify-content: center;
-  letter-spacing: 0.02em;
+  object-fit: contain;
   width: 38px;
 }
 
