@@ -1297,6 +1297,194 @@ async def test_launch_failure_stops_started_playwright(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_launch_and_startup_stop_failure_retains_playwright_and_fences_relaunch(
+    monkeypatch,
+):
+    allow_first_stop = False
+    playwrights: list[Any] = []
+
+    class Browser:
+        def __init__(self):
+            self.connected = True
+            self.close_calls = 0
+
+        def is_connected(self) -> bool:
+            return self.connected
+
+        async def close(self) -> None:
+            self.close_calls += 1
+            self.connected = False
+
+    class Chromium:
+        def __init__(self, owner: "Playwright"):
+            self.owner = owner
+
+        async def launch(self, **kwargs: Any) -> Browser:
+            if self.owner.number == 1:
+                raise RuntimeError("Chromium launch failed")
+            return Browser()
+
+    class Playwright:
+        def __init__(self, number: int):
+            self.number = number
+            self.chromium = Chromium(self)
+            self.stop_calls = 0
+            self.stopped = False
+
+        async def stop(self) -> None:
+            self.stop_calls += 1
+            if self.number == 1 and not allow_first_stop:
+                raise RuntimeError("Playwright stop failed")
+            self.stopped = True
+
+    class Starter:
+        async def start(self) -> Playwright:
+            playwright = Playwright(len(playwrights) + 1)
+            playwrights.append(playwright)
+            return playwright
+
+    playwright_module = ModuleType("playwright")
+    async_api_module = ModuleType("playwright.async_api")
+    async_api_module.async_playwright = Starter  # type: ignore[attr-defined]
+    playwright_module.async_api = async_api_module  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright", playwright_module)
+    monkeypatch.setitem(sys.modules, "playwright.async_api", async_api_module)
+    monkeypatch.setattr(weee_scraper, "_shared_browser", None)
+    monkeypatch.setattr(weee_scraper, "_playwright_inst", None)
+    monkeypatch.setattr(weee_scraper, "_retired_browser_resources", {})
+
+    try:
+        with pytest.raises(Exception) as first_error:
+            await weee_scraper._ensure_shared_browser()
+        with pytest.raises(weee_scraper.StoreScrapeError, match="temporarily unavailable"):
+            await weee_scraper._ensure_shared_browser()
+        assert isinstance(first_error.value, weee_scraper.StoreScrapeError)
+        assert len(playwrights) == 1
+
+        allow_first_stop = True
+        recovered_browser = await weee_scraper._ensure_shared_browser()
+        assert len(playwrights) == 2
+        assert playwrights[0].stop_calls >= 3
+        assert recovered_browser.is_connected()
+
+        await weee_scraper.shutdown_weee_scraper()
+        await weee_scraper.shutdown_weee_scraper()
+        assert not recovered_browser.is_connected()
+        assert recovered_browser.close_calls == 1
+        assert playwrights[1].stop_calls == 1
+        assert not weee_scraper._retired_browser_resources
+    finally:
+        allow_first_stop = True
+        try:
+            await weee_scraper.shutdown_weee_scraper()
+        except BaseException:
+            pass
+        if playwrights and not playwrights[0].stopped:
+            await playwrights[0].stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("termination", ["timeout", "caller-cancel"])
+async def test_failed_launch_retains_playwright_during_resistant_startup_stop(
+    monkeypatch,
+    termination: str,
+):
+    stop_started = asyncio.Event()
+    stop_cancelled = asyncio.Event()
+    release_stop = asyncio.Event()
+    playwrights: list[Any] = []
+
+    class Browser:
+        def __init__(self):
+            self.connected = True
+
+        def is_connected(self) -> bool:
+            return self.connected
+
+        async def close(self) -> None:
+            self.connected = False
+
+    class Chromium:
+        def __init__(self, owner: "Playwright"):
+            self.owner = owner
+
+        async def launch(self, **kwargs: Any) -> Browser:
+            if self.owner.number == 1:
+                raise RuntimeError("Chromium launch failed")
+            return Browser()
+
+    class Playwright:
+        def __init__(self, number: int):
+            self.number = number
+            self.chromium = Chromium(self)
+            self.stop_calls = 0
+
+        async def stop(self) -> None:
+            self.stop_calls += 1
+            if self.number != 1 or release_stop.is_set():
+                return
+            stop_started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                stop_cancelled.set()
+                await release_stop.wait()
+
+    class Starter:
+        async def start(self) -> Playwright:
+            playwright = Playwright(len(playwrights) + 1)
+            playwrights.append(playwright)
+            return playwright
+
+    playwright_module = ModuleType("playwright")
+    async_api_module = ModuleType("playwright.async_api")
+    async_api_module.async_playwright = Starter  # type: ignore[attr-defined]
+    playwright_module.async_api = async_api_module  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright", playwright_module)
+    monkeypatch.setitem(sys.modules, "playwright.async_api", async_api_module)
+    monkeypatch.setattr(weee_scraper, "_shared_browser", None)
+    monkeypatch.setattr(weee_scraper, "_playwright_inst", None)
+    monkeypatch.setattr(weee_scraper, "_retired_browser_resources", {})
+    monkeypatch.setattr(
+        weee_scraper,
+        "SCRAPER_CLEANUP_TIMEOUT_SECONDS",
+        0.01 if termination == "timeout" else 1.0,
+    )
+
+    acquisition = asyncio.create_task(weee_scraper._ensure_shared_browser())
+    await stop_started.wait()
+    if termination == "caller-cancel":
+        acquisition.cancel()
+    try:
+        if termination == "caller-cancel":
+            with pytest.raises(asyncio.CancelledError):
+                await acquisition
+        else:
+            with pytest.raises(weee_scraper.StoreScrapeError):
+                await acquisition
+        await stop_cancelled.wait()
+        assert len(playwrights) == 1
+        assert weee_scraper._retired_browser_resources
+
+        release_stop.set()
+        await weee_scraper.wait_for_scraper_quiescence()
+        assert not weee_scraper._retired_browser_resources
+
+        recovered_browser = await weee_scraper._ensure_shared_browser()
+        assert len(playwrights) == 2
+        assert recovered_browser.is_connected()
+        await weee_scraper.shutdown_weee_scraper()
+        assert not recovered_browser.is_connected()
+    finally:
+        release_stop.set()
+        await asyncio.gather(acquisition, return_exceptions=True)
+        try:
+            await weee_scraper.shutdown_weee_scraper()
+        except BaseException:
+            pass
+
+
+@pytest.mark.asyncio
 async def test_disconnected_browser_is_relaunched_before_retry(monkeypatch):
     harness = BrowserHarness([
         Attempt.browser_disconnect(),

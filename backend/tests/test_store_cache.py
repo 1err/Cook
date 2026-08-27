@@ -33,6 +33,9 @@ async def test_database_cache_does_not_return_a_row_at_exactly_twenty_four_hours
         def scalars(self) -> Scalars:
             return Scalars()
 
+        def scalar_one(self) -> datetime:
+            return now
+
     class Session:
         async def execute(self, *args: Any, **kwargs: Any) -> Result:
             return Result()
@@ -92,6 +95,9 @@ async def test_single_database_cache_rejects_future_and_invalid_updated_at(
 
         def scalars(self) -> Scalars:
             return Scalars(self.row)
+
+        def scalar_one(self) -> datetime:
+            return now
 
     class Session:
         def __init__(self, row: object):
@@ -168,6 +174,9 @@ async def test_batch_database_cache_rejects_future_rows(
         def scalars(self) -> Scalars:
             return Scalars()
 
+        def scalar_one(self) -> datetime:
+            return now
+
     class Session:
         async def execute(self, *args: Any, **kwargs: Any) -> Result:
             return Result()
@@ -188,6 +197,174 @@ async def test_batch_database_cache_rejects_future_rows(
     )
 
     assert set(entries) == {("current", "en")}
+
+
+@pytest.mark.asyncio
+async def test_single_l2_freshness_uses_database_observation_not_host_clock(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    host_now = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    database_observed_at = host_now + timedelta(seconds=31)
+    row = SimpleNamespace(
+        data=[PRODUCT],
+        updated_at=database_observed_at - timedelta(seconds=1),
+    )
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            return host_now
+
+    class RowScalars:
+        def one_or_none(self) -> SimpleNamespace:
+            return row
+
+    class RowResult:
+        def scalars(self) -> RowScalars:
+            return RowScalars()
+
+    class ClockResult:
+        def scalar_one(self) -> datetime:
+            return database_observed_at
+
+    class Session:
+        calls = 0
+
+        async def execute(self, *args: Any, **kwargs: Any) -> object:
+            self.calls += 1
+            return RowResult() if self.calls == 1 else ClockResult()
+
+    monkeypatch.setattr(repo_store_cache, "datetime", FrozenDateTime)
+    entry = await repo_store_cache.get_cached_store_products_with_metadata(
+        Session(),  # type: ignore[arg-type]
+        query="tofu",
+        store="weee",
+        language="en",
+        cache_version="v7",
+        max_age_seconds=86_400,
+    )
+
+    assert entry is not None
+    assert entry.products == [PRODUCT]
+    assert entry.updated_at == database_observed_at - timedelta(seconds=1)
+    assert getattr(entry, "observed_at", None) == database_observed_at
+
+
+@pytest.mark.asyncio
+async def test_batch_l2_uses_database_clock_without_extending_exact_expiry(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    host_now = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    database_observed_at = host_now + timedelta(seconds=30)
+    rows = [
+        SimpleNamespace(
+            query="fresh",
+            language="en",
+            data=[PRODUCT],
+            updated_at=database_observed_at - timedelta(seconds=1),
+        ),
+        SimpleNamespace(
+            query="exact-expiry",
+            language="en",
+            data=[PRODUCT],
+            updated_at=database_observed_at - timedelta(seconds=86_400),
+        ),
+    ]
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            return host_now
+
+    class RowScalars:
+        def all(self) -> list[object]:
+            return rows
+
+    class RowResult:
+        def scalars(self) -> RowScalars:
+            return RowScalars()
+
+    class ClockResult:
+        def scalar_one(self) -> datetime:
+            return database_observed_at
+
+    class Session:
+        calls = 0
+
+        async def execute(self, *args: Any, **kwargs: Any) -> object:
+            self.calls += 1
+            return RowResult() if self.calls == 1 else ClockResult()
+
+    monkeypatch.setattr(repo_store_cache, "datetime", FrozenDateTime)
+    entries = await repo_store_cache.get_cached_store_products_batch(
+        Session(),  # type: ignore[arg-type]
+        keys=[("fresh", "en"), ("exact-expiry", "en")],
+        store="weee",
+        cache_version="v7",
+        max_age_seconds=86_400,
+    )
+
+    assert set(entries) == {("fresh", "en")}
+    assert entries[("fresh", "en")].updated_at == (
+        database_observed_at - timedelta(seconds=1)
+    )
+    assert getattr(entries[("fresh", "en")], "observed_at", None) == database_observed_at
+
+
+@pytest.mark.asyncio
+async def test_database_observation_response_delay_cannot_extend_l1_ttl(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    observed_at = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    local_monotonic = {"seconds": 100.0}
+    row = SimpleNamespace(
+        data=[PRODUCT],
+        updated_at=observed_at - timedelta(seconds=86_390),
+    )
+
+    class RowScalars:
+        def one_or_none(self) -> SimpleNamespace:
+            return row
+
+    class RowResult:
+        def scalars(self) -> RowScalars:
+            return RowScalars()
+
+    class ClockResult:
+        def scalar_one(self) -> datetime:
+            return observed_at
+
+    class Session:
+        calls = 0
+
+        async def execute(self, *args: Any, **kwargs: Any) -> object:
+            self.calls += 1
+            if self.calls == 1:
+                return RowResult()
+            local_monotonic["seconds"] += 10
+            return ClockResult()
+
+    monkeypatch.setattr(
+        repo_store_cache.time,
+        "monotonic",
+        lambda: local_monotonic["seconds"],
+    )
+    monkeypatch.setattr(
+        store_product_service.time,
+        "monotonic",
+        lambda: local_monotonic["seconds"],
+    )
+    entry = await repo_store_cache.get_cached_store_products_with_metadata(
+        Session(),  # type: ignore[arg-type]
+        query="tofu",
+        store="weee",
+        language="en",
+        cache_version="v7",
+        max_age_seconds=86_400,
+    )
+
+    assert entry is not None
+    assert store_product_service._authoritative_cache_age_seconds(entry) is None
 
 
 @pytest.mark.asyncio
@@ -214,6 +391,9 @@ async def test_database_cache_read_rejects_unsafe_product_urls(
     class Result:
         def scalars(self) -> Scalars:
             return Scalars()
+
+        def scalar_one(self) -> datetime:
+            return now
 
     class Session:
         async def execute(self, *args: Any, **kwargs: Any) -> Result:
@@ -396,8 +576,25 @@ async def test_upsert_atomically_replaces_a_future_poisoned_incumbent():
 
     assert winner == repo_store_cache.CachedStoreProducts([candidate_product], cached_at)
     sql = str(session.statement.compile(dialect=postgresql.dialect()))
-    assert "cached_store_products.updated_at > CURRENT_TIMESTAMP" in sql
+    assert "cached_store_products.updated_at > clock_timestamp()" in sql
+    assert "CURRENT_TIMESTAMP" not in sql
+    assert sql.count("clock_timestamp()") >= 2
     assert "cached_store_products.updated_at < excluded.updated_at" in sql
+
+    transaction_started_at = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    candidate_started_at = transaction_started_at
+    concurrent_winner_at = transaction_started_at + timedelta(seconds=1)
+    conflict_evaluated_at = transaction_started_at + timedelta(seconds=2)
+    frozen_transaction_clock_would_overwrite = (
+        concurrent_winner_at < candidate_started_at
+        or concurrent_winner_at > transaction_started_at
+    )
+    volatile_evaluation_clock_preserves_winner = not (
+        concurrent_winner_at < candidate_started_at
+        or concurrent_winner_at > conflict_evaluated_at
+    )
+    assert frozen_transaction_clock_would_overwrite is True
+    assert volatile_evaluation_clock_preserves_winner is True
 
 
 def test_store_scraper_is_a_public_compatibility_facade():

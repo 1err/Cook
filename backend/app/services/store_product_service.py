@@ -75,10 +75,48 @@ def prepare_store_query(query: str) -> PreparedStoreQuery | None:
     )
 
 
-def _prune_memory_cache(now: float) -> None:
+def _finite_number(value: object) -> float | None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+    ):
+        return None
+    return float(value)
+
+
+def _memory_cache_age_seconds(
+    entry: dict[str, Any],
+    now: float,
+    monotonic_now: float,
+) -> float | None:
+    if (
+        "authoritative_age_seconds" in entry
+        or "authoritative_age_anchor_monotonic" in entry
+    ):
+        base_age = _finite_number(entry.get("authoritative_age_seconds"))
+        anchor = _finite_number(entry.get("authoritative_age_anchor_monotonic"))
+        if base_age is None or anchor is None:
+            return None
+        elapsed = monotonic_now - anchor
+        if not math.isfinite(elapsed) or elapsed < 0:
+            return None
+        age_seconds = base_age + elapsed
+    else:
+        timestamp = _finite_number(entry.get("timestamp"))
+        if timestamp is None or not math.isfinite(now):
+            return None
+        age_seconds = now - timestamp
+    if not math.isfinite(age_seconds) or not 0 <= age_seconds < CACHE_TTL_SECONDS:
+        return None
+    return age_seconds
+
+
+def _prune_memory_cache(now: float, monotonic_now: float | None = None) -> None:
+    if monotonic_now is None:
+        monotonic_now = time.monotonic()
     for key, entry in list(CACHE.items()):
-        timestamp = entry.get("timestamp")
-        if not _is_fresh_memory_timestamp(timestamp, now):
+        if _memory_cache_age_seconds(entry, now, monotonic_now) is None:
             CACHE.pop(key, None)
 
 
@@ -96,13 +134,14 @@ def _is_fresh_memory_timestamp(timestamp: object, now: float) -> bool:
 
 def _memory_cache_get_with_metadata(cache_key: CacheKey) -> StoreProductsResult | None:
     now = time.time()
-    _prune_memory_cache(now)
+    monotonic_now = time.monotonic()
+    _prune_memory_cache(now, monotonic_now)
     entry = CACHE.get(cache_key)
     if entry is None:
         return None
-    timestamp = entry.get("timestamp")
     data = entry.get("data")
-    if not _is_fresh_memory_timestamp(timestamp, now):
+    age_seconds = _memory_cache_age_seconds(entry, now, monotonic_now)
+    if age_seconds is None:
         CACHE.pop(cache_key, None)
         return None
     products = normalize_store_products(data)
@@ -110,7 +149,10 @@ def _memory_cache_get_with_metadata(cache_key: CacheKey) -> StoreProductsResult 
         CACHE.pop(cache_key, None)
         return None
     CACHE.move_to_end(cache_key)
-    return StoreProductsResult(products=products, cached_at=datetime.fromtimestamp(timestamp, tz=timezone.utc))
+    return StoreProductsResult(
+        products=products,
+        cached_at=datetime.fromtimestamp(now - age_seconds, tz=timezone.utc),
+    )
 
 
 def _memory_cache_get(cache_key: CacheKey) -> list[dict[str, str]] | None:
@@ -123,32 +165,104 @@ def _memory_cache_set(
     products: list[dict[str, str]],
     *,
     timestamp: float | None = None,
+    authoritative_age_seconds: float | None = None,
 ) -> None:
     now = time.time()
-    _prune_memory_cache(now)
+    monotonic_now = time.monotonic()
+    _prune_memory_cache(now, monotonic_now)
     normalized = normalize_store_products(products)
     if not normalized:
         return
-    effective_timestamp = now if timestamp is None else timestamp
-    if not _is_fresh_memory_timestamp(effective_timestamp, now):
-        return
+    if authoritative_age_seconds is None:
+        effective_timestamp = now if timestamp is None else timestamp
+        if not _is_fresh_memory_timestamp(effective_timestamp, now):
+            return
+        candidate_age = now - effective_timestamp
+        candidate_entry: dict[str, Any] = {
+            "data": normalized,
+            "timestamp": effective_timestamp,
+        }
+    else:
+        candidate_age = _finite_number(authoritative_age_seconds)
+        if (
+            candidate_age is None
+            or not 0 <= candidate_age < CACHE_TTL_SECONDS
+        ):
+            return
+        candidate_entry = {
+            "data": normalized,
+            # This translated wall timestamp is presentation metadata only;
+            # monotonic age below owns expiry while the process is alive.
+            "timestamp": now - candidate_age,
+            "authoritative_age_seconds": candidate_age,
+            "authoritative_age_anchor_monotonic": monotonic_now,
+        }
     existing = CACHE.get(cache_key)
     if existing is not None:
-        existing_timestamp = existing.get("timestamp")
+        existing_age = _memory_cache_age_seconds(existing, now, monotonic_now)
         existing_products = normalize_store_products(existing.get("data"))
         if (
             existing_products
-            and _is_fresh_memory_timestamp(existing_timestamp, now)
-            and existing_timestamp >= effective_timestamp
+            and existing_age is not None
+            and existing_age <= candidate_age
         ):
             return
-    CACHE[cache_key] = {
-        "data": normalized,
-        "timestamp": effective_timestamp,
-    }
+    CACHE[cache_key] = candidate_entry
     CACHE.move_to_end(cache_key)
     while len(CACHE) > CACHE_MAX_ENTRIES:
         CACHE.popitem(last=False)
+
+
+def _authoritative_cache_age_seconds(entry: object) -> float | None:
+    """Translate a DB-clock observation into age at this local instant."""
+    updated_at = getattr(entry, "updated_at", None)
+    observed_at = getattr(entry, "observed_at", None)
+    if not isinstance(updated_at, datetime):
+        return None
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=timezone.utc)
+    if observed_at is None:
+        observed_at = datetime.fromtimestamp(time.time(), tz=timezone.utc)
+    elif not isinstance(observed_at, datetime):
+        return None
+    elif observed_at.tzinfo is None:
+        observed_at = observed_at.replace(tzinfo=timezone.utc)
+    try:
+        age_seconds = (observed_at - updated_at).total_seconds()
+    except (OverflowError, TypeError, ValueError):
+        return None
+    observation_anchor = getattr(entry, "observation_anchor_monotonic", None)
+    if observation_anchor is not None:
+        anchor = _finite_number(observation_anchor)
+        monotonic_now = _finite_number(time.monotonic())
+        if anchor is None or monotonic_now is None:
+            return None
+        elapsed = monotonic_now - anchor
+        if not math.isfinite(elapsed) or elapsed < 0:
+            return None
+        age_seconds += elapsed
+    if not math.isfinite(age_seconds) or not 0 <= age_seconds < CACHE_TTL_SECONDS:
+        return None
+    return age_seconds
+
+
+def _memory_cache_set_from_database_entry(
+    cache_key: CacheKey,
+    products: list[dict[str, str]],
+    entry: object,
+    age_seconds: float,
+) -> None:
+    """Publish DB-clock metadata, retaining legacy fake/read compatibility."""
+    if isinstance(getattr(entry, "observed_at", None), datetime):
+        _memory_cache_set(
+            cache_key,
+            products,
+            authoritative_age_seconds=age_seconds,
+        )
+        return
+    updated_at = getattr(entry, "updated_at", None)
+    if isinstance(updated_at, datetime):
+        _memory_cache_set(cache_key, products, timestamp=updated_at.timestamp())
 
 
 def _log_event(
@@ -920,23 +1034,24 @@ async def fetch_store_products_with_metadata(
             )
             if database is not None:
                 database_products = normalize_store_products(database.products)
-                if database_products:
-                    _memory_cache_set(
+                database_age = _authoritative_cache_age_seconds(database)
+                if database_products and database_age is not None:
+                    _memory_cache_set_from_database_entry(
                         cache_key,
                         database_products,
-                        timestamp=database.updated_at.timestamp(),
+                        database,
+                        database_age,
                     )
                     winner = _memory_cache_get_with_metadata(cache_key)
-                    if winner is None:
-                        raise RuntimeError("A valid PostgreSQL cache hit did not populate L1.")
-                    _log_event(
-                        "postgres_hit",
-                        cache_key,
-                        priority=priority,
-                        started_at=started_at,
-                        product_count=len(winner.products),
-                    )
-                    return winner
+                    if winner is not None:
+                        _log_event(
+                            "postgres_hit",
+                            cache_key,
+                            priority=priority,
+                            started_at=started_at,
+                            product_count=len(winner.products),
+                        )
+                        return winner
             memory = _memory_cache_get_with_metadata(cache_key)
             if memory is not None:
                 _log_event("memory_hit", cache_key, priority=priority, started_at=started_at, product_count=len(memory.products))
@@ -978,15 +1093,23 @@ async def fetch_store_products_with_metadata(
                 lease=lease,
             )
             lease.ensure_valid()
-            _memory_cache_set(
+            winner_age = _authoritative_cache_age_seconds(winner)
+            if winner_age is None:
+                raise weee_scraper.StoreScrapeError(
+                    "Store product cache winner has an invalid authoritative timestamp."
+                )
+            _memory_cache_set_from_database_entry(
                 cache_key,
                 winner.products,
-                timestamp=winner.updated_at.timestamp(),
+                winner,
+                winner_age,
             )
             lease.ensure_valid()
             published = _memory_cache_get_with_metadata(cache_key)
             if published is None:
-                raise RuntimeError("The authoritative cache winner did not populate L1.")
+                raise weee_scraper.StoreScrapeError(
+                    "Store product cache winner could not be published safely."
+                )
             _log_event(
                 "scrape_success",
                 cache_key,
@@ -1059,12 +1182,14 @@ async def fetch_cached_store_products_batch(
                 continue
             prepared = prepared_by_key[key]
             products = normalize_store_products(entry.products)
-            if not products:
+            database_age = _authoritative_cache_age_seconds(entry)
+            if not products or database_age is None:
                 continue
-            _memory_cache_set(
+            _memory_cache_set_from_database_entry(
                 ("weee", prepared.language, CACHE_VERSION, prepared.cache_query),
                 products,
-                timestamp=entry.updated_at.timestamp(),
+                entry,
+                database_age,
             )
             winner = _memory_cache_get_with_metadata(
                 ("weee", prepared.language, CACHE_VERSION, prepared.cache_query)

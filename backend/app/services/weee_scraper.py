@@ -335,15 +335,17 @@ async def _launch_browser() -> tuple[Any, Any]:
     playwright = await async_playwright().start()
     try:
         browser = await playwright.chromium.launch(headless=True)
-    except BaseException:
+    except BaseException as launch_error:
+        # The exact Playwright owner remains a physical lifecycle fence until
+        # stop is confirmed. A failed/timed-out/cancelled first cleanup must not
+        # permit a second driver process to start beside it.
+        _register_browser_retirement(None, playwright)
         try:
-            await _bounded_await(
-                playwright.stop(),
-                SCRAPER_CLEANUP_TIMEOUT_SECONDS,
-                "Playwright startup cleanup",
-            )
-        except StoreScrapeError:
-            logger.warning("weee_scraper: Playwright startup cleanup timed out")
+            await _retry_retired_browser_resources()
+        except asyncio.CancelledError:
+            raise
+        except _BrowserRetirementError as cleanup_error:
+            raise cleanup_error from launch_error
         raise
     logger.info("weee_scraper: launched shared Playwright browser")
     return playwright, browser

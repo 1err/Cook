@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
+from types import SimpleNamespace
 from typing import Any, Callable
 from urllib.parse import quote_plus
 
@@ -1411,6 +1412,57 @@ async def test_conflict_loser_commits_and_publishes_the_authoritative_newer_winn
 
 
 @pytest.mark.asyncio
+async def test_database_authoritative_winner_ahead_of_host_clock_is_returned_and_cached(
+    monkeypatch,
+):
+    host_now = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+    database_now = host_now + timedelta(seconds=30)
+    clocks = {"wall": host_now.timestamp(), "monotonic": 1_000.0}
+    calls: list[str] = []
+
+    class WriteSession:
+        async def commit(self) -> None:
+            calls.append("commit")
+
+        async def rollback(self) -> None:
+            calls.append("rollback")
+
+    class Context:
+        async def __aenter__(self) -> WriteSession:
+            calls.append("open")
+            return WriteSession()
+
+        async def __aexit__(self, *args: Any) -> None:
+            calls.append("close")
+
+    async def upsert(*args: Any, **kwargs: Any) -> SimpleNamespace:
+        calls.append("upsert")
+        return SimpleNamespace(
+            products=[TOFU],
+            updated_at=database_now,
+            observed_at=database_now,
+        )
+
+    monkeypatch.setattr(service.time, "time", lambda: clocks["wall"])
+    monkeypatch.setattr(service.time, "monotonic", lambda: clocks["monotonic"])
+    monkeypatch.setattr(weee_scraper, "scrape_weee_products", async_return([TOFU]))
+    monkeypatch.setattr(db_session, "async_session_maker", lambda: Context())
+    monkeypatch.setattr(repo_store_cache, "upsert_cached_store_products", upsert)
+
+    first = await service.fetch_store_products_with_metadata(
+        "silken tofu",
+        force_refresh=True,
+    )
+    assert first == service.StoreProductsResult([TOFU], host_now)
+    assert calls == ["open", "upsert", "commit", "close"]
+
+    clocks["wall"] += 10
+    clocks["monotonic"] += 10
+    second = await service.fetch_store_products_with_metadata("SILKEN TOFU")
+    assert second == first
+
+
+@pytest.mark.asyncio
 async def test_future_poison_replacement_is_returned_and_warms_the_next_lookup(
     monkeypatch,
 ):
@@ -2027,6 +2079,9 @@ async def test_batch_repository_uses_one_query_and_filters_exact_expiry(monkeypa
         def scalars(self):
             return Scalars()
 
+        def scalar_one(self):
+            return now
+
     class Session:
         async def execute(self, statement):
             nonlocal calls
@@ -2042,7 +2097,7 @@ async def test_batch_repository_uses_one_query_and_filters_exact_expiry(monkeypa
     result = await repo_store_cache.get_cached_store_products_batch(
         Session(), keys=[("garlic", "en"), ("old", "en")], store="weee", cache_version="v7", max_age_seconds=86_400
     )
-    assert calls == 1
+    assert calls == 2
     assert result == {("garlic", "en"): repo_store_cache.CachedStoreProducts([GARLIC], fresh.updated_at)}
 
 
