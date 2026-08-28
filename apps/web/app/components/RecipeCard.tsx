@@ -15,7 +15,7 @@ export function RecipeCard({ recipe, isHighlighted = false }: RecipeCardProps) {
   const featuredTags = getRecipeTags(recipe).slice(0, 2);
 
   return (
-    <li className={`${styles.card} ${isHighlighted ? styles.highlighted : ""}`}>
+    <article role="listitem" className={`${styles.card} ${isHighlighted ? styles.highlighted : ""}`}>
       <Link href={`/recipe/${recipe.id}`} className={styles.link}>
         <div className={styles.media}>
           {recipe.thumbnail_url ? (
@@ -41,6 +41,6 @@ export function RecipeCard({ recipe, isHighlighted = false }: RecipeCardProps) {
           ) : null}
         </div>
       </Link>
-    </li>
+    </article>
   );
 }

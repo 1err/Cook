@@ -1,8 +1,6 @@
 .card {
   min-width: 0;
   overflow: hidden;
-  break-inside: avoid;
-  margin-bottom: 1.25rem;
   background: var(--cw-color-surface);
   border: 1px solid var(--cw-color-divider);
   border-radius: var(--cw-radius-card);

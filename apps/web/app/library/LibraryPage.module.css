@@ -73,11 +73,18 @@
 }
 
 .grid {
+  display: grid;
   margin: 0;
   padding: 0;
-  column-count: 3;
-  column-gap: 1.5rem;
-  list-style: none;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+.column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1.25rem;
 }
 
 .publicCard {
@@ -85,8 +92,6 @@
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
-  break-inside: avoid;
-  margin-bottom: 1.25rem;
   border: 1px solid var(--cw-color-divider);
   border-radius: var(--cw-radius-card);
   background: var(--cw-color-surface);
@@ -217,13 +222,13 @@
 
 @media (max-width: 980px) {
   .grid {
-    column-count: 2;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 640px) {
   .grid {
-    column-count: 1;
+    grid-template-columns: 1fr;
   }
 }
 

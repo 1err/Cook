@@ -26,7 +26,18 @@ function LibraryPageContent() {
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"mine" | "public">("mine");
   const [copyingId, setCopyingId] = useState<string | null>(null);
+  const [columnCount, setColumnCount] = useState(3);
   const t = useT();
+
+  useEffect(() => {
+    function updateColumnCount() {
+      setColumnCount(window.innerWidth <= 640 ? 1 : window.innerWidth <= 980 ? 2 : 3);
+    }
+
+    updateColumnCount();
+    window.addEventListener("resize", updateColumnCount);
+    return () => window.removeEventListener("resize", updateColumnCount);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -119,6 +130,12 @@ function LibraryPageContent() {
   }
 
   const activeList = view === "mine" ? filteredMine : filteredPublic;
+  const activeColumns = useMemo(
+    () => Array.from({ length: columnCount }, (_, columnIndex) =>
+      activeList.filter((_, recipeIndex) => recipeIndex % columnCount === columnIndex),
+    ),
+    [activeList, columnCount],
+  );
 
   return (
     <>
@@ -199,53 +216,61 @@ function LibraryPageContent() {
             <Link href="/import">{t("library.importRecipe")} →</Link>
           ) : null}
         </div>
-      ) : view === "mine" ? (
-        <ul className={styles.grid}>
-          {filteredMine.map((recipe) => (
-            <RecipeCard key={recipe.id} recipe={recipe} isHighlighted={highlightId === recipe.id} />
-          ))}
-        </ul>
       ) : (
-        <ul className={styles.grid}>
-          {filteredPublic.map((recipe) => {
-            const alreadyAdded = savedPublicIds.has(recipe.id);
-            const tags = getRecipeTags(recipe).slice(0, 2);
-            return (
-              <li key={recipe.id} className={styles.publicCard}>
-                <div className={`${styles.publicMedia} ${recipe.thumbnail_url ? "" : styles.publicMediaPlaceholder}`}>
-                  {recipe.thumbnail_url ? (
-                    <img src={recipe.thumbnail_url} alt="" />
-                  ) : (
-                    <span className="cw-display" aria-hidden>CW</span>
-                  )}
-                </div>
-                <div className={styles.publicBody}>
-                  <h2 className="cw-display">{recipe.title}</h2>
-                  {recipe.total_time_minutes ? <p>{recipe.total_time_minutes} min</p> : null}
-                  {tags.length ? (
-                    <div className={styles.publicTags}>
-                      {tags.map((tag) => (
-                        <span key={tag}>{CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}</span>
-                      ))}
+        <div className={styles.grid} role="list">
+          {activeColumns.map((column, columnIndex) => (
+            <div key={columnIndex} className={styles.column} data-library-column>
+              {column.map((recipe) => {
+                if (view === "mine") {
+                  return (
+                    <RecipeCard
+                      key={recipe.id}
+                      recipe={recipe}
+                      isHighlighted={highlightId === recipe.id}
+                    />
+                  );
+                }
+
+                const alreadyAdded = savedPublicIds.has(recipe.id);
+                const tags = getRecipeTags(recipe).slice(0, 2);
+                return (
+                  <article key={recipe.id} role="listitem" className={styles.publicCard}>
+                    <div className={`${styles.publicMedia} ${recipe.thumbnail_url ? "" : styles.publicMediaPlaceholder}`}>
+                      {recipe.thumbnail_url ? (
+                        <img src={recipe.thumbnail_url} alt="" />
+                      ) : (
+                        <span className="cw-display" aria-hidden>CW</span>
+                      )}
                     </div>
-                  ) : null}
-                  <button
-                    type="button"
-                    className={styles.addButton}
-                    onClick={() => handleCopyPublicRecipe(recipe.id)}
-                    disabled={alreadyAdded || copyingId === recipe.id}
-                  >
-                    {alreadyAdded
-                      ? t("library.inYourLibrary")
-                      : copyingId === recipe.id
-                        ? t("library.adding")
-                        : t("library.addToMyLibrary")}
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                    <div className={styles.publicBody}>
+                      <h2 className="cw-display">{recipe.title}</h2>
+                      {recipe.total_time_minutes ? <p>{recipe.total_time_minutes} min</p> : null}
+                      {tags.length ? (
+                        <div className={styles.publicTags}>
+                          {tags.map((tag) => (
+                            <span key={tag}>{CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                      <button
+                        type="button"
+                        className={styles.addButton}
+                        onClick={() => handleCopyPublicRecipe(recipe.id)}
+                        disabled={alreadyAdded || copyingId === recipe.id}
+                      >
+                        {alreadyAdded
+                          ? t("library.inYourLibrary")
+                          : copyingId === recipe.id
+                            ? t("library.adding")
+                            : t("library.addToMyLibrary")}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ))}
+        </div>
       )}
     </>
   );

@@ -71,10 +71,27 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("uses a compact responsive waterfall for personal recipes", async ({ page }, testInfo) => {
-  const expectedColumns = testInfo.project.name === "desktop" ? "3" : testInfo.project.name === "tablet" ? "2" : "1";
+  const expectedColumns = testInfo.project.name === "desktop" ? 3 : testInfo.project.name === "tablet" ? 2 : 1;
+  const expectedTitles = testInfo.project.name === "desktop"
+    ? [
+        ["Braised beef", "Mapo tofu"],
+        ["Eggplant clay pot", "Steamed beef"],
+        ["Hot pot chicken", "Tomato beef brisket"],
+      ]
+    : testInfo.project.name === "tablet"
+      ? [
+          ["Braised beef", "Hot pot chicken", "Steamed beef"],
+          ["Eggplant clay pot", "Mapo tofu", "Tomato beef brisket"],
+        ]
+      : [["Braised beef", "Eggplant clay pot", "Hot pot chicken", "Mapo tofu", "Steamed beef", "Tomato beef brisket"]];
   const grid = page.getByRole("list");
   await expect(grid.getByRole("listitem")).toHaveCount(recipes.length);
-  await expect(grid).toHaveCSS("column-count", expectedColumns);
+  const columns = grid.locator("[data-library-column]");
+  await expect(columns).toHaveCount(expectedColumns);
+  const columnTitles = await columns.evaluateAll((items) =>
+    items.map((item) => Array.from(item.querySelectorAll("h2"), (heading) => heading.textContent)),
+  );
+  expect(columnTitles).toEqual(expectedTitles);
 
   const cardMetrics = await grid.getByRole("listitem").evaluateAll((cards) =>
     cards.map((card) => {
@@ -98,10 +115,20 @@ test("uses a compact responsive waterfall for personal recipes", async ({ page }
 test("uses the same natural waterfall rhythm for the public library", async ({ page }, testInfo) => {
   await page.getByRole("tab", { name: "Public library" }).click();
 
-  const expectedColumns = testInfo.project.name === "desktop" ? "3" : testInfo.project.name === "tablet" ? "2" : "1";
+  const expectedColumns = testInfo.project.name === "desktop" ? 3 : testInfo.project.name === "tablet" ? 2 : 1;
+  const expectedTitles = testInfo.project.name === "desktop"
+    ? [["Clay pot rice", "Scallion noodles"], ["Crispy tofu"], ["Red-braised pork"]]
+    : testInfo.project.name === "tablet"
+      ? [["Clay pot rice", "Red-braised pork"], ["Crispy tofu", "Scallion noodles"]]
+      : [["Clay pot rice", "Crispy tofu", "Red-braised pork", "Scallion noodles"]];
   const grid = page.getByRole("list");
   await expect(grid.getByRole("listitem")).toHaveCount(publicRecipes.length);
-  await expect(grid).toHaveCSS("column-count", expectedColumns);
+  const columns = grid.locator("[data-library-column]");
+  await expect(columns).toHaveCount(expectedColumns);
+  const columnTitles = await columns.evaluateAll((items) =>
+    items.map((item) => Array.from(item.querySelectorAll("h2"), (heading) => heading.textContent)),
+  );
+  expect(columnTitles).toEqual(expectedTitles);
   await expect(grid.getByText(/Hidden public ingredient/)).toHaveCount(0);
 
   const metrics = await grid.getByRole("listitem").evaluateAll((cards) =>
