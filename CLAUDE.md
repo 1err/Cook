@@ -50,7 +50,7 @@ docker compose down && docker compose up --build -d   # then open http://localho
 
 ### Backend — AWS ECS
 
-- Cluster: `cooking-cluster`. Service runs task definition `cooking-backend:8` (revision number bumps with each deploy).
+- Cluster: `cooking-cluster`. Service runs task definition `cooking-backend:9` (revision number bumps when the task definition changes; image-only deployments can reuse the revision).
 - Image: built from `backend/Dockerfile` (Python 3.12 slim + Playwright Chromium). Listens on `:8000`.
 - Public hostname: `https://api.chef-world.com` (fronted by ALB / domain mapping outside this repo).
 - Production env vars (live in the ECS task definition, **not** in the repo):
@@ -278,7 +278,7 @@ The product-picks payload also stores `queries`, a canonical mechanical key to f
 
 ### Import flow (two-step)
 
-`apps/web/app/import/page.tsx` calls `/recipes/parse/{link,transcript}` to get a draft Recipe, lets the user edit recipe fields and every tutorial step's text, duration, attention type, and action illustration, then calls `POST /recipes` only after review. Mobile follows the same two-step behavior in its Import modal. There is no single-step "import + save" endpoint anymore (the legacy `/recipes/import/*` routes were removed). The link path accepts strictly validated public HTTPS YouTube and TikTok URLs. YouTube import fetches caption tracks through `youtube-transcript-api==1.2.4`; if YouTube blocks the caption request, the importer tries the verified public watch-page title/description before failing. TikTok import reads only the title/caption text exposed by the public oEmbed endpoint. It does not download media or transcribe arbitrary TikTok speech; that requires a future provider. Uploaded video files (Whisper) are not supported. Missing public text, sparse TikTok text, and unsupported providers fall back to asking the user for pasted recipe text or a transcript.
+`apps/web/app/import/page.tsx` calls `/recipes/parse/{link,transcript}` to get a draft Recipe, lets the user edit recipe fields and every tutorial step's text, duration, attention type, and action illustration, then calls `POST /recipes` only after review. Mobile follows the same two-step behavior in its Import modal. There is no single-step "import + save" endpoint anymore (the legacy `/recipes/import/*` routes were removed). The link path accepts strictly validated public HTTPS YouTube and TikTok URLs. YouTube import fetches caption tracks through `youtube-transcript-api==1.2.4`; if YouTube blocks a caption-file request, the importer first reuses the verified title/description from the already-completed player response, then tries the verified public watch page before failing. TikTok import reads only the title/caption text exposed by the public oEmbed endpoint. It does not download media or transcribe arbitrary TikTok speech; that requires a future provider. Uploaded video files (Whisper) are not supported. Missing public text, sparse TikTok text, and unsupported providers fall back to asking the user for pasted recipe text or a transcript.
 
 On iOS, `expo-share-intent` can prefill the same Import modal from a shared supported URL after auth/navigation restoration. The Share Sheet is a native extension and therefore requires a custom iOS development/EAS build; Expo Go cannot exercise it. Unsupported shared content is cleared without disrupting normal launch. Pasting a link manually remains the universal fallback and the supported Android flow.
 

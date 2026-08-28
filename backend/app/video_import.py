@@ -9,8 +9,11 @@ from typing import Literal
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+from xml.etree.ElementTree import ParseError
 
 try:
+    from requests import Session
+    from requests.exceptions import RequestException
     from youtube_transcript_api import (
         AgeRestricted,
         FailedToCreateConsentCookie,
@@ -26,6 +29,7 @@ try:
         YouTubeTranscriptApi,
     )
 except ImportError:
+    Session = None
     YouTubeTranscriptApi = None
 
 
@@ -120,10 +124,120 @@ class _RejectRedirects(HTTPRedirectHandler):
 
 
 _YOUTUBE_WATCH_OPENER = build_opener(_RejectRedirects())
+_YOUTUBE_PLAYER_RESPONSE_MAX_BYTES = 3_000_000
+_YOUTUBE_TITLE_MAX_CHARS = 500
+_YOUTUBE_DESCRIPTION_MAX_CHARS = 100_000
+
+
+if Session is not None:
+    class _NoRedirectSession(Session):
+        def request(self, method, url, **kwargs):
+            kwargs["allow_redirects"] = False
+            return super().request(method, url, **kwargs)
+else:
+    _NoRedirectSession = None
+
+
+@dataclass(slots=True)
+class _YouTubePlayerMetadata:
+    title: str = ""
+    description: str = ""
 
 
 def _open_youtube_watch_page(request: Request, *, timeout: int):
     return _YOUTUBE_WATCH_OPENER.open(request, timeout=timeout)
+
+
+def _youtube_metadata_from_player_payload(
+    source: VideoSource,
+    payload: object,
+) -> tuple[str, str] | None:
+    if not isinstance(payload, dict):
+        return None
+    playability = payload.get("playabilityStatus")
+    if not isinstance(playability, dict) or playability.get("status") != "OK":
+        return None
+    details = payload.get("videoDetails")
+    if not isinstance(details, dict) or details.get("videoId") != source.external_id:
+        return None
+
+    raw_title = details.get("title")
+    raw_description = details.get("shortDescription")
+    title = raw_title.strip() if isinstance(raw_title, str) else ""
+    description = (
+        raw_description.strip() if isinstance(raw_description, str) else ""
+    )
+    if (
+        not description
+        or len(title) > _YOUTUBE_TITLE_MAX_CHARS
+        or len(description) > _YOUTUBE_DESCRIPTION_MAX_CHARS
+    ):
+        return None
+    return title, description
+
+
+def _youtube_description_result(
+    source: VideoSource,
+    title: str,
+    description: str,
+    *,
+    origin: str,
+) -> VideoTextResult:
+    text = f"Video title: {title}\n\nVideo description:\n{description}" if title else description
+    logger.info(
+        "Video text fetch result provider=%s video_id=%s status=ok source=%s text_length=%d",
+        source.provider,
+        source.external_id,
+        origin,
+        len(text),
+    )
+    return VideoTextResult(
+        status="ok",
+        text=text,
+        source=source,
+        title=title or None,
+        thumbnail_url=f"https://img.youtube.com/vi/{source.external_id}/hqdefault.jpg",
+    )
+
+
+def _capture_youtube_player_metadata(source: VideoSource, metadata: _YouTubePlayerMetadata):
+    def capture(response, *_args, **_kwargs):
+        try:
+            request = response.request
+            parsed = urlsplit(response.url)
+            content_type = response.headers.get("content-type", "")
+            content_length = response.headers.get("content-length")
+            if (
+                str(getattr(request, "method", "")).upper() != "POST"
+                or parsed.scheme != "https"
+                or parsed.hostname != "www.youtube.com"
+                or parsed.username
+                or parsed.password
+                or parsed.port not in (None, 443)
+                or parsed.path != "/youtubei/v1/player"
+                or response.status_code != 200
+                or bool(getattr(response, "history", ()))
+                or content_type.split(";", 1)[0].strip().lower() != "application/json"
+            ):
+                return response
+            if content_length is not None:
+                if int(content_length) > _YOUTUBE_PLAYER_RESPONSE_MAX_BYTES:
+                    return response
+            content = getattr(response, "content", None)
+            if (
+                isinstance(content, (bytes, bytearray))
+                and len(content) > _YOUTUBE_PLAYER_RESPONSE_MAX_BYTES
+            ):
+                return response
+            captured = _youtube_metadata_from_player_payload(source, response.json())
+            if captured is not None:
+                metadata.title, metadata.description = captured
+        except Exception:
+            # A response hook must never interfere with transcript retrieval.
+            return response
+        return response
+
+    return capture
 
 
 def _youtube_public_description(source: VideoSource) -> VideoTextResult | None:
@@ -154,40 +268,13 @@ def _youtube_public_description(source: VideoSource) -> VideoTextResult | None:
         payload, _ = json.JSONDecoder().raw_decode(page[start + len(marker) :])
     except json.JSONDecodeError:
         return None
-    if not isinstance(payload, dict):
+    metadata = _youtube_metadata_from_player_payload(source, payload)
+    if metadata is None:
         return None
-    playability = payload.get("playabilityStatus")
-    if not isinstance(playability, dict) or playability.get("status") != "OK":
-        return None
-    if not isinstance(payload.get("videoDetails"), dict):
-        return None
-    details = payload["videoDetails"]
-    if details.get("videoId") != source.external_id:
-        return None
-    title = details.get("title") if isinstance(details.get("title"), str) else ""
-    description = (
-        details.get("shortDescription")
-        if isinstance(details.get("shortDescription"), str)
-        else ""
-    )
-    title = title.strip()
-    description = description.strip()
-    if not description:
-        return None
-
-    text = f"Video title: {title}\n\nVideo description:\n{description}" if title else description
-    logger.info(
-        "Video text fetch result provider=%s video_id=%s status=ok source=description text_length=%d",
-        source.provider,
-        source.external_id,
-        len(text),
-    )
-    return VideoTextResult(
-        status="ok",
-        text=text,
-        source=source,
-        title=title or None,
-        thumbnail_url=f"https://img.youtube.com/vi/{source.external_id}/hqdefault.jpg",
+    return _youtube_description_result(
+        source,
+        *metadata,
+        origin="watch_description",
     )
 
 
@@ -195,20 +282,59 @@ def _youtube_description_or_failure(
     source: VideoSource,
     status: str,
     message: str,
+    metadata: _YouTubePlayerMetadata | None = None,
 ) -> VideoTextResult:
+    if metadata is not None and metadata.description:
+        return _youtube_description_result(
+            source,
+            metadata.title,
+            metadata.description,
+            origin="player_description",
+        )
     return _youtube_public_description(source) or _failure(source, status, message)
+
+
+def _youtube_blocked_result(
+    source: VideoSource,
+    metadata: _YouTubePlayerMetadata,
+    *,
+    stage: str,
+) -> VideoTextResult:
+    logger.warning(
+        "YouTube request blocked provider=%s video_id=%s stage=%s metadata_captured=%s",
+        source.provider,
+        source.external_id,
+        stage,
+        bool(metadata.description),
+    )
+    return _youtube_description_or_failure(
+        source,
+        "fetch_failed",
+        "YouTube is temporarily blocking caption requests from Chef World. "
+        "The video may still have captions; try again later or paste the transcript.",
+        metadata,
+    )
 
 
 def fetch_youtube_text(source: VideoSource) -> VideoTextResult:
     """Fetch public YouTube captions, with public description text as a fallback."""
-    if YouTubeTranscriptApi is None:
+    metadata = _YouTubePlayerMetadata()
+    request_stage = "dependency"
+    http_client = None
+    if YouTubeTranscriptApi is None or _NoRedirectSession is None:
         return _youtube_description_or_failure(
             source,
             "dependency_missing",
             "YouTube transcript support is not available on the server right now.",
+            metadata,
         )
     try:
-        tracks = YouTubeTranscriptApi().list(source.external_id or "")
+        http_client = _NoRedirectSession()
+        http_client.hooks.setdefault("response", []).append(
+            _capture_youtube_player_metadata(source, metadata)
+        )
+        request_stage = "list"
+        tracks = YouTubeTranscriptApi(http_client=http_client).list(source.external_id or "")
         available_tracks = list(tracks)
         try:
             preferred_track = tracks.find_transcript(["en", "zh", "zh-Hans", "zh-Hant"])
@@ -222,15 +348,20 @@ def fetch_youtube_text(source: VideoSource) -> VideoTextResult:
                 if track is not preferred_track
             )
         caption_request_failed = False
+        caption_ip_blocked = False
         po_token_required = False
+        request_stage = "caption"
         for track in candidate_tracks:
             try:
                 snippets = track.fetch()
             except PoTokenRequired:
                 po_token_required = True
                 continue
-            except YouTubeRequestFailed:
+            except (YouTubeRequestFailed, RequestException, ParseError):
                 caption_request_failed = True
+                continue
+            except (IpBlocked, RequestBlocked):
+                caption_ip_blocked = True
                 continue
             text = " ".join(
                 str(getattr(row, "text", "")).strip()
@@ -250,12 +381,19 @@ def fetch_youtube_text(source: VideoSource) -> VideoTextResult:
                     source=source,
                     thumbnail_url=f"https://img.youtube.com/vi/{source.external_id}/hqdefault.jpg",
                 )
+        if caption_ip_blocked:
+            return _youtube_blocked_result(
+                source,
+                metadata,
+                stage=request_stage,
+            )
         if caption_request_failed:
             return _youtube_description_or_failure(
                 source,
                 "fetch_failed",
                 "We could not fetch captions from YouTube for this video right now. "
                 "Please try again or paste a transcript.",
+                metadata,
             )
         if po_token_required:
             return _youtube_description_or_failure(
@@ -263,17 +401,20 @@ def fetch_youtube_text(source: VideoSource) -> VideoTextResult:
                 "captions_unavailable",
                 "YouTube did not provide a usable public caption track for this video. "
                 "Paste a transcript instead.",
+                metadata,
             )
         return _youtube_description_or_failure(
             source,
             "no_transcript",
             "No usable public captions or video description were found. Paste a transcript instead.",
+            metadata,
         )
     except TranscriptsDisabled:
         return _youtube_description_or_failure(
             source,
             "captions_unavailable",
             "No public caption track or usable video description was available. Paste a transcript instead.",
+            metadata,
         )
     except (VideoUnavailable, VideoUnplayable, AgeRestricted):
         return _failure(
@@ -287,20 +428,44 @@ def fetch_youtube_text(source: VideoSource) -> VideoTextResult:
             source,
             "no_transcript",
             "No usable public captions or video description were found. Paste a transcript instead.",
+            metadata,
         )
     except (IpBlocked, RequestBlocked):
-        return _youtube_description_or_failure(
+        return _youtube_blocked_result(
             source,
-            "fetch_failed",
-            "YouTube is temporarily blocking caption requests from Chef World. "
-            "The video may still have captions; try again later or paste the transcript.",
+            metadata,
+            stage=request_stage,
         )
     except (YouTubeRequestFailed, YouTubeDataUnparsable, FailedToCreateConsentCookie):
+        logger.warning(
+            "YouTube retrieval failed provider=%s video_id=%s stage=%s metadata_captured=%s",
+            source.provider,
+            source.external_id,
+            request_stage,
+            bool(metadata.description),
+        )
         return _youtube_description_or_failure(
             source,
             "fetch_failed",
             "We could not fetch captions from YouTube for this video right now. "
             "Please try again or paste a transcript.",
+            metadata,
+        )
+    except (RequestException, ParseError) as exc:
+        logger.warning(
+            "YouTube retrieval failed provider=%s video_id=%s stage=%s error_type=%s metadata_captured=%s",
+            source.provider,
+            source.external_id,
+            request_stage,
+            type(exc).__name__,
+            bool(metadata.description),
+        )
+        return _youtube_description_or_failure(
+            source,
+            "fetch_failed",
+            "We could not fetch captions from YouTube for this video right now. "
+            "Please try again or paste a transcript.",
+            metadata,
         )
     except PoTokenRequired:
         return _youtube_description_or_failure(
@@ -308,18 +473,23 @@ def fetch_youtube_text(source: VideoSource) -> VideoTextResult:
             "captions_unavailable",
             "YouTube did not provide a usable public caption track for this video. "
             "Paste a transcript instead.",
+            metadata,
         )
-    except Exception:
-        logger.exception(
-            "Unexpected YouTube text fetch failure provider=%s video_id=%s",
+    except Exception as exc:
+        logger.error(
+            "Unexpected YouTube text fetch failure provider=%s video_id=%s error_type=%s",
             source.provider,
             source.external_id,
+            type(exc).__name__,
         )
         return _failure(
             source,
             "fetch_failed",
             "We could not fetch captions from YouTube for this video right now. Please try again or paste a transcript.",
         )
+    finally:
+        if http_client is not None:
+            http_client.close()
 
 
 def _safe_https_url(value: object) -> str | None:

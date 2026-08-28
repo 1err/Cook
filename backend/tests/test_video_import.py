@@ -5,8 +5,10 @@ from io import BytesIO
 from types import SimpleNamespace
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
+from xml.etree.ElementTree import ParseError
 
 import pytest
+from requests import ConnectionError as RequestsConnectionError
 from requests import HTTPError as RequestsHTTPError
 from youtube_transcript_api import (
     AgeRestricted,
@@ -116,6 +118,11 @@ def _snippet(text: str):
     return SimpleNamespace(text=text, start=0.0, duration=1.0)
 
 
+class _YouTubeApiStub:
+    def __init__(self, *, http_client=None):
+        self.http_client = http_client
+
+
 def _youtube_watch_opener(*, video_id: str, title: str, description: str):
     player_response = {
         "playabilityStatus": {"status": "OK"},
@@ -156,7 +163,7 @@ def test_fetch_youtube_text_uses_current_api_and_snippet_objects(monkeypatch):
         def __iter__(self):
             return iter([Track()])
 
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             requested_ids.append(video_id)
             return Tracks()
@@ -189,7 +196,7 @@ def test_fetch_youtube_text_tries_remaining_track_after_empty_preferred_track(mo
         def __iter__(self):
             return iter([empty_english, usable_french])
 
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             return Tracks()
 
@@ -220,7 +227,7 @@ def test_fetch_youtube_text_tries_generated_track_after_empty_manual_track(monke
         def __iter__(self):
             return iter([empty_manual, usable_generated])
 
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             return Tracks()
 
@@ -254,7 +261,7 @@ def test_fetch_youtube_text_tries_remaining_track_after_po_token_failure(monkeyp
 
     restricted = RestrictedTrack()
 
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             return Tracks()
 
@@ -291,7 +298,7 @@ def test_fetch_youtube_text_tries_remaining_track_after_caption_request_failure(
         def __iter__(self):
             return iter([failed, UsableTrack()])
 
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             return Tracks()
 
@@ -301,6 +308,44 @@ def test_fetch_youtube_text_tries_remaining_track_after_caption_request_failure(
 
     assert result.status == "ok"
     assert result.text == "将茄子炒软。"
+
+
+def test_fetch_youtube_text_tries_remaining_track_after_ip_block(monkeypatch):
+    class BlockedTrack:
+        language_code = "en"
+
+        def fetch(self):
+            raise IpBlocked("A6bByqI_TH8")
+
+    class UsableTrack:
+        language_code = "zh-Hans"
+
+        def fetch(self):
+            return [_snippet("将豆腐煎至金黄，再加入茄子。")]
+
+    blocked = BlockedTrack()
+
+    class Tracks:
+        def find_transcript(self, languages):
+            return blocked
+
+        def __iter__(self):
+            return iter([blocked, UsableTrack()])
+
+    class Api(_YouTubeApiStub):
+        def list(self, video_id):
+            return Tracks()
+
+    def unavailable_metadata(_request, *, timeout: int):
+        raise URLError("offline")
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(video_import, "_open_youtube_watch_page", unavailable_metadata)
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
+
+    assert result.status == "ok"
+    assert result.text == "将豆腐煎至金黄，再加入茄子。"
 
 
 @pytest.mark.parametrize(
@@ -334,7 +379,7 @@ def test_fetch_youtube_text_preserves_terminal_track_failure_after_all_tracks_fa
         def __iter__(self):
             return iter([failed])
 
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             return Tracks()
 
@@ -370,7 +415,7 @@ def test_fetch_youtube_text_falls_back_to_public_description_when_caption_ip_is_
         def __iter__(self):
             return iter([BlockedTrack()])
 
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             return Tracks()
 
@@ -394,8 +439,275 @@ def test_fetch_youtube_text_falls_back_to_public_description_when_caption_ip_is_
     assert "将豆腐煎至金黄" in result.text
 
 
+def test_fetch_youtube_text_reuses_player_description_when_follow_up_requests_are_blocked(
+    monkeypatch,
+):
+    class BlockedTrack:
+        language_code = "zh-Hans"
+
+        def fetch(self):
+            raise IpBlocked("A6bByqI_TH8")
+
+    blocked_track = BlockedTrack()
+
+    class Tracks:
+        def find_transcript(self, languages):
+            return blocked_track
+
+        def __iter__(self):
+            return iter([blocked_track])
+
+    class PlayerResponse:
+        request = SimpleNamespace(method="POST")
+        url = "https://www.youtube.com/youtubei/v1/player?key=redacted"
+        status_code = 200
+        headers = {"content-type": "application/json; charset=UTF-8"}
+
+        def json(self):
+            return {
+                "playabilityStatus": {"status": "OK"},
+                "videoDetails": {
+                    "videoId": "A6bByqI_TH8",
+                    "title": "豆腐茄子煲",
+                    "shortDescription": (
+                        "【主料】老豆腐（约400克） 紫皮茄子（1根）"
+                        "【做法】将豆腐煎至金黄。"
+                    ),
+                },
+            }
+
+    class Api(_YouTubeApiStub):
+        def __init__(self, *, http_client=None):
+            self.http_client = http_client
+
+        def list(self, video_id):
+            if self.http_client is not None:
+                response = PlayerResponse()
+                for hook in self.http_client.hooks["response"]:
+                    assert hook(response) is response
+            return Tracks()
+
+    def blocked_watch_page(_request, *, timeout: int):
+        raise AssertionError("captured player metadata must avoid a second request")
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(video_import, "_open_youtube_watch_page", blocked_watch_page)
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
+
+    assert result.status == "ok"
+    assert result.title == "豆腐茄子煲"
+    assert "老豆腐（约400克）" in result.text
+    assert "将豆腐煎至金黄" in result.text
+
+
+@pytest.mark.parametrize(
+    "caption_error",
+    [
+        RequestsConnectionError("timed-text connection reset"),
+        ParseError("timed-text response was not valid XML"),
+    ],
+    ids=["connection-error", "malformed-xml"],
+)
+def test_fetch_youtube_text_reuses_player_description_after_unwrapped_caption_failure(
+    monkeypatch,
+    caption_error,
+):
+    class FailedTrack:
+        language_code = "zh-Hans"
+
+        def fetch(self):
+            raise caption_error
+
+    failed_track = FailedTrack()
+
+    class Tracks:
+        def find_transcript(self, languages):
+            return failed_track
+
+        def __iter__(self):
+            return iter([failed_track])
+
+    class Api(_YouTubeApiStub):
+        def list(self, video_id):
+            response = _player_hook_response(payload=_valid_player_payload())
+            for hook in self.http_client.hooks["response"]:
+                hook(response)
+            return Tracks()
+
+    def blocked_watch_page(_request, *, timeout: int):
+        raise AssertionError("captured player metadata must avoid a second request")
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(video_import, "_open_youtube_watch_page", blocked_watch_page)
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
+
+    assert result.status == "ok"
+    assert result.title == "豆腐茄子煲"
+    assert "老豆腐（约400克）" in result.text
+
+
+def test_fetch_youtube_text_disables_redirects_for_provider_requests(monkeypatch):
+    redirect_settings = []
+
+    def record_request(_session, method, url, **kwargs):
+        redirect_settings.append(kwargs.get("allow_redirects"))
+        return SimpleNamespace()
+
+    class Api(_YouTubeApiStub):
+        def list(self, video_id):
+            self.http_client.get(f"https://www.youtube.com/watch?v={video_id}")
+            raise IpBlocked(video_id)
+
+    def unavailable_metadata(_request, *, timeout: int):
+        raise URLError("offline")
+
+    monkeypatch.setattr(video_import.Session, "request", record_request)
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(video_import, "_open_youtube_watch_page", unavailable_metadata)
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
+
+    assert result.status == "fetch_failed"
+    assert redirect_settings == [False]
+
+
+def _player_hook_response(
+    *,
+    payload: object,
+    method: str = "POST",
+    url: str = "https://www.youtube.com/youtubei/v1/player?key=redacted",
+    status_code: int = 200,
+    headers: dict[str, str] | None = None,
+    json_error: Exception | None = None,
+    history: list[object] | None = None,
+):
+    def load_json():
+        if json_error is not None:
+            raise json_error
+        return payload
+
+    return SimpleNamespace(
+        request=SimpleNamespace(method=method),
+        url=url,
+        status_code=status_code,
+        headers=headers or {"content-type": "application/json; charset=UTF-8"},
+        content=b"{}",
+        json=load_json,
+        history=history or [],
+    )
+
+
+def _valid_player_payload(**detail_overrides):
+    details = {
+        "videoId": "A6bByqI_TH8",
+        "title": "豆腐茄子煲",
+        "shortDescription": "【主料】老豆腐（约400克）【做法】煎至金黄。",
+    }
+    details.update(detail_overrides)
+    return {
+        "playabilityStatus": {"status": "OK"},
+        "videoDetails": details,
+    }
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        _player_hook_response(
+            payload=_valid_player_payload(),
+            method="GET",
+        ),
+        _player_hook_response(
+            payload=_valid_player_payload(),
+            url="https://youtube.com.evil.test/youtubei/v1/player",
+        ),
+        _player_hook_response(
+            payload=_valid_player_payload(),
+            url="https://www.youtube.com:444/youtubei/v1/player",
+        ),
+        _player_hook_response(
+            payload=_valid_player_payload(),
+            url="https://www.youtube.com/watch?v=A6bByqI_TH8",
+        ),
+        _player_hook_response(
+            payload=_valid_player_payload(),
+            status_code=403,
+        ),
+        _player_hook_response(
+            payload=_valid_player_payload(),
+            headers={"content-type": "text/html"},
+        ),
+        _player_hook_response(
+            payload=_valid_player_payload(),
+            headers={
+                "content-type": "application/json",
+                "content-length": "3000001",
+            },
+        ),
+        _player_hook_response(
+            payload=_valid_player_payload(),
+            json_error=ValueError("malformed player JSON"),
+        ),
+        _player_hook_response(
+            payload=_valid_player_payload(),
+            history=[SimpleNamespace(status_code=302)],
+        ),
+    ],
+    ids=[
+        "get",
+        "lookalike-host",
+        "nonstandard-port",
+        "wrong-path",
+        "non-200",
+        "non-json",
+        "oversized-response",
+        "malformed-json",
+        "redirect-history",
+    ],
+)
+def test_youtube_player_metadata_hook_rejects_untrusted_responses(response):
+    source = parse_video_source("https://youtu.be/A6bByqI_TH8")
+    metadata = video_import._YouTubePlayerMetadata()
+
+    returned = video_import._capture_youtube_player_metadata(source, metadata)(response)
+
+    assert returned is response
+    assert metadata.title == ""
+    assert metadata.description == ""
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {**_valid_player_payload(), "playabilityStatus": {"status": "LOGIN_REQUIRED"}},
+        _valid_player_payload(videoId="A6bByql_TH8"),
+        _valid_player_payload(shortDescription="  "),
+        _valid_player_payload(title="x" * 501),
+        _valid_player_payload(shortDescription="x" * 100_001),
+    ],
+    ids=[
+        "not-playable",
+        "different-case-sensitive-id",
+        "empty-description",
+        "oversized-title",
+        "oversized-description",
+    ],
+)
+def test_youtube_player_metadata_hook_rejects_unusable_video_details(payload):
+    source = parse_video_source("https://youtu.be/A6bByqI_TH8")
+    metadata = video_import._YouTubePlayerMetadata()
+    response = _player_hook_response(payload=payload)
+
+    video_import._capture_youtube_player_metadata(source, metadata)(response)
+
+    assert metadata.title == ""
+    assert metadata.description == ""
+
+
 def test_fetch_youtube_text_rejects_youtube_watch_redirects(monkeypatch):
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             raise IpBlocked(video_id)
 
@@ -449,7 +761,7 @@ def test_fetch_youtube_text_rejects_youtube_watch_redirects(monkeypatch):
 def test_youtube_description_fallback_rejects_untrusted_or_malformed_pages(
     monkeypatch, watch_page
 ):
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             raise IpBlocked(video_id)
 
@@ -467,7 +779,7 @@ def test_youtube_description_fallback_rejects_untrusted_or_malformed_pages(
 
 
 def test_youtube_description_fallback_caps_watch_page_size(monkeypatch):
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             raise IpBlocked(video_id)
 
@@ -490,7 +802,7 @@ def test_youtube_description_fallback_caps_watch_page_size(monkeypatch):
 def test_fetch_youtube_text_reports_server_block_without_blaming_captions(
     monkeypatch, blocked_error
 ):
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             raise blocked_error(video_id)
 
@@ -519,7 +831,7 @@ def test_fetch_youtube_text_reports_server_block_without_blaming_captions(
 def test_fetch_youtube_text_reports_unavailable_public_text_without_false_disabled_claim(
     monkeypatch,
 ):
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             raise TranscriptsDisabled(video_id)
 
@@ -556,7 +868,7 @@ def test_fetch_youtube_text_reports_unavailable_public_text_without_false_disabl
 def test_fetch_youtube_text_reports_video_not_publicly_accessible(
     monkeypatch, unavailable_error
 ):
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             raise unavailable_error
 
@@ -580,7 +892,7 @@ def test_fetch_youtube_text_reports_missing_tracks(monkeypatch):
         def __iter__(self):
             return iter(())
 
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             return Tracks()
 
@@ -619,7 +931,7 @@ def test_fetch_youtube_text_reports_empty_snippets(monkeypatch):
         def __iter__(self):
             return iter([Track()])
 
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             return Tracks()
 
@@ -640,10 +952,15 @@ def test_fetch_youtube_text_reports_empty_snippets(monkeypatch):
     assert result.text == ""
 
 
-def test_fetch_youtube_text_reports_unexpected_failures(monkeypatch):
-    class Api:
+def test_fetch_youtube_text_reports_unexpected_failures_without_logging_request_secrets(
+    monkeypatch,
+    caplog,
+):
+    secret_url = "https://www.youtube.com/youtubei/v1/player?key=must-not-be-logged"
+
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
-            raise RuntimeError("network unavailable")
+            raise RuntimeError(secret_url)
 
     monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
 
@@ -652,6 +969,8 @@ def test_fetch_youtube_text_reports_unexpected_failures(monkeypatch):
     assert result.status == "fetch_failed"
     assert result.message == "We could not fetch captions from YouTube for this video right now. Please try again or paste a transcript."
     assert result.text == ""
+    assert "RuntimeError" in caplog.text
+    assert secret_url not in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -668,7 +987,7 @@ def test_fetch_youtube_text_reports_unexpected_failures(monkeypatch):
 def test_fetch_youtube_text_uses_public_description_after_typed_retrieval_failure(
     monkeypatch, retrieval_error
 ):
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             raise retrieval_error
 
@@ -907,7 +1226,7 @@ def test_legacy_transcript_fetch_wrapper_exposes_compatibility_attributes(monkey
         def __iter__(self):
             return iter([Track()])
 
-    class Api:
+    class Api(_YouTubeApiStub):
         def list(self, video_id):
             return Tracks()
 
