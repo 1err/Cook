@@ -6,7 +6,9 @@
 
 **Architecture:** A new backend `video_import` module owns strict provider URL parsing and provider-specific text acquisition, while the existing recipe route remains the provider-neutral orchestration boundary. Web and mobile keep the same draft/review/save contract; mobile adds a small share-intent adapter that pre-fills the existing import modal.
 
-**Tech Stack:** Python 3.12, FastAPI, `youtube-transcript-api==0.6.3`, TikTok oEmbed over Python stdlib HTTP, pytest; Next.js 14, React 18, Vitest, Playwright; Expo SDK 54, React Native 0.81, React Navigation 6, Jest/RNTL, `expo-share-intent@5.1.0`, `expo-linking`.
+**Tech Stack:** Python 3.12, FastAPI, `youtube-transcript-api==1.2.4`, TikTok oEmbed over Python stdlib HTTP, pytest; Next.js 14, React 18, Vitest, Playwright; Expo SDK 54, React Native 0.81, React Navigation 6, Jest/RNTL, `expo-share-intent@5.1.0`, `expo-linking`.
+
+> Follow-up correction (2026-08-28): the implemented 0.6.3 adapter was later found to misclassify YouTube/cloud blocking as disabled captions. The runtime now uses 1.2.4 plus a verified public-description fallback; the 0.6.3 task steps below remain as historical execution notes.
 
 **Spec:** `docs/superpowers/specs/2026-08-28-video-import-reliability-design.md`
 
@@ -137,6 +139,8 @@ git commit -m "feat(import): classify supported video links"
 ```
 
 ### Task 2: YouTube transcript adapter compatible with the pinned library
+
+> **Superseded implementation record:** Do not execute the 0.6.3 commands or snippets in this task. They document the first implementation only. The current adapter and tests use the 1.2.4 instance API, typed blocking errors, snippet objects, later-track retries, and a verified public-description fallback.
 
 **Files:**
 - Modify: `backend/app/video_import.py`
