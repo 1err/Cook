@@ -47,6 +47,24 @@ describe("ImportSourceStep", () => {
     expect(screen.getByRole("button", { name: "Create draft" })).toBeDisabled();
   });
 
+  it("explains the public-text fallback for YouTube imports", () => {
+    render(
+      <ImportSourceStep
+        values={values}
+        parsing={false}
+        error={null}
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "YouTube imports use public captions, then the video description if captions are unavailable. TikTok imports use the public caption and title.",
+      ),
+    ).toBeVisible();
+  });
+
   it("accepts YouTube or TikTok links and locks every source control while parsing", async () => {
     const user = userEvent.setup();
     render(

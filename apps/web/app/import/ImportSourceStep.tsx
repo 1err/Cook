@@ -85,7 +85,10 @@ export function ImportSourceStep({
             onChange={(event) => update("url", event.target.value)}
             disabled={parsing}
           />
-          <small>YouTube links need captions. TikTok imports use the public caption and title.</small>
+          <small>
+            YouTube imports use public captions, then the video description if captions are unavailable. TikTok
+            imports use the public caption and title.
+          </small>
         </div>
       ) : (
         <div className={styles.field} role="tabpanel">

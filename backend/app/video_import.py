@@ -11,13 +11,21 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 try:
-    from youtube_transcript_api import YouTubeTranscriptApi
-    from youtube_transcript_api._errors import (
+    from youtube_transcript_api import (
+        AgeRestricted,
+        FailedToCreateConsentCookie,
+        IpBlocked,
         NoTranscriptFound,
+        PoTokenRequired,
+        RequestBlocked,
         TranscriptsDisabled,
         VideoUnavailable,
+        VideoUnplayable,
+        YouTubeDataUnparsable,
+        YouTubeRequestFailed,
+        YouTubeTranscriptApi,
     )
-except ModuleNotFoundError:
+except ImportError:
     YouTubeTranscriptApi = None
 
 
@@ -106,27 +114,128 @@ def _failure(source: VideoSource, status: str, message: str) -> VideoTextResult:
     return VideoTextResult(status=status, text="", source=source, message=message)
 
 
+class _RejectRedirects(HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, redirect_url):
+        raise HTTPError(request.full_url, code, message, headers, response)
+
+
+_YOUTUBE_WATCH_OPENER = build_opener(_RejectRedirects())
+
+
+def _open_youtube_watch_page(request: Request, *, timeout: int):
+    return _YOUTUBE_WATCH_OPENER.open(request, timeout=timeout)
+
+
+def _youtube_public_description(source: VideoSource) -> VideoTextResult | None:
+    request = Request(
+        source.canonical_url,
+        headers={
+            "User-Agent": "ChefWorld/1.0",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+    )
+    try:
+        with _open_youtube_watch_page(request, timeout=10) as response:
+            raw = response.read(3_000_001)
+    except (HTTPException, HTTPError, URLError, TimeoutError, OSError):
+        return None
+    if len(raw) > 3_000_000:
+        return None
+    try:
+        page = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+    marker = "var ytInitialPlayerResponse = "
+    start = page.find(marker)
+    if start < 0:
+        return None
+    try:
+        payload, _ = json.JSONDecoder().raw_decode(page[start + len(marker) :])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    playability = payload.get("playabilityStatus")
+    if not isinstance(playability, dict) or playability.get("status") != "OK":
+        return None
+    if not isinstance(payload.get("videoDetails"), dict):
+        return None
+    details = payload["videoDetails"]
+    if details.get("videoId") != source.external_id:
+        return None
+    title = details.get("title") if isinstance(details.get("title"), str) else ""
+    description = (
+        details.get("shortDescription")
+        if isinstance(details.get("shortDescription"), str)
+        else ""
+    )
+    title = title.strip()
+    description = description.strip()
+    if not description:
+        return None
+
+    text = f"Video title: {title}\n\nVideo description:\n{description}" if title else description
+    logger.info(
+        "Video text fetch result provider=%s video_id=%s status=ok source=description text_length=%d",
+        source.provider,
+        source.external_id,
+        len(text),
+    )
+    return VideoTextResult(
+        status="ok",
+        text=text,
+        source=source,
+        title=title or None,
+        thumbnail_url=f"https://img.youtube.com/vi/{source.external_id}/hqdefault.jpg",
+    )
+
+
+def _youtube_description_or_failure(
+    source: VideoSource,
+    status: str,
+    message: str,
+) -> VideoTextResult:
+    return _youtube_public_description(source) or _failure(source, status, message)
+
+
 def fetch_youtube_text(source: VideoSource) -> VideoTextResult:
-    """Fetch a YouTube transcript using the 0.6.3 ``list_transcripts`` API."""
+    """Fetch public YouTube captions, with public description text as a fallback."""
     if YouTubeTranscriptApi is None:
-        return _failure(
+        return _youtube_description_or_failure(
             source,
             "dependency_missing",
             "YouTube transcript support is not available on the server right now.",
         )
     try:
-        tracks = YouTubeTranscriptApi.list_transcripts(source.external_id or "")
+        tracks = YouTubeTranscriptApi().list(source.external_id or "")
+        available_tracks = list(tracks)
         try:
-            track = tracks.find_transcript(["en", "zh", "zh-Hans", "zh-Hant"])
-            candidate_tracks = (track,)
+            preferred_track = tracks.find_transcript(["en", "zh", "zh-Hans", "zh-Hant"])
         except NoTranscriptFound:
-            candidate_tracks = tracks
+            candidate_tracks = available_tracks
+        else:
+            candidate_tracks = [preferred_track]
+            candidate_tracks.extend(
+                track
+                for track in available_tracks
+                if track is not preferred_track
+            )
+        caption_request_failed = False
+        po_token_required = False
         for track in candidate_tracks:
-            snippets = track.fetch()
+            try:
+                snippets = track.fetch()
+            except PoTokenRequired:
+                po_token_required = True
+                continue
+            except YouTubeRequestFailed:
+                caption_request_failed = True
+                continue
             text = " ".join(
-                str(row.get("text", "")).strip()
+                str(getattr(row, "text", "")).strip()
                 for row in snippets
-                if isinstance(row, dict) and str(row.get("text", "")).strip()
+                if str(getattr(row, "text", "")).strip()
             )
             if text:
                 logger.info(
@@ -141,30 +250,71 @@ def fetch_youtube_text(source: VideoSource) -> VideoTextResult:
                     source=source,
                     thumbnail_url=f"https://img.youtube.com/vi/{source.external_id}/hqdefault.jpg",
                 )
-        return _failure(
+        if caption_request_failed:
+            return _youtube_description_or_failure(
+                source,
+                "fetch_failed",
+                "We could not fetch captions from YouTube for this video right now. "
+                "Please try again or paste a transcript.",
+            )
+        if po_token_required:
+            return _youtube_description_or_failure(
+                source,
+                "captions_unavailable",
+                "YouTube did not provide a usable public caption track for this video. "
+                "Paste a transcript instead.",
+            )
+        return _youtube_description_or_failure(
             source,
             "no_transcript",
-            "No usable transcript was found for this YouTube video. Paste a transcript instead.",
+            "No usable public captions or video description were found. Paste a transcript instead.",
         )
     except TranscriptsDisabled:
-        return _failure(
+        return _youtube_description_or_failure(
             source,
-            "captions_disabled",
-            "This YouTube video has captions disabled. Paste a transcript instead.",
+            "captions_unavailable",
+            "No public caption track or usable video description was available. Paste a transcript instead.",
         )
-    except VideoUnavailable:
+    except (VideoUnavailable, VideoUnplayable, AgeRestricted):
         return _failure(
             source,
             "video_unavailable",
-            "This YouTube video is unavailable or private. Try another link or paste a transcript.",
+            "This YouTube video is not publicly accessible to Chef World. "
+            "Check that the link is public or unlisted, or paste a transcript.",
         )
     except NoTranscriptFound:
-        return _failure(
+        return _youtube_description_or_failure(
             source,
             "no_transcript",
-            "No usable transcript was found for this YouTube video. Paste a transcript instead.",
+            "No usable public captions or video description were found. Paste a transcript instead.",
+        )
+    except (IpBlocked, RequestBlocked):
+        return _youtube_description_or_failure(
+            source,
+            "fetch_failed",
+            "YouTube is temporarily blocking caption requests from Chef World. "
+            "The video may still have captions; try again later or paste the transcript.",
+        )
+    except (YouTubeRequestFailed, YouTubeDataUnparsable, FailedToCreateConsentCookie):
+        return _youtube_description_or_failure(
+            source,
+            "fetch_failed",
+            "We could not fetch captions from YouTube for this video right now. "
+            "Please try again or paste a transcript.",
+        )
+    except PoTokenRequired:
+        return _youtube_description_or_failure(
+            source,
+            "captions_unavailable",
+            "YouTube did not provide a usable public caption track for this video. "
+            "Paste a transcript instead.",
         )
     except Exception:
+        logger.exception(
+            "Unexpected YouTube text fetch failure provider=%s video_id=%s",
+            source.provider,
+            source.external_id,
+        )
         return _failure(
             source,
             "fetch_failed",
@@ -193,11 +343,6 @@ def _meaningful_tiktok_text(title: str, author: str) -> str:
     if text.casefold() in {"tiktok", attribution.casefold()}:
         return ""
     return text
-
-
-class _RejectRedirects(HTTPRedirectHandler):
-    def redirect_request(self, request, response, code, message, headers, redirect_url):
-        raise HTTPError(request.full_url, code, message, headers, response)
 
 
 _TIKTOK_OEMBED_OPENER = build_opener(_RejectRedirects())

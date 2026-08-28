@@ -49,11 +49,12 @@ Define one `VideoTextResult` contract with `status`, `text`, `source`, `message`
 
 For YouTube:
 
-1. Use the API exposed by the pinned `youtube-transcript-api` version instead of the incompatible 1.x method currently called against 0.6.3.
+1. Pin `youtube-transcript-api==1.2.4` and use its instance API (`YouTubeTranscriptApi().list(...)`) so current discovery and typed blocking errors are available.
 2. Prefer English and Simplified/Traditional Chinese, then fall back to the first usable transcript track rather than rejecting every other source language.
-3. Join nonempty caption snippets, reject an empty result, and preserve the library's typed outcomes for disabled captions, unavailable/private video, and no transcript.
-4. Run the blocking library call in a worker thread so `/recipes/parse/link` does not block FastAPI's event loop.
-5. Use the canonical video ID for the YouTube thumbnail URL and recipe provenance.
+3. Join nonempty caption snippet objects, reject an empty result, and preserve typed outcomes for unavailable captions, unavailable/private video, server/IP blocking, and no transcript.
+4. When YouTube exposes tracks but blocks the caption file, verify and use the public watch-page title/description as a lower-fidelity fallback; never claim that the video's captions are disabled based on a server-side block.
+5. Run the blocking library and public-page calls in a worker thread so `/recipes/parse/link` does not block FastAPI's event loop.
+6. Use the canonical video ID for the YouTube thumbnail URL and recipe provenance.
 
 For TikTok:
 
@@ -125,7 +126,7 @@ The share module is disabled in Jest through the documented provider option/mock
 ### Backend
 
 - Table-driven URL tests cover every accepted YouTube/TikTok form plus malformed, HTTP, credential-bearing, port-bearing, and lookalike-host rejections.
-- Transcript adapter tests prove the pinned 0.6.3 API is called correctly, language fallback works, snippets join correctly, and each library exception maps to the intended typed result.
+- Transcript adapter tests prove the pinned 1.2.4 instance API is called correctly, snippet objects join correctly, language/track fallback works, public descriptions recover caption-file blocks, and each library exception maps to the intended typed result.
 - TikTok oEmbed tests use complete response fixtures and cover useful caption text, empty/boilerplate text, invalid provider/shape, timeout, and upstream failure.
 - Route tests prove parse is draft-only, canonical provenance/thumbnail fallbacks are applied, explicit title wins, YouTube network work is offloaded, empty TikTok drafts fail, and status codes/messages are stable.
 

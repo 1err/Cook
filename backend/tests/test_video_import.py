@@ -2,14 +2,24 @@ import json
 import socket
 from http.client import IncompleteRead
 from io import BytesIO
+from types import SimpleNamespace
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
 
 import pytest
-from youtube_transcript_api._errors import (
+from requests import HTTPError as RequestsHTTPError
+from youtube_transcript_api import (
+    AgeRestricted,
+    FailedToCreateConsentCookie,
+    IpBlocked,
     NoTranscriptFound,
+    PoTokenRequired,
+    RequestBlocked,
     TranscriptsDisabled,
     VideoUnavailable,
+    VideoUnplayable,
+    YouTubeDataUnparsable,
+    YouTubeRequestFailed,
 )
 
 import app.video_import as video_import
@@ -102,62 +112,88 @@ def test_parse_video_source_rejects_unsafe_or_unsupported_urls(raw):
         parse_video_source(raw)
 
 
-def test_fetch_youtube_text_uses_063_list_transcripts_and_language_fallback(monkeypatch):
-    calls = []
+def _snippet(text: str):
+    return SimpleNamespace(text=text, start=0.0, duration=1.0)
+
+
+def _youtube_watch_opener(*, video_id: str, title: str, description: str):
+    player_response = {
+        "playabilityStatus": {"status": "OK"},
+        "videoDetails": {
+            "videoId": video_id,
+            "title": title,
+            "shortDescription": description,
+        }
+    }
+    raw = (
+        "<html><script>var ytInitialPlayerResponse = "
+        + json.dumps(player_response)
+        + ";</script></html>"
+    ).encode()
+
+    def opener(request, *, timeout: int):
+        assert request.full_url == f"https://www.youtube.com/watch?v={video_id}"
+        assert timeout == 10
+        return _FakeResponse(raw)
+
+    return opener
+
+
+def test_fetch_youtube_text_uses_current_api_and_snippet_objects(monkeypatch):
+    requested_ids = []
 
     class Track:
         language_code = "fr"
 
         def fetch(self):
-            return [{"text": "Coupez les oignons."}, {"text": " Faites-les revenir. "}]
+            return [_snippet("Coupez les oignons."), _snippet(" Faites-les revenir. ")]
 
     class Tracks:
         def find_transcript(self, languages):
-            calls.append(languages)
+            assert languages == ["en", "zh", "zh-Hans", "zh-Hant"]
             raise NoTranscriptFound("id", languages, [])
 
         def __iter__(self):
             return iter([Track()])
 
-    monkeypatch.setattr(
-        video_import.YouTubeTranscriptApi,
-        "list_transcripts",
-        lambda video_id: Tracks(),
-    )
+    class Api:
+        def list(self, video_id):
+            requested_ids.append(video_id)
+            return Tracks()
 
-    result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
 
     assert result.status == "ok"
     assert result.text == "Coupez les oignons. Faites-les revenir."
-    assert calls == [["en", "zh", "zh-Hans", "zh-Hant"]]
+    assert requested_ids == ["A6bByqI_TH8"]
 
 
-def test_fetch_youtube_text_tries_later_fallback_after_empty_track(monkeypatch):
+def test_fetch_youtube_text_tries_remaining_track_after_empty_preferred_track(monkeypatch):
     class Track:
-        def __init__(self, snippets):
-            self.language_code = "fr"
+        def __init__(self, language_code, snippets):
+            self.language_code = language_code
             self._snippets = snippets
 
         def fetch(self):
             return self._snippets
 
+    empty_english = Track("en", [_snippet(" ")])
+    usable_french = Track("fr", [_snippet("Hachez l'ail."), _snippet(" Ajoutez-le. ")])
+
     class Tracks:
         def find_transcript(self, languages):
-            raise NoTranscriptFound("id", languages, [])
+            return empty_english
 
         def __iter__(self):
-            return iter(
-                [
-                    Track([{"text": " "}, {"start": 1.2}]),
-                    Track([{"text": "Hachez l'ail."}, {"text": " Ajoutez-le. "}]),
-                ]
-            )
+            return iter([empty_english, usable_french])
 
-    monkeypatch.setattr(
-        video_import.YouTubeTranscriptApi,
-        "list_transcripts",
-        lambda video_id: Tracks(),
-    )
+    class Api:
+        def list(self, video_id):
+            return Tracks()
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
 
     result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
 
@@ -165,63 +201,374 @@ def test_fetch_youtube_text_tries_later_fallback_after_empty_track(monkeypatch):
     assert result.text == "Hachez l'ail. Ajoutez-le."
 
 
-def test_fetch_youtube_text_maps_terminal_error_from_fallback_track(monkeypatch):
-    class UnavailableTrack:
-        language_code = "fr"
+def test_fetch_youtube_text_tries_generated_track_after_empty_manual_track(monkeypatch):
+    class Track:
+        def __init__(self, snippets):
+            self.language_code = "en"
+            self._snippets = snippets
 
         def fetch(self):
-            raise VideoUnavailable("dQw4w9WgXcQ")
+            return self._snippets
 
-    class UsableTrack:
-        language_code = "de"
-
-        def fetch(self):
-            return [{"text": "This track must not mask the terminal error."}]
+    empty_manual = Track([_snippet(" ")])
+    usable_generated = Track([_snippet("Brown the tofu, then add the eggplant.")])
 
     class Tracks:
         def find_transcript(self, languages):
-            raise NoTranscriptFound("id", languages, [])
+            return empty_manual
 
         def __iter__(self):
-            return iter([UnavailableTrack(), UsableTrack()])
+            return iter([empty_manual, usable_generated])
 
+    class Api:
+        def list(self, video_id):
+            return Tracks()
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
+
+    assert result.status == "ok"
+    assert result.text == "Brown the tofu, then add the eggplant."
+
+
+def test_fetch_youtube_text_tries_remaining_track_after_po_token_failure(monkeypatch):
+    class RestrictedTrack:
+        language_code = "en"
+
+        def fetch(self):
+            raise PoTokenRequired("dQw4w9WgXcQ")
+
+    class UsableTrack:
+        language_code = "zh-Hans"
+
+        def fetch(self):
+            return [_snippet("将豆腐煎至金黄。")]
+
+    class Tracks:
+        def find_transcript(self, languages):
+            return restricted
+
+        def __iter__(self):
+            return iter([restricted, UsableTrack()])
+
+    restricted = RestrictedTrack()
+
+    class Api:
+        def list(self, video_id):
+            return Tracks()
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
+
+    assert result.status == "ok"
+    assert result.text == "将豆腐煎至金黄。"
+
+
+def test_fetch_youtube_text_tries_remaining_track_after_caption_request_failure(monkeypatch):
+    class FailedTrack:
+        language_code = "en"
+
+        def fetch(self):
+            raise YouTubeRequestFailed(
+                "dQw4w9WgXcQ",
+                RequestsHTTPError("caption endpoint returned 503"),
+            )
+
+    class UsableTrack:
+        language_code = "zh-Hans"
+
+        def fetch(self):
+            return [_snippet("将茄子炒软。")]
+
+    failed = FailedTrack()
+
+    class Tracks:
+        def find_transcript(self, languages):
+            return failed
+
+        def __iter__(self):
+            return iter([failed, UsableTrack()])
+
+    class Api:
+        def list(self, video_id):
+            return Tracks()
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
+
+    assert result.status == "ok"
+    assert result.text == "将茄子炒软。"
+
+
+@pytest.mark.parametrize(
+    ("track_error", "expected_status"),
+    [
+        (
+            YouTubeRequestFailed(
+                "dQw4w9WgXcQ",
+                RequestsHTTPError("caption endpoint returned 503"),
+            ),
+            "fetch_failed",
+        ),
+        (PoTokenRequired("dQw4w9WgXcQ"), "captions_unavailable"),
+    ],
+)
+def test_fetch_youtube_text_preserves_terminal_track_failure_after_all_tracks_fail(
+    monkeypatch, track_error, expected_status
+):
+    class FailedTrack:
+        language_code = "en"
+
+        def fetch(self):
+            raise track_error
+
+    failed = FailedTrack()
+
+    class Tracks:
+        def find_transcript(self, languages):
+            return failed
+
+        def __iter__(self):
+            return iter([failed])
+
+    class Api:
+        def list(self, video_id):
+            return Tracks()
+
+    def unavailable_metadata(_request, *, timeout: int):
+        raise URLError("offline")
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
     monkeypatch.setattr(
-        video_import.YouTubeTranscriptApi,
-        "list_transcripts",
-        lambda video_id: Tracks(),
+        video_import,
+        "_open_youtube_watch_page",
+        unavailable_metadata,
     )
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
+
+    assert result.status == expected_status
+    assert result.text == ""
+
+
+def test_fetch_youtube_text_falls_back_to_public_description_when_caption_ip_is_blocked(
+    monkeypatch,
+):
+    class BlockedTrack:
+        language_code = "en"
+
+        def fetch(self):
+            raise IpBlocked("A6bByqI_TH8")
+
+    class Tracks:
+        def find_transcript(self, languages):
+            return BlockedTrack()
+
+        def __iter__(self):
+            return iter([BlockedTrack()])
+
+    class Api:
+        def list(self, video_id):
+            return Tracks()
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_watch_page",
+        _youtube_watch_opener(
+            video_id="A6bByqI_TH8",
+            title="豆腐茄子煲",
+            description="【主料】老豆腐（约400克） 紫皮茄子（1根）【做法】将豆腐煎至金黄。",
+        ),
+        raising=False,
+    )
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
+
+    assert result.status == "ok"
+    assert result.title == "豆腐茄子煲"
+    assert "老豆腐（约400克）" in result.text
+    assert "将豆腐煎至金黄" in result.text
+
+
+def test_fetch_youtube_text_rejects_youtube_watch_redirects(monkeypatch):
+    class Api:
+        def list(self, video_id):
+            raise IpBlocked(video_id)
+
+    class RedirectingOpener:
+        def open(self, request, *, timeout: int):
+            raise HTTPError(
+                request.full_url,
+                302,
+                "Found",
+                {"Location": "http://127.0.0.1/private"},
+                BytesIO(),
+            )
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(
+        video_import,
+        "_YOUTUBE_WATCH_OPENER",
+        RedirectingOpener(),
+        raising=False,
+    )
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
+
+    assert result.status == "fetch_failed"
+    assert result.text == ""
+
+
+@pytest.mark.parametrize(
+    "watch_page",
+    [
+        b"<script>var ytInitialPlayerResponse = {not-json};</script>",
+        b"\xff\xfe\xfd",
+        (
+            b'<script>var ytInitialPlayerResponse = {"videoDetails":'
+            b'{"videoId":"wrongVideo1","title":"Wrong","shortDescription":"Recipe text"}};'
+            b"</script>"
+        ),
+        (
+            b'<script>var ytInitialPlayerResponse = {"playabilityStatus":{"status":"LOGIN_REQUIRED"},'
+            b'"videoDetails":{"videoId":"dQw4w9WgXcQ","title":"Private recipe",'
+            b'"shortDescription":"This account-gated description must not be used."}};'
+            b"</script>"
+        ),
+        (
+            b'<script>var ytInitialPlayerResponse = {"videoDetails":'
+            b'{"videoId":"dQw4w9WgXcQ","title":"No description","shortDescription":"  "}};'
+            b"</script>"
+        ),
+    ],
+)
+def test_youtube_description_fallback_rejects_untrusted_or_malformed_pages(
+    monkeypatch, watch_page
+):
+    class Api:
+        def list(self, video_id):
+            raise IpBlocked(video_id)
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_watch_page",
+        lambda _request, *, timeout: _FakeResponse(watch_page),
+    )
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
+
+    assert result.status == "fetch_failed"
+    assert result.text == ""
+
+
+def test_youtube_description_fallback_caps_watch_page_size(monkeypatch):
+    class Api:
+        def list(self, video_id):
+            raise IpBlocked(video_id)
+
+    response = _FakeResponse(b"x" * 3_000_001)
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_watch_page",
+        lambda _request, *, timeout: response,
+    )
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
+
+    assert result.status == "fetch_failed"
+    assert result.text == ""
+    assert response.read_sizes == [3_000_001]
+
+
+@pytest.mark.parametrize("blocked_error", [IpBlocked, RequestBlocked])
+def test_fetch_youtube_text_reports_server_block_without_blaming_captions(
+    monkeypatch, blocked_error
+):
+    class Api:
+        def list(self, video_id):
+            raise blocked_error(video_id)
+
+    def unavailable_metadata(_request, *, timeout: int):
+        raise URLError("offline")
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_watch_page",
+        unavailable_metadata,
+        raising=False,
+    )
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
+
+    assert result.status == "fetch_failed"
+    assert result.message == (
+        "YouTube is temporarily blocking caption requests from Chef World. "
+        "The video may still have captions; try again later or paste the transcript."
+    )
+    assert "disabled" not in result.message.lower()
+    assert result.text == ""
+
+
+def test_fetch_youtube_text_reports_unavailable_public_text_without_false_disabled_claim(
+    monkeypatch,
+):
+    class Api:
+        def list(self, video_id):
+            raise TranscriptsDisabled(video_id)
+
+    def unavailable_metadata(_request, *, timeout: int):
+        raise URLError("offline")
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_watch_page",
+        unavailable_metadata,
+        raising=False,
+    )
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
+
+    assert result.status == "captions_unavailable"
+    assert result.message == (
+        "No public caption track or usable video description was available. "
+        "Paste a transcript instead."
+    )
+    assert "disabled" not in result.message.lower()
+    assert result.text == ""
+
+
+@pytest.mark.parametrize(
+    "unavailable_error",
+    [
+        VideoUnavailable("dQw4w9WgXcQ"),
+        VideoUnplayable("dQw4w9WgXcQ", "Region restricted", []),
+        AgeRestricted("dQw4w9WgXcQ"),
+    ],
+)
+def test_fetch_youtube_text_reports_video_not_publicly_accessible(
+    monkeypatch, unavailable_error
+):
+    class Api:
+        def list(self, video_id):
+            raise unavailable_error
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
 
     result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
 
     assert result.status == "video_unavailable"
-    assert result.text == ""
-
-
-def test_fetch_youtube_text_reports_disabled_captions(monkeypatch):
-    monkeypatch.setattr(
-        video_import.YouTubeTranscriptApi,
-        "list_transcripts",
-        lambda video_id: (_ for _ in ()).throw(TranscriptsDisabled("dQw4w9WgXcQ")),
+    assert result.message == (
+        "This YouTube video is not publicly accessible to Chef World. "
+        "Check that the link is public or unlisted, or paste a transcript."
     )
-
-    result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
-
-    assert result.status == "captions_disabled"
-    assert result.message == "This YouTube video has captions disabled. Paste a transcript instead."
-    assert result.text == ""
-
-
-def test_fetch_youtube_text_reports_unavailable_video(monkeypatch):
-    monkeypatch.setattr(
-        video_import.YouTubeTranscriptApi,
-        "list_transcripts",
-        lambda video_id: (_ for _ in ()).throw(VideoUnavailable("dQw4w9WgXcQ")),
-    )
-
-    result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
-
-    assert result.status == "video_unavailable"
-    assert result.message == "This YouTube video is unavailable or private. Try another link or paste a transcript."
     assert result.text == ""
 
 
@@ -233,39 +580,72 @@ def test_fetch_youtube_text_reports_missing_tracks(monkeypatch):
         def __iter__(self):
             return iter(())
 
-    monkeypatch.setattr(video_import.YouTubeTranscriptApi, "list_transcripts", lambda video_id: Tracks())
+    class Api:
+        def list(self, video_id):
+            return Tracks()
+
+    def unavailable_metadata(_request, *, timeout: int):
+        raise URLError("offline")
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_watch_page",
+        unavailable_metadata,
+        raising=False,
+    )
 
     result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
 
     assert result.status == "no_transcript"
-    assert result.message == "No usable transcript was found for this YouTube video. Paste a transcript instead."
+    assert result.message == (
+        "No usable public captions or video description were found. "
+        "Paste a transcript instead."
+    )
     assert result.text == ""
 
 
 def test_fetch_youtube_text_reports_empty_snippets(monkeypatch):
     class Track:
+        language_code = "en"
+
         def fetch(self):
-            return [{"text": " "}, {"start": 1.2}, "not-a-snippet"]
+            return [_snippet(" "), SimpleNamespace(start=1.2, duration=1.0), "not-a-snippet"]
 
     class Tracks:
         def find_transcript(self, languages):
             return Track()
 
-    monkeypatch.setattr(video_import.YouTubeTranscriptApi, "list_transcripts", lambda video_id: Tracks())
+        def __iter__(self):
+            return iter([Track()])
+
+    class Api:
+        def list(self, video_id):
+            return Tracks()
+
+    def unavailable_metadata(_request, *, timeout: int):
+        raise URLError("offline")
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_watch_page",
+        unavailable_metadata,
+        raising=False,
+    )
 
     result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
 
     assert result.status == "no_transcript"
-    assert result.message == "No usable transcript was found for this YouTube video. Paste a transcript instead."
     assert result.text == ""
 
 
 def test_fetch_youtube_text_reports_unexpected_failures(monkeypatch):
-    monkeypatch.setattr(
-        video_import.YouTubeTranscriptApi,
-        "list_transcripts",
-        lambda video_id: (_ for _ in ()).throw(RuntimeError("network unavailable")),
-    )
+    class Api:
+        def list(self, video_id):
+            raise RuntimeError("network unavailable")
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
 
     result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
 
@@ -274,8 +654,69 @@ def test_fetch_youtube_text_reports_unexpected_failures(monkeypatch):
     assert result.text == ""
 
 
-def test_fetch_youtube_text_reports_missing_dependency(monkeypatch):
+@pytest.mark.parametrize(
+    "retrieval_error",
+    [
+        YouTubeDataUnparsable("A6bByqI_TH8"),
+        FailedToCreateConsentCookie("A6bByqI_TH8"),
+        YouTubeRequestFailed(
+            "A6bByqI_TH8",
+            RequestsHTTPError("caption endpoint returned 503"),
+        ),
+    ],
+)
+def test_fetch_youtube_text_uses_public_description_after_typed_retrieval_failure(
+    monkeypatch, retrieval_error
+):
+    class Api:
+        def list(self, video_id):
+            raise retrieval_error
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_watch_page",
+        _youtube_watch_opener(
+            video_id="A6bByqI_TH8",
+            title="豆腐茄子煲",
+            description="【主料】老豆腐（约400克）【做法】煎至金黄。",
+        ),
+    )
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
+
+    assert result.status == "ok"
+    assert "老豆腐（约400克）" in result.text
+
+
+def test_fetch_youtube_text_uses_public_description_when_dependency_is_missing(monkeypatch):
     monkeypatch.setattr(video_import, "YouTubeTranscriptApi", None)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_watch_page",
+        _youtube_watch_opener(
+            video_id="A6bByqI_TH8",
+            title="豆腐茄子煲",
+            description="【主料】老豆腐（约400克）【做法】煎至金黄。",
+        ),
+    )
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
+
+    assert result.status == "ok"
+    assert "老豆腐（约400克）" in result.text
+
+
+def test_fetch_youtube_text_reports_missing_dependency(monkeypatch):
+    def unavailable_metadata(_request, *, timeout: int):
+        raise URLError("offline")
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", None)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_watch_page",
+        unavailable_metadata,
+    )
 
     result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
 
@@ -457,13 +898,20 @@ def test_fetch_tiktok_text_classifies_upstream_failures(failure, expected_status
 def test_legacy_transcript_fetch_wrapper_exposes_compatibility_attributes(monkeypatch):
     class Track:
         def fetch(self):
-            return [{"text": "Whisk the eggs."}]
+            return [_snippet("Whisk the eggs.")]
 
     class Tracks:
         def find_transcript(self, languages):
             return Track()
 
-    monkeypatch.setattr(video_import.YouTubeTranscriptApi, "list_transcripts", lambda video_id: Tracks())
+        def __iter__(self):
+            return iter([Track()])
+
+    class Api:
+        def list(self, video_id):
+            return Tracks()
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
 
     result = fetch_transcript_from_video_link("https://youtu.be/dQw4w9WgXcQ")
 

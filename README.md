@@ -81,12 +81,12 @@ Video-link import does not download audiovisual media. It sends provider-exposed
 
 | Provider | Text used | Current limitations |
 |----------|-----------|---------------------|
-| YouTube | Caption tracks from [`youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api), preferring English or Chinese and falling back to another available track | Captions must exist and be publicly available. Private, age-restricted, region-locked, unavailable, or captions-disabled videos may fail. |
+| YouTube | Public caption tracks from [`youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api), preferring English or Chinese and falling back to another available track; public title/description text is used when YouTube blocks the caption file | Description fallback can be less detailed than captions. Private, age-restricted, region-locked, or unavailable videos may still fail. |
 | TikTok | Public post title/caption returned by TikTok's oEmbed endpoint | This does **not** transcribe the video's speech. Sparse, attribution-only, private, or unavailable posts may not contain enough recipe detail. Arbitrary TikTok speech transcription needs a future provider. |
 
 - **Supported links:** Use public HTTPS YouTube or TikTok video URLs. RedNote and uploaded video files are not supported.
 - **Env:** Create a `backend/.env` file (see `.env.example`). Set `OPENAI_API_KEY=sk-...` for real recipe extraction; without it, the app still runs and uses stub extraction.
-- **Fallback:** When provider text is unavailable or too sparse, paste the recipe or transcript manually. Manual URL entry remains the Share Sheet fallback and the supported Android path.
+- **Fallback:** When caption retrieval is blocked, YouTube import first tries the public video description. When provider text is still unavailable or too sparse, paste the recipe or transcript manually. Manual URL entry remains the Share Sheet fallback and the supported Android path.
 
 ### iOS Share Sheet
 
