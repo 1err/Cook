@@ -48,6 +48,52 @@
   color: var(--cw-color-on-action);
 }
 
+.moreActions {
+  position: relative;
+}
+
+.moreActions summary {
+  display: inline-flex;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-surface);
+  color: var(--cw-color-ink);
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 750;
+  list-style: none;
+}
+
+.moreActions summary::-webkit-details-marker {
+  display: none;
+}
+
+.moreActionsMenu {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 5;
+  min-width: 9rem;
+  padding: 0.35rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-surface);
+  box-shadow: 0 14px 36px rgba(44, 36, 31, 0.16);
+}
+
+.actions .moreActionsMenu button {
+  width: 100%;
+  justify-content: flex-start;
+  border: 0;
+  color: var(--cw-color-error);
+  white-space: nowrap;
+}
+
 .cookAction {
   position: relative;
   display: inline-flex;

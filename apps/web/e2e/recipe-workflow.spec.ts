@@ -121,6 +121,10 @@ test("presents recipe editing as one clear, functional workflow", async ({ page 
   await expect(page.locator("details").filter({ hasText: "Equipment" })).not.toHaveAttribute("open", "");
   await expect(page.locator("details").filter({ hasText: "Tags" })).not.toHaveAttribute("open", "");
 
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect(page.getByRole("button", { name: "Save" })).toBeInViewport();
+  await page.evaluate(() => window.scrollTo(0, 0));
+
   if (testInfo.project.name === "desktop") {
     await expect(page).toHaveScreenshot("recipe-edit.png", {
       animations: "disabled",

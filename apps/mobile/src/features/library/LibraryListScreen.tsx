@@ -4,6 +4,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -13,9 +14,14 @@ import { Ionicons } from "@expo/vector-icons";
 import type { CompositeScreenProps } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
-import type { Recipe } from "@cooking/shared";
+import {
+  getRecipeTags,
+  LIBRARY_FILTER_CHIPS,
+  type LibraryFilterId,
+  type Recipe,
+} from "@cooking/shared";
 import { useApiClient } from "../../lib/api";
-import { Button, EmptyState } from "../../components";
+import { Button, EmptyState, TextField } from "../../components";
 import { haptics } from "../../lib/haptics";
 import { resolveImageUrl } from "../../lib/imageUrl";
 import { colors, radii, spacing, typography } from "../../theme";
@@ -45,6 +51,8 @@ export function LibraryListScreen({ navigation }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [tagFilter, setTagFilter] = useState<LibraryFilterId>("all");
 
   const load = useCallback(
     async (mode: "initial" | "refresh") => {
@@ -92,6 +100,17 @@ export function LibraryListScreen({ navigation }: Props) {
     return ids;
   }, [recipes]);
 
+  const sourceRecipes = view === "mine" ? recipes : publicRecipes;
+  const data = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return sourceRecipes.filter((recipe) => {
+      const matchesTitle = !query || recipe.title.toLocaleLowerCase().includes(query);
+      const matchesTag = tagFilter === "all" || getRecipeTags(recipe).includes(tagFilter);
+      return matchesTitle && matchesTag;
+    });
+  }, [search, sourceRecipes, tagFilter]);
+  const hasFilters = search.trim().length > 0 || tagFilter !== "all";
+
   const handleCopy = useCallback(
     async (recipeId: string) => {
       setCopyingId(recipeId);
@@ -126,22 +145,56 @@ export function LibraryListScreen({ navigation }: Props) {
     );
   }
 
-  const data = view === "mine" ? recipes : publicRecipes;
-
   return (
     <FlatList
       data={data}
       keyExtractor={(item) => item.id}
       contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={data.length === 0 ? styles.emptyContent : styles.listContent}
+      contentContainerStyle={styles.listContent}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={() => void load("refresh")} tintColor={colors.primary} />
       }
       ItemSeparatorComponent={() => <View style={styles.separator} />}
       ListHeaderComponent={
-        <View style={styles.segmentRow}>
-          <SegmentPill label="My Library" active={view === "mine"} onPress={() => setView("mine")} />
-          <SegmentPill label="Public Library" active={view === "catalog"} onPress={() => setView("catalog")} />
+        <View style={styles.listHeader}>
+          <View style={styles.segmentRow}>
+            <SegmentPill label="My Library" active={view === "mine"} onPress={() => setView("mine")} />
+            <SegmentPill label="Public Library" active={view === "catalog"} onPress={() => setView("catalog")} />
+          </View>
+          <TextField
+            accessibilityLabel="Search recipes"
+            placeholder="Search recipes"
+            value={search}
+            onChangeText={setSearch}
+            leadingIcon="search"
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+          >
+            {LIBRARY_FILTER_CHIPS.map((item) => {
+              const active = item.id === tagFilter;
+              return (
+                <Pressable
+                  key={item.id}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={item.label}
+                  onPress={() => setTagFilter(item.id)}
+                  style={({ pressed }) => [
+                    styles.filterChip,
+                    active && styles.filterChipActive,
+                    pressed && styles.filterChipPressed,
+                  ]}
+                >
+                  <Text style={[styles.filterLabel, active && styles.filterLabelActive]}>{item.label}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
         </View>
       }
       ListEmptyComponent={
@@ -152,6 +205,12 @@ export function LibraryListScreen({ navigation }: Props) {
             description={error}
             actionLabel="Try again"
             onAction={() => void load("initial")}
+          />
+        ) : hasFilters ? (
+          <EmptyState
+            icon="search-outline"
+            title="No matching recipes"
+            description="Try another title or tag."
           />
         ) : view === "mine" ? (
           <EmptyState
@@ -243,8 +302,8 @@ function SegmentPill({ label, active, onPress }: { label: string; active: boolea
 const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
   listContent: { paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
-  emptyContent: { flexGrow: 1, justifyContent: "center", paddingHorizontal: spacing.lg },
   separator: { height: spacing.sm },
+  listHeader: { marginBottom: spacing.md },
   segmentRow: {
     flexDirection: "row",
     backgroundColor: colors.surfaceContainerLow,
@@ -254,6 +313,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.divider,
   },
+  filterRow: { gap: spacing.sm, paddingRight: spacing.lg },
+  filterChip: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.full,
+    backgroundColor: colors.surfaceContainer,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  filterChipActive: { backgroundColor: colors.primaryFixed, borderColor: colors.primary },
+  filterChipPressed: { opacity: 0.82 },
+  filterLabel: { ...typography.subhead, color: colors.onSurfaceVariant },
+  filterLabelActive: { color: colors.onPrimaryFixed, fontWeight: "600" },
   segment: {
     flex: 1,
     paddingVertical: spacing.sm,

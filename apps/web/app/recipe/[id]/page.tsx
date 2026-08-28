@@ -74,10 +74,15 @@ function RecipeDetailContent() {
           <div className={styles.actions}>
             <RecipeCookAction recipe={recipe} />
             <Link href="/planner">{t("recipe.mealPlanner")}</Link>
-            <Link href={`/library/${id}`} className={styles.primaryAction}>{t("common.edit")}</Link>
-            <button type="button" onClick={handleDelete} disabled={deleting}>
-              {deleting ? t("recipe.deleting") : t("common.delete")}
-            </button>
+            <Link href={`/library/${id}`}>{t("common.edit")}</Link>
+            <details className={styles.moreActions}>
+              <summary aria-label={t("common.moreActions")}>•••</summary>
+              <div className={styles.moreActionsMenu}>
+                <button type="button" onClick={handleDelete} disabled={deleting}>
+                  {deleting ? t("recipe.deleting") : t("common.delete")}
+                </button>
+              </div>
+            </details>
           </div>
         </div>
 

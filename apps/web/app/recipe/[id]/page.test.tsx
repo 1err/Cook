@@ -1,4 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import RecipeDetailPage from "./page";
@@ -12,6 +13,7 @@ const { mockActive, mockApiFetch, mockPush, translate } = vi.hoisted(() => ({
       "common.delete": "Delete",
       "common.edit": "Edit",
       "common.ingredients": "Ingredients",
+      "common.moreActions": "More actions",
       "nav.library": "Library",
       "recipe.mealPlanner": "Meal planner",
       "recipe.originalVideo": "Original video",
@@ -61,6 +63,20 @@ beforeEach(() => {
       image_url: null,
     }],
   }), { status: 200, headers: { "Content-Type": "application/json" } }));
+});
+
+it("keeps destructive actions behind an explicit overflow control", async () => {
+  const user = userEvent.setup();
+  render(<RecipeDetailPage />);
+
+  expect(await screen.findByRole("heading", { name: "Tomato noodles" })).toBeVisible();
+  const disclosure = screen.getByLabelText("More actions");
+  const menu = disclosure.closest("details");
+  expect(menu).not.toHaveAttribute("open");
+  expect(within(menu!).getByRole("button", { name: "Delete" })).toBeInTheDocument();
+
+  await user.click(disclosure);
+  expect(menu).toHaveAttribute("open");
 });
 
 afterEach(cleanup);

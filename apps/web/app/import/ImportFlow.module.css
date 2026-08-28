@@ -198,6 +198,10 @@
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1.75rem;
+  position: sticky;
+  top: var(--app-header-height);
+  z-index: 20;
+  background: var(--cw-color-canvas);
 }
 
 .reviewHeader h1 {

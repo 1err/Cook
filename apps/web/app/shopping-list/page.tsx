@@ -739,6 +739,7 @@ function ShoppingListPageContent() {
   const weekRangeLabel = formatWeekRangeDisplay(start, end);
   const hasPlannedMeals = planRows.length > 0;
   const canPrepareSmart = items.length > 0 && !refining;
+  const hasOpenProductPanel = Object.values(openProductsByIngredient).some(Boolean);
 
   const orderedCategories = [...SHOPPING_PRIMARY_CATEGORIES, ...SHOPPING_SECONDARY_CATEGORIES];
 
@@ -778,7 +779,7 @@ function ShoppingListPageContent() {
             onLoadProducts={() => void handleLoadAllProducts()}
           />
 
-          <div className={styles.categoryGrid}>
+          <div className={`${styles.categoryGrid}${hasOpenProductPanel ? ` ${styles.categoryGridExpanded}` : ""}`}>
             {orderedCategories.map((category) => {
               const rows = purchaseByCategory.get(category);
               if (!rows?.length) return null;

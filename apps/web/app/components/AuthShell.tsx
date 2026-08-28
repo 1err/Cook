@@ -42,6 +42,17 @@ export function AuthShell({
           <LanguageControl compact />
         </div>
         <div className="auth-panel__inner">
+          <div aria-label="Chef World" className="auth-panel__brand">
+            <img
+              alt=""
+              aria-hidden="true"
+              className="auth-panel__mark"
+              height="36"
+              src="/brand/chef-world-mark.svg"
+              width="36"
+            />
+            <span>Chef World</span>
+          </div>
           <header style={{ marginBottom: "2.25rem" }}>
             <h1 className="cw-display" style={{ fontSize: "clamp(2rem, 4vw, 2.75rem)", fontWeight: 600, letterSpacing: "-0.035em", margin: 0, color: "var(--cw-color-ink)" }}>
               {title}

@@ -1967,6 +1967,30 @@ button:disabled {
   max-width: 420px;
 }
 
+.auth-panel__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  margin-bottom: var(--space-32);
+  color: var(--cw-color-ink);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 1.125rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.auth-panel__mark {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+
+@media (min-width: 1024px) {
+  .auth-panel__brand {
+    display: none;
+  }
+}
+
 .recipe-card-hover {
   transition: box-shadow 0.25s ease, transform 0.25s ease;
 }

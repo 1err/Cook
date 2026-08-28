@@ -27,7 +27,7 @@ export function LibraryStack() {
             <CoreHeaderActions
               before={
                 <IconButton
-                  icon="search"
+                  icon="people-outline"
                   accessibilityLabel={t("nav.findFriend")}
                   onPress={() => navigation.navigate("FriendSearch")}
                 />

@@ -1,10 +1,10 @@
 import type { TextStyle } from "react-native";
 
 export const typography = {
-  largeTitle: { fontSize: 34, fontFamily: "SourceSerif4_600SemiBold", letterSpacing: 0.2 },
-  title1: { fontSize: 28, fontFamily: "SourceSerif4_600SemiBold", letterSpacing: 0.1 },
+  largeTitle: { fontSize: 34, fontFamily: "Inter_700Bold", letterSpacing: -0.4 },
+  title1: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.3 },
   recipeTitle: { fontSize: 28, fontFamily: "SourceSerif4_600SemiBold", letterSpacing: 0.1 },
-  title2: { fontSize: 22, fontFamily: "SourceSerif4_600SemiBold" },
+  title2: { fontSize: 22, fontFamily: "Inter_600SemiBold" },
   title3: { fontSize: 20, fontFamily: "Inter_600SemiBold" },
   headline: { fontSize: 17, fontFamily: "Inter_600SemiBold" },
   body: { fontSize: 17, fontFamily: "Inter_400Regular" },

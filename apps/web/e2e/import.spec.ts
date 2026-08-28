@@ -124,6 +124,10 @@ test("imports a TikTok link, then saves the streamlined Review draft", async ({ 
   );
   await expect(page.getByLabel("Step 1 illustration")).toHaveValue("simmer");
 
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect(page.getByRole("button", { name: "Save recipe" })).toBeInViewport();
+  await page.evaluate(() => window.scrollTo(0, 0));
+
   await page.getByLabel("Step 1 minutes").fill("9");
   await page.getByRole("button", { name: "Hands-on" }).first().click();
   await page.getByLabel("Step 1 illustration").selectOption("boil");

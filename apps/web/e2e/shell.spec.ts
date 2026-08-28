@@ -41,7 +41,10 @@ test("renders an accessible responsive authenticated shell", async ({ page }, te
     await expect(navigationMenu).toBeHidden();
   } else {
     await expect(navigationMenu).toBeVisible();
+    const closedHeaderHeight = await page.locator("header").evaluate((header) => header.getBoundingClientRect().height);
     await navigationMenu.click();
+    const openHeaderHeight = await page.locator("header").evaluate((header) => header.getBoundingClientRect().height);
+    expect(Math.abs(openHeaderHeight - closedHeaderHeight)).toBeLessThanOrEqual(1);
   }
   await expect(page.getByRole("link", { name: "Library" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Planner" })).toBeVisible();
