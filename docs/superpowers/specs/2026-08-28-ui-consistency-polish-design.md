@@ -12,8 +12,8 @@ Polish the current web and mobile interfaces without starting another redesign. 
 
 1. Use Inter for product/navigation headings on both platforms. Keep Source Serif 4 only for recipe-specific editorial titles.
 2. Keep the web authentication hero on desktop, and add a compact Chef World brand lockup to the mobile/tablet auth panel where the hero is hidden.
-3. Give the mobile Library real recipe title search and a single-select tag filter. Change the friend-search icon from a generic magnifier to a people icon.
-4. When any desktop Shopping product panel is open, switch category layout to one full-width column so the product choices use available width. Preserve the current two-column compact checklist when all panels are closed.
+3. Keep the mobile Library focused on the original My/Public collection list without an inline search-and-tag toolbar. Keep the clearer people icon for friend search.
+4. Preserve the original two-column desktop Shopping categories even while a product panel is open. Keep product choices stacked vertically inside their category and retain the single-column phone layout.
 5. Render responsive web navigation as an anchored overlay so opening it does not increase header height or push page content.
 6. Keep Save/Cancel reachable while scrolling long web recipe-edit and import-review forms.
 7. Keep Start/Open Cook as the recipe-detail primary action, Edit and Planner as secondary actions, and move Delete into a clearly labelled overflow menu.

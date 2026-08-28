@@ -1,5 +1,7 @@
 # Chef World UI Consistency Polish Implementation Plan
 
+> **Revision — 2026-08-28:** The user restored the original native Library list (no inline search/tag toolbar) and the original two-column desktop Shopping categories (including while products are open). Tasks 2 and 3 below remain as implementation history and are superseded by this revision.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Apply the approved cross-platform UI polish without changing product or backend behavior.
@@ -15,8 +17,8 @@
 - No backend, API-contract, scraper, cache, meal-plan, or import-parser changes.
 - Inter is the product/navigation heading family; Source Serif 4 remains only for recipe-specific editorial titles.
 - Web responsive navigation must overlay content instead of changing header height.
-- Mobile Library filtering is title search plus one selected recipe tag.
-- Shopping retains two compact columns when no products are open and one full-width column when any product panel is open.
+- Mobile Library uses the original My/Public collection list without an inline search/tag toolbar.
+- Shopping retains two compact desktop columns whether product panels are closed or open, and one column on phones.
 - Existing English/Chinese, accessibility, and touch-target behavior must remain intact.
 
 ---

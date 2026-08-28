@@ -350,10 +350,6 @@
   column-gap: 1.25rem;
 }
 
-.categoryGridExpanded {
-  columns: 1;
-}
-
 .categoryGrid > section {
   width: 100%;
   margin-bottom: 1.25rem;

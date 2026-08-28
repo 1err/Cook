@@ -172,10 +172,17 @@ test("keeps preparation in context and renders smart groceries without horizonta
   await produceSection.getByRole("button", { name: "View products" }).click();
   await expect(produceSection.getByTestId("store-product-row")).toHaveCount(3);
   const expandedLayout = await produceSection.evaluate((section) => ({
+    columnCount: getComputedStyle(section.parentElement!).columnCount,
     gridWidth: section.parentElement?.getBoundingClientRect().width ?? 0,
     sectionWidth: section.getBoundingClientRect().width,
   }));
-  expect(expandedLayout.sectionWidth).toBeGreaterThan(expandedLayout.gridWidth * 0.9);
+  if (testInfo.project.name !== "desktop") {
+    expect(expandedLayout.columnCount).toBe("1");
+    expect(expandedLayout.sectionWidth).toBeGreaterThan(expandedLayout.gridWidth * 0.9);
+  } else {
+    expect(expandedLayout.columnCount).toBe("2");
+    expect(expandedLayout.sectionWidth).toBeLessThan(expandedLayout.gridWidth * 0.7);
+  }
   const productRows = produceSection.getByTestId("store-product-row");
   const verticalRows = await productRows.evaluateAll((rows) => rows.map((row) => {
     const rect = row.getBoundingClientRect();

@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, userEvent, waitFor } from "@testing-library/react-native";
+import { render, screen, waitFor } from "@testing-library/react-native";
 import { LibraryListScreen } from "./LibraryListScreen";
 
 const recipes = [
@@ -13,14 +13,6 @@ const recipes = [
       { name: "Tomato", quantity: "2" },
       { name: "Egg", quantity: "3" },
     ],
-  },
-  {
-    id: "recipe-2",
-    title: "Slow tofu stew",
-    thumbnail_url: null,
-    total_time_minutes: 70,
-    library_tags: ["korean", "slow-cooked"],
-    ingredients: [{ name: "Tofu", quantity: "1 block" }],
   },
 ];
 
@@ -56,8 +48,7 @@ test("shows useful recipe metadata instead of ingredient counts", async () => {
   expect(screen.queryByText(/2 ingredients/i)).not.toBeOnTheScreen();
 });
 
-test("filters recipes by title and a selected tag", async () => {
-  const user = userEvent.setup();
+test("keeps the library list focused on collection browsing", async () => {
   await render(
     <LibraryListScreen
       navigation={{
@@ -69,14 +60,7 @@ test("filters recipes by title and a selected tag", async () => {
   );
 
   await waitFor(() => expect(screen.getByText("Tomato egg stir-fry")).toBeOnTheScreen());
-
-  const search = screen.getByLabelText("Search recipes");
-  await user.type(search, "tofu");
-  await waitFor(() => expect(screen.queryByText("Tomato egg stir-fry")).not.toBeOnTheScreen());
-  expect(screen.getByText("Slow tofu stew")).toBeOnTheScreen();
-
-  await user.clear(search);
-  await user.press(screen.getByRole("button", { name: "Weeknight" }));
-  await waitFor(() => expect(screen.queryByText("Slow tofu stew")).not.toBeOnTheScreen());
-  expect(screen.getByText("Tomato egg stir-fry")).toBeOnTheScreen();
+  expect(screen.getByRole("button", { name: "My Library" })).toBeOnTheScreen();
+  expect(screen.getByRole("button", { name: "Public Library" })).toBeOnTheScreen();
+  expect(screen.queryByLabelText("Search recipes")).not.toBeOnTheScreen();
 });
