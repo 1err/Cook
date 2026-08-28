@@ -111,7 +111,13 @@ test("optimistically applies a step action and accepts the canonical response", 
   expect(mockAction).toHaveBeenCalledWith(
     "session-1",
     "step-1",
-    expect.objectContaining({ action: "complete", expected_revision: 2 }),
+    expect.objectContaining({
+      action: "complete",
+      expected_revision: 2,
+      mutation_id: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      ),
+    }),
   );
   expect(result.current.session).toEqual(canonical);
 });

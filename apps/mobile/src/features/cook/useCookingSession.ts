@@ -4,6 +4,7 @@ import { AppState } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import {
   applyOptimisticCookingAction,
+  createUuid,
   defaultCookingSessionPreferences,
   enqueueCookingAction,
   removeQueuedCookingAction,
@@ -236,7 +237,7 @@ export function useCookingSession(userId: string | null = null): MobileCookingSe
     if (!step) return;
     const payload: CookingActionPayload = {
       action,
-      mutation_id: randomId(),
+      mutation_id: createUuid(),
       device_id: await getDeviceId(),
       occurred_at: new Date().toISOString(),
       expected_revision: step.revision,

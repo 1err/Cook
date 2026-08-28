@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   applyOptimisticCookingAction,
+  createUuid,
   defaultCookingSessionPreferences,
   enqueueCookingAction,
   removeQueuedCookingAction,
@@ -235,7 +236,7 @@ export function useCookingSession(userId: string | null = null): CookingSessionC
       if (!step) return;
       const payload: CookingActionPayload = {
         action,
-        mutation_id: randomId(),
+        mutation_id: createUuid(),
         device_id: getDeviceId(),
         occurred_at: new Date().toISOString(),
         expected_revision: step.revision,

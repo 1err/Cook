@@ -9,4 +9,5 @@ export * from "./recipeTags";
 export * from "./recipeTutorial";
 export * from "./cookingSession";
 export * from "./cookingSessionQueue";
+export * from "./uuid";
 export { formatStepDuration } from "./formatStepDuration";
