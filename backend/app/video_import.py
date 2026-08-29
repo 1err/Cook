@@ -5,6 +5,7 @@ from http.client import HTTPException
 import json
 import logging
 import re
+from time import monotonic
 from typing import Literal
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -124,9 +125,16 @@ class _RejectRedirects(HTTPRedirectHandler):
 
 
 _YOUTUBE_WATCH_OPENER = build_opener(_RejectRedirects())
+_YOUTUBE_DIRECT_PLAYER_OPENER = build_opener(_RejectRedirects())
+_YOUTUBE_READER_OPENER = build_opener(_RejectRedirects())
 _YOUTUBE_PLAYER_RESPONSE_MAX_BYTES = 3_000_000
+_YOUTUBE_READER_RESPONSE_MAX_BYTES = 1_000_000
 _YOUTUBE_TITLE_MAX_CHARS = 500
 _YOUTUBE_DESCRIPTION_MAX_CHARS = 100_000
+_YOUTUBE_FALLBACK_BUDGET_SECONDS = 30.0
+_YOUTUBE_WATCH_TIMEOUT_SECONDS = 10.0
+_YOUTUBE_DIRECT_PLAYER_TIMEOUT_SECONDS = 10.0
+_YOUTUBE_READER_TIMEOUT_SECONDS = 20.0
 
 
 if Session is not None:
@@ -144,8 +152,44 @@ class _YouTubePlayerMetadata:
     description: str = ""
 
 
-def _open_youtube_watch_page(request: Request, *, timeout: int):
+def _open_youtube_watch_page(request: Request, *, timeout: float):
     return _YOUTUBE_WATCH_OPENER.open(request, timeout=timeout)
+
+
+def _open_youtube_direct_player(request: Request, *, timeout: float):
+    return _YOUTUBE_DIRECT_PLAYER_OPENER.open(request, timeout=timeout)
+
+
+def _open_youtube_reader(request: Request, *, timeout: float):
+    return _YOUTUBE_READER_OPENER.open(request, timeout=timeout)
+
+
+def _youtube_fallback_deadline(deadline: float | None) -> float:
+    if deadline is not None:
+        return deadline
+    return monotonic() + _YOUTUBE_FALLBACK_BUDGET_SECONDS
+
+
+def _youtube_fallback_timeout(deadline: float, maximum: float) -> float | None:
+    remaining = deadline - monotonic()
+    if remaining <= 0:
+        return None
+    return min(maximum, remaining)
+
+
+def _log_youtube_fallback_rejection(
+    source: VideoSource,
+    *,
+    stage: str,
+    reason: str,
+) -> None:
+    logger.warning(
+        "YouTube %s fallback rejected provider=%s video_id=%s reason=%s",
+        stage,
+        source.provider,
+        source.external_id,
+        reason,
+    )
 
 
 def _youtube_metadata_from_player_payload(
@@ -240,7 +284,12 @@ def _capture_youtube_player_metadata(source: VideoSource, metadata: _YouTubePlay
     return capture
 
 
-def _youtube_public_description(source: VideoSource) -> VideoTextResult | None:
+def _youtube_public_description(
+    source: VideoSource,
+    *,
+    deadline: float | None = None,
+) -> VideoTextResult | None:
+    deadline = _youtube_fallback_deadline(deadline)
     request = Request(
         source.canonical_url,
         headers={
@@ -249,33 +298,268 @@ def _youtube_public_description(source: VideoSource) -> VideoTextResult | None:
         },
     )
     try:
-        with _open_youtube_watch_page(request, timeout=10) as response:
+        timeout = _youtube_fallback_timeout(
+            deadline,
+            _YOUTUBE_WATCH_TIMEOUT_SECONDS,
+        )
+        if timeout is None:
+            return None
+        with _open_youtube_watch_page(request, timeout=timeout) as response:
+            if _youtube_fallback_timeout(deadline, timeout) is None:
+                return None
             raw = response.read(3_000_001)
-    except (HTTPException, HTTPError, URLError, TimeoutError, OSError):
-        return None
-    if len(raw) > 3_000_000:
-        return None
-    try:
+        if len(raw) > 3_000_000:
+            _log_youtube_fallback_rejection(
+                source,
+                stage="watch",
+                reason="response_too_large",
+            )
+            return None
         page = raw.decode("utf-8")
-    except UnicodeDecodeError:
+        marker = "var ytInitialPlayerResponse = "
+        start = page.find(marker)
+        if start < 0:
+            _log_youtube_fallback_rejection(
+                source,
+                stage="watch",
+                reason="player_payload_missing",
+            )
+            return None
+        payload, _ = json.JSONDecoder().raw_decode(page[start + len(marker) :])
+        metadata = _youtube_metadata_from_player_payload(source, payload)
+        if metadata is None:
+            _log_youtube_fallback_rejection(
+                source,
+                stage="watch",
+                reason="metadata_invalid",
+            )
+            return None
+        return _youtube_description_result(
+            source,
+            *metadata,
+            origin="watch_description",
+        )
+    except Exception as exc:
+        logger.warning(
+            "YouTube watch fallback failed provider=%s video_id=%s error_type=%s",
+            source.provider,
+            source.external_id,
+            type(exc).__name__,
+        )
         return None
 
-    marker = "var ytInitialPlayerResponse = "
-    start = page.find(marker)
-    if start < 0:
-        return None
-    try:
-        payload, _ = json.JSONDecoder().raw_decode(page[start + len(marker) :])
-    except json.JSONDecodeError:
-        return None
-    metadata = _youtube_metadata_from_player_payload(source, payload)
-    if metadata is None:
-        return None
-    return _youtube_description_result(
-        source,
-        *metadata,
-        origin="watch_description",
+
+def _youtube_direct_player_description(
+    source: VideoSource,
+    *,
+    deadline: float | None = None,
+) -> VideoTextResult | None:
+    deadline = _youtube_fallback_deadline(deadline)
+    body = json.dumps(
+        {
+            "context": {
+                "client": {
+                    "clientName": "ANDROID",
+                    "clientVersion": "20.10.38",
+                }
+            },
+            "videoId": source.external_id,
+        },
+        separators=(",", ":"),
+    ).encode()
+    for endpoint_name, endpoint in (
+        ("youtube", "https://www.youtube.com/youtubei/v1/player"),
+        ("googleapis", "https://youtubei.googleapis.com/youtubei/v1/player"),
+    ):
+        timeout = _youtube_fallback_timeout(
+            deadline,
+            _YOUTUBE_DIRECT_PLAYER_TIMEOUT_SECONDS,
+        )
+        if timeout is None:
+            return None
+        request = Request(
+            endpoint,
+            data=body,
+            headers={
+                "User-Agent": "ChefWorld/1.0",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with _open_youtube_direct_player(request, timeout=timeout) as response:
+                content_type = response.headers.get("Content-Type", "")
+                if (
+                    getattr(response, "status", None) != 200
+                    or content_type.split(";", 1)[0].strip().lower()
+                    != "application/json"
+                ):
+                    _log_youtube_fallback_rejection(
+                        source,
+                        stage=f"direct_player_{endpoint_name}",
+                        reason="response_invalid",
+                    )
+                    continue
+                if _youtube_fallback_timeout(deadline, timeout) is None:
+                    return None
+                raw = response.read(_YOUTUBE_PLAYER_RESPONSE_MAX_BYTES + 1)
+            if len(raw) > _YOUTUBE_PLAYER_RESPONSE_MAX_BYTES:
+                _log_youtube_fallback_rejection(
+                    source,
+                    stage=f"direct_player_{endpoint_name}",
+                    reason="response_too_large",
+                )
+                continue
+            payload = json.loads(raw)
+            metadata = _youtube_metadata_from_player_payload(source, payload)
+            if metadata is None:
+                _log_youtube_fallback_rejection(
+                    source,
+                    stage=f"direct_player_{endpoint_name}",
+                    reason="metadata_invalid",
+                )
+                continue
+            return _youtube_description_result(
+                source,
+                *metadata,
+                origin="direct_player_description",
+            )
+        except Exception as exc:
+            logger.warning(
+                "YouTube direct player fallback failed provider=%s video_id=%s "
+                "endpoint=%s error_type=%s",
+                source.provider,
+                source.external_id,
+                endpoint_name,
+                type(exc).__name__,
+            )
+            continue
+    return None
+
+
+def _youtube_reader_description(
+    source: VideoSource,
+    *,
+    deadline: float | None = None,
+) -> VideoTextResult | None:
+    deadline = _youtube_fallback_deadline(deadline)
+    timeout = _youtube_fallback_timeout(
+        deadline,
+        _YOUTUBE_READER_TIMEOUT_SECONDS,
     )
+    if timeout is None:
+        return None
+    request = Request(
+        f"https://r.jina.ai/{source.canonical_url}",
+        headers={
+            "User-Agent": "ChefWorld/1.0",
+            "Accept": "application/json",
+            "X-Timeout": "15",
+            "X-Locale": "en-US",
+        },
+    )
+    try:
+        with _open_youtube_reader(request, timeout=timeout) as response:
+            content_type = response.headers.get("Content-Type", "")
+            if (
+                getattr(response, "status", None) != 200
+                or content_type.split(";", 1)[0].strip().lower()
+                != "application/json"
+            ):
+                _log_youtube_fallback_rejection(
+                    source,
+                    stage="reader",
+                    reason="response_invalid",
+                )
+                return None
+            if _youtube_fallback_timeout(deadline, timeout) is None:
+                return None
+            raw = response.read(_YOUTUBE_READER_RESPONSE_MAX_BYTES + 1)
+        if len(raw) > _YOUTUBE_READER_RESPONSE_MAX_BYTES:
+            _log_youtube_fallback_rejection(
+                source,
+                stage="reader",
+                reason="response_too_large",
+            )
+            return None
+        payload = json.loads(raw)
+        if (
+            not isinstance(payload, dict)
+            or payload.get("code") != 200
+            or payload.get("status") != 20000
+        ):
+            _log_youtube_fallback_rejection(
+                source,
+                stage="reader",
+                reason="envelope",
+            )
+            return None
+        data = payload.get("data")
+        if not isinstance(data, dict) or data.get("url") != source.canonical_url:
+            _log_youtube_fallback_rejection(
+                source,
+                stage="reader",
+                reason="target_mismatch",
+            )
+            return None
+        title = data.get("title")
+        content = data.get("content")
+        if not isinstance(title, str) or not isinstance(content, str):
+            _log_youtube_fallback_rejection(
+                source,
+                stage="reader",
+                reason="content_invalid",
+            )
+            return None
+        title = title.strip()
+        if (
+            len(title) > _YOUTUBE_TITLE_MAX_CHARS
+            or len(content) > _YOUTUBE_DESCRIPTION_MAX_CHARS
+        ):
+            _log_youtube_fallback_rejection(
+                source,
+                stage="reader",
+                reason="content_too_large",
+            )
+            return None
+
+        lines = content.replace("\r\n", "\n").split("\n")
+        start = next(i for i, line in enumerate(lines) if line.strip() == "## Description")
+        end = next(
+            i
+            for i, line in enumerate(lines[start + 1 :], start + 1)
+            if line.strip() in {"Transcript", "## Transcript"}
+        )
+        description = "\n".join(lines[start + 1 : end]).strip()
+        if not description or len(description) > _YOUTUBE_DESCRIPTION_MAX_CHARS:
+            _log_youtube_fallback_rejection(
+                source,
+                stage="reader",
+                reason="description_invalid",
+            )
+            return None
+        return _youtube_description_result(
+            source,
+            title,
+            description,
+            origin="reader_description",
+        )
+    except StopIteration:
+        _log_youtube_fallback_rejection(
+            source,
+            stage="reader",
+            reason="section_missing",
+        )
+        return None
+    except Exception as exc:
+        logger.warning(
+            "YouTube reader fallback failed provider=%s video_id=%s error_type=%s",
+            source.provider,
+            source.external_id,
+            type(exc).__name__,
+        )
+        return None
 
 
 def _youtube_description_or_failure(
@@ -291,7 +575,29 @@ def _youtube_description_or_failure(
             metadata.description,
             origin="player_description",
         )
-    return _youtube_public_description(source) or _failure(source, status, message)
+    deadline = monotonic() + _YOUTUBE_FALLBACK_BUDGET_SECONDS
+    for stage, fallback in (
+        ("watch", _youtube_public_description),
+        ("direct_player", _youtube_direct_player_description),
+        ("reader", _youtube_reader_description),
+    ):
+        try:
+            result = fallback(source, deadline=deadline)
+        except Exception as exc:
+            # Each optional provider rung is isolated so malformed upstream
+            # responses can never turn a typed import failure into an HTTP 500.
+            logger.error(
+                "Unexpected YouTube fallback failure provider=%s video_id=%s "
+                "stage=%s error_type=%s",
+                source.provider,
+                source.external_id,
+                stage,
+                type(exc).__name__,
+            )
+            continue
+        if result is not None:
+            return result
+    return _failure(source, status, message)
 
 
 def _youtube_blocked_result(

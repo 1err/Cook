@@ -37,11 +37,29 @@ from app.video_import import (
 TIKTOK_SOURCE = parse_video_source("https://www.tiktok.com/@chef/video/7412345678901234567")
 
 
+@pytest.fixture(autouse=True)
+def _disable_live_youtube_fallbacks(monkeypatch):
+    def unavailable(_request, *, timeout: int):
+        raise URLError("offline in unit tests")
+
+    monkeypatch.setattr(video_import, "_open_youtube_direct_player", unavailable)
+    monkeypatch.setattr(video_import, "_open_youtube_reader", unavailable)
+
+
 class _FakeResponse:
-    def __init__(self, payload: bytes, *, read_error: Exception | None = None):
+    def __init__(
+        self,
+        payload: bytes,
+        *,
+        read_error: Exception | None = None,
+        status: int = 200,
+        headers: dict[str, str] | None = None,
+    ):
         self.payload = payload
         self.read_error = read_error
         self.read_sizes: list[int] = []
+        self.status = status
+        self.headers = headers or {}
 
     def __enter__(self):
         return self
@@ -826,6 +844,535 @@ def test_fetch_youtube_text_reports_server_block_without_blaming_captions(
     )
     assert "disabled" not in result.message.lower()
     assert result.text == ""
+
+
+def test_fetch_youtube_text_uses_validated_reader_description_when_aws_is_blocked(
+    monkeypatch,
+):
+    source = parse_video_source("https://youtu.be/A6bByqI_TH8")
+
+    class Api(_YouTubeApiStub):
+        def list(self, video_id):
+            raise IpBlocked(video_id)
+
+    def unavailable_watch_page(_request, *, timeout: int):
+        raise URLError("blocked")
+
+    reader_payload = {
+        "code": 200,
+        "status": 20000,
+        "data": {
+            "url": "https://www.youtube.com/watch?v=A6bByqI_TH8",
+            "title": "豆腐茄子煲",
+            "content": (
+                "## Description\n\n"
+                "豆腐茄子煲\n\n"
+                "287,857 views\n\n"
+                "本期菜品【豆腐茄子煲】【主料】老豆腐（约400克） "
+                "紫皮茄子（1根）五花肉（适量）【调味料】蚝油（约8克）\n\n"
+                "Transcript\n\nFollow along using the transcript."
+            ),
+        },
+    }
+    reader_response = _FakeResponse(
+        json.dumps(reader_payload).encode(),
+        headers={"Content-Type": "application/json; charset=utf-8"},
+    )
+    requested_urls = []
+
+    def reader_opener(request, *, timeout: int):
+        requested_urls.append(request.full_url)
+        assert timeout == 20
+        assert request.get_header("Accept") == "application/json"
+        assert request.get_header("X-timeout") == "15"
+        assert request.get_header("X-locale") == "en-US"
+        return reader_response
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(video_import, "_open_youtube_watch_page", unavailable_watch_page)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_reader",
+        reader_opener,
+        raising=False,
+    )
+
+    result = fetch_youtube_text(source)
+
+    assert result.status == "ok"
+    assert result.title == "豆腐茄子煲"
+    assert "老豆腐（约400克）" in result.text
+    assert "Follow along using the transcript" not in result.text
+    assert requested_urls == [
+        "https://r.jina.ai/https://www.youtube.com/watch?v=A6bByqI_TH8"
+    ]
+
+
+def test_fetch_youtube_text_uses_keyless_player_description_before_reader(
+    monkeypatch,
+):
+    source = parse_video_source("https://youtu.be/A6bByqI_TH8")
+
+    class Api(_YouTubeApiStub):
+        def list(self, video_id):
+            raise IpBlocked(video_id)
+
+    def unavailable_watch_page(_request, *, timeout: int):
+        raise URLError("blocked")
+
+    player_payload = {
+        "playabilityStatus": {"status": "OK"},
+        "videoDetails": {
+            "videoId": "A6bByqI_TH8",
+            "title": "豆腐茄子煲",
+            "shortDescription": (
+                "本期菜品【豆腐茄子煲】【主料】老豆腐（约400克） "
+                "紫皮茄子（1根）五花肉（适量）【调味料】蚝油（约8克）"
+            ),
+        },
+    }
+    player_response = _FakeResponse(
+        json.dumps(player_payload).encode(),
+        headers={"Content-Type": "application/json; charset=utf-8"},
+    )
+    requested_urls = []
+
+    def player_opener(request, *, timeout: int):
+        requested_urls.append(request.full_url)
+        assert timeout == 10
+        assert request.get_method() == "POST"
+        assert json.loads(request.data) == {
+            "context": {
+                "client": {"clientName": "ANDROID", "clientVersion": "20.10.38"}
+            },
+            "videoId": "A6bByqI_TH8",
+        }
+        return player_response
+
+    def reader_must_not_run(_request, *, timeout: int):
+        raise AssertionError("Reader must remain a last-resort fallback")
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(video_import, "_open_youtube_watch_page", unavailable_watch_page)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_direct_player",
+        player_opener,
+        raising=False,
+    )
+    monkeypatch.setattr(video_import, "_open_youtube_reader", reader_must_not_run)
+
+    result = fetch_youtube_text(source)
+
+    assert result.status == "ok"
+    assert result.title == "豆腐茄子煲"
+    assert "老豆腐（约400克）" in result.text
+    assert requested_urls == ["https://www.youtube.com/youtubei/v1/player"]
+
+
+def test_keyless_player_description_rejects_non_json_response(monkeypatch):
+    source = parse_video_source("https://youtu.be/A6bByqI_TH8")
+    payload = {
+        "playabilityStatus": {"status": "OK"},
+        "videoDetails": {
+            "videoId": "A6bByqI_TH8",
+            "title": "豆腐茄子煲",
+            "shortDescription": "老豆腐400克，紫皮茄子1根。",
+        },
+    }
+    response = _FakeResponse(
+        json.dumps(payload).encode(),
+        headers={"Content-Type": "text/html"},
+    )
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_direct_player",
+        lambda _request, *, timeout: response,
+    )
+
+    assert video_import._youtube_direct_player_description(source) is None
+
+
+def test_keyless_player_description_tries_googleapis_after_youtube_transport_failure(
+    monkeypatch,
+):
+    source = parse_video_source("https://youtu.be/A6bByqI_TH8")
+    payload = {
+        "playabilityStatus": {"status": "OK"},
+        "videoDetails": {
+            "videoId": "A6bByqI_TH8",
+            "title": "豆腐茄子煲",
+            "shortDescription": "老豆腐400克，紫皮茄子1根。",
+        },
+    }
+    response = _FakeResponse(
+        json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    requested_urls = []
+
+    def opener(request, *, timeout: int):
+        requested_urls.append(request.full_url)
+        if request.full_url == "https://www.youtube.com/youtubei/v1/player":
+            raise URLError("blocked")
+        return response
+
+    monkeypatch.setattr(video_import, "_open_youtube_direct_player", opener)
+
+    result = video_import._youtube_direct_player_description(source)
+
+    assert result is not None
+    assert result.status == "ok"
+    assert requested_urls == [
+        "https://www.youtube.com/youtubei/v1/player",
+        "https://youtubei.googleapis.com/youtubei/v1/player",
+    ]
+
+
+def test_keyless_player_description_tries_googleapis_after_malformed_redirect(
+    monkeypatch,
+):
+    source = parse_video_source("https://youtu.be/A6bByqI_TH8")
+    payload = {
+        "playabilityStatus": {"status": "OK"},
+        "videoDetails": {
+            "videoId": "A6bByqI_TH8",
+            "title": "豆腐茄子煲",
+            "shortDescription": "老豆腐400克，紫皮茄子1根。",
+        },
+    }
+    response = _FakeResponse(
+        json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    calls = 0
+
+    def opener(_request, *, timeout: float):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            # urllib raises ValueError before the redirect handler for malformed IPv6.
+            raise ValueError("Invalid IPv6 URL")
+        return response
+
+    monkeypatch.setattr(video_import, "_open_youtube_direct_player", opener)
+
+    result = video_import._youtube_direct_player_description(source)
+
+    assert result is not None
+    assert result.status == "ok"
+    assert calls == 2
+
+
+def test_youtube_fallback_chain_contains_unexpected_provider_failures(monkeypatch):
+    class Api(_YouTubeApiStub):
+        def list(self, video_id):
+            raise IpBlocked(video_id)
+
+    def malformed_redirect(_request, *, timeout: float):
+        raise ValueError("Invalid IPv6 URL")
+
+    def unexpected_read_failure(_request, *, timeout: float):
+        return _FakeResponse(b"{}", read_error=RuntimeError("unexpected read failure"))
+
+    def recursive_json(_request, *, timeout: float):
+        return _FakeResponse(
+            b"[" * 2_000 + b"0" + b"]" * 2_000,
+            headers={"Content-Type": "application/json"},
+        )
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(video_import, "_open_youtube_watch_page", malformed_redirect)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_direct_player",
+        unexpected_read_failure,
+    )
+    monkeypatch.setattr(video_import, "_open_youtube_reader", recursive_json)
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
+
+    assert result.status == "fetch_failed"
+    assert result.text == ""
+    assert "temporarily blocking" in (result.message or "")
+
+
+def test_youtube_fallback_chain_respects_one_aggregate_deadline(monkeypatch):
+    class Api(_YouTubeApiStub):
+        def list(self, video_id):
+            raise IpBlocked(video_id)
+
+    now = [100.0]
+    calls: list[tuple[str, float]] = []
+
+    def monotonic():
+        return now[0]
+
+    def timeout_opener(stage: str):
+        def open_request(_request, *, timeout: float):
+            calls.append((stage, timeout))
+            now[0] += timeout
+            raise TimeoutError(stage)
+
+        return open_request
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(
+        video_import,
+        "_YOUTUBE_FALLBACK_BUDGET_SECONDS",
+        12.0,
+        raising=False,
+    )
+    monkeypatch.setattr(video_import, "monotonic", monotonic, raising=False)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_watch_page",
+        timeout_opener("watch"),
+    )
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_direct_player",
+        timeout_opener("direct_player"),
+    )
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_reader",
+        timeout_opener("reader"),
+    )
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
+
+    assert result.status == "fetch_failed"
+    assert sum(timeout for _stage, timeout in calls) <= 12.0
+    assert all(timeout > 0 for _stage, timeout in calls)
+    assert not any(stage == "reader" for stage, _timeout in calls)
+
+
+def test_youtube_fallback_chain_charges_elapsed_time_between_rungs(monkeypatch):
+    class Api(_YouTubeApiStub):
+        def list(self, video_id):
+            raise IpBlocked(video_id)
+
+    now = [100.0]
+    calls: list[tuple[str, float]] = []
+
+    def monotonic():
+        return now[0]
+
+    def quickly_unavailable(stage: str):
+        def open_request(_request, *, timeout: float):
+            calls.append((stage, timeout))
+            now[0] += 0.5
+            raise URLError(stage)
+
+        return open_request
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(
+        video_import,
+        "_YOUTUBE_FALLBACK_BUDGET_SECONDS",
+        12.0,
+        raising=False,
+    )
+    monkeypatch.setattr(video_import, "monotonic", monotonic, raising=False)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_watch_page",
+        quickly_unavailable("watch"),
+    )
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_direct_player",
+        quickly_unavailable("direct_player"),
+    )
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_reader",
+        quickly_unavailable("reader"),
+    )
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
+
+    assert result.status == "fetch_failed"
+    assert [stage for stage, _timeout in calls] == [
+        "watch",
+        "direct_player",
+        "direct_player",
+        "reader",
+    ]
+    assert [timeout for _stage, timeout in calls] == pytest.approx(
+        [10.0, 10.0, 10.0, 10.5]
+    )
+
+
+def test_youtube_watch_fallback_does_not_read_after_deadline_exhaustion(
+    monkeypatch,
+):
+    source = parse_video_source("https://youtu.be/A6bByqI_TH8")
+    now = [100.0]
+    response = _FakeResponse(b"must not be read")
+
+    def monotonic():
+        return now[0]
+
+    def exhaust_during_open(_request, *, timeout: float):
+        assert timeout == pytest.approx(5.0)
+        now[0] += timeout
+        return response
+
+    monkeypatch.setattr(video_import, "monotonic", monotonic, raising=False)
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_watch_page",
+        exhaust_during_open,
+    )
+
+    result = video_import._youtube_public_description(source, deadline=105.0)
+
+    assert result is None
+    assert response.read_sizes == []
+
+
+def test_reader_description_rejects_unsuccessful_envelope_status(monkeypatch, caplog):
+    source = parse_video_source("https://youtu.be/A6bByqI_TH8")
+    payload = {
+        "code": 200,
+        "status": 42900,
+        "data": {
+            "url": source.canonical_url,
+            "title": "豆腐茄子煲",
+            "content": (
+                "## Description\n\n老豆腐400克，紫皮茄子1根。\n\nTranscript"
+            ),
+        },
+    }
+    response = _FakeResponse(
+        json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_reader",
+        lambda _request, *, timeout: response,
+    )
+
+    assert video_import._youtube_reader_description(source) is None
+    assert "YouTube reader fallback rejected" in caplog.text
+    assert "reason=envelope" in caplog.text
+
+
+def test_keyless_player_failure_logs_stage_without_exception_secret(
+    monkeypatch,
+    caplog,
+):
+    source = parse_video_source("https://youtu.be/A6bByqI_TH8")
+    secret = "https://www.youtube.com/youtubei/v1/player?key=must-not-be-logged"
+
+    def blocked(_request, *, timeout: int):
+        raise URLError(secret)
+
+    monkeypatch.setattr(video_import, "_open_youtube_direct_player", blocked)
+
+    assert video_import._youtube_direct_player_description(source) is None
+    assert "YouTube direct player fallback failed" in caplog.text
+    assert "error_type=URLError" in caplog.text
+    assert secret not in caplog.text
+
+
+def test_reader_failure_logs_stage_without_exception_secret(monkeypatch, caplog):
+    source = parse_video_source("https://youtu.be/A6bByqI_TH8")
+    secret = "https://r.jina.ai/https://www.youtube.com/watch?v=A6bByqI_TH8&token=secret"
+
+    def blocked(_request, *, timeout: int):
+        raise URLError(secret)
+
+    monkeypatch.setattr(video_import, "_open_youtube_reader", blocked)
+
+    assert video_import._youtube_reader_description(source) is None
+    assert "YouTube reader fallback failed" in caplog.text
+    assert "error_type=URLError" in caplog.text
+    assert secret not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "code": 200,
+            "status": 20000,
+            "data": {
+                "url": "https://www.youtube.com/watch?v=A6bByql_TH8",
+                "title": "Wrong case-sensitive video",
+                "content": "## Description\n\nRecipe text\n\nTranscript",
+            },
+        },
+        {
+            "code": 200,
+            "status": 20000,
+            "data": {
+                "url": "https://www.youtube.com/watch?v=A6bByqI_TH8",
+                "title": "Missing boundaries",
+                "content": "Description\n\nRecipe text without trusted section markers",
+            },
+        },
+        {
+            "code": 200,
+            "status": 20000,
+            "data": {
+                "url": "https://www.youtube.com/watch?v=A6bByqI_TH8",
+                "title": "Oversized title" + "x" * 501,
+                "content": "## Description\n\nRecipe text\n\nTranscript",
+            },
+        },
+    ],
+    ids=["different-video", "missing-section-markers", "oversized-title"],
+)
+def test_reader_description_rejects_untrusted_or_unbounded_content(
+    monkeypatch,
+    payload,
+):
+    response = _FakeResponse(
+        json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_reader",
+        lambda _request, *, timeout: response,
+    )
+
+    result = video_import._youtube_reader_description(
+        parse_video_source("https://youtu.be/A6bByqI_TH8")
+    )
+
+    assert result is None
+
+
+def test_keyless_player_and_reader_fallbacks_cap_response_sizes(monkeypatch):
+    source = parse_video_source("https://youtu.be/A6bByqI_TH8")
+    player_response = _FakeResponse(
+        b"x" * 3_000_001,
+        headers={"Content-Type": "application/json"},
+    )
+    reader_response = _FakeResponse(
+        b"x" * 1_000_001,
+        headers={"Content-Type": "application/json"},
+    )
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_direct_player",
+        lambda _request, *, timeout: player_response,
+    )
+    monkeypatch.setattr(
+        video_import,
+        "_open_youtube_reader",
+        lambda _request, *, timeout: reader_response,
+    )
+
+    assert video_import._youtube_direct_player_description(source) is None
+    assert video_import._youtube_reader_description(source) is None
+    assert player_response.read_sizes == [3_000_001, 3_000_001]
+    assert reader_response.read_sizes == [1_000_001]
 
 
 def test_fetch_youtube_text_reports_unavailable_public_text_without_false_disabled_claim(

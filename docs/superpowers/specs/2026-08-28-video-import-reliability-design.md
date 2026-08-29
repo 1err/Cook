@@ -150,7 +150,7 @@ The share module is disabled in Jest through the documented provider option/mock
 ## Documentation and Deployment
 
 - Update `CLAUDE.md` and `README.md` to describe provider support, the no-key TikTok limitation, Share Sheet requirements, and new custom-build test step.
-- Do not add an ECS environment variable or production service dependency.
+- Do not add an ECS environment variable, API credential, or paid transcript service. A bounded anonymous Jina Reader call is permitted only as the final YouTube public-description fallback after direct YouTube paths fail; send only the canonical public video URL and retain the manual transcript fallback for throttling or outages.
 - A backend deployment is required before web/mobile clients rely on TikTok link acceptance.
 - A new EAS development/preview build is required before the iOS Share Sheet can be tested or distributed.
 

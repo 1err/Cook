@@ -81,12 +81,12 @@ Video-link import does not download audiovisual media. It sends provider-exposed
 
 | Provider | Text used | Current limitations |
 |----------|-----------|---------------------|
-| YouTube | Public caption tracks from [`youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api), preferring English or Chinese and falling back to another available track; the already-returned public title/description is retained when YouTube blocks the caption file | Description fallback can be less detailed than captions. Private, age-restricted, region-locked, or unavailable videos may still fail. |
+| YouTube | Public caption tracks from [`youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api), preferring English or Chinese and falling back to another available track; verified public title/description text is used when cloud-IP blocking prevents caption access | Description fallback can be less detailed than captions. Private, age-restricted, region-locked, or unavailable videos may still fail. The final no-key Reader fallback is rate-limited and depends on a third-party public-page service. |
 | TikTok | Public post title/caption returned by TikTok's oEmbed endpoint | This does **not** transcribe the video's speech. Sparse, attribution-only, private, or unavailable posts may not contain enough recipe detail. Arbitrary TikTok speech transcription needs a future provider. |
 
 - **Supported links:** Use public HTTPS YouTube or TikTok video URLs. RedNote and uploaded video files are not supported.
 - **Env:** Create a `backend/.env` file (see `.env.example`). Set `OPENAI_API_KEY=sk-...` for real recipe extraction; without it, the app still runs and uses stub extraction.
-- **Fallback:** When caption retrieval is blocked, YouTube import first uses the verified title/description from the player response it already received, then tries the public watch page if needed. When provider text is still unavailable or too sparse, paste the recipe or transcript manually. Manual URL entry remains the Share Sheet fallback and the supported Android path.
+- **Fallback:** When caption retrieval is blocked, YouTube import uses retained player metadata, the public watch page, then bounded keyless requests to YouTube's player hosts. If those are blocked too, it asks Jina Reader's anonymous public endpoint for only the canonical video's bounded description section. No API key or paid transcript service is required; Jina currently limits anonymous use to 20 requests per minute. When provider text is still unavailable or too sparse, paste the recipe or transcript manually. Manual URL entry remains the Share Sheet fallback and the supported Android path.
 
 ### iOS Share Sheet
 
