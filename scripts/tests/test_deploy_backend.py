@@ -42,6 +42,11 @@ elif name == "aws":
     elif op == ["ecr", "get-login-password"]:
         print("FAKE_PASSWORD")
     elif op == ["ecr", "describe-images"]:
+        if os.environ.get("ECR_LOOKUP_FAILED"):
+            sys.exit(42)
+        if os.environ.get("MISSING_IMAGE_TAG"):
+            print("None")
+            sys.exit(0)
         print("sha256:" + "b" * 64 if os.environ.get("REPLACED_TAG") else digest)
     elif op == ["ecs", "describe-services"]:
         completed = any(json.loads(line)[1:3] == ["ecs", "update-service"] for line in (root / "calls.jsonl").read_text().splitlines())
@@ -172,6 +177,74 @@ class DeploySafetyTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         payload = json.loads((self.root / "registered.json").read_text())
         self.assertTrue(payload["containerDefinitions"][0]["image"].endswith("@" + DIGEST))
+
+    def test_prebuilt_digest_verifies_exact_commit_in_selected_registry_and_preserves_task(self):
+        backend, sidecar, tags = self.task_with_environment()
+        marker = "prebuilt-private-admin-value"
+        result = self.deploy(PREBUILT_IMAGE_DIGEST=DIGEST, ACCOUNT="987654321098", REGION="eu-west-1",
+                             REPO_NAME="cooking-release", CONTAINER_NAME="cooking-backend",
+                             TASK_ENV_OVERRIDES_FILE=self.write_overrides(json.dumps({"APP_ENV":"production", "ADMIN_USER_IDS":marker})))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = self.calls()
+        self.assertFalse(any(call[0] == "docker" or call[1:3] == ["ecr", "get-login-password"] for call in calls))
+        lookups = [call for call in calls if call[1:3] == ["ecr", "describe-images"]]
+        self.assertEqual(len(lookups), 1)
+        lookup = lookups[0]
+        self.assertEqual(lookup[lookup.index("--registry-id") + 1], "987654321098")
+        self.assertEqual(lookup[lookup.index("--repository-name") + 1], "cooking-release")
+        self.assertEqual(lookup[lookup.index("--region") + 1], "eu-west-1")
+        self.assertEqual(lookup[lookup.index("--image-ids") + 1], "imageTag=" + self.git("rev-parse", "HEAD").stdout.strip())
+        self.assertLess(calls.index(lookup), next(i for i, call in enumerate(calls) if call[1:3] == ["ecs", "register-task-definition"]))
+        payload = json.loads((self.root / "registered.json").read_text())
+        updated = payload["containerDefinitions"][0]
+        self.assertEqual(updated["image"], "987654321098.dkr.ecr.eu-west-1.amazonaws.com/cooking-release@" + DIGEST)
+        self.assertEqual(updated["environment"], [{"name":"KEEP_ENV", "value":"existing-private-value"}, {"name":"APP_ENV", "value":"production"}, {"name":"ADMIN_USER_IDS", "value":marker}])
+        self.assertEqual(updated["secrets"], backend["secrets"])
+        self.assertEqual(payload["containerDefinitions"][1], sidecar)
+        self.assertEqual(payload["tags"], tags)
+        self.assertNotIn(marker, result.stdout + result.stderr + json.dumps(calls))
+
+    def test_prebuilt_digest_does_not_require_local_docker(self):
+        isolated_bin = self.root / "without-docker"
+        isolated_bin.mkdir()
+        for name in ("bash", "git", "jq", "dirname", "mktemp", "rm", "mkdir", "tar", "cp", "python3"):
+            (isolated_bin / name).symlink_to(shutil.which(name))
+        for name in ("aws", "curl"):
+            (isolated_bin / name).write_text(FAKE_CLI)
+            (isolated_bin / name).chmod(0o755)
+        result = self.deploy(PREBUILT_IMAGE_DIGEST=DIGEST, PATH=str(isolated_bin))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(any(call[1:3] == ["ecs", "update-service"] for call in self.calls()))
+
+    def test_invalid_prebuilt_digest_fails_before_cloud_access(self):
+        for invalid in ("sha256:abc", "sha256:" + "A" * 64, "sha512:" + "a" * 64,
+                        DIGEST + "\n", " " + DIGEST, DIGEST + "extra", "synthetic-private-invalid-digest"):
+            with self.subTest(digest_shape=invalid[:10]):
+                (self.root / "calls.jsonl").unlink(missing_ok=True)
+                result = self.deploy(PREBUILT_IMAGE_DIGEST=invalid, ACCOUNT="")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(self.calls(), "invalid digest must fail before cloud access, including account discovery")
+                self.assertNotIn(invalid, result.stdout + result.stderr)
+
+    def test_unverified_prebuilt_digest_fails_before_build_or_registration(self):
+        for failure in ("REPLACED_TAG", "MISSING_IMAGE_TAG", "ECR_LOOKUP_FAILED"):
+            with self.subTest(failure=failure):
+                (self.root / "calls.jsonl").unlink(missing_ok=True)
+                result = self.deploy(PREBUILT_IMAGE_DIGEST=DIGEST, **{failure:"1"})
+                self.assertNotEqual(result.returncode, 0)
+                self.assert_no_build_or_registration()
+                self.assertNotIn("Deploy complete", result.stdout)
+
+    def test_prebuilt_digest_retains_concurrent_release_and_rollout_guards(self):
+        for failure in ("CONCURRENT_RELEASE", "ROLLBACK", "WRONG_DIGEST"):
+            with self.subTest(failure=failure):
+                (self.root / "calls.jsonl").unlink(missing_ok=True)
+                result = self.deploy(PREBUILT_IMAGE_DIGEST=DIGEST, **{failure:"1"})
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn("Deploy complete", result.stdout)
+                self.assertFalse(any(call[0] == "docker" for call in self.calls()))
+                if failure == "CONCURRENT_RELEASE":
+                    self.assertFalse(any(call[1:3] in (["ecs", "register-task-definition"], ["ecs", "update-service"]) for call in self.calls()))
 
     def test_concurrent_service_revision_is_not_overwritten(self):
         result = self.deploy(CONCURRENT_RELEASE="1")

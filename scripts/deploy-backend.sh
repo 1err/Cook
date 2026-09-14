@@ -2,7 +2,9 @@
 # Build committed backend source and deploy an ECS revision pinned to its image digest.
 # Run only when a production deployment is intended. No :latest tag is modified.
 # Override REGION, ACCOUNT, REPO_NAME, CLUSTER, SERVICE, API_BASE, PROBE_PATH,
-# or CONTAINER_NAME as needed. Requires git, docker buildx, aws CLI, jq and curl.
+# or CONTAINER_NAME as needed. Requires git, aws CLI, jq and curl; local builds
+# also require docker buildx. Optional PREBUILT_IMAGE_DIGEST skips the local build
+# only after ECR confirms this committed SHA's tag has that exact sha256 digest.
 # Optional TASK_ENV_OVERRIDES_FILE is a private JSON object of env names/string
 # values merged into the selected container in the same revision as the image.
 set -euo pipefail
@@ -17,9 +19,16 @@ cd "$REPO_ROOT"
 # silently omitted, but allow unrelated frontend work and ignored local secrets.
 DIRTY=$(git status --porcelain --untracked-files=all -- backend scripts/deploy-backend.sh .dockerignore .gitignore)
 [ -z "$DIRTY" ] || fail "Backend or release inputs have uncommitted changes. Commit the intended release in an isolated checkout before deploying."
-for tool in aws docker jq curl; do
+PREBUILT_IMAGE_DIGEST="${PREBUILT_IMAGE_DIGEST:-}"
+if [ -n "$PREBUILT_IMAGE_DIGEST" ]; then
+  [[ "$PREBUILT_IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]] || fail "PREBUILT_IMAGE_DIGEST must be a full lowercase sha256 digest"
+fi
+for tool in aws jq curl; do
   command -v "$tool" >/dev/null || fail "$tool is required"
 done
+if [ -z "$PREBUILT_IMAGE_DIGEST" ]; then
+  command -v docker >/dev/null || fail "docker is required"
+fi
 
 REGION="${REGION:-us-east-1}"
 ACCOUNT="${ACCOUNT:-$(aws sts get-caller-identity --query Account --output text)}"
@@ -48,8 +57,10 @@ if [ -n "${TASK_ENV_OVERRIDES_FILE:-}" ]; then
 else
   printf '{}\n' > "$RELEASE_TMP/task-env-overrides.json"
 fi
-mkdir "$RELEASE_TMP/context"
-git archive "$SHA:backend" | tar -x -C "$RELEASE_TMP/context"
+if [ -z "$PREBUILT_IMAGE_DIGEST" ]; then
+  mkdir "$RELEASE_TMP/context"
+  git archive "$SHA:backend" | tar -x -C "$RELEASE_TMP/context"
+fi
 
 echo "==> preflight: committed source $SHA"
 aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --region "$REGION" > "$RELEASE_TMP/service.json"
@@ -72,13 +83,22 @@ jq -e --arg name "$CONTAINER_NAME" --slurpfile overrides "$RELEASE_TMP/task-env-
     (.secrets // [])[] | .name as $key | select($env | has($key))] | length == 0
 ' "$RELEASE_TMP/current-task.json" >/dev/null 2>/dev/null || fail "Task environment overrides conflict with ECS secrets or the task definition is invalid"
 
-echo "==> build and push $REPO:$SHA"
-aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ACCOUNT.dkr.ecr.$REGION.amazonaws.com"
-# A single-platform manifest keeps the pinned digest identical to ECS's running
-# container digest (a provenance manifest list would have a different parent ID).
-docker buildx build --platform linux/amd64 --provenance=false -t "$REPO:$SHA" --metadata-file "$RELEASE_TMP/build-metadata.json" --push "$RELEASE_TMP/context"
-DIGEST=$(jq -er '.["containerimage.digest"]' "$RELEASE_TMP/build-metadata.json")
-[[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]] || fail "Build did not return a valid immutable digest"
+if [ -n "$PREBUILT_IMAGE_DIGEST" ]; then
+  echo "==> verify prebuilt image for $REPO:$SHA"
+  # Scope the lookup to the configured registry/repository and exact commit tag.
+  # Deploy by verified digest so later tag changes cannot substitute an image.
+  TAG_DIGEST=$(aws ecr describe-images --registry-id "$ACCOUNT" --repository-name "$REPO_NAME" --image-ids "imageTag=$SHA" --region "$REGION" --query 'imageDetails[0].imageDigest' --output text) || fail "Unable to verify prebuilt image for the committed SHA"
+  [ "$TAG_DIGEST" = "$PREBUILT_IMAGE_DIGEST" ] || fail "Committed SHA tag does not match PREBUILT_IMAGE_DIGEST in the configured ECR repository"
+  DIGEST="$PREBUILT_IMAGE_DIGEST"
+else
+  echo "==> build and push $REPO:$SHA"
+  aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ACCOUNT.dkr.ecr.$REGION.amazonaws.com"
+  # A single-platform manifest keeps the pinned digest identical to ECS's running
+  # container digest (a provenance manifest list would have a different parent ID).
+  docker buildx build --platform linux/amd64 --provenance=false -t "$REPO:$SHA" --metadata-file "$RELEASE_TMP/build-metadata.json" --push "$RELEASE_TMP/context"
+  DIGEST=$(jq -er '.["containerimage.digest"]' "$RELEASE_TMP/build-metadata.json")
+  [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]] || fail "Build did not return a valid immutable digest"
+fi
 IMAGE="$REPO@$DIGEST"
 
 # Reject a service changed by another release while this image was building.
