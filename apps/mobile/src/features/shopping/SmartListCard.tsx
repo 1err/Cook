@@ -18,10 +18,12 @@ type SmartListCardProps = {
   productsByName: Record<string, StoreProduct[]>;
   productsLoadingByName: Record<string, boolean>;
   productsErrorByName: Record<string, string | null>;
+  selectedUrlByIngredient?: Record<string, string>;
   onToggleChecked: (origIndex: number) => void;
   onHide: (origIndex: number) => void;
   onTogglePanel: (name: string) => void;
   onRetryProducts: (name: string) => void;
+  onSelectProduct?: (ingredientKey: string, productUrl: string) => void;
 };
 
 export function SmartListCard({
@@ -32,10 +34,12 @@ export function SmartListCard({
   productsByName,
   productsLoadingByName,
   productsErrorByName,
+  selectedUrlByIngredient = {},
   onToggleChecked,
   onHide,
   onTogglePanel,
   onRetryProducts,
+  onSelectProduct = () => {},
 }: SmartListCardProps) {
   if (rows.length === 0) return null;
   const uncheckedRows = rows.filter((r) => !checked.has(r.origIndex));
@@ -49,6 +53,7 @@ export function SmartListCard({
       <SmartListItem
         key={origIndex}
         item={item}
+        ingredientKey={key}
         origIndex={origIndex}
         checked={checked.has(origIndex)}
         onToggleChecked={() => onToggleChecked(origIndex)}
@@ -57,8 +62,10 @@ export function SmartListCard({
         productsLoading={!!productsLoadingByName[key]}
         productsError={productsErrorByName[key] ?? null}
         products={productsByName[key]}
+        selectedProductUrl={selectedUrlByIngredient[key]}
         onTogglePanel={() => onTogglePanel(item.name)}
         onRetryProducts={() => onRetryProducts(item.name)}
+        onSelectProduct={onSelectProduct}
       />
     );
   };

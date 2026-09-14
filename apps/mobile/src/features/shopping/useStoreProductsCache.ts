@@ -7,6 +7,7 @@ import type {
 import { isSafeWeeeProductUrl } from "@cooking/shared";
 import { useApiClient, type ApiClient } from "../../lib/api";
 import {
+  MAX_STORE_PRODUCT_TTL_MS,
   isFreshStoredProductResponse,
   readSmartProducts,
   type SmartProductsStored,
@@ -145,7 +146,11 @@ function parseStoreProductsResponse(value: unknown, nowMs = Date.now()): StorePr
     throw new Error("Invalid product expiry");
   }
   const expiresAtMs = Date.parse(data.expires_at);
-  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) {
+  if (
+    !Number.isFinite(expiresAtMs)
+    || expiresAtMs <= nowMs
+    || expiresAtMs > nowMs + MAX_STORE_PRODUCT_TTL_MS
+  ) {
     throw new Error("Expired product response");
   }
   return { products: products.slice(0, 3), expires_at: data.expires_at };
@@ -191,7 +196,7 @@ export function useStoreProductsCache(weekStart: string | null) {
   const inFlightRef = useRef(new Map<string, QueueEntry>());
   const interactiveQueueRef = useRef<QueueEntry[]>([]);
   const bulkQueueRef = useRef<QueueEntry[]>([]);
-  const activeQueueRef = useRef(false);
+  const activeEntryRef = useRef<QueueEntry | null>(null);
   const expiryTimersRef = useRef(
     new Map<string, { expiresAt: string; generation: number; timer: ReturnType<typeof setTimeout> }>(),
   );
@@ -245,13 +250,14 @@ export function useStoreProductsCache(weekStart: string | null) {
   discardEntriesRef.current = () => {
     interactiveQueueRef.current = [];
     bulkQueueRef.current = [];
+    activeEntryRef.current = null;
     for (const entry of inFlightRef.current.values()) finishRef.current(entry);
     inFlightRef.current.clear();
   };
 
   pumpRef.current = () => {
-    if (!mountedRef.current || activeQueueRef.current) return;
-    while (!activeQueueRef.current) {
+    if (!mountedRef.current || activeEntryRef.current) return;
+    while (!activeEntryRef.current) {
       const entry = interactiveQueueRef.current.shift() ?? bulkQueueRef.current.shift();
       if (!entry) return;
       if (
@@ -262,7 +268,7 @@ export function useStoreProductsCache(weekStart: string | null) {
         finishRef.current(entry);
         continue;
       }
-      activeQueueRef.current = true;
+      activeEntryRef.current = entry;
       entry.started = true;
       void fetchProducts(apiClientRef.current, entry.query).then(
         (response) => finishRef.current(entry, response),
@@ -273,7 +279,7 @@ export function useStoreProductsCache(weekStart: string | null) {
             reason instanceof Error ? reason.message : "Failed to load products",
           ),
       ).finally(() => {
-        activeQueueRef.current = false;
+        if (activeEntryRef.current === entry) activeEntryRef.current = null;
         if (mountedRef.current) pumpRef.current();
       });
     }
@@ -453,6 +459,19 @@ export function useStoreProductsCache(weekStart: string | null) {
     [createEntry, enqueueMany, parseBatch, useFirstQuery],
   );
 
+  const resetLive = useCallback(() => {
+    generationRef.current += 1;
+    discardEntriesRef.current();
+    firstQueryByKeyRef.current.clear();
+    bulkTrackerRef.current = null;
+    setBulkLoading({ active: false, done: 0, total: 0 });
+    for (const entry of expiryTimersRef.current.values()) clearTimeout(entry.timer);
+    expiryTimersRef.current.clear();
+    const cleared: State = { ...emptyMaps(), hydratedWeekStart: weekStart };
+    stateRef.current = cleared;
+    dispatch({ type: "clear", hydratedWeekStart: weekStart });
+  }, [weekStart]);
+
   useEffect(() => {
     const generation = generationRef.current + 1;
     generationRef.current = generation;
@@ -523,7 +542,10 @@ export function useStoreProductsCache(weekStart: string | null) {
           .map(([rawKey]) => rawKey),
       );
       void loadBatch(misses, generation);
-    })();
+    })().catch(() => {
+      if (cancelled || generationRef.current !== generation) return;
+      dispatch({ type: "clear", hydratedWeekStart: weekStart });
+    });
     return () => {
       cancelled = true;
     };
@@ -673,6 +695,7 @@ export function useStoreProductsCache(weekStart: string | null) {
   const retry = useCallback((rawName: string) => ensureLoaded(rawName, true), [ensureLoaded]);
 
   return {
+    hydrated: Boolean(weekStart && state.hydratedWeekStart === weekStart),
     open: state.open,
     products: state.products,
     loading: state.loading,
@@ -682,5 +705,6 @@ export function useStoreProductsCache(weekStart: string | null) {
     loadAll,
     openMany,
     bulkLoading,
+    resetLive,
   };
 }

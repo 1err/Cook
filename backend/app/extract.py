@@ -1,14 +1,14 @@
 """
 Recipe extraction from a YouTube transcript or pasted text.
-LLM produces dish title + ingredient list; falls back to a deterministic stub
-when ``OPENAI_API_KEY`` is unset so the flow stays testable end-to-end.
+The provider is required for extraction; missing configuration returns an
+actionable unavailable response rather than fabricated recipe content.
 """
 import json
 import logging
 import re
 import uuid
 
-from app.core.llm import get_openai_client
+from app.core.llm import AIUnavailableError, complete_chat, get_openai_client
 from app.models import IngredientItem, Recipe, RecipeStep
 from app.video_import import (
     UnsupportedVideoUrl,
@@ -35,6 +35,126 @@ _METRIC_SEGMENT_RE = re.compile(
 _NON_METRIC_UNIT_RE = re.compile(
     r"(杯|个|块|勺|汤匙|茶匙|片|瓣|把|根|条|袋|盒|罐|颗|clove|cup|cups|tbsp|tsp|piece|pieces|slice|slices)",
     re.IGNORECASE,
+)
+_UNUSABLE_STEP_TEXTS = frozenset(
+    {
+        "n/a",
+        "na",
+        "none",
+        "null",
+        "unknown",
+        "unavailable",
+        "not available",
+        "not provided",
+        "not specified",
+        "no steps",
+        "no instructions",
+        "no method",
+        "no procedure",
+        "no cooking steps",
+        "no cooking instructions",
+        "no tutorial steps",
+        "no tutorial instructions",
+        "no usable steps",
+        "no usable instructions",
+        "no usable cooking steps",
+        "no usable cooking instructions",
+        "no steps available",
+        "no instructions available",
+        "no method available",
+        "no procedure available",
+        "no cooking steps available",
+        "no cooking instructions available",
+        "no tutorial steps available",
+        "no tutorial instructions available",
+        "steps unavailable",
+        "instructions unavailable",
+        "method unavailable",
+        "procedure unavailable",
+        "tutorial steps unavailable",
+        "tutorial instructions unavailable",
+        "no steps provided",
+        "no instructions provided",
+        "no method provided",
+        "no procedure provided",
+        "no cooking steps provided",
+        "no cooking instructions provided",
+        "no tutorial steps provided",
+        "no tutorial instructions provided",
+        "steps not provided",
+        "instructions not provided",
+        "method not provided",
+        "procedure not provided",
+        "not enough information",
+        "insufficient information",
+        "无",
+        "暂无",
+        "未提供",
+        "信息不足",
+        "无步骤",
+        "没有步骤",
+        "暂无步骤",
+        "未提供步骤",
+        "没有提供步骤",
+        "步骤不详",
+        "未找到步骤",
+        "无可用步骤",
+        "无法确定步骤",
+        "无烹饪步骤",
+        "没有烹饪步骤",
+        "暂无烹饪步骤",
+        "未提供烹饪步骤",
+        "没有提供烹饪步骤",
+        "未找到烹饪步骤",
+        "无可用烹饪步骤",
+        "无法确定烹饪步骤",
+        "无操作步骤",
+        "没有操作步骤",
+        "暂无操作步骤",
+        "未提供操作步骤",
+        "无做法",
+        "没有做法",
+        "暂无做法",
+        "未提供做法",
+        "做法不详",
+        "无法确定做法",
+    }
+)
+_UNUSABLE_INGREDIENT_NAMES = frozenset(
+    {
+        "n/a",
+        "na",
+        "none",
+        "null",
+        "unknown",
+        "unavailable",
+        "not available",
+        "not provided",
+        "not specified",
+        "no ingredient",
+        "no ingredients",
+        "no ingredients available",
+        "no ingredients provided",
+        "ingredients unavailable",
+        "ingredients not provided",
+        "not enough information",
+        "insufficient information",
+        "example ingredient",
+        "无",
+        "暂无",
+        "未提供",
+        "信息不足",
+        "无食材",
+        "没有食材",
+        "暂无食材",
+        "未提供食材",
+        "食材不详",
+        "无配料",
+        "没有配料",
+        "暂无配料",
+        "未提供配料",
+        "配料不详",
+    }
 )
 
 
@@ -81,7 +201,7 @@ Extract the following JSON:
 - total_time_minutes: integer total minutes, or null if unclear.
 - ingredients: list of {{name, quantity, notes}}.
 - equipment: list of distinct tools/pans named in the transcript. [] if none mentioned.
-- steps: ordered list of {{text, duration_seconds, duration_source, attention_type, action_type}}. Each step is one short instruction copied from the source. If the transcript is thin or doesn't describe procedure, return []. DO NOT add, split, merge, or invent procedural steps. DO NOT invent procedure.
+- steps: ordered list of {{text, duration_seconds, duration_source, attention_type, action_type}}. Convert every cooking action described by the source, including fragmented narration, into short, self-contained, actionable instructions. Preserve the source order and meaning. Merge adjacent fragments only when they describe the same action, and split them only when the source clearly moves to a new action. Return [] only when the source contains no cooking procedure at all.
   - duration_seconds: positive whole seconds from 15 to 86400. Use a source-stated duration when explicit; otherwise estimate a plausible duration for that exact step.
   - duration_source: "stated" only when the source explicitly states the duration; otherwise "estimated".
   - attention_type: "hands_on" or "passive". hands_on means the cook is actively working; passive means they may safely leave the step until attention is needed.
@@ -92,7 +212,7 @@ Language rules:
 - If the source names ingredients/steps/tips in Chinese, keep them in Chinese. English in parens is optional.
 - Quantities and durations may stay in the source language.
 
-Metadata may be inferred, but DO NOT invent details or procedural steps that are not suggested by the text.
+Metadata may be inferred. Do not introduce new ingredients, quantities, temperatures, techniques, or procedural claims that are not supported by the source.
 
 --- TRANSCRIPT ---
 {body}
@@ -121,12 +241,7 @@ def _split_dual_quantity(quantity: str) -> tuple[str, str | None]:
     return primary, metric
 
 
-def parse_llm_recipe_response(raw: str) -> dict:
-    """Parse LLM JSON response into a recipe-shaped dict.
-
-    Returns: {title, description, total_time_minutes, ingredients, equipment, steps, tips}.
-    All fields default to safe empty values; the caller passes this dict to Recipe(...).
-    """
+def _decode_llm_json_object(raw: str) -> dict | None:
     text = raw.strip()
     if text.startswith("```"):
         text = re.sub(r"^```\w*\n?", "", text)
@@ -134,7 +249,40 @@ def parse_llm_recipe_response(raw: str) -> dict:
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        data = None
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _clean_instruction_text(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    normalized = re.sub(r"\s+", " ", value).strip()
+    sentinel_key = normalized.casefold().rstrip("。.!！?？:：;；").strip()
+    return "" if not normalized or sentinel_key in _UNUSABLE_STEP_TEXTS else normalized
+
+
+def _clean_ingredient_name(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    normalized = re.sub(r"\s+", " ", value).strip()
+    sentinel_key = normalized.casefold().rstrip("。.!！?？:：;；").strip()
+    return (
+        "" if not normalized or sentinel_key in _UNUSABLE_INGREDIENT_NAMES else normalized
+    )
+
+
+def is_usable_instruction_text(value: object) -> bool:
+    """Return whether text represents an instruction rather than an empty-status marker."""
+    return bool(_clean_instruction_text(value))
+
+
+def parse_llm_recipe_response(raw: str) -> dict:
+    """Parse LLM JSON response into a recipe-shaped dict.
+
+    Returns: {title, description, total_time_minutes, ingredients, equipment, steps, tips}.
+    All fields default to safe empty values; the caller passes this dict to Recipe(...).
+    """
+    data = _decode_llm_json_object(raw)
     if not isinstance(data, dict):
         return {
             "title": "Imported Recipe",
@@ -154,45 +302,34 @@ def parse_llm_recipe_response(raw: str) -> dict:
     ingredients: list[dict] = []
     for i in ingredients_raw:
         if isinstance(i, dict):
+            name = _clean_ingredient_name(i.get("name"))
+            if not name:
+                continue
             quantity, metric_quantity = _split_dual_quantity(
                 _extraction_string(i.get("quantity"))
             )
             ingredients.append({
-                "name": _extraction_string(i.get("name")),
+                "name": name,
                 "quantity": quantity,
                 "metric_quantity": metric_quantity,
                 "notes": _extraction_optional_string(i.get("notes")),
             })
-        else:
-            ingredients.append({"name": str(i), "quantity": "", "notes": None})
+        elif name := _clean_ingredient_name(i):
+            ingredients.append(
+                {
+                    "name": name,
+                    "quantity": "",
+                    "metric_quantity": None,
+                    "notes": None,
+                }
+            )
 
-    steps_raw = data.get("steps")
-    if not isinstance(steps_raw, list):
-        steps_raw = []
     steps: list[dict] = []
-    for s in steps_raw:
-        if isinstance(s, dict):
-            steps.append({
-                "text": s.get("text") or "",
-                "duration_seconds": s.get("duration_seconds"),
-                "duration_source": _extraction_metadata(
-                    s.get("duration_source"), DURATION_SOURCES, "fallback"
-                ),
-                "attention_type": _extraction_metadata(
-                    s.get("attention_type"), ATTENTION_TYPES, "hands_on"
-                ),
-                "action_type": _extraction_metadata(
-                    s.get("action_type"), ACTION_TYPES, "other"
-                ),
-            })
-        elif isinstance(s, str):
-            steps.append({
-                "text": s,
-                "duration_seconds": None,
-                "duration_source": "fallback",
-                "attention_type": "hands_on",
-                "action_type": "other",
-            })
+    for key in ("steps", "instructions", "procedure", "method"):
+        candidate_steps = _parse_step_container(data.get(key))
+        if candidate_steps:
+            steps = candidate_steps
+            break
 
     return {
         "title": title,
@@ -203,6 +340,61 @@ def parse_llm_recipe_response(raw: str) -> dict:
         "steps": steps,
         "tips": _extraction_string_list(data.get("tips")),
     }
+
+
+def _parse_step_container(
+    candidate: object,
+    *,
+    text_keys: tuple[str, ...] = ("text", "instruction", "step", "description"),
+    allow_string_rows: bool = True,
+    duration_source_override: str | None = None,
+) -> list[dict]:
+    if isinstance(candidate, list):
+        rows = candidate
+    elif allow_string_rows and isinstance(candidate, str):
+        rows = [candidate]
+    else:
+        return []
+
+    steps: list[dict] = []
+    for s in rows:
+        if isinstance(s, dict):
+            step_text = next(
+                (
+                    cleaned
+                    for key in text_keys
+                    if (cleaned := _clean_instruction_text(s.get(key)))
+                ),
+                "",
+            )
+            if not step_text:
+                continue
+            steps.append({
+                "text": step_text,
+                "duration_seconds": s.get("duration_seconds"),
+                "duration_source": (
+                    duration_source_override
+                    or _extraction_metadata(
+                        s.get("duration_source"), DURATION_SOURCES, "fallback"
+                    )
+                ),
+                "attention_type": _extraction_metadata(
+                    s.get("attention_type"), ATTENTION_TYPES, "hands_on"
+                ),
+                "action_type": _extraction_metadata(
+                    s.get("action_type"), ACTION_TYPES, "other"
+                ),
+            })
+        elif allow_string_rows and (step_text := _clean_instruction_text(s)):
+            steps.append({
+                "text": step_text,
+                "duration_seconds": None,
+                "duration_source": "fallback",
+                "attention_type": "hands_on",
+                "action_type": "other",
+            })
+
+    return steps
 
 
 def _extraction_string(value: object, default: str = "") -> str:
@@ -227,6 +419,80 @@ def _extraction_metadata(value: object, allowed: frozenset[str], fallback: str) 
         return fallback
     value = value.strip()
     return value if value in allowed else fallback
+
+
+def _has_meaningful_extracted_ingredients(data: dict) -> bool:
+    ingredients = data.get("ingredients")
+    if not isinstance(ingredients, list):
+        return False
+    for ingredient in ingredients:
+        if not isinstance(ingredient, dict):
+            continue
+        name = ingredient.get("name")
+        if (
+            isinstance(name, str)
+            and bool(_clean_ingredient_name(name))
+        ):
+            return True
+    return False
+
+
+def _has_usable_extracted_steps(data: dict) -> bool:
+    steps = data.get("steps")
+    if not isinstance(steps, list):
+        return False
+    return any(
+        isinstance(step, dict)
+        and is_usable_instruction_text(step.get("text"))
+        for step in steps
+    )
+
+
+def _parse_recovered_steps(raw: str) -> list[dict]:
+    data = _decode_llm_json_object(raw)
+    if data is None:
+        return []
+    return _parse_step_container(
+        data.get("steps"),
+        text_keys=("text",),
+        allow_string_rows=False,
+        duration_source_override="estimated",
+    )
+
+
+def _build_step_recovery_prompt(transcript: str, data: dict) -> str:
+    recipe_context = {
+        "title": data.get("title"),
+        "description": data.get("description"),
+        "total_time_minutes": data.get("total_time_minutes"),
+        "ingredients": data.get("ingredients") or [],
+    }
+    return f"""The first recipe extraction found meaningful ingredients but no usable tutorial steps.
+
+Return a JSON object containing only a non-empty \"steps\" array. Each step must contain:
+- text: one short, self-contained cooking instruction in the source language
+- duration_seconds: a plausible positive whole-number estimate from 15 to 86400
+- duration_source: \"estimated\"
+- attention_type: \"hands_on\" or \"passive\"
+- action_type: one of {", ".join(sorted(ACTION_TYPES))}
+
+First recover every cooking action that is stated or implied by the source, preserving its order. If the source truly contains only a dish name and ingredients, infer a short, conservative best-effort method typical for that dish. Use only the listed ingredients and do not add unsupported quantities, precise temperatures, specialized equipment, or optional garnishes. Never present an estimated duration as source-stated.
+
+EXTRACTED RECIPE:
+{json.dumps(recipe_context, ensure_ascii=False)}
+
+SOURCE TEXT:
+{transcript.strip() or "(No source text provided.)"}
+"""
+
+
+async def _request_json_completion(client, prompt: str) -> str:
+    return await complete_chat(
+        client,
+        operation="recipe_extraction",
+        messages=[{"role": "user", "content": prompt}],
+        json_object=True,
+    )
 
 
 def _build_tutorial_estimation_prompt(steps: list[RecipeStep]) -> str:
@@ -303,8 +569,9 @@ async def estimate_tutorial_step_metadata(steps: list[RecipeStep]) -> list[Recip
     client = get_openai_client()
     if client is not None:
         try:
-            response = await client.chat.completions.create(
-                model="gpt-4o-mini",
+            raw = await complete_chat(
+                client,
+                operation="tutorial_estimation",
                 messages=[
                     {
                         "role": "user",
@@ -312,10 +579,9 @@ async def estimate_tutorial_step_metadata(steps: list[RecipeStep]) -> list[Recip
                     }
                 ],
             )
-            raw = response.choices[0].message.content or "[]"
             estimates = _parse_tutorial_estimates(raw) or {}
         except Exception as exc:
-            logger.warning("Tutorial metadata estimation failed; using local defaults: %s", exc)
+            logger.warning("Tutorial metadata estimation using local defaults error_type=%s", type(exc).__name__)
 
     merged: list[RecipeStep] = []
     for step in steps:
@@ -344,14 +610,27 @@ async def estimate_tutorial_step_metadata(steps: list[RecipeStep]) -> list[Recip
 async def extract_recipe_from_text(transcript: str) -> Recipe:
     client = get_openai_client()
     if client is None:
-        data = _stub_extraction(transcript or "(no input)")
+        raise AIUnavailableError()
     else:
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": _build_extraction_prompt(transcript)}],
-        )
-        raw = response.choices[0].message.content or "{}"
+        raw = await _request_json_completion(client, _build_extraction_prompt(transcript))
         data = parse_llm_recipe_response(raw)
+        if (
+            not _has_usable_extracted_steps(data)
+            and _has_meaningful_extracted_ingredients(data)
+        ):
+            try:
+                recovery_raw = await _request_json_completion(
+                    client,
+                    _build_step_recovery_prompt(transcript, data),
+                )
+                recovered_steps = _parse_recovered_steps(recovery_raw)
+                if recovered_steps:
+                    data = {**data, "steps": recovered_steps}
+            except Exception as exc:
+                logger.warning(
+                    "Recipe step recovery failed; keeping initial extraction error_type=%s",
+                    type(exc).__name__,
+                )
 
     return Recipe(
         id=str(uuid.uuid4()),
@@ -366,71 +645,3 @@ async def extract_recipe_from_text(transcript: str) -> Recipe:
         tips=data.get("tips") or [],
         equipment=data.get("equipment") or [],
     )
-
-
-def _stub_extraction(input_text: str) -> dict:
-    """When OPENAI_API_KEY is not set, return a demo recipe so the flow is testable."""
-    text = (input_text or "").lower()
-    if "tofu" in text or "mapo" in text:
-        return {
-            "title": "Mapo Tofu",
-            "description": "A spicy Sichuan classic of soft tofu in a fiery doubanjiang sauce.",
-            "total_time_minutes": 25,
-            "ingredients": [
-                {"name": "Soft tofu", "quantity": "1 block", "notes": "diced"},
-                {"name": "Ground pork", "quantity": "100g", "notes": None},
-                {"name": "Doubanjiang", "quantity": "1 tbsp", "notes": None},
-                {"name": "Garlic", "quantity": "2 cloves", "notes": "minced"},
-                {"name": "Green onion", "quantity": "2", "notes": "chopped"},
-            ],
-            "equipment": ["wok", "spatula"],
-            "steps": [
-                {
-                    "text": "Dice the tofu into 2 cm cubes and let it sit in lightly salted hot water.",
-                    "duration_seconds": 180,
-                    "duration_source": "estimated",
-                    "attention_type": "hands_on",
-                    "action_type": "chop",
-                },
-                {
-                    "text": "Sear ground pork in the wok until browned and crispy at the edges.",
-                    "duration_seconds": 240,
-                    "duration_source": "estimated",
-                    "attention_type": "hands_on",
-                    "action_type": "sear",
-                },
-                {
-                    "text": "Add doubanjiang and garlic; stir-fry until fragrant.",
-                    "duration_seconds": 60,
-                    "duration_source": "estimated",
-                    "attention_type": "hands_on",
-                    "action_type": "season",
-                },
-                {
-                    "text": "Drain the tofu, slide it into the wok, and simmer gently with stock.",
-                    "duration_seconds": 180,
-                    "duration_source": "estimated",
-                    "attention_type": "passive",
-                    "action_type": "simmer",
-                },
-                {
-                    "text": "Thicken with a cornstarch slurry, finish with green onion and Sichuan pepper.",
-                    "duration_seconds": 60,
-                    "duration_source": "estimated",
-                    "attention_type": "hands_on",
-                    "action_type": "assemble",
-                },
-            ],
-            "tips": ["Drain the tofu well before adding it — it absorbs sauce better."],
-        }
-    return {
-        "title": "Imported Recipe",
-        "description": None,
-        "total_time_minutes": None,
-        "ingredients": [
-            {"name": "Example ingredient", "quantity": "to taste", "notes": "Replace with real extraction"},
-        ],
-        "equipment": [],
-        "steps": [],
-        "tips": [],
-    }

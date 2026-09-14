@@ -1,5 +1,6 @@
 "use client";
 
+import type { Ref } from "react";
 import { WEEE_STORE_LABEL } from "@cooking/shared";
 import { useT } from "../lib/i18n";
 import styles from "./ShoppingList.module.css";
@@ -11,10 +12,14 @@ type ShoppingSmartBarProps = {
   copied: boolean;
   bulkLoading: boolean;
   bulkProgress: { current: number; total: number } | null;
+  cartReadyCount: number;
+  loadButtonRef: Ref<HTMLButtonElement>;
+  reviewButtonRef: Ref<HTMLButtonElement>;
   onBack: () => void;
   onRefresh: () => void;
   onCopy: () => void;
   onLoadProducts: () => void;
+  onReviewCart: () => void;
 };
 
 export function ShoppingSmartBar({
@@ -24,10 +29,14 @@ export function ShoppingSmartBar({
   copied,
   bulkLoading,
   bulkProgress,
+  cartReadyCount,
+  loadButtonRef,
+  reviewButtonRef,
   onBack,
   onRefresh,
   onCopy,
   onLoadProducts,
+  onReviewCart,
 }: ShoppingSmartBarProps) {
   const t = useT();
 
@@ -44,19 +53,38 @@ export function ShoppingSmartBar({
             {refining ? t("shopping.refreshing") : t("shopping.refreshSmartList")}
           </button>
         ) : null}
-        <button type="button" onClick={onCopy}>{copied ? "Copied!" : "Copy list"}</button>
-        <button type="button" onClick={onLoadProducts} disabled={bulkLoading || itemCount === 0}>
+        <button type="button" onClick={onCopy}>{copied ? t("shopping.copied") : t("shopping.copyList")}</button>
+        <button
+          ref={loadButtonRef}
+          type="button"
+          onClick={onLoadProducts}
+          disabled={bulkLoading || itemCount === 0}
+        >
           {bulkLoading
-            ? `Loading picks from ${WEEE_STORE_LABEL}…`
-            : `Load top picks from ${WEEE_STORE_LABEL}`}
+            ? t("shopping.loadingPicks", { store: WEEE_STORE_LABEL })
+            : t("shopping.loadPicks", { store: WEEE_STORE_LABEL })}
         </button>
+        {cartReadyCount > 0 ? (
+          <button
+            ref={reviewButtonRef}
+            type="button"
+            className={styles.cartReviewButton}
+            aria-haspopup="dialog"
+            onClick={onReviewCart}
+          >
+            {t("shopping.reviewCart", { count: cartReadyCount })}
+          </button>
+        ) : null}
         <button type="button" className={styles.backButton} onClick={onBack}>
           {t("shopping.backToOriginalList")}
         </button>
       </div>
       {bulkLoading && bulkProgress ? (
         <p className={styles.bulkStatus} role="status">
-          Loading store matches… {bulkProgress.current} of {bulkProgress.total}
+          {t("shopping.loadingMatches", {
+            current: bulkProgress.current,
+            total: bulkProgress.total,
+          })}
         </p>
       ) : null}
     </section>

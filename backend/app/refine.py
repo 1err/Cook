@@ -6,7 +6,7 @@ import logging
 import re
 from typing import Any
 
-from app.core.llm import get_openai_client
+from app.core.llm import complete_chat, get_openai_client
 
 logger = logging.getLogger(__name__)
 
@@ -207,16 +207,17 @@ async def refine_shopping_list(items: list[dict[str, str]]) -> dict[str, Any]:
         return _fallback_result(items)
 
     try:
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+        raw = await complete_chat(
+            client,
+            operation="shopping_refine",
+            json_object=True,
             messages=[
                 {"role": "system", "content": _build_system_prompt()},
                 {"role": "user", "content": _build_user_prompt(items)},
             ],
         )
-        raw = response.choices[0].message.content or "{}"
     except Exception as e:
-        logger.exception("OpenAI refine call failed: %s", e)
+        logger.warning("Shopping refinement using original ingredients error_type=%s", type(e).__name__)
         return _fallback_result(items)
 
     return _parse_llm_refine_response(raw, items)

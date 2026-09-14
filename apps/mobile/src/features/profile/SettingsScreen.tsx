@@ -21,6 +21,8 @@ export function SettingsScreen() {
           setSigningOut(true);
           try {
             await logout();
+          } catch {
+            Alert.alert(t("account.updateFailed"), t("account.signOutStorageFailed"));
           } finally {
             setSigningOut(false);
           }

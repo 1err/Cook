@@ -1,0 +1,101 @@
+.panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 1.25rem;
+  padding: 1.15rem 1.25rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-field);
+  background: var(--cw-color-surface);
+}
+
+.copy {
+  min-width: 0;
+}
+
+.copy h2 {
+  margin: 0 0 0.4rem;
+  color: var(--cw-color-ink);
+  font-size: 1.05rem;
+  font-weight: 750;
+}
+
+.copy p,
+.status,
+.error {
+  margin: 0;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.copy .review {
+  margin-top: 0.25rem;
+  font-size: 0.74rem;
+}
+
+.actions {
+  display: grid;
+  flex: 0 0 auto;
+  justify-items: start;
+  gap: 0.5rem;
+  max-width: 20rem;
+}
+
+.button {
+  display: inline-flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 29.5px;
+  background: #003d29;
+  color: #faf1e5;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 650;
+  line-height: 1.3;
+  text-decoration: none;
+}
+
+.button img {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.button:hover,
+.button:focus-visible,
+.button:visited {
+  color: #faf1e5;
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--cw-color-action);
+  outline-offset: 3px;
+}
+
+.error {
+  color: var(--cw-color-error);
+}
+
+@media (max-width: 680px) {
+  .panel {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+
+  .actions {
+    max-width: 100%;
+  }
+}

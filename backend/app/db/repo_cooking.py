@@ -191,7 +191,8 @@ def _normalize_expiry(model: CookingSessionModel, now: datetime) -> bool:
 async def get_active_session(
     session: AsyncSession, user_id: UUID
 ) -> CookingSession | None:
-    model = await _get_active_model(session, user_id)
+    # Reads persist elapsed timers, so they must serialize with step actions.
+    model = await _get_active_model(session, user_id, for_update=True)
     if model is None:
         return None
     now = _now()
@@ -274,7 +275,15 @@ async def remove_dish(
         return None
     model.dishes.remove(target)
     await session.delete(target)
-    for position, dish in enumerate(sorted(model.dishes, key=lambda item: item.position)):
+    remaining = sorted(model.dishes, key=lambda item: item.position)
+    # The unique position constraint is immediate, and ORM flush can update
+    # surviving rows before deleting the target or in primary-key order.
+    # Move every survivor above the old range before compacting positions.
+    offset = max(target.position, *(dish.position for dish in remaining)) + 1
+    for dish in remaining:
+        dish.position += offset
+    await session.flush()
+    for position, dish in enumerate(remaining):
         dish.position = position
     now = _now()
     model.version += 1

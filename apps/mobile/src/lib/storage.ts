@@ -41,10 +41,11 @@ const USER_SCOPED_PERSISTENT_PREFIXES = [
   "cookingSession:",
 ];
 
-export async function clearUserScopedPersistent(): Promise<void> {
+export async function clearUserScopedPersistent({ preserveCooking = false } = {}): Promise<void> {
   const allKeys = await AsyncStorage.getAllKeys();
   const matches = allKeys.filter((k) =>
-    USER_SCOPED_PERSISTENT_PREFIXES.some((prefix) => k.startsWith(prefix)),
+    USER_SCOPED_PERSISTENT_PREFIXES.some((prefix) => k.startsWith(prefix)) &&
+    !(preserveCooking && k.startsWith("cookingSession:")),
   );
   if (matches.length > 0) {
     await AsyncStorage.multiRemove(matches);

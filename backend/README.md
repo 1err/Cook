@@ -1,6 +1,6 @@
 # Cooking Recipe API (Backend)
 
-Production-ready FastAPI app with async SQLAlchemy, Alembic migrations, and layered structure.
+FastAPI backend with async SQLAlchemy, Alembic migrations, and explicit ownership boundaries. See [the engineering review](../docs/engineering-review-2026-09-14.md) for verified changes and remaining release requirements.
 
 For **end-to-end product flow**, Docker, and frontend integration, see the repo root **`CLAUDE.md`**.
 
@@ -10,7 +10,7 @@ For **end-to-end product flow**, Docker, and frontend integration, see the repo 
 pip install -r requirements.txt
 ```
 
-Copy `.env.example` to `.env` and set `DATABASE_URL` (required), `CORS_ALLOW_ORIGINS`, and optionally `OPENAI_API_KEY`.
+Copy `.env.example` to `.env` and set `DATABASE_URL`, a random `AUTH_SECRET`, `CORS_ALLOW_ORIGINS`, and optionally `OPENAI_API_KEY`. Keep real credentials outside source control and image build contexts.
 
 ## Database
 
@@ -23,8 +23,9 @@ alembic upgrade head
 alembic current
 ```
 
-The current Alembic head is `20260825_step_meta`. It canonically backfills stable IDs and tutorial
-metadata inside the existing JSON-in-Text `recipes.steps` column; it adds no SQL column.
+The hardening migration adds `ai_usage_counters` after the cooking-session tables. Always use
+`alembic heads` and `alembic current` to inspect the actual release and database revision.
+AI-enabled endpoints require the counter migration before traffic is admitted.
 
 ## Run locally
 
@@ -39,14 +40,11 @@ CI uses Python 3.12 and installs both the runtime and development requirement se
 ```bash
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt -r requirements-dev.txt
+.venv/bin/python -m playwright install chromium
 .venv/bin/python -m pytest -q
 ```
 
-Run the same commands from `backend/`. For the stricter local release gate, promote every unfiltered Python warning to an error:
-
-```bash
-.venv/bin/python -W error -m pytest -q
-```
+Run these commands from `backend/`. On Linux, Playwright may also require `--with-deps`. The default suite skips the dedicated PostgreSQL concurrency module unless `TEST_DATABASE_URL` explicitly names `cooking_audit_test` on loopback or the task-owned local socket. Use an isolated database, apply Alembic there first, then pass its URL to the tests; never reuse application data. CI provisions its own database service. The current test-client stack emits two documented dependency deprecation warnings.
 
 Focused tutorial timing and persistence checks:
 
@@ -78,7 +76,7 @@ docker compose up --build
 
 ## Image uploads
 
-**With S3** (`AWS_REGION` + `S3_BUCKET_NAME` set): presigned PUT from the browser, then save `file_url` on the recipe.
+**With S3** (`AWS_REGION` + `S3_BUCKET_NAME` set): the backend checks the actual bytes (10 MB maximum and matching JPEG/PNG/GIF/WebP signature), then stores exactly those bytes in an account-prefixed S3 key using a worker thread. It returns `upload_url: ""` and the final `file_url`; clients do not upload a second time. Signature checks do not replace a full image decoder or malware scanner.
 
 **Without S3** (local dev default): `POST /recipes/upload-image` saves the file under `./uploads` (or `LOCAL_IMAGE_UPLOAD_DIR`), serves it at `/uploads/...`, returns `upload_url: ""` and a full `file_url`. The frontend skips the PUT when `upload_url` is empty.
 
@@ -88,5 +86,13 @@ See the root `CLAUDE.md` for Docker volume `./backend/uploads`.
 
 - `app/core` — config (pydantic-settings), logging
 - `app/db` — SQLAlchemy session, models, repos (recipes, meal_plan)
-- `app/services` — extract, refine, shopping aggregation, stores (interface + stub)
+- `app/services` — shopping aggregation, image storage, retailer services
 - `app/api` — FastAPI routers (recipes, meal-plan, shopping)
+
+## Production configuration
+
+Set `APP_ENV=production`, a random `AUTH_SECRET` of at least 32 characters, `COOKIE_SECURE=true`, and exact HTTPS `CORS_ALLOW_ORIGINS`. `COOKIE_SAMESITE=none` requires secure cookies; sibling HTTPS app/API subdomains are normally same-site and can use `lax` if no cross-site preview origin is required. Browser mutations are checked against trusted origins; native bearer requests remain supported.
+
+Grant administrator/catalog privileges with `ADMIN_USER_IDS` and `PUBLIC_LIBRARY_EDITOR_USER_IDS`, using verified account UUIDs. Empty lists deny access. The previous email allowlist is deliberately unsupported.
+
+OpenAI settings and account/global request caps are in `.env.example`. Keep separate development and production provider projects and use a company-owned service identity. The backend owns one reusable client, bounds requests, records token counts without prompts, and closes the client at shutdown. Accepted operations consume their allowance even if subsequent provider work fails; these counters are not a dollar billing system.

@@ -1,7 +1,9 @@
 # Dependencies
 node_modules/
 .venv/
+.venv*/
 venv/
+venv-*/
 __pycache__/
 *.pyc
 
@@ -26,6 +28,18 @@ tsconfig.tsbuildinfo
 # Env
 .env
 .env.local
+.env.*
+!.env.example
+!.env.*.example
+!.env.sample
+
+# Local audit output and recovery copies
+.pytest_cache/
+.ruff_cache/
+coverage/
+.coverage
+backups/
+audit-results/
 
 # IDE
 .idea/

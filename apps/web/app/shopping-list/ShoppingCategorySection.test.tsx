@@ -42,3 +42,38 @@ test("uses a plain category heading and expands vertical store choices", async (
   await user.click(screen.getByRole("button", { name: "Hide products" }));
   expect(onToggleProducts).toHaveBeenCalledWith("Potatoes");
 });
+
+test("keeps checked-row retailer links without inactive cart-selection controls", () => {
+  render(
+    <I18nProvider>
+      <ShoppingCategorySection
+        title="Pantry & Dry Goods"
+        rows={[{ item: { name: "Rice", suggested_purchase: "1 bag" }, origIndex: 4 }]}
+        checked={new Set([4])}
+        openProducts={{ rice: true }}
+        lookup={{
+          rice: {
+            status: "success",
+            products: [
+              { name: "Jasmine rice", price: "$2", image: "", url: "https://www.sayweee.com/product/rice" },
+              { name: "Brown rice", price: "$4", image: "", url: "https://www.sayweee.com/product/brown-rice" },
+            ],
+          },
+        }}
+        selectedUrlByIngredient={{ rice: "https://www.sayweee.com/product/brown-rice" }}
+        menuOpenFor={null}
+        onToggleChecked={vi.fn()}
+        onHide={vi.fn()}
+        onToggleMenu={vi.fn()}
+        onToggleProducts={vi.fn()}
+        onRetryProducts={vi.fn()}
+        onSelectProduct={vi.fn()}
+      />
+    </I18nProvider>,
+  );
+
+  expect(screen.getAllByRole("link", { name: "View on Weee" })).toHaveLength(2);
+  expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+  expect(screen.queryByText("Top pick")).not.toBeInTheDocument();
+  expect(screen.queryByText("Selected for cart")).not.toBeInTheDocument();
+});

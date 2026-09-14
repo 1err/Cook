@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  devIndicators: false,
   transpilePackages: ["@cooking/shared", "@cooking/api-client"],
 };
 

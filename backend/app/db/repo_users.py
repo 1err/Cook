@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import RecipeModel, UserModel
+from app.db.repo_recipes import _lock_copy_owner
 
 
 async def search_public_library_user(
@@ -95,11 +96,13 @@ async def copy_friend_recipe_to_user(
     if source is None:
         return None
 
+    if not await _lock_copy_owner(session, caller_user_id):
+        return None
     existing_result = await session.execute(
         select(RecipeModel).where(
             RecipeModel.user_id == caller_user_id,
             RecipeModel.catalog_source_recipe_id == recipe_id,
-        )
+        ).order_by(RecipeModel.id).limit(1)
     )
     existing = existing_result.scalars().one_or_none()
     if existing is not None:
@@ -112,7 +115,7 @@ async def copy_friend_recipe_to_user(
         source_url=source.source_url,
         thumbnail_url=source.thumbnail_url,
         ingredients=source.ingredients,
-        raw_extraction_text=source.raw_extraction_text,
+        raw_extraction_text=None,
         library_tags=source.library_tags,
         library_category=source.library_category,
         is_public_catalog=False,

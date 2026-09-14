@@ -15,11 +15,7 @@
     "incremental": true,
     "plugins": [{ "name": "next" }],
     "paths": {
-      "@/*": ["./*"],
-      "react": ["./node_modules/react"],
-      "react/*": ["./node_modules/react/*"],
-      "react-dom": ["./node_modules/react-dom"],
-      "react-dom/*": ["./node_modules/react-dom/*"]
+      "@/*": ["./*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

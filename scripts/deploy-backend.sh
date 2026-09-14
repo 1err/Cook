@@ -1,117 +1,149 @@
 #!/usr/bin/env bash
-# Deploy the backend image to ECS. Sustainable replacement for the
-# manual buildx + force-redeploy flow.
-#
-# What this does:
-#   1. Fail-fast preflight checks (git state, docker, aws CLI, backend builds locally).
-#   2. Resolve the current git SHA — used as an immutable image tag.
-#   3. Build + push two tags:
-#        :latest    (so the existing task def picks up the new image)
-#        :<git-sha> (so you can roll back to any past deploy)
-#   4. Force a new ECS deployment.
-#   5. Wait for the deployment to stabilize.
-#   6. Smoke the new image: /health, then a route the deploy added.
-#
-# Roll back: `docker pull <repo>:<previous-sha>`, retag as :latest, push, force-redeploy.
-# All past SHA tags live in ECR.
-#
-# Usage:
-#   bash scripts/deploy-backend.sh                 # uses defaults below
-#   SERVICE=cooking-backend-svc bash scripts/...   # override service name
-#   PROBE_PATH=/health bash scripts/...            # override post-deploy smoke route
-#
-# Requirements: aws CLI (logged in), docker buildx, jq.
-
+# Build committed backend source and deploy an ECS revision pinned to its image digest.
+# Run only when a production deployment is intended. No :latest tag is modified.
+# Override REGION, ACCOUNT, REPO_NAME, CLUSTER, SERVICE, API_BASE, PROBE_PATH,
+# or CONTAINER_NAME as needed. Requires git, docker buildx, aws CLI, jq and curl.
+# Optional TASK_ENV_OVERRIDES_FILE is a private JSON object of env names/string
+# values merged into the selected container in the same revision as the image.
 set -euo pipefail
+umask 077
 
-# --- config (override via env) ---
+fail() { echo "ERROR: $*" >&2; exit 1; }
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+REPO_ROOT=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)
+cd "$REPO_ROOT"
+
+# A git archive supplies the image context. Refuse edits that would otherwise be
+# silently omitted, but allow unrelated frontend work and ignored local secrets.
+DIRTY=$(git status --porcelain --untracked-files=all -- backend scripts/deploy-backend.sh .dockerignore .gitignore)
+[ -z "$DIRTY" ] || fail "Backend or release inputs have uncommitted changes. Commit the intended release in an isolated checkout before deploying."
+for tool in aws docker jq curl; do
+  command -v "$tool" >/dev/null || fail "$tool is required"
+done
+
 REGION="${REGION:-us-east-1}"
-ACCOUNT="${ACCOUNT:-930067562682}"
+ACCOUNT="${ACCOUNT:-$(aws sts get-caller-identity --query Account --output text)}"
+[[ "$ACCOUNT" =~ ^[0-9]{12}$ ]] || fail "ACCOUNT must be a 12-digit AWS account ID"
 REPO_NAME="${REPO_NAME:-cooking-backend}"
 CLUSTER="${CLUSTER:-cooking-cluster}"
-SERVICE="${SERVICE:-cooking-backend-service}"     # find via `aws ecs list-services --cluster $CLUSTER`
+SERVICE="${SERVICE:-cooking-backend-service}"
 API_BASE="${API_BASE:-https://api.chef-world.com}"
-PROBE_PATH="${PROBE_PATH:-/users/search?email=preflight@example.com}"  # should 401 if route exists; falls back to /health
-
+PROBE_PATH="${PROBE_PATH:-/users/search?email=preflight@example.com}"
 REPO="$ACCOUNT.dkr.ecr.$REGION.amazonaws.com/$REPO_NAME"
+SHA=$(git rev-parse HEAD)
 
-# --- preflight ---
-echo "==> preflight"
-command -v aws >/dev/null || { echo "aws CLI not installed"; exit 1; }
-command -v docker >/dev/null || { echo "docker not installed"; exit 1; }
-command -v jq >/dev/null || { echo "jq required (brew install jq)"; exit 1; }
-
-# Warn if working tree dirty — uncommitted code won't be in the image yet
-if [ -n "$(git status --short)" ]; then
-  echo "WARNING: working tree has uncommitted changes. Image will be built from the committed state of ./backend"
-  echo "         If you need those changes shipped, commit + push first."
-  read -r -p "Continue anyway? (y/N) " ans
-  case "$ans" in y|Y) ;; *) exit 1 ;; esac
+# Task definitions may contain secrets. Keep all temporary files private and
+# never print their payloads; they are removed on success, failure or interrupt.
+RELEASE_TMP=$(mktemp -d)
+trap 'rm -rf -- "$RELEASE_TMP"' EXIT
+if [ -n "${TASK_ENV_OVERRIDES_FILE:-}" ]; then
+  # Validate the private snapshot used later, not a path that can change during
+  # a long build. Never pass values as CLI arguments or expose parser diagnostics.
+  cp -- "$TASK_ENV_OVERRIDES_FILE" "$RELEASE_TMP/task-env-source.json" 2>/dev/null || fail "Unable to read TASK_ENV_OVERRIDES_FILE"
+  jq -se '
+    if length == 1 and (.[0] | type == "object" and
+      all(to_entries[]; (.key | test("\\A[A-Za-z_][A-Za-z0-9_]*\\z")) and (.value | type == "string")))
+    then .[0] else error("Invalid task environment overrides") end
+  ' "$RELEASE_TMP/task-env-source.json" > "$RELEASE_TMP/task-env-overrides.json" 2>/dev/null || fail "TASK_ENV_OVERRIDES_FILE must contain one JSON object with valid environment names and string values"
+else
+  printf '{}\n' > "$RELEASE_TMP/task-env-overrides.json"
 fi
+mkdir "$RELEASE_TMP/context"
+git archive "$SHA:backend" | tar -x -C "$RELEASE_TMP/context"
 
-SHA=$(git rev-parse --short HEAD)
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
-echo "    branch: $BRANCH"
-echo "    sha:    $SHA"
-echo "    repo:   $REPO"
-echo "    cluster/service: $CLUSTER / $SERVICE"
+echo "==> preflight: committed source $SHA"
+aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --region "$REGION" > "$RELEASE_TMP/service.json"
+jq -e '(.failures | length) == 0 and (.services | length) == 1 and .services[0].desiredCount > 0' "$RELEASE_TMP/service.json" >/dev/null || fail "Expected one active ECS service with desiredCount > 0"
+OLD_TASK=$(jq -er '.services[0].taskDefinition' "$RELEASE_TMP/service.json")
+aws ecs describe-task-definition --task-definition "$OLD_TASK" --include TAGS --region "$REGION" > "$RELEASE_TMP/current-task.json"
+if [ -z "${CONTAINER_NAME:-}" ]; then
+  CONTAINER_NAME=$(jq -er --arg repo "$REPO" '
+    .taskDefinition.containerDefinitions as $containers |
+    [$containers[] | select((.image | startswith($repo + ":")) or (.image | startswith($repo + "@"))) | .name] as $matches |
+    if ($matches | length) == 1 then $matches[0]
+    elif ($containers | length) == 1 then $containers[0].name
+    else error("Set CONTAINER_NAME to identify the backend container") end
+  ' "$RELEASE_TMP/current-task.json")
+fi
+jq -e --arg name "$CONTAINER_NAME" '[.taskDefinition.containerDefinitions[] | select(.name == $name)] | length == 1' "$RELEASE_TMP/current-task.json" >/dev/null || fail "CONTAINER_NAME must identify exactly one task container"
+jq -e --arg name "$CONTAINER_NAME" --slurpfile overrides "$RELEASE_TMP/task-env-overrides.json" '
+  $overrides[0] as $env |
+  [.taskDefinition.containerDefinitions[] | select(.name == $name) |
+    (.secrets // [])[] | .name as $key | select($env | has($key))] | length == 0
+' "$RELEASE_TMP/current-task.json" >/dev/null 2>/dev/null || fail "Task environment overrides conflict with ECS secrets or the task definition is invalid"
 
-# --- ECR login ---
-echo "==> ecr login"
-aws ecr get-login-password --region "$REGION" \
-  | docker login --username AWS --password-stdin "$ACCOUNT.dkr.ecr.$REGION.amazonaws.com"
+echo "==> build and push $REPO:$SHA"
+aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ACCOUNT.dkr.ecr.$REGION.amazonaws.com"
+# A single-platform manifest keeps the pinned digest identical to ECS's running
+# container digest (a provenance manifest list would have a different parent ID).
+docker buildx build --platform linux/amd64 --provenance=false -t "$REPO:$SHA" --metadata-file "$RELEASE_TMP/build-metadata.json" --push "$RELEASE_TMP/context"
+DIGEST=$(jq -er '.["containerimage.digest"]' "$RELEASE_TMP/build-metadata.json")
+[[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]] || fail "Build did not return a valid immutable digest"
+IMAGE="$REPO@$DIGEST"
 
-# --- build + push two tags ---
-echo "==> build + push (linux/amd64)"
-docker buildx build \
-  --platform linux/amd64 \
-  -t "$REPO:latest" \
-  -t "$REPO:$SHA" \
-  ./backend \
-  --push
+# Reject a service changed by another release while this image was building.
+# Deployment jobs must additionally be serialized: ECS has no conditional
+# compare-and-swap update-service API for the final check-to-update interval.
+assert_service_unchanged() {
+  aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --region "$REGION" > "$RELEASE_TMP/pre-update-service.json"
+  jq -e --arg task "$OLD_TASK" '(.failures | length) == 0 and (.services | length) == 1 and .services[0].taskDefinition == $task' "$RELEASE_TMP/pre-update-service.json" >/dev/null || fail "Service changed during the build; rerun from its current task definition"
+}
+assert_service_unchanged
+jq --arg name "$CONTAINER_NAME" --arg image "$IMAGE" --slurpfile overrides "$RELEASE_TMP/task-env-overrides.json" '
+  $overrides[0] as $env |
+  .tags as $tags | .taskDefinition |
+  del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt) |
+  (.containerDefinitions[] | select(.name == $name)) |= (
+    .image = $image |
+    if ($env | length) > 0 then
+      (.environment // []) as $existing |
+      .environment = (
+        ($existing | map(.name as $key | if ($env | has($key)) then .value = $env[$key] else . end)) +
+        [$env | to_entries[] | select(.key as $key | $existing | any(.name == $key) | not) | {name: .key, value: .value}]
+      )
+    else . end
+  ) |
+  if ($tags | length) > 0 then .tags = $tags else . end
+' "$RELEASE_TMP/current-task.json" > "$RELEASE_TMP/new-task.json"
+NEW_TASK=$(aws ecs register-task-definition --cli-input-json "file://$RELEASE_TMP/new-task.json" --region "$REGION" --query 'taskDefinition.taskDefinitionArn' --output text)
+[[ "$NEW_TASK" == arn:*:task-definition/* ]] || fail "ECS did not return a task definition ARN"
+assert_service_unchanged
 
-# --- force redeploy ---
-echo "==> ecs update-service --force-new-deployment"
-DEPLOY_ID=$(aws ecs update-service \
-  --cluster "$CLUSTER" \
-  --service "$SERVICE" \
-  --force-new-deployment \
-  --region "$REGION" \
-  --query 'service.deployments[0].id' \
-  --output text)
-echo "    deployment: $DEPLOY_ID"
+echo "==> deploying $NEW_TASK ($DIGEST)"
+DEPLOY_ID=$(aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --task-definition "$NEW_TASK" --region "$REGION" --query 'service.deployments[?status==`PRIMARY`].id | [0]' --output text)
+[ -n "$DEPLOY_ID" ] && [ "$DEPLOY_ID" != "None" ] || fail "ECS did not return a deployment ID"
+aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE" --region "$REGION"
 
-# --- wait for stable ---
-echo "==> waiting for service to stabilize (may take ~1–3 min)"
-aws ecs wait services-stable \
-  --cluster "$CLUSTER" \
-  --services "$SERVICE" \
-  --region "$REGION"
-echo "    service stable"
+# services-stable can also succeed after an automatic rollback. Verify that this
+# exact revision completed and that every running task has the expected digest.
+aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --region "$REGION" > "$RELEASE_TMP/deployed-service.json"
+jq -e --arg task "$NEW_TASK" --arg deployment "$DEPLOY_ID" '
+  (.failures | length) == 0 and (.services | length) == 1 and
+  (.services[0] | .taskDefinition == $task and .desiredCount > 0 and .runningCount == .desiredCount and .pendingCount == 0 and
+    any(.deployments[]; .id == $deployment and .taskDefinition == $task and .status == "PRIMARY" and .rolloutState == "COMPLETED"))
+' "$RELEASE_TMP/deployed-service.json" >/dev/null || fail "Requested ECS revision did not complete; inspect deployment events (possible rollback)"
+aws ecs list-tasks --cluster "$CLUSTER" --service-name "$SERVICE" --desired-status RUNNING --region "$REGION" > "$RELEASE_TMP/task-list.json"
+TASK_ARNS=()
+while IFS= read -r task_arn; do TASK_ARNS+=("$task_arn"); done < <(jq -r '.taskArns[]' "$RELEASE_TMP/task-list.json")
+[ "${#TASK_ARNS[@]}" -gt 0 ] || fail "No running ECS tasks found"
+# ECS describe-tasks accepts at most 100 ARNs per request.
+for ((offset=0; offset<${#TASK_ARNS[@]}; offset+=100)); do
+  aws ecs describe-tasks --cluster "$CLUSTER" --tasks "${TASK_ARNS[@]:offset:100}" --region "$REGION" > "$RELEASE_TMP/tasks.json"
+  jq -e --arg task "$NEW_TASK" --arg name "$CONTAINER_NAME" --arg digest "$DIGEST" '
+    (.failures | length) == 0 and (.tasks | length) > 0 and
+    all(.tasks[]; .taskDefinitionArn == $task and any(.containers[]; .name == $name and .imageDigest == $digest))
+  ' "$RELEASE_TMP/tasks.json" >/dev/null || fail "Running tasks do not match the requested revision and image digest"
+done
 
-# --- post-deploy smoke ---
-echo "==> post-deploy smoke"
-HEALTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$API_BASE/health")
-echo "    GET $API_BASE/health -> HTTP $HEALTH_CODE"
-[ "$HEALTH_CODE" = "200" ] || { echo "    ❌ health check failed"; exit 1; }
-
-PROBE_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$API_BASE$PROBE_PATH")
-echo "    GET $API_BASE$PROBE_PATH -> HTTP $PROBE_CODE"
+HEALTH_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$API_BASE/health")
+[ "$HEALTH_CODE" = "200" ] || fail "Health check returned HTTP $HEALTH_CODE"
+PROBE_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$API_BASE$PROBE_PATH")
 case "$PROBE_CODE" in
-  200|401|403|422)
-    # 401/403/422 are fine: they mean the route exists (just needs auth or rejects probe input)
-    echo "    ✅ route exists ($PROBE_CODE = route present)"
-    ;;
-  404)
-    echo "    ⚠️  route returned 404 — task may still be the old image. Investigate before merging web."
-    exit 1
-    ;;
-  *)
-    echo "    ⚠️  unexpected status $PROBE_CODE — verify manually"
-    ;;
+  200|401|403|422) ;;
+  *) fail "Route probe returned unexpected HTTP $PROBE_CODE" ;;
 esac
 
-echo
-echo "==> ✅ Deploy complete."
-echo "    Tagged: $REPO:latest, $REPO:$SHA"
-echo "    To roll back: docker pull \$REPO:<prev-sha> && docker tag \$REPO:<prev-sha> \$REPO:latest && docker push \$REPO:latest && this script's update-service block"
+echo "==> Deploy complete: $NEW_TASK"
+echo "    Image: $IMAGE"
+echo "    Health: $HEALTH_CODE; route: $PROBE_CODE"
+echo "    Previous task definition for rollback: $OLD_TASK"

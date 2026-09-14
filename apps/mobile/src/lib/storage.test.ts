@@ -24,3 +24,13 @@ test("logout cleanup removes cooking and planner account state but keeps unrelat
   expect(await AsyncStorage.getItem("plannerWeekFingerprint:user-1")).toBeNull();
   expect(await AsyncStorage.getItem("cooking-ui-language")).toBe("zh");
 });
+
+test("network-recovery login retains user-keyed offline actions while clearing unscoped planner state", async () => {
+  await AsyncStorage.multiSet([
+    ["cookingSession:v1:user-1", "pending offline actions"],
+    ["plannerWeekFingerprint:2026-09-14", "old plan"],
+  ]);
+  await clearUserScopedPersistent({ preserveCooking: true });
+  expect(await AsyncStorage.getItem("cookingSession:v1:user-1")).toBe("pending offline actions");
+  expect(await AsyncStorage.getItem("plannerWeekFingerprint:2026-09-14")).toBeNull();
+});

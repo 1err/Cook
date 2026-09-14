@@ -5,12 +5,15 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import type { StoreProductsBatchResponse, StoreProductsResponse } from "@cooking/api-client";
 import { apiFetch } from "../lib/api";
+import { userLocalStorage, userSessionStorage } from "../lib/userStorage";
 import { RequireAuth } from "../components/RequireAuth";
 import { PageHeader, PageShell } from "../components/PageShell";
 import { useI18n, useT } from "../lib/i18n";
 import type { Recipe } from "../types";
 import {
   GROCERY_CATEGORY_ORDER,
+  buildCartAssistantDraft,
+  buildInstacartItems,
   buildWeekMealPlanFingerprint,
   formatWeekRangeDisplay,
   getDisplayCategory,
@@ -18,11 +21,15 @@ import {
   getWeekBounds,
   normalizeGroceryCategory,
   plannerFingerprintStorageKey,
+  isSafeWeeeProductUrl,
+  type CartAssistantIngredient,
   type GroceryCategory,
   type MealPlanDay,
 } from "@cooking/shared";
 import { ShoppingCategorySection } from "./ShoppingCategorySection";
 import { ShoppingSmartBar } from "./ShoppingSmartBar";
+import { CartAssistantDialog } from "./CartAssistantDialog";
+import { InstacartShoppingPanel } from "./InstacartShoppingPanel";
 import styles from "./ShoppingList.module.css";
 import {
   buildVisualProductQueue,
@@ -36,6 +43,10 @@ import {
   parseStoreProductsResponse,
   parseProductLookupStorage,
 } from "./productLookupCoordinator";
+import {
+  cartAssistantStorageKey,
+  parseCartAssistantStored,
+} from "./cartAssistantStorage";
 
 const SMART_SHOPPING_LIST_PREFIX = "smartShoppingList";
 const SMART_SHOPPING_PRODUCTS_PREFIX = "smartShoppingProducts";
@@ -51,19 +62,25 @@ function smartProductsStorageKey(weekStart: string) {
 
 function writeSessionStorage(key: string, value: string) {
   try {
-    sessionStorage.setItem(key, value);
+    userSessionStorage.setItem(key, value);
+    return true;
   } catch {
     // Ephemeral cache writes are best effort; quota/privacy failures must not break shopping.
+    return false;
   }
 }
 
 function removeSessionStorage(key: string) {
   try {
-    sessionStorage.removeItem(key);
+    userSessionStorage.removeItem(key);
+    return true;
   } catch {
     // Keep React state usable when privacy settings deny ephemeral storage access.
+    return false;
   }
 }
+
+const suppressedCartHydrationKeys = new Set<string>();
 
 const SLOT_ORDER = ["breakfast", "lunch", "dinner"] as const;
 type PlanSlot = (typeof SLOT_ORDER)[number];
@@ -180,6 +197,23 @@ function parseSmartStored(
   }
 }
 
+function confirmationIngredientKey(token: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(token);
+    if (
+      Array.isArray(parsed)
+      && parsed.length === 2
+      && typeof parsed[0] === "string"
+      && typeof parsed[1] === "string"
+    ) {
+      return parsed[0];
+    }
+  } catch {
+    // Ignore malformed progress tokens from ephemeral storage.
+  }
+  return null;
+}
+
 function ShoppingListPageContent() {
   const router = useRouter();
   const { language } = useI18n();
@@ -212,6 +246,18 @@ function ShoppingListPageContent() {
   const [openProductsByIngredient, setOpenProductsByIngredient] = useState<Record<string, boolean>>({});
   const [lookupByIngredient, setLookupByIngredient] = useState<Record<string, ProductLookupState>>({});
   const [productQueryByKey, setProductQueryByKey] = useState<Record<string, string>>({});
+  const [selectedUrlByIngredient, setSelectedUrlByIngredient] = useState<Record<string, string>>({});
+  const [confirmedCartTokens, setConfirmedCartTokens] = useState<Set<string>>(new Set());
+  const [skippedCartTokens, setSkippedCartTokens] = useState<Set<string>>(new Set());
+  const [cartDialogOpen, setCartDialogOpen] = useState(false);
+  const [cartHydratedWeek, setCartHydratedWeek] = useState<string | null>(null);
+  const [cartProductsHydratedWeek, setCartProductsHydratedWeek] = useState<string | null>(null);
+  const cartLoadProductsRef = useRef<HTMLButtonElement>(null);
+  const cartReviewTriggerRef = useRef<HTMLButtonElement>(null);
+  const cartWasOpenRef = useRef(false);
+  const activeWeekStartRef = useRef(start);
+  activeWeekStartRef.current = start;
+  const refineGenerationRef = useRef(0);
   const productLoadGenerationRef = useRef(0);
   const lookupByIngredientRef = useRef(lookupByIngredient);
   lookupByIngredientRef.current = lookupByIngredient;
@@ -244,6 +290,37 @@ function ShoppingListPageContent() {
   const productLookupCoordinator = productLookupCoordinatorRef.current;
 
   useEffect(() => {
+    setCartDialogOpen(false);
+    setSkippedCartTokens(new Set());
+    setSelectedUrlByIngredient({});
+    setConfirmedCartTokens(new Set());
+    setCartHydratedWeek(null);
+    try {
+      const key = cartAssistantStorageKey(start);
+      const raw = suppressedCartHydrationKeys.has(key) ? null : userSessionStorage.getItem(key);
+      if (raw) {
+        const parsed = parseCartAssistantStored(JSON.parse(raw));
+        setSelectedUrlByIngredient(parsed.selectedUrlByIngredient);
+        setConfirmedCartTokens(new Set(parsed.confirmedTokens));
+      }
+    } catch {
+      // Malformed or denied ephemeral storage must not block the live cart review.
+    } finally {
+      setCartHydratedWeek(start);
+    }
+  }, [start]);
+
+  useEffect(() => {
+    if (cartDialogOpen) {
+      cartWasOpenRef.current = true;
+      return;
+    }
+    if (!cartWasOpenRef.current) return;
+    cartWasOpenRef.current = false;
+    (cartReviewTriggerRef.current ?? cartLoadProductsRef.current)?.focus();
+  }, [cartDialogOpen]);
+
+  useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (menuOpenFor === null) return;
       const target = e.target instanceof Element ? e.target : null;
@@ -267,10 +344,12 @@ function ShoppingListPageContent() {
     setProductQueryByKey({});
     setBulkLoadingProducts(false);
     setBulkLoadProgress(null);
+    setCartProductsHydratedWeek(null);
   }
 
   useEffect(() => {
     return () => {
+      refineGenerationRef.current += 1;
       const previousGeneration = productLoadGenerationRef.current;
       productLoadGenerationRef.current = previousGeneration + 1;
       productLookupCoordinator.cancelGeneration(previousGeneration);
@@ -363,6 +442,9 @@ function ShoppingListPageContent() {
 
   useEffect(() => {
     let cancelled = false;
+    refineGenerationRef.current += 1;
+    setRefining(false);
+    setRefineError(null);
     async function load() {
       setLoading(true);
       setItems([]);
@@ -402,7 +484,7 @@ function ShoppingListPageContent() {
         }
         setRecipeById(rmap);
         try {
-          const raw = sessionStorage.getItem(smartListStorageKey(start));
+          const raw = userSessionStorage.getItem(smartListStorageKey(start));
           if (raw) {
             const parsed = parseSmartStored(raw);
             if (parsed) {
@@ -447,9 +529,10 @@ function ShoppingListPageContent() {
       return;
     }
     try {
-      const raw = sessionStorage.getItem(smartProductsStorageKey(start));
+      const raw = userSessionStorage.getItem(smartProductsStorageKey(start));
       if (!raw) {
         clearProductResults();
+        setCartProductsHydratedWeek(start);
         return;
       }
       const seedQueries: Record<string, string> = {};
@@ -461,6 +544,7 @@ function ShoppingListPageContent() {
       const parsed = parseProductLookupStorage(raw, Date.now(), seedQueries);
       if (!parsed) {
         clearProductResults();
+        setCartProductsHydratedWeek(start);
         return;
       }
       productQueryByKeyRef.current = parsed.queries;
@@ -474,8 +558,10 @@ function ShoppingListPageContent() {
       for (const query of parsed.revalidate) {
         void productLookupCoordinator.request(query, generation);
       }
+      setCartProductsHydratedWeek(start);
     } catch {
       clearProductResults();
+      setCartProductsHydratedWeek(start);
     }
   }, [activeRefinedData, productLookupCoordinator, start]);
 
@@ -493,7 +579,7 @@ function ShoppingListPageContent() {
     if (!activeRefinedData || !activeSavedPlannerFingerprint) return;
     function syncSmartStaleState() {
       try {
-        const latest = localStorage.getItem(plannerFingerprintStorageKey(start)) ?? currentPlannerFingerprint;
+        const latest = userLocalStorage.getItem(plannerFingerprintStorageKey(start)) ?? currentPlannerFingerprint;
         setSmartListStale(latest !== activeSavedPlannerFingerprint);
       } catch {
         setSmartListStale(currentPlannerFingerprint !== activeSavedPlannerFingerprint);
@@ -515,6 +601,36 @@ function ShoppingListPageContent() {
     router.push(`/shopping-list?week=${week}`);
   }
 
+  function clearConfirmationForIngredient(ingredientKey: string) {
+    setConfirmedCartTokens((current) => {
+      const next = new Set(
+        [...current].filter((token) => confirmationIngredientKey(token) !== ingredientKey),
+      );
+      return next.size === current.size ? current : next;
+    });
+  }
+
+  function closeCartDialog() {
+    setCartDialogOpen(false);
+    setSkippedCartTokens(new Set());
+  }
+
+  function clearCartAssistantState(removeStored: boolean) {
+    closeCartDialog();
+    setSelectedUrlByIngredient({});
+    setConfirmedCartTokens(new Set());
+    if (removeStored) {
+      const key = cartAssistantStorageKey(start);
+      suppressedCartHydrationKeys.add(key);
+      const tombstoned = writeSessionStorage(key, JSON.stringify({
+        selectedUrlByIngredient: {},
+        confirmedTokens: [],
+      }));
+      const removed = removeSessionStorage(key);
+      if (tombstoned || removed) suppressedCartHydrationKeys.delete(key);
+    }
+  }
+
   function toggleSmartChecked(origIndex: number) {
     setSmartChecked((prev) => {
       const n = new Set(prev);
@@ -529,12 +645,193 @@ function ShoppingListPageContent() {
     setMenuOpenFor(null);
   }
 
+  function handleSelectProduct(ingredientKey: string, productUrl: string) {
+    if (!isSafeWeeeProductUrl(productUrl)) return;
+    const ingredient = allCartIngredients.find((candidate) => candidate.key === ingredientKey);
+    const safeProducts = ingredient?.products
+      .filter((product) => isSafeWeeeProductUrl(product.url))
+      .slice(0, 3) ?? [];
+    if (!safeProducts.some((product) => product.url === productUrl)) return;
+    const explicitUrl = selectedUrlByIngredient[ingredientKey];
+    const effectiveUrl = safeProducts.some((product) => product.url === explicitUrl)
+      ? explicitUrl
+      : safeProducts[0]?.url;
+    if (effectiveUrl === productUrl) return;
+    clearConfirmationForIngredient(ingredientKey);
+    setSelectedUrlByIngredient((current) => ({
+      ...current,
+      [ingredientKey]: productUrl,
+    }));
+  }
+
   const visiblePurchaseItems = useMemo(() => {
     if (!activeRefinedData) return [];
     return activeRefinedData.purchase_items
       .map((p, origIndex) => ({ ...p, origIndex }))
       .filter(({ origIndex }) => !smartHidden.has(origIndex));
   }, [activeRefinedData, smartHidden]);
+
+  const allCartIngredients = useMemo<CartAssistantIngredient[]>(() => {
+    if (!activeRefinedData) return [];
+    const seen = new Set<string>();
+    const ingredients: CartAssistantIngredient[] = [];
+    for (const item of activeRefinedData.purchase_items) {
+      const key = canonicalIngredientKey(item.name);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const state = lookupByIngredient[key];
+      ingredients.push({
+        key,
+        name: item.name,
+        suggestedPurchase: item.suggested_purchase,
+        products: state?.status === "success" ? state.products ?? [] : [],
+      });
+    }
+    return ingredients;
+  }, [activeRefinedData, lookupByIngredient]);
+
+  const activeCartIngredients = useMemo<CartAssistantIngredient[]>(() => {
+    const seen = new Set<string>();
+    const ingredients: CartAssistantIngredient[] = [];
+    for (const item of visiblePurchaseItems) {
+      if (smartChecked.has(item.origIndex)) continue;
+      const key = canonicalIngredientKey(item.name);
+      if (!key || seen.has(key)) continue;
+      const state = lookupByIngredient[key];
+      if (state?.status === "queued" || state?.status === "loading") continue;
+      seen.add(key);
+      ingredients.push({
+        key,
+        name: item.name,
+        suggestedPurchase: item.suggested_purchase,
+        products: state?.status === "success" ? state.products ?? [] : [],
+      });
+    }
+    return ingredients;
+  }, [lookupByIngredient, smartChecked, visiblePurchaseItems]);
+
+  const pendingCartIngredients = useMemo(() => {
+    const seen = new Set<string>();
+    const ingredients: Array<Pick<CartAssistantIngredient, "key" | "name" | "suggestedPurchase">> = [];
+    for (const item of visiblePurchaseItems) {
+      if (smartChecked.has(item.origIndex)) continue;
+      const key = canonicalIngredientKey(item.name);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const state = lookupByIngredient[key];
+      if (state?.status !== "queued" && state?.status !== "loading") continue;
+      ingredients.push({
+        key,
+        name: item.name,
+        suggestedPurchase: item.suggested_purchase,
+      });
+    }
+    return ingredients;
+  }, [lookupByIngredient, smartChecked, visiblePurchaseItems]);
+
+  const cartDraft = useMemo(
+    () => buildCartAssistantDraft({
+      ingredients: activeCartIngredients,
+      selectedUrlByIngredient,
+      confirmedTokens: confirmedCartTokens,
+    }),
+    [activeCartIngredients, confirmedCartTokens, selectedUrlByIngredient],
+  );
+
+  useEffect(() => {
+    if (
+      !activeRefinedData
+      || cartHydratedWeek !== start
+      || cartProductsHydratedWeek !== start
+    ) {
+      return;
+    }
+
+    const allKeys = new Set(allCartIngredients.map((ingredient) => ingredient.key));
+    setSelectedUrlByIngredient((current) => {
+      const next: Record<string, string> = {};
+      for (const [key, url] of Object.entries(current)) {
+        if (!allKeys.has(key)) continue;
+        const state = lookupByIngredient[key];
+        if (!state || state.status === "idle" || state.status === "queued" || state.status === "loading") {
+          next[key] = url;
+          continue;
+        }
+        if (
+          state.status === "success"
+          && (state.products ?? [])
+            .filter((product) => isSafeWeeeProductUrl(product.url))
+            .slice(0, 3)
+            .some((product) => product.url === url)
+        ) {
+          next[key] = url;
+        }
+      }
+      const unchanged = Object.keys(current).length === Object.keys(next).length
+        && Object.entries(next).every(([key, url]) => current[key] === url);
+      return unchanged ? current : next;
+    });
+
+    const activeKeys = new Set([
+      ...activeCartIngredients.map((ingredient) => ingredient.key),
+      ...pendingCartIngredients.map((ingredient) => ingredient.key),
+    ]);
+    const selectedTokenByKey = new Map(
+      cartDraft.selections.map((selection) => [selection.ingredientKey, selection.confirmationToken]),
+    );
+    setConfirmedCartTokens((current) => {
+      const next = new Set<string>();
+      for (const token of current) {
+        const key = confirmationIngredientKey(token);
+        if (!key || !activeKeys.has(key)) continue;
+        const state = lookupByIngredient[key];
+        if (!state || state.status === "idle" || state.status === "queued" || state.status === "loading") {
+          next.add(token);
+        } else if (selectedTokenByKey.get(key) === token) {
+          next.add(token);
+        }
+      }
+      if (next.size === current.size && [...next].every((token) => current.has(token))) return current;
+      return next;
+    });
+  }, [
+    activeCartIngredients,
+    activeRefinedData,
+    allCartIngredients,
+    cartDraft.selections,
+    cartHydratedWeek,
+    cartProductsHydratedWeek,
+    lookupByIngredient,
+    pendingCartIngredients,
+    start,
+  ]);
+
+  useEffect(() => {
+    if (
+      !activeRefinedData
+      || cartHydratedWeek !== start
+      || cartProductsHydratedWeek !== start
+    ) {
+      return;
+    }
+    const key = cartAssistantStorageKey(start);
+    if (writeSessionStorage(
+      key,
+      JSON.stringify({
+        selectedUrlByIngredient,
+        confirmedTokens: [...confirmedCartTokens],
+      }),
+    )) {
+      suppressedCartHydrationKeys.delete(key);
+    }
+  }, [
+    activeRefinedData,
+    cartHydratedWeek,
+    cartProductsHydratedWeek,
+    confirmedCartTokens,
+    selectedUrlByIngredient,
+    start,
+  ]);
 
   const purchaseByCategory = useMemo(() => {
     const map = new Map<GroceryCategory, { item: PurchaseItem; origIndex: number }[]>();
@@ -575,6 +872,13 @@ function ShoppingListPageContent() {
   }
 
   async function handlePrepareSmartList() {
+    const originWeekStart = start;
+    const refineGeneration = refineGenerationRef.current + 1;
+    refineGenerationRef.current = refineGeneration;
+    const isCurrentRefine = () => (
+      activeWeekStartRef.current === originWeekStart
+      && refineGenerationRef.current === refineGeneration
+    );
     setRefineError(null);
     setRefining(true);
     try {
@@ -589,6 +893,7 @@ function ShoppingListPageContent() {
         const payload = await latestPlanRes.json();
         if (Array.isArray(payload)) latestPlans = payload;
       }
+      if (!isCurrentRefine()) return;
       setItems(latestItems);
       setMealPlans(latestPlans);
       const latestPlannerFingerprint = buildWeekMealPlanFingerprint(weekDates, latestPlans);
@@ -600,25 +905,32 @@ function ShoppingListPageContent() {
       });
       if (!res.ok) throw new Error("Refine failed");
       const data: RefineResponse = await res.json();
+      if (!isCurrentRefine()) return;
       setRefinedData(data);
       setSmartWeekStart(start);
       setSavedPlannerFingerprint(latestPlannerFingerprint);
       setSmartListStale(false);
       setSmartHidden(new Set());
       setSmartChecked(new Set());
+      clearCartAssistantState(true);
       clearStoredProductResults();
       clearProductResults();
       persistSmart(data, new Set(), new Set(), latestPlannerFingerprint);
     } catch (e) {
-      setRefineError(e instanceof Error ? e.message : "Something went wrong");
+      if (isCurrentRefine()) {
+        setRefineError(e instanceof Error ? e.message : "Something went wrong");
+      }
     } finally {
-      setRefining(false);
+      if (isCurrentRefine()) setRefining(false);
     }
   }
 
   function handleBackToOriginalList() {
+    refineGenerationRef.current += 1;
+    setRefining(false);
     removeSessionStorage(smartListStorageKey(start));
     clearStoredProductResults();
+    clearCartAssistantState(true);
     setRefinedData(null);
     setSmartWeekStart(null);
     setSavedPlannerFingerprint(null);
@@ -730,6 +1042,52 @@ function ShoppingListPageContent() {
     }
   }
 
+  function handleOpenCartProduct(productUrl: string) {
+    if (!isSafeWeeeProductUrl(productUrl)) return;
+    const currentSelection = cartDraft.selections.find(
+      (selection) => !selection.confirmed && !skippedCartTokens.has(selection.confirmationToken),
+    );
+    if (currentSelection?.product.url !== productUrl) return;
+    window.open(productUrl, "_blank", "noopener,noreferrer");
+  }
+
+  function handleConfirmCartItem(confirmationToken: string) {
+    const currentSelection = cartDraft.selections.find(
+      (selection) => !selection.confirmed && !skippedCartTokens.has(selection.confirmationToken),
+    );
+    if (currentSelection?.confirmationToken !== confirmationToken) return;
+    setConfirmedCartTokens((current) => new Set(current).add(confirmationToken));
+    setSkippedCartTokens((current) => {
+      if (!current.has(confirmationToken)) return current;
+      const next = new Set(current);
+      next.delete(confirmationToken);
+      return next;
+    });
+  }
+
+  function handleUndoCartItem(confirmationToken: string) {
+    setConfirmedCartTokens((current) => {
+      if (!current.has(confirmationToken)) return current;
+      const next = new Set(current);
+      next.delete(confirmationToken);
+      return next;
+    });
+  }
+
+  function handleSkipCartItem(confirmationToken: string) {
+    const currentSelection = cartDraft.selections.find(
+      (selection) => !selection.confirmed && !skippedCartTokens.has(selection.confirmationToken),
+    );
+    if (currentSelection?.confirmationToken !== confirmationToken) return;
+    setSkippedCartTokens((current) => new Set(current).add(confirmationToken));
+  }
+
+  function handleFindCartMatch(ingredientKey: string) {
+    const ingredient = activeCartIngredients.find((candidate) => candidate.key === ingredientKey);
+    closeCartDialog();
+    if (ingredient) void ensureProductsLoaded(ingredient.name, true, true);
+  }
+
   if (loading) return <p className="shop-muted shop-page--wide">{t("common.loading")}</p>;
   if (error) return <p className="shop-error shop-page--wide">{error}</p>;
 
@@ -758,6 +1116,19 @@ function ShoppingListPageContent() {
         </div>
       </section>
 
+      <InstacartShoppingPanel
+        title={`${t("shopping.title")} · ${weekRangeLabel}`}
+        listKey={`${start}:${activeRefinedData ? "smart" : "original"}`}
+        items={buildInstacartItems({
+          originalItems: items,
+          purchaseItems: activeRefinedData?.purchase_items,
+          hidden: smartHidden,
+          checked: smartChecked,
+        })}
+        disabled={refining}
+        stale={Boolean(activeRefinedData && smartListStale)}
+      />
+
       {!hasPlannedMeals && items.length === 0 ? (
         <div className={styles.empty}>
           <strong>{t("shopping.noMealsPlanned")}</strong>
@@ -772,10 +1143,14 @@ function ShoppingListPageContent() {
             copied={copied}
             bulkLoading={bulkLoadingProducts}
             bulkProgress={bulkLoadProgress}
+            cartReadyCount={cartDraft.summary.readyCount}
+            loadButtonRef={cartLoadProductsRef}
+            reviewButtonRef={cartReviewTriggerRef}
             onBack={handleBackToOriginalList}
             onRefresh={() => void handlePrepareSmartList()}
             onCopy={handleCopyList}
             onLoadProducts={() => void handleLoadAllProducts()}
+            onReviewCart={() => setCartDialogOpen(true)}
           />
 
           <div className={styles.categoryGrid}>
@@ -790,16 +1165,31 @@ function ShoppingListPageContent() {
                   checked={smartChecked}
                   openProducts={openProductsByIngredient}
                   lookup={lookupByIngredient}
+                  selectedUrlByIngredient={selectedUrlByIngredient}
                   menuOpenFor={menuOpenFor}
                   onToggleChecked={toggleSmartChecked}
                   onHide={hideSmartItem}
                   onToggleMenu={(index) => setMenuOpenFor((current) => current === index ? null : index)}
                   onToggleProducts={(name) => void handleToggleProducts(name)}
                   onRetryProducts={(name) => void handleRetryProducts(name)}
+                  onSelectProduct={handleSelectProduct}
                 />
               );
             })}
           </div>
+
+          <CartAssistantDialog
+            open={cartDialogOpen}
+            draft={cartDraft}
+            pendingIngredients={pendingCartIngredients}
+            skippedTokens={skippedCartTokens}
+            onClose={closeCartDialog}
+            onOpenProduct={handleOpenCartProduct}
+            onConfirm={handleConfirmCartItem}
+            onUndoConfirm={handleUndoCartItem}
+            onSkip={handleSkipCartItem}
+            onFindMatch={handleFindCartMatch}
+          />
 
           {activeRefinedData.remove.length ? (
             <details className={styles.removed} open={!smartRemovedCollapsed}>

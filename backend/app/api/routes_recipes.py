@@ -8,23 +8,28 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api._types import LibraryTags, StepList, StringList
 from app.api.auth import get_current_user
-from app.core.config import get_public_library_editor_emails, settings
+from app.api.ai_budget import enforce_ai_budget
+from app.core.config import settings
+from app.core.admin import can_manage_public_catalog
 from app.db import repo_mealplan, repo_recipes
 from app.db.models import UserModel
 from app.db.session import get_session
 from app.extract import (
     estimate_tutorial_step_metadata,
     extract_recipe_from_text,
+    is_usable_instruction_text,
 )
 from app.models import IngredientItem, Recipe, RecipeStep, coerce_steps
 from app.services.storage_service import (
-    generate_image_upload_url,
+    matches_image_signature,
     save_recipe_image_local,
+    save_recipe_image_s3,
 )
 from app.video_import import UnsupportedVideoUrl, fetch_video_text, parse_video_source
 
@@ -45,35 +50,33 @@ async def upload_recipe_image(
     request: Request,
     file: UploadFile = File(...),
     _user: UserModel = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ):
-    """Presigned S3 upload when configured; otherwise save to local disk and return file_url (upload_url empty)."""
+    """Validate once and store these bytes in S3 or local disk; no second upload."""
     content_type = (file.content_type or "").strip().lower()
     if content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(400, "Invalid file type. Use JPEG, PNG, WebP, or GIF.")
 
-    file.file.seek(0, 2)
-    size = file.file.tell()
-    file.file.seek(0)
-    if size > MAX_FILE_SIZE:
+    data = await file.read(MAX_FILE_SIZE + 1)
+    if len(data) > MAX_FILE_SIZE:
         raise HTTPException(400, "File too large (max 10MB)")
+    if not matches_image_signature(data, content_type):
+        raise HTTPException(400, "The file contents do not match a supported image type.")
 
+    account_id = str(_user.id)
+    # Authentication is the only DB work here; storage must not hold its connection.
+    await session.close()
     region = (settings.AWS_REGION or "").strip()
     bucket = (settings.S3_BUCKET_NAME or "").strip()
     if region and bucket:
         try:
-            result = generate_image_upload_url(content_type)
-        except ValueError as e:
-            logger.warning("Image upload config error: %s", e)
-            raise HTTPException(503, str(e))
+            file_url = await run_in_threadpool(save_recipe_image_s3, data, content_type, account_id)
         except Exception as e:
-            logger.exception("Image upload presign failed: %s", e)
-            raise HTTPException(503, "Image upload is temporarily unavailable.")
-        return UploadImageResponse(**result)
+            logger.warning("Image upload failed error_type=%s", type(e).__name__)
+            raise HTTPException(503, "Image upload is temporarily unavailable.") from None
+        return UploadImageResponse(upload_url="", file_url=file_url)
 
-    data = await file.read()
-    if len(data) > MAX_FILE_SIZE:
-        raise HTTPException(400, "File too large (max 10MB)")
-    rel = save_recipe_image_local(data, content_type)
+    rel = await run_in_threadpool(save_recipe_image_local, data, content_type)
     base = str(request.base_url).rstrip("/")
     return UploadImageResponse(upload_url="", file_url=f"{base}{rel}")
 
@@ -93,22 +96,18 @@ def _apply_import_overrides(recipe: Recipe, title: str, library_tags: list[str])
     return recipe.model_copy(update=updates)
 
 
-def _has_meaningful_draft(recipe: Recipe) -> bool:
-    for ingredient in recipe.ingredients:
-        name = ingredient.name.strip()
-        if name and name.casefold() != "example ingredient":
-            return True
-    return any(step.text.strip() for step in recipe.steps)
+def _has_usable_steps(recipe: Recipe) -> bool:
+    return any(is_usable_instruction_text(step.text) for step in recipe.steps)
 
 
 class ParseLinkBody(BaseModel):
-    url: str = ""
-    notes: str = ""
-    title: str = ""
+    url: str = Field("", max_length=4096)
+    notes: str = Field("", max_length=4000)
+    title: str = Field("", max_length=512)
     library_tags: LibraryTags = Field(default_factory=list)
 
 
-@router.post("/parse/link", response_model=Recipe)
+@router.post("/parse/link", response_model=Recipe, dependencies=[Depends(enforce_ai_budget)])
 async def parse_from_link(
     body: ParseLinkBody,
     _user: UserModel = Depends(get_current_user),
@@ -128,8 +127,13 @@ async def parse_from_link(
         raise HTTPException(422, text_result.message or "No usable recipe text was found.")
 
     recipe = await extract_recipe_from_text(_append_import_notes(text_result.text, body.notes))
-    if source.provider == "tiktok" and not _has_meaningful_draft(recipe):
-        raise HTTPException(422, "This TikTok does not expose enough recipe text. Paste its transcript instead.")
+    if not _has_usable_steps(recipe):
+        provider_name = "YouTube video" if source.provider == "youtube" else "TikTok"
+        raise HTTPException(
+            422,
+            f"We could not recover usable cooking steps from this {provider_name}. "
+            "Paste a transcript that includes the cooking method instead.",
+        )
     updates = {
         "source_url": source.canonical_url,
         "thumbnail_url": recipe.thumbnail_url or text_result.thumbnail_url,
@@ -142,18 +146,20 @@ async def parse_from_link(
 
 
 class ParseTranscriptBody(BaseModel):
-    transcript: str = ""
-    notes: str = ""
-    title: str = ""
+    transcript: str = Field("", max_length=40_000)
+    notes: str = Field("", max_length=4000)
+    title: str = Field("", max_length=512)
     library_tags: LibraryTags = Field(default_factory=list)
 
 
-@router.post("/parse/transcript", response_model=Recipe)
+@router.post("/parse/transcript", response_model=Recipe, dependencies=[Depends(enforce_ai_budget)])
 async def parse_from_transcript(
     body: ParseTranscriptBody,
     _user: UserModel = Depends(get_current_user),
 ):
     text = _append_import_notes((body.transcript or "").strip(), body.notes)
+    if not text.strip():
+        raise HTTPException(422, "Paste recipe text before importing.")
     recipe = await extract_recipe_from_text(text)
     return _apply_import_overrides(recipe, body.title, body.library_tags)
 
@@ -167,10 +173,7 @@ class CatalogVisibilityBody(BaseModel):
 
 
 def _can_manage_public_catalog(current_user: UserModel) -> bool:
-    editor_emails = get_public_library_editor_emails()
-    if not editor_emails:
-        return True
-    return (current_user.email or "").strip().lower() in editor_emails
+    return can_manage_public_catalog(current_user)
 
 
 @router.get("/catalog/editor-status", response_model=CatalogEditorStatus)
@@ -231,6 +234,7 @@ class EstimateTutorialResponse(BaseModel):
 @router.post(
     "/{recipe_id}/tutorial/estimate",
     response_model=EstimateTutorialResponse,
+    dependencies=[Depends(enforce_ai_budget)],
 )
 async def recipe_estimate_tutorial(
     recipe_id: str,
@@ -242,6 +246,8 @@ async def recipe_estimate_tutorial(
     if not recipe:
         raise HTTPException(404, "Recipe not found")
     draft_steps = coerce_steps(body.steps, recipe.total_time_minutes)
+    # The preview is detached data and this route has no pending writes.
+    await session.close()
     estimated_steps = await estimate_tutorial_step_metadata(draft_steps)
     return EstimateTutorialResponse(steps=estimated_steps)
 
@@ -262,15 +268,22 @@ async def recipe_set_catalog_visibility(
 
 
 class RecipeUpdate(BaseModel):
-    title: Optional[str] = None
+    title: Optional[str] = Field(default=None, min_length=1, max_length=1024)
     thumbnail_url: Optional[str] = None
     ingredients: Optional[list[IngredientItem]] = None
     library_tags: Optional[LibraryTags] = None
     description: Optional[str] = None
-    total_time_minutes: Optional[int] = None
+    total_time_minutes: Optional[int] = Field(default=None, ge=0, le=2_147_483_647)
     steps: Optional[StepList] = None
     tips: Optional[StringList] = None
     equipment: Optional[StringList] = None
+
+    @field_validator("title", "ingredients", mode="before")
+    @classmethod
+    def reject_required_field_nulls(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("This field cannot be null; omit it to leave it unchanged")
+        return value
 
     @field_validator("description", mode="before")
     @classmethod
@@ -296,8 +309,10 @@ async def recipe_update(
         raise HTTPException(404, "Recipe not found")
     updates = body.model_dump(exclude_unset=True)
     updated = Recipe.model_validate({**r.model_dump(), **updates})
-    await repo_recipes.save_recipe(session, updated, current_user.id)
-    return updated
+    try:
+        return await repo_recipes.save_recipe(session, updated, current_user.id)
+    except repo_recipes.RecipeOwnershipConflict as exc:
+        raise HTTPException(409, "Recipe ID is unavailable for this account") from exc
 
 
 @router.delete("/{recipe_id}", status_code=204)
@@ -314,11 +329,20 @@ async def recipe_delete(
     await repo_mealplan.remove_recipe_id_from_user_plans(session, current_user.id, recipe_id)
 
 
+class RecipeSaveBody(Recipe):
+    """Request-only storage bounds; legacy recipe response reads stay compatible."""
+    id: str = Field(min_length=1, max_length=255)
+    title: str = Field(min_length=1, max_length=1024)
+    total_time_minutes: Optional[int] = Field(default=None, ge=0, le=2_147_483_647)
+
+
 @router.post("", response_model=Recipe)
 async def recipe_create(
-    recipe: Recipe,
+    recipe: RecipeSaveBody,
     session: AsyncSession = Depends(get_session),
     current_user: UserModel = Depends(get_current_user),
 ):
-    await repo_recipes.save_recipe(session, recipe, current_user.id)
-    return recipe
+    try:
+        return await repo_recipes.save_recipe(session, recipe, current_user.id)
+    except repo_recipes.RecipeOwnershipConflict as exc:
+        raise HTTPException(409, "Recipe ID is unavailable for this account") from exc

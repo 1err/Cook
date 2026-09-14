@@ -18,6 +18,7 @@ jest.mock("../../lib/api", () => ({
 }));
 
 jest.mock("./storage", () => ({
+  MAX_STORE_PRODUCT_TTL_MS: 86_400_000,
   readSmartProducts: (...args: unknown[]) => mockReadSmartProducts(...args),
   writeSmartProducts: (...args: unknown[]) => mockWriteSmartProducts(...args),
   isFreshStoredProductResponse: (value: unknown, nowMs: number) => {
@@ -40,7 +41,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-const FUTURE_EXPIRES_AT = "2099-01-01T00:00:00.000Z";
+const futureExpiry = () => new Date(Date.now() + 60_000).toISOString();
 const RICE: StoreProduct = {
   name: "Rice",
   price: "$2.99",
@@ -68,7 +69,7 @@ const FOUR_PRODUCTS: StoreProduct[] = [
 
 function response(
   products: StoreProduct[],
-  expiresAt: string | null = products.length ? FUTURE_EXPIRES_AT : null,
+  expiresAt: string | null = products.length ? futureExpiry() : null,
 ): StoreProductsResponse {
   return { products, expires_at: expiresAt };
 }
@@ -97,6 +98,16 @@ test("hydrates fresh stored positives immediately without batch or GET", async (
   expect(mockStoreProducts).not.toHaveBeenCalled();
 });
 
+test("exposes current-week hydration before idle rows become authoritative", async () => {
+  const stored = deferred<null>();
+  mockReadSmartProducts.mockReturnValue(stored.promise);
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+
+  expect(result.current.hydrated).toBe(false);
+  stored.resolve(null);
+  await waitFor(() => expect(result.current.hydrated).toBe(true));
+});
+
 test("caps hydrated persisted products at the first three choices", async () => {
   mockReadSmartProducts.mockResolvedValue({
     open: { rice: true },
@@ -118,6 +129,38 @@ test("caps live product responses at the first three choices", async () => {
   expect(result.current.products.rice).toEqual(FOUR_PRODUCTS.slice(0, 3));
 });
 
+test("rejects a live positive whose authoritative expiry exceeds 24 hours", async () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date("2026-08-15T12:00:00.000Z"));
+  mockStoreProducts.mockResolvedValue(response(
+    [RICE],
+    "2026-08-16T12:00:00.001Z",
+  ));
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+
+  await act(async () => {
+    await result.current.togglePanel("Rice");
+  });
+
+  expect(result.current.products.rice).toBeUndefined();
+  expect(result.current.errors.rice).toBe("Expired product response");
+});
+
+test("a product-cache read failure still settles hydration and permits a live lookup", async () => {
+  mockReadSmartProducts.mockRejectedValue(new Error("storage denied"));
+  mockStoreProducts.mockResolvedValue(response(
+    [RICE],
+    new Date(Date.now() + 60_000).toISOString(),
+  ));
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+
+  await waitFor(() => expect(result.current.hydrated).toBe(true));
+  await act(async () => {
+    await result.current.togglePanel("Rice");
+  });
+  expect(result.current.products.rice).toEqual([RICE]);
+});
+
 test("persists the first cleaned query spelling by canonical key", async () => {
   mockStoreProducts.mockResolvedValue(response([RICE]));
   const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
@@ -133,7 +176,7 @@ test("persists the first cleaned query spelling by canonical key", async () => {
 
 test("caps fresh batch product responses at the first three choices", async () => {
   mockStoreProductsBatch.mockResolvedValue({
-    entries: [{ query: "Rice", status: "fresh", products: FOUR_PRODUCTS, expires_at: FUTURE_EXPIRES_AT }],
+    entries: [{ query: "Rice", status: "fresh", products: FOUR_PRODUCTS, expires_at: futureExpiry() }],
   });
   const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
 
@@ -182,7 +225,7 @@ test("bulk publishes batch hits then live-loads misses one at a time", async () 
   const started: string[] = [];
   mockStoreProductsBatch.mockResolvedValue({
     entries: [
-      { query: "Rice", status: "fresh", products: [RICE], expires_at: FUTURE_EXPIRES_AT },
+      { query: "Rice", status: "fresh", products: [RICE], expires_at: futureExpiry() },
       { query: "Beans", status: "missing", products: [], expires_at: null },
       { query: "Milk", status: "missing", products: [], expires_at: null },
     ],
@@ -214,9 +257,9 @@ test("bulk publishes interleaved fresh hits before its first live miss", async (
   const beans = deferred<StoreProductsResponse>();
   mockStoreProductsBatch.mockResolvedValue({
     entries: [
-      { query: "Rice", status: "fresh", products: [RICE], expires_at: FUTURE_EXPIRES_AT },
+      { query: "Rice", status: "fresh", products: [RICE], expires_at: futureExpiry() },
       { query: "Beans", status: "missing", products: [], expires_at: null },
-      { query: "Milk", status: "fresh", products: [MILK], expires_at: FUTURE_EXPIRES_AT },
+      { query: "Milk", status: "fresh", products: [MILK], expires_at: futureExpiry() },
     ],
   });
   mockStoreProducts.mockReturnValue(beans.promise);
@@ -281,7 +324,7 @@ test("seventy-five fresh batch hits complete without a live GET", async () => {
       query,
       status: "fresh" as const,
       products: [{ ...RICE, name: `Product ${index}`, url: `https://www.sayweee.com/product/${index}` }],
-      expires_at: FUTURE_EXPIRES_AT,
+      expires_at: futureExpiry(),
     })),
   });
   const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
@@ -328,7 +371,7 @@ test.each([
 test("rejects a nonempty response that contains no safe product", async () => {
   mockStoreProducts.mockResolvedValue({
     products: [{ ...RICE, url: "https://evil.test/product/rice" }],
-    expires_at: FUTURE_EXPIRES_AT,
+    expires_at: futureExpiry(),
   });
   const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
 
@@ -480,6 +523,99 @@ test("week changes suppress queued publications and reset bulk progress", async 
   expect(result.current.products.rice).toBeUndefined();
 });
 
+test("resetLive clears every live map, bulk state, queues, and suppresses late work", async () => {
+  const beans = deferred<StoreProductsResponse>();
+  mockReadSmartProducts.mockResolvedValue({
+    open: { rice: true },
+    products: { rice: response([RICE]) },
+    errors: { rice: "stale error" },
+    queries: { rice: "RICE" },
+  });
+  mockStoreProductsBatch.mockResolvedValue({
+    entries: [
+      { query: "Beans", status: "missing", products: [], expires_at: null },
+      { query: "Milk", status: "missing", products: [], expires_at: null },
+    ],
+  });
+  mockStoreProducts.mockImplementation((query: string) => (
+    query === "Beans" ? beans.promise : Promise.resolve(response([MILK]))
+  ));
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+  let bulkWork!: Promise<void>;
+
+  await waitFor(() => expect(result.current.products.rice).toEqual([RICE]));
+  await act(async () => {
+    bulkWork = result.current.loadAll(["Beans", "Milk"]);
+  });
+  await waitFor(() => expect(mockStoreProducts).toHaveBeenCalledWith("Beans"));
+  expect(result.current.loading.beans).toBe(true);
+  expect(result.current.bulkLoading.active).toBe(true);
+
+  await act(() => {
+    result.current.resetLive();
+  });
+
+  expect(result.current.open).toEqual({});
+  expect(result.current.products).toEqual({});
+  expect(result.current.loading).toEqual({});
+  expect(result.current.errors).toEqual({});
+  expect(result.current.bulkLoading).toEqual({ active: false, done: 0, total: 0 });
+  await bulkWork;
+
+  await act(async () => {
+    await result.current.retry("milk");
+  });
+  expect(mockStoreProducts.mock.calls.map(([query]) => query)).toEqual(["Beans", "milk"]);
+  expect(result.current.products.milk).toEqual([MILK]);
+
+  await act(async () => {
+    beans.resolve(response([BEANS]));
+    await beans.promise;
+  });
+  expect(mockStoreProducts.mock.calls.map(([query]) => query)).toEqual(["Beans", "milk"]);
+  expect(result.current.products).toEqual({ milk: [MILK] });
+  expect(result.current.errors).toEqual({ milk: null });
+});
+
+test("resetLive invalidates pending hydration and keeps empty state associated with the active week", async () => {
+  const stored = deferred<{
+    open: Record<string, boolean>;
+    products: Record<string, StoreProductsResponse>;
+    errors: Record<string, string | null>;
+    queries: Record<string, string>;
+  }>();
+  mockReadSmartProducts.mockReturnValue(stored.promise);
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+  await waitFor(() => expect(mockReadSmartProducts).toHaveBeenCalledWith("2026-08-10"));
+
+  await act(() => {
+    result.current.resetLive();
+  });
+  await act(async () => {
+    stored.resolve({
+      open: { rice: true },
+      products: { rice: response([RICE]) },
+      errors: { rice: null },
+      queries: { rice: "RICE" },
+    });
+    await stored.promise;
+  });
+
+  expect(result.current.open).toEqual({});
+  expect(result.current.products).toEqual({});
+  expect(result.current.errors).toEqual({});
+  await waitFor(() => expect(mockWriteSmartProducts).toHaveBeenLastCalledWith(
+    "2026-08-10",
+    { open: {}, products: {}, errors: {}, queries: {} },
+  ));
+
+  mockStoreProducts.mockResolvedValue(response([]));
+  await act(async () => {
+    await result.current.retry("rice");
+  });
+  expect(mockStoreProducts).toHaveBeenCalledWith("rice");
+});
+
 test("week changes discard queued live misses before they start", async () => {
   const rice = deferred<StoreProductsResponse>();
   mockStoreProductsBatch.mockResolvedValue({
@@ -620,7 +756,7 @@ test("retries and expiry retain the first cleaned query spelling", async () => {
   jest.useFakeTimers();
   jest.setSystemTime(new Date("2026-08-15T12:00:00.000Z"));
   mockStoreProducts
-    .mockResolvedValueOnce({ products: [{ ...RICE, url: "https://evil.test/rice" }], expires_at: FUTURE_EXPIRES_AT })
+    .mockResolvedValueOnce({ products: [{ ...RICE, url: "https://evil.test/rice" }], expires_at: futureExpiry() })
     .mockResolvedValueOnce(response([RICE], "2026-08-15T12:00:01.000Z"))
     .mockResolvedValueOnce(response([]));
   const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));

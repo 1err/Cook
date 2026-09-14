@@ -14,6 +14,8 @@ from app.core.config import settings
 # 7 days
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 ALGORITHM = "HS256"
+BCRYPT_MAX_PASSWORD_BYTES = 72
+MAX_LOGIN_PASSWORD_CHARACTERS = 1024
 
 
 def _get_secret() -> str:
@@ -24,11 +26,22 @@ def _get_secret() -> str:
 
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    encoded = password.encode("utf-8")
+    if len(encoded) > BCRYPT_MAX_PASSWORD_BYTES:
+        raise ValueError("Password must be at most 72 UTF-8 bytes")
+    return bcrypt.hashpw(encoded, bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed.encode("utf-8"))
+    if len(plain_password) > MAX_LOGIN_PASSWORD_CHARACTERS:
+        return False
+    # Existing bcrypt 4 hashes silently truncated long passwords. Preserve
+    # that legacy login behavior; new registrations reject truncation above.
+    encoded = plain_password.encode("utf-8")[:BCRYPT_MAX_PASSWORD_BYTES]
+    try:
+        return bcrypt.checkpw(encoded, hashed.encode("utf-8"))
+    except ValueError:
+        return False
 
 
 def create_access_token(subject: str, extra_claims: dict[str, Any] | None = None) -> str:

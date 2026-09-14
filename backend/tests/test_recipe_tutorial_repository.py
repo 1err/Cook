@@ -71,15 +71,15 @@ def test_row_to_recipe_normalizes_legacy_steps_using_the_recipe_total_time() -> 
 
 class _RecordingSession:
     def __init__(self) -> None:
-        self.merged: list[object] = []
-        self.flushes = 0
+        self.saved: list[object] = []
 
-    async def merge(self, model: object) -> object:
-        self.merged.append(model)
-        return model
+    async def execute(self, statement: object) -> object:
+        row = SimpleNamespace(**statement.compile().params)
+        self.saved.append(row)
+        return self
 
-    async def flush(self) -> None:
-        self.flushes += 1
+    def scalars(self) -> "_ScalarsResult":
+        return _ScalarsResult(self.saved[-1])
 
 
 @pytest.mark.asyncio
@@ -90,9 +90,9 @@ async def test_save_recipe_serializes_all_canonical_fields_and_preserves_ids() -
     user_id = uuid.UUID("30000000-0000-0000-0000-000000000002")
 
     await save_recipe(session, recipe, user_id)
-    first_payload = json.loads(session.merged[0].steps)
+    first_payload = json.loads(session.saved[0].steps)
     await save_recipe(session, recipe, user_id)
-    second_payload = json.loads(session.merged[1].steps)
+    second_payload = json.loads(session.saved[1].steps)
 
     assert first_payload == second_payload
     assert set(first_payload[0]) == {
@@ -106,7 +106,6 @@ async def test_save_recipe_serializes_all_canonical_fields_and_preserves_ids() -
     }
     assert first_payload[1]["image_url"] == "/uploads/bake.jpg"
     assert [step["id"] for step in first_payload] == [step.id for step in recipe.steps]
-    assert session.flushes == 2
 
 
 class _ScalarsResult:
@@ -119,7 +118,7 @@ class _ScalarsResult:
 
 class _CopySession:
     def __init__(self, source: object) -> None:
-        self._results = iter([source, None])
+        self._results = iter([source, UUID("30000000-0000-0000-0000-000000000004"), None])
         self.added: list[object] = []
 
     async def execute(self, statement: object) -> "_CopySession":
@@ -128,6 +127,9 @@ class _CopySession:
 
     def scalars(self) -> _ScalarsResult:
         return _ScalarsResult(self._current)
+
+    def scalar_one_or_none(self) -> object | None:
+        return self._current
 
     def add(self, model: object) -> None:
         self.added.append(model)

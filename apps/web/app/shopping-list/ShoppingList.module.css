@@ -16,6 +16,11 @@
   grid-template-columns: 4.4rem minmax(0, 1fr);
 }
 
+.productRowSelected {
+  border-color: var(--cw-color-action);
+  background: color-mix(in srgb, var(--cw-color-action) 8%, var(--cw-color-surface));
+}
+
 .productRow > img,
 .productPlaceholder {
   width: 4.4rem;
@@ -58,7 +63,8 @@
 
 .productCopy a,
 .productStatus button,
-.productToggle {
+.productToggle,
+.productChoice {
   width: max-content;
   padding: 0;
   border: 0;
@@ -69,6 +75,29 @@
   font-size: 0.77rem;
   font-weight: 700;
   text-decoration: none;
+}
+
+.topPick {
+  width: max-content;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.productChoice {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  text-align: left;
+}
+
+.productChoice input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--cw-color-action);
 }
 
 .productStatus {
@@ -285,11 +314,244 @@
   color: var(--cw-color-action);
 }
 
+.smartActions .cartReviewButton {
+  border-color: var(--cw-color-action);
+  background: var(--cw-color-action);
+  color: var(--cw-color-on-action);
+}
+
 .bulkStatus {
   grid-column: 1 / -1;
   margin: 0;
   color: var(--cw-color-muted-ink);
   font-size: 0.78rem;
+}
+
+.cartDialog::backdrop {
+  background: rgb(29 24 21 / 48%);
+}
+
+.cartDialog {
+  width: min(46rem, 100%);
+  max-height: min(48rem, calc(100dvh - 2rem));
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-card);
+  margin: auto;
+  background: var(--cw-color-surface);
+  color: var(--cw-color-ink);
+  box-shadow: 0 28px 70px rgb(29 24 21 / 26%);
+}
+
+.cartDialogHeader {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem;
+  border-bottom: 1px solid var(--cw-color-divider);
+  background: var(--cw-color-surface);
+}
+
+.cartDialogHeader span {
+  color: var(--cw-color-sage);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cartDialogHeader h2 {
+  margin: 0.2rem 0 0;
+  font-size: clamp(1.55rem, 4vw, 2rem);
+  font-weight: 600;
+}
+
+.cartDialogHeader button {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: 999px;
+  place-items: center;
+  background: var(--cw-color-surface);
+  color: var(--cw-color-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.3rem;
+}
+
+.cartDialogBody {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.cartSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cartSummary strong,
+.cartSummary span {
+  padding: 0.42rem 0.65rem;
+  border-radius: 999px;
+  background: var(--cw-color-subtle-surface);
+  color: var(--cw-color-muted-ink);
+  font-size: 0.76rem;
+}
+
+.cartSummary strong {
+  background: color-mix(in srgb, var(--cw-color-sage) 14%, var(--cw-color-surface));
+  color: var(--cw-color-sage);
+}
+
+.cartEstimate,
+.cartDisclosure,
+.cartTrust {
+  margin: 0;
+}
+
+.cartEstimate {
+  font-weight: 800;
+}
+
+.cartDisclosure,
+.cartTrust {
+  color: var(--cw-color-muted-ink);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.cartSelectionList,
+.cartPending ul,
+.cartUnmatched ul {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cartSelectionList li,
+.cartPending li,
+.cartUnmatched li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-field);
+}
+
+.cartSelectionList li > div {
+  display: grid;
+  min-width: 0;
+  gap: 0.15rem;
+}
+
+.cartSelectionList span,
+.cartSelectionList small,
+.cartPending span,
+.cartUnmatched span {
+  color: var(--cw-color-muted-ink);
+  font-size: 0.76rem;
+}
+
+.cartSelectionList small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cartSelectionList button,
+.cartUnmatched button {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cw-color-action);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.cartCurrent {
+  padding: 1rem;
+  border-radius: var(--cw-radius-field);
+  background: color-mix(in srgb, var(--cw-color-action) 7%, var(--cw-color-surface));
+}
+
+.cartCurrent h3,
+.cartUnmatched h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.cartCurrent p {
+  margin: 0.35rem 0 0.85rem;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.8rem;
+}
+
+.cartCurrent > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cartCurrent button,
+.cartCurrent a {
+  display: inline-grid;
+  min-height: 2.5rem;
+  padding: 0.58rem 0.8rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  place-items: center;
+  background: var(--cw-color-surface);
+  color: var(--cw-color-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.cartCurrent button:first-child,
+.cartCurrent a {
+  border-color: var(--cw-color-action);
+  background: var(--cw-color-action);
+  color: var(--cw-color-on-action);
+}
+
+.cartCurrent > div .cartDirectLink {
+  border-color: var(--cw-color-divider);
+  background: var(--cw-color-surface);
+  color: var(--cw-color-action);
+}
+
+.cartPending,
+.cartUnmatched {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.cartPending h3,
+.cartPending ul {
+  margin: 0;
+}
+
+.cartTrust {
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--cw-color-divider);
 }
 
 .weekBar {
@@ -539,6 +801,23 @@
 
   .productRow {
     grid-template-columns: 4.2rem minmax(0, 1fr);
+  }
+
+  .cartDialog {
+    width: 100%;
+    max-width: none;
+    max-height: calc(100dvh - 1rem);
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: var(--cw-radius-card) var(--cw-radius-card) 0 0;
+    margin: auto 0 0;
+  }
+
+  .cartSelectionList li,
+  .cartPending li,
+  .cartUnmatched li {
+    align-items: flex-start;
   }
 }
 

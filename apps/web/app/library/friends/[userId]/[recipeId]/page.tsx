@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { formatIngredientQuantity } from "@cooking/shared";
+import { formatIngredientQuantity, isSafeExternalUrl } from "@cooking/shared";
 import { RequireAuth } from "../../../../components/RequireAuth";
 import { apiFetch } from "../../../../lib/api";
 import { CATEGORY_LABELS } from "../../../../lib/recipeCategories";
@@ -99,8 +100,8 @@ function FriendRecipeContent({ userId, recipeId }: { userId: string; recipeId: s
   }
 
   const blurb = useMemo(() => {
-    if (!recipe?.raw_extraction_text) return null;
-    const line = recipe.raw_extraction_text.split(/\n+/).map((s) => s.trim()).find(Boolean);
+    if (!recipe?.description) return null;
+    const line = recipe.description.split(/\n+/).map((s) => s.trim()).find(Boolean);
     if (!line || line.length < 12) return null;
     return line.length > 220 ? `${line.slice(0, 217)}…` : line;
   }, [recipe]);
@@ -273,7 +274,7 @@ function FriendRecipeContent({ userId, recipeId }: { userId: string; recipeId: s
         </button>
       </div>
 
-      {recipe.source_url ? (
+      {isSafeExternalUrl(recipe.source_url) ? (
         <p style={{ margin: "2.5rem 0 0", textAlign: "center", fontSize: "0.9rem" }}>
           <a
             href={recipe.source_url}
@@ -289,11 +290,8 @@ function FriendRecipeContent({ userId, recipeId }: { userId: string; recipeId: s
   );
 }
 
-export default function FriendRecipeDetailPage({
-  params,
-}: {
-  params: { userId: string; recipeId: string };
-}) {
+export default function FriendRecipeDetailPage() {
+  const params = useParams<{ userId: string; recipeId: string }>();
   return (
     <RequireAuth>
       <FriendRecipeContent userId={params.userId} recipeId={params.recipeId} />

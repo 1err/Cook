@@ -1,6 +1,12 @@
-# Cooking Recipe Planner
+# Chef World
 
 Video-first recipe planner: import from a supported video link or pasted recipe text → review the draft → recipe library → meal plan → shopping list.
+
+Chef World has a Next.js web app, an Expo/React Native mobile app, and a shared FastAPI/PostgreSQL backend. The repository preserves one set of shared domain types, cooking-session rules, translations, and retailer handoff helpers across both clients.
+
+For engineering review, start with the [architecture](docs/architecture.md), [data inventory](docs/data-inventory.md), and [September 2026 engineering review](docs/engineering-review-2026-09-14.md). These document the implementation, verification evidence, and remaining App Store and production release work.
+
+Shopping now includes **Shop on Instacart** alongside the existing Weee experience on web and iOS. It exports ingredients to an Instacart review page; a backend developer key is required for real shopping links. See the [Instacart setup guide](docs/qa/2026-09-14-instacart-setup.md).
 
 ## Setup
 
@@ -16,7 +22,6 @@ brew install python@3.12
 
 # Backend setup
 cd backend
-rm -rf .venv
 /opt/homebrew/opt/python@3.12/bin/python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -35,16 +40,17 @@ pip install -r requirements.txt
 
 If you use [pyenv](https://github.com/pyenv/pyenv), run `pyenv install 3.12` (if needed), then `cd backend` and pyenv will use the version in `.python-version`.
 
-Copy `.env.example` to `.env` and set your API key (see [Video import support](#video-import-support) and env vars below):
+Copy `.env.example` to `.env`. Set `DATABASE_URL` for your local PostgreSQL instance, replace `AUTH_SECRET` with a random value, and optionally configure the server-only `OPENAI_API_KEY` for import:
 
 ```bash
 cp .env.example .env
-# Edit .env and set OPENAI_API_KEY=sk-...
+# Edit DATABASE_URL, AUTH_SECRET and optional provider settings locally.
 ```
 
-Run:
+Start PostgreSQL first (for the included local database, run `docker compose up -d postgres` from the repository root). Then apply migrations and run the API from `backend/`:
 
 ```bash
+alembic upgrade head
 python run.py
 ```
 
@@ -52,10 +58,13 @@ API: http://localhost:8000. Docs: http://localhost:8000/docs.
 
 ### Web App (Next.js)
 
+Use Node 22 (at least 22.9) and npm 11.19.1. The package-manager version is enforced because older npm versions did not consistently apply the security overrides across workspaces. The install command below uses the pinned version without changing your global npm.
+
 ```bash
-cd apps/web
-npm install
-npm run dev
+# From the repository root (npm workspaces):
+npx --yes npm@11.19.1 ci
+npm run tokens:build
+npm run web:dev
 ```
 
 App: http://localhost:3000.
@@ -70,10 +79,11 @@ For the authoritative architecture, API table, deployment notes, and codebase co
 
 ## Flow
 
-1. **Import** (`/import`): Supported YouTube or TikTok link, or pasted recipe text/transcript, with optional title + tag overrides → extraction (LLM if `OPENAI_API_KEY` is set) → draft review → explicit save.
-2. **Library** (`/library`, `/library/[id]`): Browse, edit, delete, optional thumbnail upload (local disk or S3), and copy curated recipes from the shared public library.
+1. **Import** (`/import`): Supported YouTube or TikTok link, or pasted recipe text/transcript, with optional title + tag overrides → server-side AI extraction → draft review → explicit save. Extraction requires a configured API key.
+2. **Library** (`/library`, `/library/[id]`): Browse, edit, delete, upload thumbnails (local disk or S3), and copy public or intentionally shared friend recipes.
 3. **Planner** (`/planner`): Weekly meal plan; desktop drag recipes into breakfast / lunch / dinner, while phones use slot-based pickers; tied to `?week=` (Monday).
-4. **Shopping list** (`/shopping-list`): Confirms the week and planned meals, then **Prepare smart shopping list** (LLM refine on demand). Smart mode keeps its generated snapshot until the user refreshes, and warns when the planner changed later.
+4. **Cook** (`/cook`): Coordinate multiple dishes with ordered steps, passive timers, device synchronization and offline step replay.
+5. **Shopping list** (`/shopping-list`): Review planned ingredients, optionally prepare an AI-refined list, select Weee products or export selected ingredients to Instacart. Smart mode preserves its snapshot until refresh and warns when the planner changes.
 
 ## Video import support
 
@@ -81,12 +91,12 @@ Video-link import does not download audiovisual media. It sends provider-exposed
 
 | Provider | Text used | Current limitations |
 |----------|-----------|---------------------|
-| YouTube | Public caption tracks from [`youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api), preferring English or Chinese and falling back to another available track; verified public title/description text is used when cloud-IP blocking prevents caption access | Description fallback can be less detailed than captions. Private, age-restricted, region-locked, or unavailable videos may still fail. The final no-key Reader fallback is rate-limited and depends on a third-party public-page service. |
-| TikTok | Public post title/caption returned by TikTok's oEmbed endpoint | This does **not** transcribe the video's speech. Sparse, attribution-only, private, or unavailable posts may not contain enough recipe detail. Arbitrary TikTok speech transcription needs a future provider. |
+| YouTube | Public caption tracks from [`youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api), preferring English or Chinese and falling back to another available track; public title/description text is used when YouTube blocks the caption file | Ingredient-only fallback text gets one conservative step-recovery attempt. Private, age-restricted, region-locked, unavailable, or still-unrecoverable videos ask for a pasted transcript. |
+| TikTok | Public post title/caption returned by TikTok's oEmbed endpoint | This does **not** transcribe the video's speech. Ingredient-only text gets the same constrained recovery attempt; sparse, private, unavailable, or still-unrecoverable posts ask for a transcript. Arbitrary TikTok speech transcription needs a future provider. |
 
 - **Supported links:** Use public HTTPS YouTube or TikTok video URLs. RedNote and uploaded video files are not supported.
-- **Env:** Create a `backend/.env` file (see `.env.example`). Set `OPENAI_API_KEY=sk-...` for real recipe extraction; without it, the app still runs and uses stub extraction.
-- **Fallback:** When caption retrieval is blocked, YouTube import uses retained player metadata, the public watch page, then bounded keyless requests to YouTube's player hosts. If those are blocked too, it asks Jina Reader's anonymous public endpoint for only the canonical video's bounded description section. No API key or paid transcript service is required; Jina currently limits anonymous use to 20 requests per minute. When provider text is still unavailable or too sparse, paste the recipe or transcript manually. Manual URL entry remains the Share Sheet fallback and the supported Android path.
+- **Env:** Create a `backend/.env` file (see `.env.example`). Configure `OPENAI_API_KEY` for recipe extraction; without it, import reports that AI is unavailable. Shopping refinement and tutorial timing can use conservative local fallbacks. Never put a provider key in web/mobile public environment variables.
+- **Fallback:** When caption retrieval is blocked, YouTube import tries retained player metadata, the public watch page, bounded requests to YouTube player hosts, and finally an anonymous Jina Reader request for the canonical video description. This last fallback depends on a third-party public-page service and can be rate-limited. If extraction finds ingredients but no usable method, the model makes one constrained step-recovery attempt using only the extracted dish and ingredients. If no usable steps remain, the link import returns a clear request for a pasted transcript instead of an empty tutorial. Manual URL entry remains the Share Sheet fallback and the supported Android path.
 
 ### iOS Share Sheet
 

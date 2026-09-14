@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
@@ -34,7 +35,7 @@ async def test_estimate_route_canonicalizes_owned_recipe_draft_without_persistin
     recipe = _recipe()
     original_recipe = recipe.model_dump()
     user = SimpleNamespace(id=UUID("00000000-0000-0000-0000-000000000099"))
-    session = SimpleNamespace()
+    session = SimpleNamespace(close=AsyncMock())
     get_calls: list[tuple[object, str, UUID]] = []
     save_calls: list[tuple[object, ...]] = []
     estimator_inputs: list[list[RecipeStep]] = []

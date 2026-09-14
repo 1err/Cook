@@ -97,3 +97,10 @@ it("integrates the timed tutorial without losing existing recipe actions", async
     "https://example.com/video",
   );
 });
+
+it.each(["javascript:alert(1)", "https://user:password@example.com/recipe", "https://example.com/\nrecipe"])("does not render an unsafe saved recipe source: %s", async (source_url) => {
+  mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ id: "recipe-1", title: "Unsafe source recipe", source_url, ingredients: [], steps: [] })));
+  render(<RecipeDetailPage />);
+  expect(await screen.findByRole("heading", { name: "Unsafe source recipe" })).toBeVisible();
+  expect(screen.queryByRole("link", { name: /Original video/ })).not.toBeInTheDocument();
+});

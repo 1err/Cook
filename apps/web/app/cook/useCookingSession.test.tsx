@@ -124,7 +124,7 @@ test("keeps a cached session readable when the initial refresh is offline", asyn
   mockActive.mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValueOnce(session);
 
   const { result } = renderHook(() => useCookingSession("user-1"));
-  await waitFor(() => expect(mockActive).toHaveBeenCalled());
+  await waitFor(() => expect(result.current.notice).toBe("cook.offline.cached"));
 
   expect(result.current.status).toBe("ready");
   expect(result.current.session).toEqual(session);

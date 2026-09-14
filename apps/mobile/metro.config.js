@@ -1,5 +1,7 @@
-// Metro must watch the monorepo root and resolve workspace symlinks
-// (@cooking/shared, @cooking/api-client) hoisted to root node_modules.
+// Metro must watch the mobile app's hoisted dependencies and shared packages,
+// but not the entire monorepo root. Watching the root makes Metro's `find`
+// fallback crawl unrelated worktrees and their node_modules when Watchman is
+// unavailable, preventing the first bundle from ever starting.
 //
 // disableHierarchicalLookup is intentionally NOT set: with the SDK 54 dep tree,
 // some Expo transitives (expo-asset, babel-preset-expo, etc.) end up nested at
@@ -7,12 +9,12 @@
 // Hierarchical lookup is needed so Metro can walk into those nested locations.
 //
 // resolveRequest pins every `react` import to the mobile-local copy. The web app
-// (apps/web) uses Next.js 14 + React 18; mobile uses React 19. With both reactlets
-// installed in the workspace, transitives like @react-navigation/core get hoisted
-// to the root and resolve to React 18 via Node's hierarchical walk, while mobile's
-// own files resolve to React 19. Two Reacts in one bundle ⇒ "Cannot read property
-// 'useContext' of null" / "Invalid hook call" redboxes. Forcing all `react` and
-// `react/*` specifiers to the mobile-local copy gives the bundle a single React.
+// (apps/web) uses Next.js 15 + React 19.1.5; the native renderer requires React
+// 19.1.0. Hoisted transitives can otherwise resolve the web copy while mobile's
+// own files resolve the native copy. Sharing a major version does not make two
+// React instances compatible: mixed instances cause "Invalid hook call" errors.
+// Forcing all `react` and `react/*` specifiers to the mobile-local copy preserves
+// one React instance and the version expected by the native renderer.
 const { getDefaultConfig } = require("expo/metro-config");
 const path = require("path");
 
@@ -21,7 +23,12 @@ const workspaceRoot = path.resolve(projectRoot, "../..");
 
 const config = getDefaultConfig(projectRoot);
 
-config.watchFolders = [workspaceRoot];
+config.watchFolders = [
+  path.resolve(workspaceRoot, "node_modules"),
+  path.resolve(workspaceRoot, "packages/api-client"),
+  path.resolve(workspaceRoot, "packages/design-tokens"),
+  path.resolve(workspaceRoot, "packages/shared"),
+];
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, "node_modules"),
   path.resolve(workspaceRoot, "node_modules"),

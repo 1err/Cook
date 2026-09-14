@@ -16,6 +16,7 @@ import { StoreProductPicks } from "./StoreProductPicks";
 
 type SmartListItemProps = {
   item: PurchaseItem;
+  ingredientKey: string;
   origIndex: number;
   checked: boolean;
   onToggleChecked: () => void;
@@ -24,8 +25,10 @@ type SmartListItemProps = {
   productsLoading: boolean;
   productsError: string | null;
   products: StoreProduct[] | undefined;
+  selectedProductUrl?: string;
   onTogglePanel: () => void;
   onRetryProducts: () => void;
+  onSelectProduct: (ingredientKey: string, productUrl: string) => void;
 };
 
 function showItemMenu(name: string, onHide: () => void) {
@@ -51,6 +54,7 @@ function showItemMenu(name: string, onHide: () => void) {
 
 export function SmartListItem({
   item,
+  ingredientKey,
   checked,
   onToggleChecked,
   onHide,
@@ -58,8 +62,10 @@ export function SmartListItem({
   productsLoading,
   productsError,
   products,
+  selectedProductUrl,
   onTogglePanel,
   onRetryProducts,
+  onSelectProduct,
 }: SmartListItemProps) {
   return (
     <View style={styles.wrap}>
@@ -109,6 +115,9 @@ export function SmartListItem({
           loading={productsLoading}
           error={productsError}
           products={products}
+          selectedUrl={selectedProductUrl}
+          selectionEnabled={!checked}
+          onSelect={(productUrl) => onSelectProduct(ingredientKey, productUrl)}
           onRetry={onRetryProducts}
         />
       ) : null}

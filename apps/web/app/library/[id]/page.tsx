@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { isSafeExternalUrl } from "@cooking/shared";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "../../lib/api";
 import { uploadRecipeImage } from "../../lib/uploadRecipeImage";
@@ -451,7 +452,7 @@ function RecipeEditContent() {
                 </button>
               </div>
             ) : null}
-            {recipe.source_url ? (
+            {isSafeExternalUrl(recipe.source_url) ? (
               <a href={recipe.source_url} target="_blank" rel="noopener noreferrer" className={styles.sourceLink}>
                 {t("recipe.openSourceLink")} ↗
               </a>

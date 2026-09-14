@@ -1,11 +1,14 @@
-from unittest.mock import AsyncMock
+import json
 from io import BytesIO
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from urllib.error import HTTPError
 
 import pytest
 from fastapi import HTTPException
 
 import app.api.routes_recipes as routes_recipes
+import app.extract as extract_module
 from app.models import Recipe
 from app.video_import import UnsupportedVideoUrl, VideoSource, VideoTextResult, fetch_tiktok_text
 
@@ -13,6 +16,18 @@ from app.video_import import UnsupportedVideoUrl, VideoSource, VideoTextResult, 
 RAW_URL = "https://www.tiktok.com/@chef/video/7412345678901234567?is_from_webapp=1"
 CANONICAL_URL = "https://www.tiktok.com/@chef/video/7412345678901234567"
 POST_ID = "7412345678901234567"
+
+
+def _completion(payload: object):
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=json.dumps(payload, ensure_ascii=False)
+                )
+            )
+        ]
+    )
 
 
 def _recipe(*, title="Extracted", ingredients=None, steps=None) -> Recipe:
@@ -216,3 +231,216 @@ async def test_parse_link_rejects_structurally_empty_tiktok_draft(monkeypatch):
         await routes_recipes.parse_from_link(routes_recipes.ParseLinkBody(url=RAW_URL), _user=object())
 
     assert exc_info.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_parse_link_rejects_youtube_draft_when_step_recovery_is_empty(monkeypatch):
+    raw_url = "https://www.youtube.com/watch?v=A6bByqI_TH8&t=23s"
+    canonical_url = "https://www.youtube.com/watch?v=A6bByqI_TH8"
+    source = VideoSource("youtube", raw_url, canonical_url, "A6bByqI_TH8")
+    monkeypatch.setattr(routes_recipes, "parse_video_source", lambda _: source)
+    monkeypatch.setattr(
+        routes_recipes,
+        "fetch_video_text",
+        AsyncMock(
+            return_value=VideoTextResult(
+                "ok",
+                "Video title: 豆腐茄子煲\nVideo description: 老豆腐约400克，紫皮茄子1根。",
+                source,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        routes_recipes,
+        "extract_recipe_from_text",
+        AsyncMock(
+            return_value=_recipe(
+                title="豆腐茄子煲",
+                ingredients=[{"name": "老豆腐", "quantity": "约400克"}],
+                steps=[],
+            )
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await routes_recipes.parse_from_link(
+            routes_recipes.ParseLinkBody(url=raw_url), _user=object()
+        )
+
+    assert exc_info.value.status_code == 422
+    assert "cooking steps" in str(exc_info.value.detail)
+    assert "Paste a transcript" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_parse_link_rejects_placeholder_step_from_real_extraction_pipeline(monkeypatch):
+    raw_url = "https://www.youtube.com/watch?v=A6bByqI_TH8&t=23s"
+    canonical_url = "https://www.youtube.com/watch?v=A6bByqI_TH8"
+    source = VideoSource("youtube", raw_url, canonical_url, "A6bByqI_TH8")
+    monkeypatch.setattr(routes_recipes, "parse_video_source", lambda _: source)
+    monkeypatch.setattr(
+        routes_recipes,
+        "fetch_video_text",
+        AsyncMock(
+            return_value=VideoTextResult(
+                "ok",
+                "Video title: 豆腐茄子煲\nVideo description: 老豆腐约400克，紫皮茄子1根。",
+                source,
+            )
+        ),
+    )
+    create = AsyncMock(
+        side_effect=[
+            _completion(
+                {
+                    "title": "豆腐茄子煲",
+                    "ingredients": [
+                        {"name": "老豆腐", "quantity": "约400克", "notes": None}
+                    ],
+                    "steps": [{"content": "unsupported"}],
+                }
+            ),
+            _completion({"method": "No instructions available."}),
+        ]
+    )
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+    monkeypatch.setattr(extract_module, "get_openai_client", lambda: client)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await routes_recipes.parse_from_link(
+            routes_recipes.ParseLinkBody(url=raw_url), _user=object()
+        )
+
+    assert exc_info.value.status_code == 422
+    assert create.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_parse_link_returns_recovered_steps_from_real_extraction_pipeline(monkeypatch):
+    raw_url = "https://www.youtube.com/watch?v=A6bByqI_TH8&t=23s"
+    canonical_url = "https://www.youtube.com/watch?v=A6bByqI_TH8"
+    source = VideoSource("youtube", raw_url, canonical_url, "A6bByqI_TH8")
+    monkeypatch.setattr(routes_recipes, "parse_video_source", lambda _: source)
+    monkeypatch.setattr(
+        routes_recipes,
+        "fetch_video_text",
+        AsyncMock(
+            return_value=VideoTextResult(
+                "ok",
+                "Video title: 豆腐茄子煲\nVideo description: 老豆腐约400克，紫皮茄子1根。",
+                source,
+            )
+        ),
+    )
+    create = AsyncMock(
+        side_effect=[
+            _completion(
+                {
+                    "title": "豆腐茄子煲",
+                    "ingredients": [
+                        {"name": "老豆腐", "quantity": "约400克", "notes": None},
+                        {"name": "紫皮茄子", "quantity": "1根", "notes": None},
+                    ],
+                    "steps": [],
+                }
+            ),
+            _completion(
+                {
+                    "steps": [
+                        {
+                            "text": "将豆腐切块，煎至两面金黄。",
+                            "duration_seconds": 300,
+                            "duration_source": "stated",
+                            "attention_type": "hands_on",
+                            "action_type": "sear",
+                        }
+                    ]
+                }
+            ),
+        ]
+    )
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+    monkeypatch.setattr(extract_module, "get_openai_client", lambda: client)
+
+    result = await routes_recipes.parse_from_link(
+        routes_recipes.ParseLinkBody(url=raw_url), _user=object()
+    )
+
+    assert result.source_url == canonical_url
+    assert [step.text for step in result.steps] == ["将豆腐切块，煎至两面金黄。"]
+    assert result.steps[0].duration_source == "estimated"
+    assert create.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_parse_link_rejects_placeholder_step_from_normalized_draft(monkeypatch):
+    source = VideoSource("youtube", RAW_URL, CANONICAL_URL, POST_ID)
+    monkeypatch.setattr(routes_recipes, "parse_video_source", lambda _: source)
+    monkeypatch.setattr(
+        routes_recipes,
+        "fetch_video_text",
+        AsyncMock(return_value=VideoTextResult("ok", "2 eggs", source)),
+    )
+    monkeypatch.setattr(
+        routes_recipes,
+        "extract_recipe_from_text",
+        AsyncMock(return_value=_recipe(steps=["No instructions available."])),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await routes_recipes.parse_from_link(
+            routes_recipes.ParseLinkBody(url=RAW_URL), _user=object()
+        )
+
+    assert exc_info.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_parse_transcript_keeps_successful_procedure_on_one_completion(monkeypatch):
+    create = AsyncMock(
+        return_value=_completion(
+            {
+                "title": "Quick tofu",
+                "ingredients": [
+                    {"name": "Tofu", "quantity": "1 block", "notes": None}
+                ],
+                "steps": [
+                    {
+                        "text": "Dice the tofu.",
+                        "duration_seconds": 120,
+                        "duration_source": "estimated",
+                        "attention_type": "hands_on",
+                        "action_type": "chop",
+                    },
+                    {
+                        "text": "Sear the tofu until golden.",
+                        "duration_seconds": 360,
+                        "duration_source": "estimated",
+                        "attention_type": "hands_on",
+                        "action_type": "sear",
+                    },
+                ],
+            }
+        )
+    )
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+    monkeypatch.setattr(extract_module, "get_openai_client", lambda: client)
+
+    result = await routes_recipes.parse_from_transcript(
+        routes_recipes.ParseTranscriptBody(
+            transcript="Dice one block of tofu, then sear it until golden."
+        ),
+        _user=object(),
+    )
+
+    assert [step.text for step in result.steps] == [
+        "Dice the tofu.",
+        "Sear the tofu until golden.",
+    ]
+    assert create.await_count == 1

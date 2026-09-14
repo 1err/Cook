@@ -5,10 +5,14 @@ import { canonicalStoreProductKey, cleanStoreProductQuery } from "./storeProduct
 
 export const SMART_SHOPPING_LIST_PREFIX = "smartShoppingList";
 export const SMART_SHOPPING_PRODUCTS_PREFIX = "smartShoppingProducts";
+export const SMART_SHOPPING_CART_PREFIX = "smartShoppingCart";
+export const MAX_STORE_PRODUCT_TTL_MS = 86_400_000;
 
 export const smartListKey = (weekStart: string) => `${SMART_SHOPPING_LIST_PREFIX}:${weekStart}`;
 export const smartProductsKey = (weekStart: string) =>
   `${SMART_SHOPPING_PRODUCTS_PREFIX}:${weekStart}:weee`;
+export const smartCartKey = (weekStart: string) =>
+  `${SMART_SHOPPING_CART_PREFIX}:${weekStart}:weee`;
 
 export interface PurchaseItem {
   name: string;
@@ -34,12 +38,50 @@ export interface SmartProductsStored {
   queries: Record<string, string>;
 }
 
+export interface SmartCartStored {
+  selectedUrlByIngredient: Record<string, string>;
+  confirmedTokens: string[];
+}
+
 export type ParsedSmartList = {
   data: RefineResponse;
   hidden: Set<number>;
   checked: Set<number>;
   plannerFingerprint: string | null;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function parseSmartCartStored(parsed: unknown): SmartCartStored {
+  if (!isRecord(parsed)) {
+    return { selectedUrlByIngredient: {}, confirmedTokens: [] };
+  }
+
+  const selectedUrlByIngredient: Record<string, string> = {};
+  if (isRecord(parsed.selectedUrlByIngredient)) {
+    for (const [rawKey, value] of Object.entries(parsed.selectedUrlByIngredient)) {
+      const key = canonicalStoreProductKey(rawKey);
+      if (
+        key &&
+        !Object.prototype.hasOwnProperty.call(selectedUrlByIngredient, key) &&
+        typeof value === "string" &&
+        isSafeWeeeProductUrl(value)
+      ) {
+        selectedUrlByIngredient[key] = value;
+      }
+    }
+  }
+
+  const confirmedTokens = Array.isArray(parsed.confirmedTokens)
+    ? parsed.confirmedTokens.filter(
+        (token): token is string => typeof token === "string" && Boolean(token.trim()),
+      )
+    : [];
+
+  return { selectedUrlByIngredient, confirmedTokens };
+}
 
 export function parseSmartStored(parsed: unknown): ParsedSmartList | null {
   if (!parsed || typeof parsed !== "object") return null;
@@ -72,7 +114,11 @@ function validFutureExpiry(value: unknown, nowMs: number): value is string {
     return false;
   }
   const expiresAtMs = Date.parse(value);
-  return Number.isFinite(expiresAtMs) && expiresAtMs > nowMs;
+  return (
+    Number.isFinite(expiresAtMs)
+    && expiresAtMs > nowMs
+    && expiresAtMs <= nowMs + MAX_STORE_PRODUCT_TTL_MS
+  );
 }
 
 export function isFreshStoredProductResponse(
@@ -180,4 +226,68 @@ export async function writeSmartProducts(
 
 export async function clearSmartProducts(weekStart: string): Promise<void> {
   await ephemeral.remove(smartProductsKey(weekStart));
+}
+
+export async function readSmartCart(weekStart: string): Promise<SmartCartStored> {
+  const key = smartCartKey(weekStart);
+  const pendingMutation = smartCartMutationQueues.get(key);
+  if (pendingMutation) await pendingMutation.catch(() => {});
+  if (suppressedSmartCartKeys.has(key)) return parseSmartCartStored(null);
+  const raw = await json.get<unknown>(ephemeral, key);
+  return parseSmartCartStored(raw);
+}
+
+const suppressedSmartCartKeys = new Set<string>();
+const smartCartMutationQueues = new Map<string, Promise<void>>();
+
+function enqueueSmartCartMutation(
+  key: string,
+  mutation: () => Promise<void>,
+): Promise<void> {
+  const previous = smartCartMutationQueues.get(key) ?? Promise.resolve();
+  const queued = previous.catch(() => {}).then(mutation);
+  smartCartMutationQueues.set(key, queued);
+  const release = () => {
+    if (smartCartMutationQueues.get(key) === queued) smartCartMutationQueues.delete(key);
+  };
+  queued.then(release, release);
+  return queued;
+}
+
+export async function writeSmartCart(
+  weekStart: string,
+  payload: SmartCartStored,
+): Promise<void> {
+  const key = smartCartKey(weekStart);
+  const sanitized = parseSmartCartStored(payload);
+  await enqueueSmartCartMutation(key, async () => {
+    await json.set(ephemeral, key, sanitized);
+    suppressedSmartCartKeys.delete(key);
+  });
+}
+
+export async function clearSmartCart(weekStart: string): Promise<void> {
+  const key = smartCartKey(weekStart);
+  suppressedSmartCartKeys.add(key);
+  await enqueueSmartCartMutation(key, async () => {
+    let firstError: unknown;
+    let cleared = false;
+    try {
+      await json.set(ephemeral, key, parseSmartCartStored(null));
+      cleared = true;
+    } catch (error) {
+      firstError = error;
+    }
+    try {
+      await ephemeral.remove(key);
+      cleared = true;
+    } catch (error) {
+      firstError ??= error;
+    }
+    if (cleared) {
+      suppressedSmartCartKeys.delete(key);
+      return;
+    }
+    throw firstError instanceof Error ? firstError : new Error("Could not clear cart state");
+  });
 }

@@ -36,6 +36,8 @@ export const colors = {
   accentSoft: sharedColors.subtleSurface,
   accent: sharedColors.action,
   tipsCallout: sharedColors.subtleSurface,
+  instacartBackground: "#003D29",
+  instacartForeground: "#FAF1E5",
 } as const;
 
 export type ColorToken = keyof typeof colors;

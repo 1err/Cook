@@ -16,12 +16,14 @@ type ShoppingCategorySectionProps = {
   checked: Set<number>;
   openProducts: Record<string, boolean>;
   lookup: Record<string, ProductLookupState>;
+  selectedUrlByIngredient?: Record<string, string | undefined>;
   menuOpenFor: number | null;
   onToggleChecked: (index: number) => void;
   onHide: (index: number) => void;
   onToggleMenu: (index: number) => void;
   onToggleProducts: (name: string) => void;
   onRetryProducts: (name: string) => void;
+  onSelectProduct?: (ingredientKey: string, productUrl: string) => void;
 };
 
 export function ShoppingCategorySection({
@@ -30,12 +32,14 @@ export function ShoppingCategorySection({
   checked,
   openProducts,
   lookup,
+  selectedUrlByIngredient = {},
   menuOpenFor,
   onToggleChecked,
   onHide,
   onToggleMenu,
   onToggleProducts,
   onRetryProducts,
+  onSelectProduct,
 }: ShoppingCategorySectionProps) {
   const orderedRows = [
     ...rows.filter((row) => !checked.has(row.origIndex)),
@@ -57,6 +61,8 @@ export function ShoppingCategorySection({
               key={origIndex}
               name={item.name}
               suggestedPurchase={item.suggested_purchase}
+              ingredientKey={productKey}
+              selectedUrl={selectedUrlByIngredient[productKey]}
               checked={checked.has(origIndex)}
               productsOpen={Boolean(openProducts[productKey])}
               productState={lookup[productKey] ?? { status: "idle" }}
@@ -66,6 +72,7 @@ export function ShoppingCategorySection({
               onToggleMenu={() => onToggleMenu(origIndex)}
               onToggleProducts={() => onToggleProducts(item.name)}
               onRetryProducts={() => onRetryProducts(item.name)}
+              onSelect={(productUrl) => onSelectProduct?.(productKey, productUrl)}
             />
           );
         })}

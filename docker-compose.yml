@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: cooking
       POSTGRES_DB: cooking
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -20,6 +20,9 @@ services:
       start_period: 10s
 
   backend:
+    # Development bind mounts retain the host's existing ownership. Production
+    # runs the image's unprivileged cooking user without this local override.
+    user: "0:0"
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -32,10 +35,11 @@ services:
       [
         "sh",
         "-c",
-        "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000",
+        "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000",
       ]
     environment:
       - DATABASE_URL=postgresql+asyncpg://cooking:cooking@postgres:5432/cooking
+      - APP_ENV=development
       - DATABASE_SSL=false
       - CORS_ALLOW_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
     volumes:
@@ -52,12 +56,11 @@ services:
       context: .
       dockerfile: ./apps/web/Dockerfile
       args:
-        # Pin or mirror if Docker Hub auth returns 502: e.g. NODE_IMAGE=node:20-alpine@sha256:...
-        NODE_IMAGE: ${NODE_IMAGE:-node:20-alpine}
+        # Pin or mirror if Docker Hub auth fails: e.g. node:22-alpine@sha256:...
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
     ports:
       - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_BASE=http://localhost:8000
     depends_on:
       - backend
 

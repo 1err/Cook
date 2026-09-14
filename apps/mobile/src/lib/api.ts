@@ -5,14 +5,17 @@ import { useAuth } from "./auth";
 
 export type ApiClient = ReturnType<typeof createApiClient>;
 
-export function buildClient(token: string | null): ApiClient {
+export function buildClient(token: string | null, onUnauthorized?: () => void): ApiClient {
   return createApiClient({
     baseUrl: getApiBase(),
     auth: { kind: "bearer", getToken: () => token },
+    onUnauthorized,
   });
 }
 
 export function useApiClient(): ApiClient {
-  const { token } = useAuth();
-  return useMemo(() => buildClient(token), [token]);
+  const { token, invalidateToken } = useAuth();
+  return useMemo(() => buildClient(token, () => {
+    if (token) invalidateToken(token);
+  }), [invalidateToken, token]);
 }

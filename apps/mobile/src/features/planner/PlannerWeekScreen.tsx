@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -13,6 +14,7 @@ import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { emptyMealPlanSlots, type MealType, type Recipe } from "@cooking/shared";
 import { Button, EmptyState } from "../../components";
 import { colors, spacing, typography } from "../../theme";
+import { useT } from "../../lib/i18n";
 import type {
   MainTabsParamList,
   PlannerStackParamList,
@@ -32,6 +34,7 @@ type Props = CompositeScreenProps<
 >;
 
 export function PlannerWeekScreen({ navigation, route }: Props) {
+  const t = useT();
   const weekStart = route.params?.weekStart;
   const { state, refresh, addRecipeToSlot, removeRecipeFromSlot, prev, next, today } =
     usePlannerWeek(weekStart);
@@ -75,16 +78,16 @@ export function PlannerWeekScreen({ navigation, route }: Props) {
 
   const handleRemoveRecipe = useCallback(
     (date: string, slot: MealType, recipeId: string) => {
-      void removeRecipeFromSlot(date, slot, recipeId);
+      void removeRecipeFromSlot(date, slot, recipeId).catch(() => Alert.alert(t("planner.saveFailed")));
     },
-    [removeRecipeFromSlot],
+    [removeRecipeFromSlot, t],
   );
 
   const handlePick = useCallback(
     (target: { date: string; slot: MealType }, recipeId: string) => {
-      void addRecipeToSlot(target.date, target.slot, recipeId);
+      void addRecipeToSlot(target.date, target.slot, recipeId).catch(() => Alert.alert(t("planner.saveFailed")));
     },
-    [addRecipeToSlot],
+    [addRecipeToSlot, t],
   );
 
   const handleImportRecipe = useCallback(() => {

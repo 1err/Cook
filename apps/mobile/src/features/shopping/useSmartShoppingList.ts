@@ -44,14 +44,20 @@ type State =
 type Action =
   | { type: "weekChanged"; bounds: WeekBounds }
   | { type: "loaded"; bounds: WeekBounds; data: LoadedData }
-  | { type: "loadFailed"; error: string }
-  | { type: "refineStarted" }
-  | { type: "refineFailed"; error: string }
-  | { type: "refineSucceeded"; refinedData: RefineResponse; fingerprint: string }
-  | { type: "setStale"; stale: boolean }
+  | { type: "loadFailed"; bounds: WeekBounds; error: string }
+  | { type: "refineStarted"; weekStart: string }
+  | { type: "refineFailed"; weekStart: string; error: string }
+  | { type: "refineSucceeded"; weekStart: string; refinedData: RefineResponse; fingerprint: string }
+  | { type: "backStarted"; weekStart: string }
+  | { type: "setStale"; weekStart: string; stale: boolean }
   | { type: "toggleChecked"; index: number }
   | { type: "hideItem"; index: number }
-  | { type: "backToOriginal" };
+  | { type: "backToOriginal"; weekStart: string };
+
+export type SmartListMutationResult =
+  | { status: "succeeded"; weekStart: string }
+  | { status: "failed"; weekStart: string; error: string }
+  | { status: "stale"; weekStart: string };
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
@@ -67,16 +73,16 @@ function reducer(state: State, action: Action): State {
         refineError: null,
       };
     case "loadFailed":
-      if (state.status !== "loading") return state;
+      if (state.status !== "loading" || state.bounds.start !== action.bounds.start) return state;
       return { status: "error", bounds: state.bounds, error: action.error };
     case "refineStarted":
-      if (state.status !== "ready") return state;
+      if (state.status !== "ready" || state.bounds.start !== action.weekStart) return state;
       return { ...state, refining: true, refineError: null };
     case "refineFailed":
-      if (state.status !== "ready") return state;
+      if (state.status !== "ready" || state.bounds.start !== action.weekStart) return state;
       return { ...state, refining: false, refineError: action.error };
     case "refineSucceeded":
-      if (state.status !== "ready") return state;
+      if (state.status !== "ready" || state.bounds.start !== action.weekStart) return state;
       return {
         ...state,
         refining: false,
@@ -90,8 +96,11 @@ function reducer(state: State, action: Action): State {
           smartListStale: false,
         },
       };
+    case "backStarted":
+      if (state.status !== "ready" || state.bounds.start !== action.weekStart) return state;
+      return { ...state, refining: false, refineError: null };
     case "setStale":
-      if (state.status !== "ready") return state;
+      if (state.status !== "ready" || state.bounds.start !== action.weekStart) return state;
       if (state.data.smartListStale === action.stale) return state;
       return { ...state, data: { ...state.data, smartListStale: action.stale } };
     case "toggleChecked": {
@@ -108,9 +117,11 @@ function reducer(state: State, action: Action): State {
       return { ...state, data: { ...state.data, hidden: next } };
     }
     case "backToOriginal": {
-      if (state.status !== "ready") return state;
+      if (state.status !== "ready" || state.bounds.start !== action.weekStart) return state;
       return {
         ...state,
+        refining: false,
+        refineError: null,
         data: {
           ...state.data,
           refinedData: null,
@@ -142,6 +153,22 @@ export function useSmartShoppingList(weekStart: string | undefined) {
   } as State);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const mutationGenerationRef = useRef(0);
+  const requestedWeekStartRef = useRef(initialBounds.start);
+  if (requestedWeekStartRef.current !== initialBounds.start) {
+    requestedWeekStartRef.current = initialBounds.start;
+    mutationGenerationRef.current += 1;
+  }
+
+  const mutationIsCurrent = useCallback((week: string, generation: number) => {
+    const current = stateRef.current;
+    return (
+      mutationGenerationRef.current === generation
+      && requestedWeekStartRef.current === week
+      && current.status === "ready"
+      && current.bounds.start === week
+    );
+  }, []);
 
   // React to weekStart changes.
   useEffect(() => {
@@ -185,6 +212,7 @@ export function useSmartShoppingList(weekStart: string | undefined) {
         if (cancelled) return;
         dispatch({
           type: "loadFailed",
+          bounds,
           error: e instanceof Error ? e.message : "Failed to load shopping list",
         });
       }
@@ -194,13 +222,35 @@ export function useSmartShoppingList(weekStart: string | undefined) {
     };
   }, [apiClient, state.status, state.bounds]);
 
-  // Persist smart list whenever the user toggles hidden/checked.
+  const persistWeekStart = state.status === "ready" ? state.bounds.start : null;
+  const persistRefinedData = state.status === "ready" ? state.data.refinedData : null;
+  const persistHidden = state.status === "ready" ? state.data.hidden : null;
+  const persistChecked = state.status === "ready" ? state.data.checked : null;
+  const persistFingerprint = state.status === "ready" ? state.data.savedFingerprint : null;
+
+  // Persist smart-list content changes, not transient refining/error/staleness state.
   useEffect(() => {
-    if (state.status !== "ready") return;
-    const { refinedData, hidden, checked, savedFingerprint } = state.data;
-    if (!refinedData || !savedFingerprint) return;
-    void writeSmartList(state.bounds.start, refinedData, hidden, checked, savedFingerprint);
-  }, [state]);
+    if (
+      !persistWeekStart
+      || !persistRefinedData
+      || !persistHidden
+      || !persistChecked
+      || !persistFingerprint
+    ) return;
+    void writeSmartList(
+      persistWeekStart,
+      persistRefinedData,
+      persistHidden,
+      persistChecked,
+      persistFingerprint,
+    );
+  }, [
+    persistChecked,
+    persistFingerprint,
+    persistHidden,
+    persistRefinedData,
+    persistWeekStart,
+  ]);
 
   // On focus, recompute stale flag against the latest persistent planner fingerprint.
   useFocusEffect(
@@ -217,48 +267,109 @@ export function useSmartShoppingList(weekStart: string | undefined) {
         // Fallback to currently-loaded mealPlans if persistent is unset.
         const fallback = buildWeekMealPlanFingerprint(current.bounds.dates, current.data.mealPlans);
         const reference = persisted ?? fallback;
-        dispatch({ type: "setStale", stale: reference !== savedFingerprint });
+        dispatch({
+          type: "setStale",
+          weekStart: current.bounds.start,
+          stale: reference !== savedFingerprint,
+        });
       })();
     }, []),
   );
 
-  const prepareSmartList = useCallback(async () => {
+  const prepareSmartList = useCallback(async (): Promise<SmartListMutationResult> => {
     const current = stateRef.current;
-    if (current.status !== "ready") return;
-    dispatch({ type: "refineStarted" });
+    const originWeek = current.bounds.start;
+    if (
+      current.status !== "ready"
+      || requestedWeekStartRef.current !== originWeek
+    ) {
+      return { status: "stale", weekStart: originWeek };
+    }
+    const generation = mutationGenerationRef.current + 1;
+    mutationGenerationRef.current = generation;
+    dispatch({ type: "refineStarted", weekStart: originWeek });
     try {
       const [items, mealPlans] = await Promise.all([
         apiClient.shopping.list(current.bounds.start, current.bounds.end),
         apiClient.mealPlan.list(current.bounds.start, current.bounds.end),
       ]);
+      if (!mutationIsCurrent(originWeek, generation)) {
+        return { status: "stale", weekStart: originWeek };
+      }
       const fingerprint = buildWeekMealPlanFingerprint(current.bounds.dates, mealPlans);
       const refined = await apiClient.shopping.refine(
         items.map((i) => ({ name: i.name, quantity: i.total_quantity })),
       );
-      dispatch({ type: "refineSucceeded", refinedData: refined, fingerprint });
+      if (!mutationIsCurrent(originWeek, generation)) {
+        return { status: "stale", weekStart: originWeek };
+      }
       await clearSmartProducts(current.bounds.start);
+      if (!mutationIsCurrent(originWeek, generation)) {
+        return { status: "stale", weekStart: originWeek };
+      }
       await writeSmartList(current.bounds.start, refined, new Set(), new Set(), fingerprint);
+      if (!mutationIsCurrent(originWeek, generation)) {
+        return { status: "stale", weekStart: originWeek };
+      }
+      dispatch({
+        type: "refineSucceeded",
+        weekStart: originWeek,
+        refinedData: refined,
+        fingerprint,
+      });
+      return { status: "succeeded", weekStart: originWeek };
     } catch (e) {
+      if (!mutationIsCurrent(originWeek, generation)) {
+        return { status: "stale", weekStart: originWeek };
+      }
+      const error = e instanceof Error ? e.message : "Refine failed";
       dispatch({
         type: "refineFailed",
-        error: e instanceof Error ? e.message : "Refine failed",
+        weekStart: originWeek,
+        error,
       });
+      return { status: "failed", weekStart: originWeek, error };
     }
-  }, [apiClient]);
+  }, [apiClient, mutationIsCurrent]);
 
-  const backToOriginal = useCallback(async () => {
+  const backToOriginal = useCallback(async (): Promise<SmartListMutationResult> => {
     const current = stateRef.current;
-    if (current.status !== "ready") return;
-    await clearSmartList(current.bounds.start);
-    await clearSmartProducts(current.bounds.start);
-    dispatch({ type: "backToOriginal" });
-  }, []);
+    const originWeek = current.bounds.start;
+    if (
+      current.status !== "ready"
+      || requestedWeekStartRef.current !== originWeek
+    ) {
+      return { status: "stale", weekStart: originWeek };
+    }
+    const generation = mutationGenerationRef.current + 1;
+    mutationGenerationRef.current = generation;
+    dispatch({ type: "backStarted", weekStart: originWeek });
+    try {
+      await clearSmartList(originWeek);
+      if (!mutationIsCurrent(originWeek, generation)) {
+        return { status: "stale", weekStart: originWeek };
+      }
+      await clearSmartProducts(originWeek);
+      if (!mutationIsCurrent(originWeek, generation)) {
+        return { status: "stale", weekStart: originWeek };
+      }
+      dispatch({ type: "backToOriginal", weekStart: originWeek });
+      return { status: "succeeded", weekStart: originWeek };
+    } catch (e) {
+      if (!mutationIsCurrent(originWeek, generation)) {
+        return { status: "stale", weekStart: originWeek };
+      }
+      const error = e instanceof Error ? e.message : "Couldn't return to the original list";
+      return { status: "failed", weekStart: originWeek, error };
+    }
+  }, [mutationIsCurrent]);
 
   const toggleChecked = useCallback((index: number) => dispatch({ type: "toggleChecked", index }), []);
   const hideItem = useCallback((index: number) => dispatch({ type: "hideItem", index }), []);
 
   const refresh = useCallback(() => {
     const current = stateRef.current;
+    mutationGenerationRef.current += 1;
     dispatch({ type: "weekChanged", bounds: current.bounds });
   }, []);
 

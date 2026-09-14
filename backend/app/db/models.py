@@ -14,6 +14,20 @@ class Base(DeclarativeBase):
     pass
 
 
+class AIUsageCounterModel(Base):
+    """Two reusable UTC window counters per account, plus global counters."""
+    __tablename__ = "ai_usage_counters"
+
+    scope: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_seconds: Mapped[int] = mapped_column(sa.Integer(), primary_key=True)
+    window_start: Mapped[int] = mapped_column(sa.BigInteger(), nullable=False)
+    request_count: Mapped[int] = mapped_column(sa.Integer(), nullable=False)
+    __table_args__ = (
+        sa.CheckConstraint("request_count >= 1", name="ck_ai_usage_positive_count"),
+        sa.CheckConstraint("window_seconds > 0", name="ck_ai_usage_positive_window"),
+    )
+
+
 class UserModel(Base):
     __tablename__ = "users"
 

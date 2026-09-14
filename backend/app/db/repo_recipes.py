@@ -7,6 +7,7 @@ import uuid
 from typing import Optional
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -17,7 +18,19 @@ from app.models import (
     coerce_steps,
     coerce_string_list,
 )
-from app.db.models import RecipeModel
+from app.db.models import RecipeModel, UserModel
+
+
+class RecipeOwnershipConflict(ValueError):
+    """The requested recipe ID is already owned by another account."""
+
+
+async def _lock_copy_owner(session: AsyncSession, user_id: uuid.UUID) -> bool:
+    """Serialize both copy routes before checking whether a source was copied."""
+    result = await session.execute(
+        select(UserModel.id).where(UserModel.id == user_id).with_for_update()
+    )
+    return result.scalar_one_or_none() is not None
 
 
 def _row_to_recipe(row: RecipeModel) -> Recipe:
@@ -46,6 +59,11 @@ def _row_to_recipe(row: RecipeModel) -> Recipe:
     )
 
 
+def _row_to_shared_recipe(row: RecipeModel) -> Recipe:
+    """Share recipe fields without exposing the owner's private import guidance."""
+    return _row_to_recipe(row).model_copy(update={"raw_extraction_text": None})
+
+
 async def save_recipe(session: AsyncSession, recipe: Recipe, user_id: uuid.UUID) -> Recipe:
     ingredients_json = json.dumps(
         [i.model_dump() if hasattr(i, "model_dump") else i for i in recipe.ingredients]
@@ -56,7 +74,7 @@ async def save_recipe(session: AsyncSession, recipe: Recipe, user_id: uuid.UUID)
     )
     tips_list = coerce_string_list(getattr(recipe, "tips", None))
     equipment_list = coerce_string_list(getattr(recipe, "equipment", None))
-    model = RecipeModel(
+    values = dict(
         id=recipe.id,
         user_id=user_id,
         title=recipe.title,
@@ -66,17 +84,28 @@ async def save_recipe(session: AsyncSession, recipe: Recipe, user_id: uuid.UUID)
         raw_extraction_text=recipe.raw_extraction_text,
         library_tags=json.dumps(tags),
         library_category=tags[0] if tags else None,
-        is_public_catalog=recipe.is_public_catalog,
-        catalog_source_recipe_id=recipe.catalog_source_recipe_id,
+        is_public_catalog=False,
+        catalog_source_recipe_id=None,
         description=getattr(recipe, "description", None),
         total_time_minutes=getattr(recipe, "total_time_minutes", None),
         steps=json.dumps([s.model_dump() for s in steps_list]),
         tips=json.dumps(tips_list),
         equipment=json.dumps(equipment_list),
     )
-    await session.merge(model)
-    await session.flush()
-    return recipe
+    # The database checks ownership at the same instant it resolves an ID
+    # conflict. A prior SELECT alone would leave a cross-account write race.
+    statement = insert(RecipeModel).values(**values)
+    protected = {"id", "user_id", "is_public_catalog", "catalog_source_recipe_id"}
+    statement = statement.on_conflict_do_update(
+        index_elements=[RecipeModel.id],
+        set_={key: getattr(statement.excluded, key) for key in values if key not in protected},
+        where=RecipeModel.user_id == user_id,
+    ).returning(RecipeModel)
+    result = await session.execute(statement.execution_options(populate_existing=True))
+    row = result.scalars().one_or_none()
+    if row is None:
+        raise RecipeOwnershipConflict("Recipe ID is unavailable for this account")
+    return _row_to_recipe(row)
 
 
 async def get_recipe(session: AsyncSession, recipe_id: str, user_id: uuid.UUID) -> Optional[Recipe]:
@@ -87,6 +116,22 @@ async def get_recipe(session: AsyncSession, recipe_id: str, user_id: uuid.UUID) 
     if not row:
         return None
     return _row_to_recipe(row)
+
+
+async def get_recipes_by_ids(
+    session: AsyncSession, recipe_ids: list[str], user_id: uuid.UUID
+) -> list[Recipe]:
+    """Fetch owned recipes once, retaining first-requested order without duplicates."""
+    requested = list(dict.fromkeys(recipe_ids))
+    if not requested:
+        return []
+    result = await session.execute(
+        select(RecipeModel).where(
+            RecipeModel.user_id == user_id, RecipeModel.id.in_(requested)
+        )
+    )
+    by_id = {row.id: _row_to_recipe(row) for row in result.scalars().all()}
+    return [by_id[recipe_id] for recipe_id in requested if recipe_id in by_id]
 
 
 async def list_recipes(session: AsyncSession, user_id: uuid.UUID) -> list[Recipe]:
@@ -106,7 +151,7 @@ async def list_public_recipes(session: AsyncSession) -> list[Recipe]:
         .order_by(func.lower(RecipeModel.title), RecipeModel.id)
     )
     rows = list(result.scalars().all())
-    return [_row_to_recipe(r) for r in rows]
+    return [_row_to_shared_recipe(r) for r in rows]
 
 
 async def get_public_recipe(session: AsyncSession, recipe_id: str) -> Optional[Recipe]:
@@ -119,7 +164,7 @@ async def get_public_recipe(session: AsyncSession, recipe_id: str) -> Optional[R
     row = result.scalars().one_or_none()
     if not row:
         return None
-    return _row_to_recipe(row)
+    return _row_to_shared_recipe(row)
 
 
 async def set_recipe_public_catalog(
@@ -152,11 +197,13 @@ async def copy_public_recipe_to_user(
     if source.user_id == user_id:
         return _row_to_recipe(source)
 
+    if not await _lock_copy_owner(session, user_id):
+        return None
     existing_result = await session.execute(
         select(RecipeModel).where(
             RecipeModel.user_id == user_id,
             RecipeModel.catalog_source_recipe_id == recipe_id,
-        )
+        ).order_by(RecipeModel.id).limit(1)
     )
     existing = existing_result.scalars().one_or_none()
     if existing:
@@ -169,7 +216,7 @@ async def copy_public_recipe_to_user(
         source_url=source.source_url,
         thumbnail_url=source.thumbnail_url,
         ingredients=source.ingredients,
-        raw_extraction_text=source.raw_extraction_text,
+        raw_extraction_text=None,
         library_tags=source.library_tags,
         library_category=source.library_category,
         is_public_catalog=False,

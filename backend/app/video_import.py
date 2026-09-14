@@ -135,12 +135,17 @@ _YOUTUBE_FALLBACK_BUDGET_SECONDS = 30.0
 _YOUTUBE_WATCH_TIMEOUT_SECONDS = 10.0
 _YOUTUBE_DIRECT_PLAYER_TIMEOUT_SECONDS = 10.0
 _YOUTUBE_READER_TIMEOUT_SECONDS = 20.0
+_YOUTUBE_SDK_TIMEOUT_SECONDS = (5.0, 10.0)
 
 
 if Session is not None:
     class _NoRedirectSession(Session):
         def request(self, method, url, **kwargs):
             kwargs["allow_redirects"] = False
+            # Bound connect/read idle waits even when SDK callers pass None.
+            # Multiple requests can exceed these limits in total; this does not
+            # establish a whole-operation deadline or cancel the worker thread.
+            kwargs["timeout"] = _YOUTUBE_SDK_TIMEOUT_SECONDS
             return super().request(method, url, **kwargs)
 else:
     _NoRedirectSession = None

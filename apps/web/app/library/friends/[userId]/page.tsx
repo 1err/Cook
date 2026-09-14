@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader, PageShell } from "../../../components/PageShell";
 import { RequireAuth } from "../../../components/RequireAuth";
@@ -142,7 +143,8 @@ function FriendLibraryPageContent({ userId }: { userId: string }) {
   );
 }
 
-export default function FriendLibraryPage({ params }: { params: { userId: string } }) {
+export default function FriendLibraryPage() {
+  const params = useParams<{ userId: string }>();
   return (
     <RequireAuth>
       <FriendLibraryPageContent userId={params.userId} />

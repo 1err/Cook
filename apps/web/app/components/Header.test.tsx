@@ -42,7 +42,7 @@ function t(key: string, vars?: Record<string, string | number>) {
 beforeEach(() => {
   mockUsePathname.mockReturnValue("/planner");
   mockUseAuth.mockReturnValue({
-    user: { id: "admin", email: "jerryxiang24@gmail.com", is_library_public: false },
+    user: { id: "admin", email: "jerryxiang24@gmail.com", is_library_public: false, is_admin: true },
     loading: false,
     logout: vi.fn().mockResolvedValue(undefined),
   });
@@ -103,6 +103,17 @@ test("preserves sign-in and registration actions for unauthenticated routes", ()
   expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
   expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute("href", "/register");
   expect(screen.queryByRole("link", { name: "Add Recipe" })).not.toBeInTheDocument();
+});
+
+test("does not grant admin tools from an email address without the server role", async () => {
+  mockUseAuth.mockReturnValue({
+    user: { id: "ordinary", email: "jerryxiang24@gmail.com", is_library_public: false, is_admin: false },
+    loading: false,
+    logout: vi.fn(),
+  });
+  render(<Header />);
+  await userEvent.setup().click(screen.getByRole("button", { name: "Account for jerryxiang24@gmail.com" }));
+  expect(screen.queryByRole("link", { name: "Store cache" })).not.toBeInTheDocument();
 });
 
 test("the navigation disclosure owns and precedes the links it reveals in tab order", async () => {

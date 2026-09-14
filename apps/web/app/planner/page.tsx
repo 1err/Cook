@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "../lib/api";
+import { userLocalStorage } from "../lib/userStorage";
 import { RequireAuth } from "../components/RequireAuth";
 import { PageShell } from "../components/PageShell";
 import { useT } from "../lib/i18n";
@@ -170,7 +171,7 @@ function PlannerPageContent() {
       ...(planByDate[date] ?? emptyMealPlanSlots()),
     }));
     try {
-      localStorage.setItem(
+      userLocalStorage.setItem(
         plannerFingerprintStorageKey(start),
         buildWeekMealPlanFingerprint(dates, plansForFingerprint)
       );

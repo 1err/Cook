@@ -4,11 +4,16 @@ OAuth-ready: local provider now; add Google etc. by new provider identities.
 """
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
+from app.core.admin import is_admin
 from app.core.config import settings
 from app.core.security import (
+    BCRYPT_MAX_PASSWORD_BYTES,
+    MAX_LOGIN_PASSWORD_CHARACTERS,
     create_access_token,
     decode_access_token,
     hash_password,
@@ -27,22 +32,26 @@ COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days
 
 class RegisterBody(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(max_length=MAX_LOGIN_PASSWORD_CHARACTERS)
 
 
 class LoginBody(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(max_length=MAX_LOGIN_PASSWORD_CHARACTERS)
 
 
 class UserResponse(BaseModel):
     id: str
     email: str
     is_library_public: bool
+    is_admin: bool = False
 
     @classmethod
     def from_model(cls, u: UserModel) -> "UserResponse":
-        return cls(id=str(u.id), email=u.email, is_library_public=bool(u.is_library_public))
+        return cls(
+            id=str(u.id), email=u.email, is_library_public=bool(u.is_library_public),
+            is_admin=is_admin(u),
+        )
 
 
 class AuthResponse(UserResponse):
@@ -54,6 +63,7 @@ class AuthResponse(UserResponse):
             id=str(u.id),
             email=u.email,
             is_library_public=bool(u.is_library_public),
+            is_admin=is_admin(u),
             access_token=token,
         )
 
@@ -117,17 +127,26 @@ async def register(
     """Create user + local identity, set JWT cookie."""
     if len(body.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
-    existing = await repo_auth.get_user_by_email(session, body.email)
+    if len(body.password.encode("utf-8")) > BCRYPT_MAX_PASSWORD_BYTES:
+        raise HTTPException(status_code=400, detail="Password must be at most 72 UTF-8 bytes")
+    email = body.email.strip().lower()
+    existing = await repo_auth.get_user_by_email(session, email)
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
-    user = await repo_auth.create_user(session, body.email)
-    await repo_auth.create_identity(
-        session,
-        user.id,
-        provider="local",
-        provider_user_id=body.email.strip().lower(),
-        password_hash=hash_password(body.password),
-    )
+    password_hash = await run_in_threadpool(hash_password, body.password)
+    try:
+        user = await repo_auth.create_user(session, email)
+        await repo_auth.create_identity(
+            session,
+            user.id,
+            provider="local",
+            provider_user_id=email,
+            password_hash=password_hash,
+        )
+    except IntegrityError as exc:
+        if getattr(exc.orig, "sqlstate", None) == "23505":
+            raise HTTPException(status_code=400, detail="Email already registered") from exc
+        raise
     token = create_access_token(str(user.id))
     _set_cookie(response, token)
     return AuthResponse.from_model_with_token(user, token)
@@ -145,7 +164,7 @@ async def login(
     )
     if not identity or not identity.password_hash:
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    if not verify_password(body.password, identity.password_hash):
+    if not await run_in_threadpool(verify_password, body.password, identity.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     user = await repo_auth.get_user_by_id(session, identity.user_id)
     if not user:

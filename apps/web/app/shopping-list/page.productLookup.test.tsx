@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import ShoppingListPage from "./page";
+import { bindUserStorage, clearUserStorage } from "../lib/userStorage";
 
 const { mockApiFetch, mockUseRouter, mockUseSearchParams } = vi.hoisted(() => ({
   mockApiFetch: vi.fn(),
@@ -36,6 +37,50 @@ vi.mock("../lib/i18n", () => ({
       "shopping.viewOnStore": "View on {store}",
       "shopping.smartMode": "Smart mode",
       "shopping.backToOriginalList": "Back to original list",
+      "shopping.copyList": "Copy list",
+      "shopping.copied": "Copied!",
+      "shopping.loadPicks": "Load top picks from {store}",
+      "shopping.loadingPicks": "Loading picks from {store}…",
+      "shopping.loadingMatches": "Loading store matches… {current} of {total}",
+      "shopping.reviewCart": "Review Weee cart ({count})",
+      "shopping.cartEyebrow": "Weee cart companion",
+      "shopping.cartTitle": "Review Weee cart",
+      "shopping.cartClose": "Close Weee cart review",
+      "shopping.cartSummaryLabel": "Cart draft summary",
+      "shopping.cartReadyCount": "{count} ready",
+      "shopping.cartUnmatchedCount": "{count} unmatched",
+      "shopping.cartPendingCountOne": "1 finding a match",
+      "shopping.cartPendingCountMany": "{count} finding matches",
+      "shopping.cartConfirmedCount": "{count} marked as added",
+      "shopping.cartEstimate": "Estimated subtotal: {amount}",
+      "shopping.cartUnpricedOne": "1 selected item has no price in the listing estimate.",
+      "shopping.cartUnpricedMany": "{count} selected items have no price in the listing estimate.",
+      "shopping.cartNext": "Next: {name}",
+      "shopping.cartCurrentDetail": "You need {amount}. Selected: {product}.",
+      "shopping.cartOpenNext": "Open next on Weee",
+      "shopping.cartOpenAgain": "Open again",
+      "shopping.cartDirectLink": "Open {name} directly on Weee",
+      "shopping.cartConfirm": "I added it",
+      "shopping.cartSkip": "Skip for now",
+      "shopping.cartUndo": "Undo",
+      "shopping.cartUndoItem": "Undo {name}",
+      "shopping.cartSkipped": "Skipped this review",
+      "shopping.cartReviewPassComplete": "Review pass complete",
+      "shopping.cartHandoffComplete": "Handoff complete",
+      "shopping.cartFinalReviewDetail": "Review price, availability, quantities, and your final cart directly on Weee.",
+      "shopping.cartFinalReview": "Open Weee for final review",
+      "shopping.cartUnmatchedTitle": "Needs a match",
+      "shopping.cartPendingTitle": "Finding matches",
+      "shopping.cartFindMatch": "Find match",
+      "shopping.cartFindMatchItem": "Find a match for {name}",
+      "shopping.cartTrust": "Price and availability are confirmed on Weee. Chef World has not changed your Weee cart; an item is marked only when you say you added it.",
+      "shopping.cartChoiceGroup": "Choose {name} for cart",
+      "shopping.cartChoiceGroupGeneric": "Choose a product for cart",
+      "shopping.cartTopPick": "Top pick",
+      "shopping.cartSelected": "Selected for cart",
+      "shopping.cartSelectedProduct": "{name}: Selected for cart",
+      "shopping.cartChooseProduct": "Choose {name} for cart",
+      "shopping.cartChoose": "Choose for cart",
     };
     return (messages[key] ?? key).replace(
       /\{(\w+)\}/g,
@@ -103,6 +148,18 @@ function stubRemoveThrowingSessionStorage(values: Map<string, string>) {
   });
 }
 
+function stubUnavailableSessionStorage(values: Map<string, string>) {
+  vi.stubGlobal("sessionStorage", {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: () => {
+      throw new DOMException("Storage write denied", "SecurityError");
+    },
+    removeItem: () => {
+      throw new DOMException("Storage remove denied", "SecurityError");
+    },
+  });
+}
+
 beforeEach(() => {
   mockUseRouter.mockReturnValue({ push: vi.fn() });
   mockUseSearchParams.mockReturnValue(new URLSearchParams("week=2026-08-10"));
@@ -110,9 +167,34 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  clearUserStorage();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+});
+
+test("a refinement completing after sign-out cannot write groceries into the next account", async () => {
+  const storage = stubSessionStorage();
+  bindUserStorage("alice");
+  const pending = deferredResponse();
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/shopping-list?")) return Promise.resolve(jsonResponse([{ name: "Alice private rice", total_quantity: "1 bag" }]));
+    if (path.startsWith("/meal-plan?") || path === "/recipes") return Promise.resolve(jsonResponse([]));
+    if (path === "/shopping-list/refine") return pending.promise;
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  const user = userEvent.setup();
+  const { unmount } = render(<ShoppingListPage />);
+  await user.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
+  await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith("/shopping-list/refine", expect.anything()));
+  unmount();
+  clearUserStorage();
+  bindUserStorage("bob");
+  await act(async () => {
+    pending.resolve(jsonResponse({ remove: [], likely_pantry: [], purchase_items: [{ name: "Alice private rice", suggested_purchase: "1 bag" }] }));
+    await pending.promise;
+  });
+  expect(storage.has("smartShoppingList:2026-08-10:user:bob")).toBe(false);
 });
 
 test("bulk loading renders fresh cache hits before serial misses and advances progress per result", async () => {
@@ -366,7 +448,7 @@ test("continues rendering and loading products when sessionStorage writes throw"
   expect(screen.getByRole("button", { name: /Load top picks from Weee/ })).toBeEnabled();
 });
 
-test("back to original still clears React state when sessionStorage removal throws", async () => {
+test("back to original tombstones cart progress before a failed removal and remount", async () => {
   const storage = new Map<string, string>();
   storage.set(
     "smartShoppingList:2026-08-10",
@@ -379,6 +461,25 @@ test("back to original still clears React state when sessionStorage removal thro
       _ui: { hidden: [], checked: [] },
     }),
   );
+  storage.set(
+    "smartShoppingProducts:2026-08-10:weee",
+    JSON.stringify({
+      open: { rice: true },
+      queries: { rice: "Rice" },
+      lookup: {
+        rice: {
+          status: "success",
+          expiresAt: nearFutureExpiry(),
+          products: cartProducts.Rice,
+        },
+      },
+    }),
+  );
+  const riceToken = JSON.stringify(["rice", "https://www.sayweee.com/product/rice"]);
+  storage.set(
+    "smartShoppingCart:2026-08-10:weee",
+    JSON.stringify({ selectedUrlByIngredient: {}, confirmedTokens: [riceToken] }),
+  );
   stubRemoveThrowingSessionStorage(storage);
   mockApiFetch.mockImplementation((path: string) => {
     if (path.startsWith("/shopping-list?")) {
@@ -390,13 +491,80 @@ test("back to original still clears React state when sessionStorage removal thro
   });
 
   const user = userEvent.setup();
-  render(<ShoppingListPage />);
+  const rendered = render(<ShoppingListPage />);
   expect(await screen.findByText("Smart mode")).toBeVisible();
 
   await user.click(screen.getByRole("button", { name: /Back to original list/ }));
 
   expect(screen.queryByText("Smart mode")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Prepare smart shopping list" })).toBeEnabled();
+  expect(JSON.parse(storage.get("smartShoppingCart:2026-08-10:weee") ?? "{}")).toEqual({
+    selectedUrlByIngredient: {},
+    confirmedTokens: [],
+  });
+
+  rendered.unmount();
+  render(<ShoppingListPage />);
+  await user.click(await screen.findByRole("button", { name: "Review Weee cart (1)" }));
+  expect(screen.getByText("0 marked as added")).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Next: Rice" })).toBeVisible();
+});
+
+test("suppresses same-session cart resurrection when storage write and removal are both denied", async () => {
+  mockUseSearchParams.mockReturnValue(new URLSearchParams("week=2026-08-24"));
+  const storage = new Map<string, string>();
+  storage.set(
+    "smartShoppingList:2026-08-24",
+    JSON.stringify({
+      remove: [],
+      likely_pantry: [],
+      purchase_items: [
+        { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+      ],
+      _ui: { hidden: [], checked: [] },
+    }),
+  );
+  storage.set(
+    "smartShoppingProducts:2026-08-24:weee",
+    JSON.stringify({
+      open: { rice: true },
+      queries: { rice: "Rice" },
+      lookup: {
+        rice: {
+          status: "success",
+          expiresAt: nearFutureExpiry(),
+          products: cartProducts.Rice,
+        },
+      },
+    }),
+  );
+  storage.set(
+    "smartShoppingCart:2026-08-24:weee",
+    JSON.stringify({
+      selectedUrlByIngredient: {},
+      confirmedTokens: [JSON.stringify(["rice", "https://www.sayweee.com/product/rice"])],
+    }),
+  );
+  stubUnavailableSessionStorage(storage);
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/shopping-list?")) {
+      return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+    }
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
+    if (path === "/recipes") return Promise.resolve(jsonResponse([]));
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  const user = userEvent.setup();
+  const rendered = render(<ShoppingListPage />);
+
+  expect(await screen.findByText("Smart mode")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: /Back to original list/ }));
+  rendered.unmount();
+  render(<ShoppingListPage />);
+
+  await user.click(await screen.findByRole("button", { name: "Review Weee cart (1)" }));
+  expect(screen.getByText("0 marked as added")).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Next: Rice" })).toBeVisible();
 });
 
 test("successful smart-list preparation survives a sessionStorage removal error", async () => {
@@ -439,6 +607,99 @@ test("successful smart-list preparation survives a sessionStorage removal error"
   expect(
     screen.queryByText(/Storage access denied|Something went wrong/),
   ).not.toBeInTheDocument();
+});
+
+test("ignores a late smart-list refresh from the previous week without clearing the destination cart", async () => {
+  const storage = stubSessionStorage();
+  const weekBToken = JSON.stringify(["tofu", "https://www.sayweee.com/product/tofu"]);
+  storage.set(
+    "smartShoppingList:2026-08-17",
+    JSON.stringify({
+      remove: [],
+      likely_pantry: [],
+      purchase_items: [
+        { name: "Tofu", suggested_purchase: "2 packs", category: "Produce" },
+      ],
+      _ui: { hidden: [], checked: [] },
+    }),
+  );
+  storage.set(
+    "smartShoppingProducts:2026-08-17:weee",
+    JSON.stringify({
+      open: { tofu: true },
+      queries: { tofu: "Tofu" },
+      lookup: {
+        tofu: {
+          status: "success",
+          expiresAt: nearFutureExpiry(),
+          products: [{
+            name: "Week B tofu",
+            price: "$3.00",
+            image: "",
+            url: "https://www.sayweee.com/product/tofu",
+          }],
+        },
+      },
+    }),
+  );
+  storage.set(
+    "smartShoppingCart:2026-08-17:weee",
+    JSON.stringify({ selectedUrlByIngredient: {}, confirmedTokens: [weekBToken] }),
+  );
+
+  const lateWeekARefresh = deferredResponse();
+  let weekAListCalls = 0;
+  let refineCalls = 0;
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/shopping-list?start=2026-08-10")) {
+      weekAListCalls += 1;
+      if (weekAListCalls === 1) {
+        return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+      }
+      return lateWeekARefresh.promise;
+    }
+    if (path.startsWith("/shopping-list?start=2026-08-17")) {
+      return Promise.resolve(jsonResponse([{ name: "Tofu", total_quantity: "2 packs" }]));
+    }
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
+    if (path === "/recipes") return Promise.resolve(jsonResponse([]));
+    if (path === "/shopping-list/refine") {
+      refineCalls += 1;
+      return Promise.resolve(jsonResponse({
+        remove: [],
+        likely_pantry: [],
+        purchase_items: [
+          { name: "Late rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+        ],
+      }));
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+
+  const user = userEvent.setup();
+  const rendered = render(<ShoppingListPage />);
+  await user.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
+  await waitFor(() => expect(weekAListCalls).toBe(2));
+
+  mockUseSearchParams.mockReturnValue(new URLSearchParams("week=2026-08-17"));
+  rendered.rerender(<ShoppingListPage />);
+  const weekBReview = await screen.findByRole("button", { name: "Review Weee cart (1)" });
+  await user.click(weekBReview);
+  expect(screen.getByText("Week B tofu · $3.00")).toBeVisible();
+  expect(screen.getByText("1 marked as added")).toBeVisible();
+
+  await act(async () => {
+    lateWeekARefresh.resolve(jsonResponse([{ name: "Late rice", total_quantity: "1 bag" }]));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+
+  expect(refineCalls).toBe(0);
+  expect(screen.getByRole("dialog", { name: "Review Weee cart" })).toBeVisible();
+  expect(screen.getByText("Week B tofu · $3.00")).toBeVisible();
+  expect(JSON.parse(storage.get("smartShoppingCart:2026-08-17:weee") ?? "{}").confirmedTokens)
+    .toContain(weekBToken);
 });
 
 test("clears a displayed result and revalidates at the exact backend expiry", async () => {
@@ -525,6 +786,94 @@ test("clears a displayed result and revalidates at the exact backend expiry", as
   vi.useRealTimers();
 });
 
+test("retains confirmed progress while a product revalidates and prunes it after a settled empty result", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-08-15T12:00:00.000Z"));
+  const expiryDelay = 1_000;
+  const expiry = new Date(Date.now() + expiryDelay).toISOString();
+  const storage = stubSessionStorage();
+  storage.set(
+    "smartShoppingList:2026-08-10",
+    JSON.stringify({
+      remove: [],
+      likely_pantry: [],
+      purchase_items: [
+        { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+      ],
+      _ui: { hidden: [], checked: [] },
+    }),
+  );
+
+  const revalidation = deferredResponse();
+  let productCalls = 0;
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/shopping-list?")) {
+      return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+    }
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
+    if (path === "/recipes") return Promise.resolve(jsonResponse([]));
+    if (path === "/store-products?query=Rice") {
+      productCalls += 1;
+      if (productCalls === 1) {
+        return Promise.resolve(productResponse([
+          {
+            name: "Fresh rice",
+            price: "$2.99",
+            image: "",
+            url: "https://www.sayweee.com/product/rice",
+          },
+        ], expiry));
+      }
+      return revalidation.promise;
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+
+  render(<ShoppingListPage />);
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  fireEvent.click(screen.getAllByRole("button", { name: "View products" })[0]);
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Review Weee cart (1)" }));
+  fireEvent.click(screen.getByRole("button", { name: "I added it" }));
+
+  const riceToken = JSON.stringify(["rice", "https://www.sayweee.com/product/rice"]);
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(JSON.parse(storage.get("smartShoppingCart:2026-08-10:weee") ?? "{}").confirmedTokens)
+    .toContain(riceToken);
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(expiryDelay);
+  });
+  expect(screen.getByText("1 finding a match")).toBeVisible();
+  expect(JSON.parse(storage.get("smartShoppingCart:2026-08-10:weee") ?? "{}").confirmedTokens)
+    .toContain(riceToken);
+
+  fireEvent.click(screen.getByRole("button", { name: "Close Weee cart review" }));
+  expect(screen.getByRole("button", { name: "Load top picks from Weee" })).toHaveFocus();
+
+  await act(async () => {
+    revalidation.resolve(productResponse([]));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  expect(screen.queryByRole("button", { name: /Review Weee cart/ })).not.toBeInTheDocument();
+  expect(JSON.parse(storage.get("smartShoppingCart:2026-08-10:weee") ?? "{}").confirmedTokens)
+    .not.toContain(riceToken);
+
+  vi.useRealTimers();
+});
+
 test.each(["clear", "unmount"] as const)(
   "%s aborts and settles the active product generation",
   async (action) => {
@@ -570,3 +919,272 @@ test.each(["clear", "unmount"] as const)(
     expect(productSignal?.aborted).toBe(true);
   },
 );
+
+function seedCartShoppingList(
+  storage: Map<string, string>,
+  ui: { hidden?: number[]; checked?: number[] } = {},
+) {
+  storage.set(
+    "smartShoppingList:2026-08-10",
+    JSON.stringify({
+      remove: [],
+      likely_pantry: [],
+      purchase_items: [
+        { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+        { name: "Kale", suggested_purchase: "2 bunches", category: "Produce" },
+        { name: "Ginger", suggested_purchase: "1 knob", category: "Produce" },
+      ],
+      _ui: { hidden: ui.hidden ?? [], checked: ui.checked ?? [] },
+    }),
+  );
+}
+
+const cartProducts = {
+  Rice: [
+    { name: "Jasmine rice", price: "$2.00", image: "", url: "https://www.sayweee.com/product/rice" },
+    { name: "Brown rice", price: "$4.00", image: "", url: "https://www.sayweee.com/product/brown-rice" },
+  ],
+  Kale: [
+    { name: "Organic kale", price: "$3.00", image: "", url: "https://www.sayweee.com/product/kale" },
+  ],
+  Ginger: [
+    { name: "Fresh ginger", price: "$1.00", image: "", url: "https://www.sayweee.com/product/ginger" },
+  ],
+} as const;
+
+function stubCartApi() {
+  mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
+    if (path.startsWith("/shopping-list?")) {
+      return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+    }
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([]));
+    if (path === "/recipes") return Promise.resolve(jsonResponse([]));
+    if (path === "/store-products/batch") {
+      const queries = JSON.parse(String(init?.body)).queries as Array<keyof typeof cartProducts>;
+      return Promise.resolve(jsonResponse({
+        entries: queries.map((query) => ({
+          query,
+          status: "fresh",
+          products: cartProducts[query] ?? [],
+          expires_at: nearFutureExpiry(),
+        })),
+      }));
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+}
+
+test("builds a review from successful matches, derives top picks, updates an alternative, and restores trigger focus", async () => {
+  const storage = stubSessionStorage();
+  seedCartShoppingList(storage);
+  stubCartApi();
+  const user = userEvent.setup();
+
+  render(<ShoppingListPage />);
+  expect(await screen.findByText("Smart mode")).toBeVisible();
+  expect(screen.queryByRole("button", { name: /Review Weee cart/ })).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Load top picks from Weee" }));
+  const review = await screen.findByRole("button", { name: "Review Weee cart (3)" });
+  await waitFor(() => {
+    const saved = JSON.parse(storage.get("smartShoppingCart:2026-08-10:weee") ?? "{}");
+    expect(saved.selectedUrlByIngredient).toEqual({});
+  });
+  await user.click(review);
+  expect(screen.getByRole("dialog", { name: "Review Weee cart" })).toBeVisible();
+  expect(screen.getByText("Estimated subtotal: $6.00")).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Next: Rice" })).toBeVisible();
+
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(review).toHaveFocus());
+  await user.click(screen.getByRole("radio", { name: "Choose Brown rice for cart" }));
+  await user.click(review);
+  expect(screen.getByText("Estimated subtotal: $8.00")).toBeVisible();
+  expect(screen.getByText(/Brown rice · \$4\.00/)).toBeVisible();
+});
+
+test("opens one verified current product, persists explicit confirmation, and clears it when the product changes", async () => {
+  const storage = stubSessionStorage();
+  seedCartShoppingList(storage);
+  stubCartApi();
+  const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+  const user = userEvent.setup();
+
+  render(<ShoppingListPage />);
+  await user.click(await screen.findByRole("button", { name: "Load top picks from Weee" }));
+  const review = await screen.findByRole("button", { name: "Review Weee cart (3)" });
+  await user.click(review);
+  await user.click(screen.getByRole("button", { name: "Open next on Weee" }));
+  expect(openSpy).toHaveBeenCalledTimes(1);
+  expect(openSpy).toHaveBeenCalledWith(
+    "https://www.sayweee.com/product/rice",
+    "_blank",
+    "noopener,noreferrer",
+  );
+
+  await user.click(screen.getByRole("button", { name: "I added it" }));
+  const riceToken = JSON.stringify(["rice", "https://www.sayweee.com/product/rice"]);
+  expect(screen.getByRole("heading", { name: "Next: Kale" })).toBeVisible();
+  await waitFor(() => {
+    const saved = JSON.parse(storage.get("smartShoppingCart:2026-08-10:weee") ?? "{}");
+    expect(saved.confirmedTokens).toContain(riceToken);
+  });
+
+  await user.click(screen.getByRole("button", { name: "Close Weee cart review" }));
+  await user.click(screen.getByRole("radio", { name: "Jasmine rice: Selected for cart" }));
+  await waitFor(() => {
+    const saved = JSON.parse(storage.get("smartShoppingCart:2026-08-10:weee") ?? "{}");
+    expect(saved.selectedUrlByIngredient).toEqual({});
+    expect(saved.confirmedTokens).toContain(riceToken);
+  });
+  await user.click(screen.getByRole("radio", { name: "Choose Brown rice for cart" }));
+  await waitFor(() => {
+    const saved = JSON.parse(storage.get("smartShoppingCart:2026-08-10:weee") ?? "{}");
+    expect(saved.selectedUrlByIngredient.rice).toBe("https://www.sayweee.com/product/brown-rice");
+    expect(saved.confirmedTokens).not.toContain(riceToken);
+  });
+});
+
+test.each(["check", "hide"] as const)(
+  "%s keeps a canonical confirmation while a duplicate row remains eligible and clears it after the last row leaves",
+  async (action) => {
+    const storage = stubSessionStorage();
+    storage.set(
+      "smartShoppingList:2026-08-10",
+      JSON.stringify({
+        remove: [],
+        likely_pantry: [],
+        purchase_items: [
+          { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+          { name: " RICE ", suggested_purchase: "2 bags", category: "Pantry & Dry Goods" },
+        ],
+        _ui: { hidden: [], checked: [] },
+      }),
+    );
+    stubCartApi();
+    const user = userEvent.setup();
+
+    render(<ShoppingListPage />);
+    await user.click(await screen.findByRole("button", { name: "Load top picks from Weee" }));
+    await user.click(await screen.findByRole("button", { name: "Review Weee cart (1)" }));
+    await user.click(screen.getByRole("button", { name: "I added it" }));
+    await user.click(screen.getByRole("button", { name: "Close Weee cart review" }));
+
+    const riceToken = JSON.stringify(["rice", "https://www.sayweee.com/product/rice"]);
+    await waitFor(() => {
+      const saved = JSON.parse(storage.get("smartShoppingCart:2026-08-10:weee") ?? "{}");
+      expect(saved.confirmedTokens).toContain(riceToken);
+    });
+
+    const removeFirstEligibleRow = async () => {
+      if (action === "check") {
+        await user.click(screen.getAllByRole("checkbox")[0]);
+        return;
+      }
+      await user.click(screen.getAllByRole("button", { name: /shopping\.more/ })[0]);
+      await user.click(screen.getByRole("button", { name: "shopping.removeFromList" }));
+    };
+
+    await removeFirstEligibleRow();
+    await waitFor(() => {
+      const saved = JSON.parse(storage.get("smartShoppingCart:2026-08-10:weee") ?? "{}");
+      expect(saved.confirmedTokens).toContain(riceToken);
+    });
+
+    await removeFirstEligibleRow();
+    await waitFor(() => {
+      const saved = JSON.parse(storage.get("smartShoppingCart:2026-08-10:weee") ?? "{}");
+      expect(saved.confirmedTokens).not.toContain(riceToken);
+    });
+  },
+);
+
+test("excludes checked and hidden ingredients and tolerates malformed cart data plus failed writes", async () => {
+  const storage = new Map<string, string>();
+  seedCartShoppingList(storage, { hidden: [1], checked: [0] });
+  storage.set("smartShoppingCart:2026-08-10:weee", "{not-json");
+  storage.set(
+    "smartShoppingProducts:2026-08-10:weee",
+    JSON.stringify({
+      open: { rice: true, kale: true, ginger: true },
+      queries: { rice: "Rice", kale: "Kale", ginger: "Ginger" },
+      lookup: Object.fromEntries(
+        Object.entries(cartProducts).map(([name, products]) => [
+          name.toLowerCase(),
+          { status: "success", expiresAt: nearFutureExpiry(), products },
+        ]),
+      ),
+    }),
+  );
+  stubThrowingSessionStorage(storage);
+  stubCartApi();
+  const user = userEvent.setup();
+
+  render(<ShoppingListPage />);
+  const review = await screen.findByRole("button", { name: "Review Weee cart (1)" });
+  await user.click(review);
+
+  expect(screen.getByRole("heading", { name: "Next: Ginger" })).toBeVisible();
+  expect(screen.getByText("1 ready")).toBeVisible();
+  expect(screen.queryByText(/Jasmine rice ·/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Organic kale ·/)).not.toBeInTheDocument();
+});
+
+test("hydrates a week-scoped explicit alternative and confirmation, then clears cart state on back", async () => {
+  const storage = stubSessionStorage();
+  seedCartShoppingList(storage);
+  const riceToken = JSON.stringify(["rice", "https://www.sayweee.com/product/brown-rice"]);
+  storage.set(
+    "smartShoppingCart:2026-08-10:weee",
+    JSON.stringify({
+      selectedUrlByIngredient: { rice: "https://www.sayweee.com/product/brown-rice" },
+      confirmedTokens: [riceToken],
+    }),
+  );
+  storage.set(
+    "smartShoppingProducts:2026-08-10:weee",
+    JSON.stringify({
+      open: { rice: true, kale: true, ginger: true },
+      queries: { rice: "Rice", kale: "Kale", ginger: "Ginger" },
+      lookup: Object.fromEntries(
+        Object.entries(cartProducts).map(([name, products]) => [
+          name.toLowerCase(),
+          { status: "success", expiresAt: nearFutureExpiry(), products },
+        ]),
+      ),
+    }),
+  );
+  stubCartApi();
+  const user = userEvent.setup();
+
+  render(<ShoppingListPage />);
+  const review = await screen.findByRole("button", { name: "Review Weee cart (3)" });
+  await user.click(review);
+  expect(screen.getByText("Estimated subtotal: $8.00")).toBeVisible();
+  expect(screen.getByText("1 marked as added")).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Next: Kale" })).toBeVisible();
+
+  await user.click(screen.getByRole("button", { name: "Close Weee cart review" }));
+  await user.click(screen.getByRole("button", { name: "Back to original list" }));
+  expect(storage.has("smartShoppingCart:2026-08-10:weee")).toBe(false);
+  expect(screen.queryByRole("button", { name: /Review Weee cart/ })).not.toBeInTheDocument();
+});
+
+test("advances a skipped item only for the open review session", async () => {
+  const storage = stubSessionStorage();
+  seedCartShoppingList(storage);
+  stubCartApi();
+  const user = userEvent.setup();
+
+  render(<ShoppingListPage />);
+  await user.click(await screen.findByRole("button", { name: "Load top picks from Weee" }));
+  const review = await screen.findByRole("button", { name: "Review Weee cart (3)" });
+  await user.click(review);
+  expect(screen.getByRole("heading", { name: "Next: Rice" })).toBeVisible();
+
+  await user.click(screen.getByRole("button", { name: "Skip for now" }));
+  expect(screen.getByRole("heading", { name: "Next: Kale" })).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "Close Weee cart review" }));
+  await user.click(review);
+  expect(screen.getByRole("heading", { name: "Next: Rice" })).toBeVisible();
+});

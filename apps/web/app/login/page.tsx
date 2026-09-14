@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { safeAuthRedirect } from "@cooking/shared";
 import { apiFetch } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { AuthShell } from "../components/AuthShell";
@@ -38,9 +39,7 @@ export default function LoginPage() {
       }
       await refreshUser();
       const params = new URLSearchParams(window.location.search);
-      const rawRedirect = params.get("redirect") || "/library";
-      const redirectTarget = rawRedirect.startsWith("/") ? rawRedirect : "/library";
-      router.push(redirectTarget);
+      router.push(safeAuthRedirect(params.get("redirect")));
     } catch (err) {
       const message = err instanceof Error ? err.message : t("auth.loginFailed");
       if (message === "Failed to fetch") {

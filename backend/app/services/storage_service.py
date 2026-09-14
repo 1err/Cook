@@ -1,5 +1,5 @@
 """
-S3 presigned URL generation for direct browser uploads.
+Validated recipe image storage, with one bounded upload through the backend.
 Uses AWS_REGION and S3_BUCKET_NAME from app config (env).
 When S3 is not configured, saves files under the local upload root and returns a public file_url only.
 """
@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 
 import boto3
+from botocore.config import Config
 
 from app.core.config import settings
 
@@ -34,11 +35,8 @@ def save_recipe_image_local(content: bytes, content_type: str) -> str:
     return f"/uploads/recipes/{key}"
 
 
-def generate_image_upload_url(content_type: str) -> dict[str, str]:
-    """
-    Generate a presigned URL that allows the browser to upload
-    an image directly to S3.
-    """
+def save_recipe_image_s3(content: bytes, content_type: str, account_id: str) -> str:
+    """Persist exactly the bytes validated by the route; no reusable PUT grant."""
     if not settings.AWS_REGION or not settings.S3_BUCKET_NAME:
         raise ValueError(
             "AWS_REGION and S3_BUCKET_NAME must be set for image uploads. "
@@ -48,25 +46,28 @@ def generate_image_upload_url(content_type: str) -> dict[str, str]:
     s3_client = boto3.client(
         "s3",
         region_name=settings.AWS_REGION,
+        config=Config(connect_timeout=5, read_timeout=15, retries={"total_max_attempts": 1}),
     )
 
     file_id = uuid.uuid4().hex
     ext = mimetypes.guess_extension(content_type) or ""
-    key = f"recipes/{file_id}{ext}"
+    key = f"recipes/{account_id}/{file_id}{ext}"
 
-    url = s3_client.generate_presigned_url(
-        ClientMethod="put_object",
-        Params={
-            "Bucket": settings.S3_BUCKET_NAME,
-            "Key": key,
-            "ContentType": content_type,
-        },
-        ExpiresIn=300,
-    )
+    try:
+        s3_client.put_object(Bucket=settings.S3_BUCKET_NAME, Key=key,
+                             ContentType=content_type, ContentLength=len(content), Body=content)
+    finally:
+        s3_client.close()
+    return f"https://{settings.S3_BUCKET_NAME}.s3.{settings.AWS_REGION}.amazonaws.com/{key}"
 
-    public_url = f"https://{settings.S3_BUCKET_NAME}.s3.{settings.AWS_REGION}.amazonaws.com/{key}"
 
-    return {
-        "upload_url": url,
-        "file_url": public_url,
-    }
+def matches_image_signature(content: bytes, content_type: str) -> bool:
+    """Reject mislabeled active content. This is a signature check, not decoding."""
+    if content_type == "image/jpeg":
+        return content.startswith(b"\xff\xd8\xff")
+    if content_type == "image/png":
+        return content.startswith(b"\x89PNG\r\n\x1a\n")
+    if content_type == "image/gif":
+        return content.startswith((b"GIF87a", b"GIF89a"))
+    return (content_type == "image/webp" and content.startswith(b"RIFF")
+            and content[8:12] == b"WEBP")

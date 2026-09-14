@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import get_current_user
 from app.db import repo_users
 from app.db.models import UserModel
-from app.db.repo_recipes import _row_to_recipe
+from app.db.repo_recipes import _row_to_recipe, _row_to_shared_recipe
 from app.db.session import get_session
 from app.models import Recipe
 
@@ -55,7 +55,7 @@ async def friend_library_recipes(
     if owner is None or not bool(owner.is_library_public):
         raise HTTPException(404, "Library not found.")
     rows = await repo_users.list_friend_library_recipes(session, user_id)
-    return [_row_to_recipe(r) for r in rows]
+    return [_row_to_shared_recipe(r) for r in rows]
 
 
 @router.post("/{user_id}/recipes/{recipe_id}/copy", response_model=Recipe)

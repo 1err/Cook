@@ -44,6 +44,7 @@ export function LibraryListScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
 
   const load = useCallback(
@@ -51,13 +52,16 @@ export function LibraryListScreen({ navigation }: Props) {
       if (mode === "initial") setLoading(true);
       else setRefreshing(true);
       setError(null);
+      setCatalogError(null);
       try {
-        const [mine, pub] = await Promise.all([
+        const [mine, pub] = await Promise.allSettled([
           apiClient.recipes.list(),
           apiClient.recipes.catalog(),
         ]);
-        setRecipes(mine);
-        setPublicRecipes(pub);
+        if (mine.status === "fulfilled") setRecipes(mine.value);
+        else setError(mine.reason instanceof Error ? mine.reason.message : "Failed to load recipes");
+        if (pub.status === "fulfilled") setPublicRecipes(pub.value);
+        else setCatalogError(pub.reason instanceof Error ? pub.reason.message : "Failed to load public recipes");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load recipes");
       } finally {
@@ -127,6 +131,7 @@ export function LibraryListScreen({ navigation }: Props) {
   }
 
   const data = view === "mine" ? recipes : publicRecipes;
+  const visibleError = view === "mine" ? error : catalogError;
 
   return (
     <FlatList
@@ -145,11 +150,11 @@ export function LibraryListScreen({ navigation }: Props) {
         </View>
       }
       ListEmptyComponent={
-        error ? (
+        visibleError ? (
           <EmptyState
             icon="alert-circle-outline"
             title="Couldn't load recipes"
-            description={error}
+            description={visibleError}
             actionLabel="Try again"
             onAction={() => void load("initial")}
           />

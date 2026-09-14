@@ -591,6 +591,65 @@ def test_fetch_youtube_text_disables_redirects_for_provider_requests(monkeypatch
     assert redirect_settings == [False]
 
 
+@pytest.mark.parametrize("request_kwargs", [{}, {"timeout": None}])
+def test_youtube_sdk_session_always_supplies_connect_and_read_timeouts(monkeypatch, request_kwargs):
+    received = []
+    response = SimpleNamespace()
+
+    def record_request(_session, method, url, **kwargs):
+        received.append(kwargs)
+        return response
+
+    monkeypatch.setattr(video_import.Session, "request", record_request)
+    with video_import._NoRedirectSession() as session:
+        result = session.get("https://www.youtube.com/watch?v=A6bByqI_TH8", allow_redirects=True, **request_kwargs)
+
+    assert result is response
+    assert received[0]["timeout"] == (5.0, 10.0)
+    assert received[0]["allow_redirects"] is False
+
+
+def test_youtube_sdk_bounds_both_listing_and_caption_requests(monkeypatch):
+    received = []
+
+    def record_request(_session, method, url, **kwargs):
+        received.append((url, kwargs))
+        return SimpleNamespace()
+
+    class Api(_YouTubeApiStub):
+        def list(self, video_id):
+            client = self.http_client
+            client.get(f"https://www.youtube.com/watch?v={video_id}")
+
+            class Track:
+                def fetch(self):
+                    client.get("https://www.youtube.com/api/timedtext", timeout=None)
+                    return [_snippet("Chop the onion, then simmer it.")]
+
+            return Tracks(Track())
+
+    class Tracks:
+        def __init__(self, track):
+            self.track = track
+
+        def find_transcript(self, _languages):
+            return self.track
+
+        def __iter__(self):
+            return iter([self.track])
+
+    monkeypatch.setattr(video_import.Session, "request", record_request)
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
+
+    assert result.status == "ok"
+    assert result.text == "Chop the onion, then simmer it."
+    assert len(received) == 2
+    assert all(kwargs["timeout"] == (5.0, 10.0) for _, kwargs in received)
+    assert all(kwargs["allow_redirects"] is False for _, kwargs in received)
+
+
 def _player_hook_response(
     *,
     payload: object,

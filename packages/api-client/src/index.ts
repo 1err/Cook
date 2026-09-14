@@ -1,6 +1,7 @@
 import type {
   CookingActionPayload,
   CookingSession,
+  InstacartItem,
   MealPlanDay,
   Recipe,
   RecipeStep,
@@ -17,6 +18,8 @@ export type ApiClientOptions = {
   baseUrl: string;
   auth: AuthStrategy;
   defaultHeaders?: HeadersInit;
+  onUnauthorized?: () => void;
+  getAuthGeneration?: () => number;
 };
 
 export type RefineItemInput = { name: string; quantity: string };
@@ -75,6 +78,14 @@ function parseErrorPayload(text: string): { code: string | null; message: string
     const parsed = JSON.parse(text) as unknown;
     if (parsed && typeof parsed === "object") {
       const detail = "detail" in parsed ? (parsed as { detail?: unknown }).detail : parsed;
+      if (Array.isArray(detail)) {
+        // FastAPI validation rows may contain the submitted password or recipe
+        // text in `input`/`ctx`. Only their human-readable messages belong in UI.
+        const messages = detail.flatMap((row) =>
+          row && typeof row === "object" && typeof row.msg === "string" ? [row.msg] : [],
+        );
+        return { code: null, message: messages.join(" ") || "The request could not be validated." };
+      }
       if (detail && typeof detail === "object") {
         const code = "code" in detail && typeof (detail as { code?: unknown }).code === "string"
           ? (detail as { code: string }).code
@@ -100,6 +111,7 @@ export function createApiClient(options: ApiClientOptions) {
   const baseUrl = normalizeBaseUrl(options.baseUrl);
 
   async function request(path: string, requestOptions: RequestOptions = {}): Promise<Response> {
+    const authGeneration = options.getAuthGeneration?.();
     const { headers, body, skipJsonContentType = false, ...rest } = requestOptions;
     const isFormData = body instanceof FormData;
     const nextHeaders = new Headers(options.defaultHeaders || {});
@@ -118,10 +130,16 @@ export function createApiClient(options: ApiClientOptions) {
     if (options.auth.kind === "cookie") {
       init.credentials = "include";
     } else {
+      // Native fetch can otherwise reuse the OS cookie jar, even before login.
+      init.credentials = "omit";
       const token = options.auth.getToken();
       if (token) nextHeaders.set("Authorization", `Bearer ${token}`);
     }
-    return fetch(`${baseUrl}${path}`, init);
+    const response = await fetch(`${baseUrl}${path}`, init);
+    if (response.status === 401 && options.getAuthGeneration?.() === authGeneration) {
+      options.onUnauthorized?.();
+    }
+    return response;
   }
 
   async function json<T>(path: string, requestOptions: RequestOptions = {}): Promise<T> {
@@ -239,6 +257,14 @@ export function createApiClient(options: ApiClientOptions) {
         }),
     },
     shopping: {
+      createInstacartLink: (
+        payload: { title: string; items: InstacartItem[] },
+        options: { signal?: AbortSignal } = {},
+      ) => json<{ url: string }>("/shopping-list/instacart", {
+        method: "POST",
+        body: JSON.stringify(payload),
+        signal: options.signal,
+      }),
       list: (start: string, end: string) =>
         json<ShoppingListItem[]>(`/shopping-list?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`),
       refine: (items: RefineItemInput[]) =>

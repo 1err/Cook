@@ -6,7 +6,22 @@
     "packages/*"
   ],
   "overrides": {
-    "playwright-core": "1.58.0"
+    "playwright-core": "1.58.0",
+    "postcss": "^8.5.23",
+    "metro": "0.83.8",
+    "metro-babel-transformer": "0.83.8",
+    "metro-cache": "0.83.8",
+    "metro-cache-key": "0.83.8",
+    "metro-config": "0.83.8",
+    "metro-core": "0.83.8",
+    "metro-file-map": "0.83.8",
+    "metro-minify-terser": "0.83.8",
+    "metro-resolver": "0.83.8",
+    "metro-runtime": "0.83.8",
+    "metro-source-map": "0.83.8",
+    "metro-symbolicate": "0.83.8",
+    "metro-transform-plugins": "0.83.8",
+    "metro-transform-worker": "0.83.8"
   },
   "scripts": {
     "web:dev": "npm --workspace @cooking/web run dev",
@@ -14,18 +29,31 @@
     "web:start": "npm --workspace @cooking/web run start",
     "web:lint": "npm --workspace @cooking/web run lint",
     "test:web": "npm --workspace @cooking/web test",
+    "test:web:docker": "docker build --file apps/web/Dockerfile --tag cooking-web:ci .",
     "test:mobile": "npm --workspace @cooking/mobile test",
-    "test:ui": "npm run tokens:test && npm run tokens:build && npm run test:web && npm run test:mobile && npx tsc -p apps/web/tsconfig.json --noEmit && npx tsc -p apps/mobile/tsconfig.json --noEmit && npm run web:build && npm --workspace @cooking/web run test:e2e",
+    "test:ui": "npm run tokens:test && npm run tokens:build && npm run test:shared && npm run test:web && npm run test:mobile && npx tsc -p apps/web/tsconfig.json --noEmit && npx tsc -p apps/mobile/tsconfig.json --noEmit && npm run web:build && npm --workspace @cooking/web run test:e2e",
     "mobile:start": "npm --workspace @cooking/mobile run start",
     "mobile:ios": "npm --workspace @cooking/mobile run ios",
     "mobile:android": "npm --workspace @cooking/mobile run android",
     "tokens:build": "npm --workspace @cooking/design-tokens run build",
-    "tokens:test": "npm --workspace @cooking/design-tokens run test"
+    "tokens:test": "npm --workspace @cooking/design-tokens run test",
+    "test:delivery": "python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v",
+    "test:docker-contexts": "python3 scripts/test-docker-contexts.py",
+    "check:repository": "python3 scripts/check-repository.py",
+    "audit:js": "npm audit --package-lock-only --audit-level=high",
+    "test:shared": "npm --workspace @cooking/shared test && npm --workspace @cooking/api-client test"
   },
   "devDependencies": {
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.0",
-    "next": "14.2.35",
-    "playwright-core": "1.58.0"
+    "@types/react": "~19.1.0",
+    "@types/react-dom": "~19.1.0",
+    "next": "15.5.24",
+    "playwright-core": "1.58.0",
+    "react": "19.1.5",
+    "react-dom": "19.1.5"
+  },
+  "packageManager": "npm@11.19.1",
+  "engines": {
+    "node": ">=22.9.0",
+    "npm": "11.19.1"
   }
 }

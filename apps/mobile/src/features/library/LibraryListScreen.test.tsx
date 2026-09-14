@@ -64,3 +64,14 @@ test("keeps the library list focused on collection browsing", async () => {
   expect(screen.getByRole("button", { name: "Public Library" })).toBeOnTheScreen();
   expect(screen.queryByLabelText("Search recipes")).not.toBeOnTheScreen();
 });
+
+test("an unavailable public catalog does not hide the user's own recipes", async () => {
+  mockCatalog.mockRejectedValueOnce(new Error("Catalog unavailable"));
+  await render(
+    <LibraryListScreen
+      navigation={{ addListener: jest.fn(() => jest.fn()), navigate: jest.fn() } as never}
+      route={{ key: "library", name: "LibraryList" }}
+    />,
+  );
+  await waitFor(() => expect(screen.getByText("Tomato egg stir-fry")).toBeOnTheScreen());
+});

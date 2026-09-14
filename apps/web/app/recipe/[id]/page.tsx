@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { formatIngredientQuantity } from "@cooking/shared";
+import { formatIngredientQuantity, isSafeExternalUrl } from "@cooking/shared";
 import { PageShell } from "../../components/PageShell";
 import { RequireAuth } from "../../components/RequireAuth";
 import { apiFetch } from "../../lib/api";
@@ -153,7 +153,7 @@ function RecipeDetailContent() {
           </div>
         </div>
 
-        {recipe.source_url ? (
+        {isSafeExternalUrl(recipe.source_url) ? (
           <a className={styles.source} href={recipe.source_url} target="_blank" rel="noopener noreferrer">
             {t("recipe.originalVideo")} ↗
           </a>

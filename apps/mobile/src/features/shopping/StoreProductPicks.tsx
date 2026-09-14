@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,6 +11,9 @@ export type StoreProductPicksProps = {
   loading: boolean;
   error: string | null;
   products: StoreProduct[] | undefined;
+  selectedUrl?: string;
+  selectionEnabled?: boolean;
+  onSelect?: (productUrl: string) => void;
   onRetry: () => void;
 };
 
@@ -18,8 +21,32 @@ export function StoreProductPicks({
   loading,
   error,
   products,
+  selectedUrl,
+  selectionEnabled = true,
+  onSelect = () => {},
   onRetry,
 }: StoreProductPicksProps) {
+  const [failedLinkUrl, setFailedLinkUrl] = useState<string | null>(null);
+  const linkAttemptRef = useRef(0);
+
+  useEffect(() => () => {
+    linkAttemptRef.current += 1;
+  }, []);
+
+  const openProduct = (productUrl: string) => {
+    const attempt = linkAttemptRef.current + 1;
+    linkAttemptRef.current = attempt;
+    setFailedLinkUrl(null);
+    void Linking.openURL(productUrl).then(
+      () => {
+        if (linkAttemptRef.current === attempt) setFailedLinkUrl(null);
+      },
+      () => {
+        if (linkAttemptRef.current === attempt) setFailedLinkUrl(productUrl);
+      },
+    );
+  };
+
   const matchingState = (
     <View style={styles.center}>
       <ActivityIndicator color={colors.primary} />
@@ -56,36 +83,78 @@ export function StoreProductPicks({
       </View>
     );
   }
+  const effectiveSelectedUrl = safeProducts.some((product) => product.url === selectedUrl)
+    ? selectedUrl
+    : safeProducts[0].url;
   return (
     <View style={styles.list}>
-      {safeProducts.map((product) => (
-        <View key={`${product.url}-${product.name}`} style={styles.row}>
-          {product.image ? (
-            <Image source={{ uri: product.image }} style={styles.image} contentFit="cover" />
-          ) : (
-            <View style={[styles.image, styles.imagePlaceholder]}>
-              <Ionicons name="cube-outline" size={20} color={colors.onSurfaceVariant} />
+      {safeProducts.map((product, index) => {
+        const selected = selectionEnabled && product.url === effectiveSelectedUrl;
+        return (
+          <View
+            key={`${product.url}-${product.name}`}
+            style={[styles.row, selected && styles.rowSelected]}
+          >
+            {product.image ? (
+              <Image source={{ uri: product.image }} style={styles.image} contentFit="cover" />
+            ) : (
+              <View style={[styles.image, styles.imagePlaceholder]}>
+                <Ionicons name="cube-outline" size={20} color={colors.onSurfaceVariant} />
+              </View>
+            )}
+            <View style={styles.body}>
+              <View style={styles.nameLine}>
+                <Text style={styles.name} numberOfLines={2}>
+                  {product.name}
+                </Text>
+                {selectionEnabled && index === 0 ? <Text style={styles.topPick}>Top pick</Text> : null}
+              </View>
+              <Text style={styles.price}>{product.price}</Text>
+              {selectionEnabled ? (
+                <Pressable
+                  onPress={() => {
+                    onSelect(product.url);
+                  }}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={selected
+                    ? `${product.name}: Selected for cart`
+                    : `Choose ${product.name} for cart`}
+                  style={({ pressed }) => [
+                    styles.selectBtn,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Ionicons
+                    name={selected ? "radio-button-on" : "radio-button-off"}
+                    size={17}
+                    color={selected ? colors.primary : colors.onSurfaceVariant}
+                  />
+                  <Text style={[styles.selectBtnText, selected && styles.selectBtnTextSelected]}>
+                    {selected ? "Selected for cart" : "Choose for cart"}
+                  </Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                onPress={() => {
+                  openProduct(product.url);
+                }}
+                accessibilityRole="link"
+                accessibilityLabel={`View ${product.name} on ${WEEE_STORE_LABEL}`}
+                style={({ pressed }) => [styles.linkBtn, pressed && styles.pressed]}
+              >
+                <Text style={styles.linkBtnText}>View on {WEEE_STORE_LABEL}</Text>
+                <Ionicons name="open-outline" size={14} color={colors.primary} />
+              </Pressable>
+              {failedLinkUrl === product.url ? (
+                <Text accessibilityRole="alert" style={styles.linkError}>
+                  Couldn't open Weee. Tap the product link to try again.
+                </Text>
+              ) : null}
             </View>
-          )}
-          <View style={styles.body}>
-            <Text style={styles.name} numberOfLines={2}>
-              {product.name}
-            </Text>
-            <Text style={styles.price}>{product.price}</Text>
-            <Pressable
-              onPress={() => {
-                void Linking.openURL(product.url);
-              }}
-              accessibilityRole="link"
-              accessibilityLabel={`View ${product.name} on ${WEEE_STORE_LABEL}`}
-              style={({ pressed }) => [styles.linkBtn, pressed && styles.pressed]}
-            >
-              <Text style={styles.linkBtnText}>View on {WEEE_STORE_LABEL}</Text>
-              <Ionicons name="open-outline" size={14} color={colors.primary} />
-            </Pressable>
           </View>
-        </View>
-      ))}
+        );
+      })}
     </View>
   );
 }
@@ -105,6 +174,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.divider,
   },
+  rowSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryContainer,
+  },
   image: {
     width: 72,
     height: 72,
@@ -113,14 +186,30 @@ const styles = StyleSheet.create({
   },
   imagePlaceholder: { alignItems: "center", justifyContent: "center" },
   body: { flex: 1, gap: 2 },
-  name: { ...typography.callout, color: colors.onSurface },
+  nameLine: { flexDirection: "row", alignItems: "flex-start", gap: spacing.xs },
+  name: { ...typography.callout, color: colors.onSurface, flex: 1 },
+  topPick: {
+    ...typography.caption,
+    color: colors.primary,
+    fontWeight: "700",
+  },
   price: { ...typography.subhead, color: colors.primary, fontWeight: "600" },
-  linkBtn: {
+  selectBtn: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
     marginTop: spacing.xs,
   },
+  selectBtnText: { ...typography.footnote, color: colors.onSurfaceVariant, fontWeight: "600" },
+  selectBtnTextSelected: { color: colors.primary },
+  linkBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    minHeight: 44,
+  },
   linkBtnText: { ...typography.footnote, color: colors.primary, fontWeight: "600" },
+  linkError: { ...typography.footnote, color: colors.error },
   pressed: { opacity: 0.85 },
 });

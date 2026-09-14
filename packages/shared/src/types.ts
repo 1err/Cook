@@ -91,4 +91,5 @@ export interface User {
   id: string;
   email: string;
   is_library_public: boolean;
+  is_admin?: boolean;
 }

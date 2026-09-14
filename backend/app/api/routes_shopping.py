@@ -1,15 +1,18 @@
 """
 Shopping list aggregation and refine routes. All require auth.
 """
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
+from app.api.ai_budget import enforce_ai_budget
 from app.db import repo_mealplan, repo_recipes
 from app.db.models import UserModel
 from app.db.session import get_session
-from app.models import Recipe, ShoppingListItem
+from app.models import ShoppingListItem
 from app.refine import refine_shopping_list
 from app.services.shopping_service import aggregate_ingredients
 
@@ -17,12 +20,12 @@ router = APIRouter(tags=["shopping"])
 
 
 class RefineItem(BaseModel):
-    name: str
-    quantity: str = ""
+    name: str = Field(min_length=1, max_length=256)
+    quantity: str = Field("", max_length=256)
 
 
 class RefineRequest(BaseModel):
-    items: list[RefineItem]
+    items: list[RefineItem] = Field(max_length=200)
 
 
 class LikelyPantryItem(BaseModel):
@@ -49,18 +52,19 @@ class RefineResponse(BaseModel):
 
 @router.get("/shopping-list", response_model=list[ShoppingListItem])
 async def shopping_list(
-    start: str,
-    end: str,
+    start: date,
+    end: date,
     session: AsyncSession = Depends(get_session),
     current_user: UserModel = Depends(get_current_user),
 ):
     """Aggregated ingredients for meal plans in [start, end] (inclusive)."""
-    plans = await repo_mealplan.get_meal_plans_in_range(session, start, end, current_user.id)
-    recipe_cache: dict[str, Recipe | None] = {}
-    for p in plans:
-        for rid in p.all_recipe_ids():
-            if rid not in recipe_cache:
-                recipe_cache[rid] = await repo_recipes.get_recipe(session, rid, current_user.id)
+    if start > end:
+        raise HTTPException(400, "Start date must not be after end date")
+    plans = await repo_mealplan.get_meal_plans_in_range(session, start.isoformat(), end.isoformat(), current_user.id)
+    recipes = await repo_recipes.get_recipes_by_ids(
+        session, [rid for plan in plans for rid in plan.all_recipe_ids()], current_user.id,
+    )
+    recipe_cache = {recipe.id: recipe for recipe in recipes}
     all_ingredients: list[tuple[str, str]] = []
     for p in plans:
         for rid in p.all_recipe_ids():
@@ -73,7 +77,7 @@ async def shopping_list(
     return aggregate_ingredients(all_ingredients)
 
 
-@router.post("/shopping-list/refine", response_model=RefineResponse)
+@router.post("/shopping-list/refine", response_model=RefineResponse, dependencies=[Depends(enforce_ai_budget)])
 async def shopping_list_refine(
     body: RefineRequest,
     _user: UserModel = Depends(get_current_user),

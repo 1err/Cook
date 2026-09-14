@@ -8,6 +8,8 @@ import styles from "./ShoppingList.module.css";
 type ShoppingItemRowProps = {
   name: string;
   suggestedPurchase: string;
+  ingredientKey: string;
+  selectedUrl?: string;
   checked: boolean;
   productsOpen: boolean;
   productState: ProductLookupState;
@@ -17,11 +19,14 @@ type ShoppingItemRowProps = {
   onToggleMenu: () => void;
   onToggleProducts: () => void;
   onRetryProducts: () => void;
+  onSelect?: (productUrl: string) => void;
 };
 
 export function ShoppingItemRow({
   name,
   suggestedPurchase,
+  ingredientKey,
+  selectedUrl,
   checked,
   productsOpen,
   productState,
@@ -31,6 +36,7 @@ export function ShoppingItemRow({
   onToggleMenu,
   onToggleProducts,
   onRetryProducts,
+  onSelect,
 }: ShoppingItemRowProps) {
   const t = useT();
   const productsPending = productState.status === "queued" || productState.status === "loading";
@@ -71,7 +77,17 @@ export function ShoppingItemRow({
         {productsOpen ? t("shopping.hideProducts") : t("shopping.viewProducts")}
       </button>
 
-      {productsOpen ? <ProductPicks state={productState} onRetry={onRetryProducts} /> : null}
+      {productsOpen ? (
+        <ProductPicks
+          state={productState}
+          onRetry={onRetryProducts}
+          ingredientKey={ingredientKey}
+          ingredientName={name}
+          selectedUrl={selectedUrl}
+          selectionEnabled={!checked}
+          onSelect={onSelect}
+        />
+      ) : null}
     </div>
   );
 }
