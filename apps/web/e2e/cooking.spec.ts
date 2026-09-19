@@ -1,3 +1,4 @@
+import { recipePageFixture } from "./recipePageFixture";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import type { CookingSession, CookingStep } from "@cooking/shared";
 
@@ -136,8 +137,8 @@ async function installCookingFixtures(page: Page, actions: unknown[]) {
       await fulfillJson(route, session);
       return;
     }
-    if (pathname === "/recipes" && request.method() === "GET") {
-      await fulfillJson(route, recipes);
+    if (pathname === "/recipes/page" && request.method() === "GET") {
+      await fulfillJson(route, recipePageFixture(recipes, request.url()));
       return;
     }
     if (pathname === "/meal-plan" && request.method() === "GET") {

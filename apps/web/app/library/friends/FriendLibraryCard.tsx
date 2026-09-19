@@ -7,7 +7,7 @@ import type { Recipe } from "../../types";
 import styles from "./Friends.module.css";
 
 type FriendLibraryCardProps = {
-  recipe: Recipe;
+  recipe: Pick<Recipe, "id" | "title" | "thumbnail_url" | "library_tags" | "library_category" | "total_time_minutes">;
   href: string;
   state: "idle" | "copying" | "added";
   onCopy: () => void;

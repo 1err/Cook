@@ -19,7 +19,7 @@ function splitTitleAccent(title: string): { lead: string; accent: string } {
 
 function FriendRecipeContent({ userId, recipeId }: { userId: string; recipeId: string }) {
   const [recipe, setRecipe] = useState<Recipe | null>(null);
-  const [mine, setMine] = useState<Recipe[]>([]);
+  const [owned, setOwned] = useState(false);
   const [ownerEmail, setOwnerEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
@@ -36,25 +36,18 @@ function FriendRecipeContent({ userId, recipeId }: { userId: string; recipeId: s
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setRecipe(null);
+    setOwned(false);
+    setUnavailable(false);
     async function load() {
       try {
-        const [theirs, myList] = await Promise.all([
-          (async () => {
-            const r = await apiFetch(`/users/${encodeURIComponent(userId)}/recipes`);
-            if (r.status === 404) throw new Error("LIBRARY_GONE");
-            if (!r.ok) throw new Error(await r.text());
-            return (await r.json()) as Recipe[];
-          })(),
-          (async () => {
-            const r = await apiFetch("/recipes");
-            return r.ok ? ((await r.json()) as Recipe[]) : [];
-          })(),
-        ]);
+        const response = await apiFetch(`/users/${encodeURIComponent(userId)}/recipes/${encodeURIComponent(recipeId)}`);
+        if (!response.ok) throw new Error("LIBRARY_GONE");
+        const found = await response.json();
         if (cancelled) return;
-        const found = theirs.find((r) => r.id === recipeId) ?? null;
         setRecipe(found);
-        setMine(myList);
-        if (!found) setUnavailable(true);
+        setOwned(found.already_saved);
       } catch (e) {
         if (cancelled) return;
         setUnavailable(true);
@@ -71,11 +64,6 @@ function FriendRecipeContent({ userId, recipeId }: { userId: string; recipeId: s
     };
   }, [userId, recipeId]);
 
-  const owned = useMemo(() => {
-    if (!recipe) return false;
-    return mine.some((r) => r.id === recipe.id || r.catalog_source_recipe_id === recipe.id);
-  }, [mine, recipe]);
-
   async function add() {
     if (!recipe || owned || adding) return;
     setAdding(true);
@@ -90,8 +78,7 @@ function FriendRecipeContent({ userId, recipeId }: { userId: string; recipeId: s
         return;
       }
       if (!res.ok) throw new Error(await res.text());
-      const newCopy = (await res.json()) as Recipe;
-      setMine((prev) => (prev.some((r) => r.id === newCopy.id) ? prev : [newCopy, ...prev]));
+      setOwned(true);
     } catch (e) {
       setAddError(e instanceof Error ? e.message : "Couldn't add — try again.");
     } finally {

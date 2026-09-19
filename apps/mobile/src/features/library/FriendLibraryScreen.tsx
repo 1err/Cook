@@ -1,13 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import type { CompositeScreenProps } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
-import type { Recipe } from "@cooking/shared";
 import { useApiClient } from "../../lib/api";
-import { Button, EmptyState } from "../../components";
+import { useT } from "../../lib/i18n";
+import { useRecipePage } from "../../lib/useRecipePage";
+import { Button, EmptyState, TextField } from "../../components";
 import { haptics } from "../../lib/haptics";
 import { resolveImageUrl } from "../../lib/imageUrl";
 import { colors, radii, spacing, typography } from "../../theme";
@@ -27,54 +28,23 @@ type Props = CompositeScreenProps<
 >;
 
 export function FriendLibraryScreen({ route }: Props) {
+  const t = useT();
   const apiClient = useApiClient();
   const { userId } = route.params;
-  const [friendRecipes, setFriendRecipes] = useState<Recipe[]>([]);
-  const [myRecipes, setMyRecipes] = useState<Recipe[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const page = useRecipePage(userId, {q: search});
+  const friendRecipes = page.items;
+  const loading = page.loading && !friendRecipes.length;
   const [unavailable, setUnavailable] = useState(false);
   const [copyingId, setCopyingId] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setUnavailable(false);
-    try {
-      const [theirs, mine] = await Promise.all([
-        apiClient.users.libraryRecipes(userId),
-        apiClient.recipes.list(),
-      ]);
-      setFriendRecipes(theirs);
-      setMyRecipes(mine);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "";
-      // 404 is uniform "library not found" (private or no longer exists). Treat
-      // any other error the same way for now — single empty state, no error UI.
-      void message;
-      setUnavailable(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [apiClient, userId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const savedSourceIds = useMemo(() => {
-    const ids = new Set<string>();
-    myRecipes.forEach((r) => {
-      ids.add(r.id);
-      if (r.catalog_source_recipe_id) ids.add(r.catalog_source_recipe_id);
-    });
-    return ids;
-  }, [myRecipes]);
+  const [savedSourceIds, setSavedSourceIds] = useState(new Set<string>());
 
   const handleCopy = useCallback(
     async (recipeId: string) => {
       setCopyingId(recipeId);
       try {
-        const copy = await apiClient.users.copyFriendRecipe(userId, recipeId);
-        setMyRecipes((prev) => (prev.some((r) => r.id === copy.id) ? prev : [copy, ...prev]));
+        await apiClient.users.copyFriendRecipe(userId, recipeId);
+        setSavedSourceIds(prev => new Set(prev).add(recipeId));
         haptics.success();
       } catch (e) {
         haptics.error();
@@ -89,13 +59,7 @@ export function FriendLibraryScreen({ route }: Props) {
     [apiClient, userId],
   );
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
-  }
+
 
   if (unavailable) {
     return (
@@ -112,6 +76,8 @@ export function FriendLibraryScreen({ route }: Props) {
   return (
     <FlatList
       data={friendRecipes}
+      ListHeaderComponent={<View><TextField placeholder="Search recipes" value={search} onChangeText={setSearch} />{page.error ? <Text accessibilityRole="alert">{page.error}</Text> : null}</View>}
+      ListFooterComponent={page.next ? <Button title={t("common.loadMoreRecipes")} disabled={page.loading} onPress={() => void page.more()} /> : null}
       keyExtractor={(item) => item.id}
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={
@@ -119,14 +85,14 @@ export function FriendLibraryScreen({ route }: Props) {
       }
       ItemSeparatorComponent={() => <View style={styles.separator} />}
       ListEmptyComponent={
-        <EmptyState
+        loading ? <ActivityIndicator color={colors.primary} /> : <EmptyState
           icon="restaurant-outline"
-          title="This library is empty"
+          title={search.trim() ? "No matching recipes" : "This library is empty"}
           description="No recipes here yet."
         />
       }
       renderItem={({ item }) => {
-        const owned = savedSourceIds.has(item.id);
+        const owned = item.already_saved || savedSourceIds.has(item.id);
         const url = resolveImageUrl(item.thumbnail_url);
         return (
           <View style={styles.card}>

@@ -31,7 +31,7 @@ def test_cookie_configuration_is_validated(value):
 def test_explicit_production_configuration_is_accepted():
     result = configuration(APP_ENV="production", AUTH_SECRET="a" * 64,
                            COOKIE_SECURE=True, COOKIE_SAMESITE="lax",
-                           CORS_ALLOW_ORIGINS="https://chef-world.com")
+                           CORS_ALLOW_ORIGINS="https://chef-world.com", TRUSTED_PROXY_CIDRS="10.20.1.0/24")
     assert result.COOKIE_SECURE
 
 

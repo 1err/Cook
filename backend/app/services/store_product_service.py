@@ -1100,6 +1100,10 @@ async def fetch_store_products_with_metadata(
 
     _log_event("cache_miss", cache_key, priority=priority, started_at=started_at)
 
+    from app.jobs import durable_store
+    if durable_store.enabled():
+        return await durable_store.lookup(prepared, force_refresh=force_refresh)
+
     async def scrape_and_persist(
         queue_wait_ms: float,
         selected_priority: LookupPriority,

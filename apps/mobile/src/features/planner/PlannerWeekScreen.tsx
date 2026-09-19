@@ -1,3 +1,4 @@
+import { ApiError } from "@cooking/api-client";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -78,14 +79,14 @@ export function PlannerWeekScreen({ navigation, route }: Props) {
 
   const handleRemoveRecipe = useCallback(
     (date: string, slot: MealType, recipeId: string) => {
-      void removeRecipeFromSlot(date, slot, recipeId).catch(() => Alert.alert(t("planner.saveFailed")));
+      void removeRecipeFromSlot(date, slot, recipeId).catch(error => Alert.alert(t(error instanceof ApiError && error.code === "meal_plan_conflict" ? "planner.conflict" : error instanceof ApiError && error.code === "meal_plan_conflict_reload_failed" ? "planner.conflictReloadFailed" : "planner.saveFailed")));
     },
     [removeRecipeFromSlot, t],
   );
 
   const handlePick = useCallback(
     (target: { date: string; slot: MealType }, recipeId: string) => {
-      void addRecipeToSlot(target.date, target.slot, recipeId).catch(() => Alert.alert(t("planner.saveFailed")));
+      void addRecipeToSlot(target.date, target.slot, recipeId).catch(error => Alert.alert(t(error instanceof ApiError && error.code === "meal_plan_conflict" ? "planner.conflict" : error instanceof ApiError && error.code === "meal_plan_conflict_reload_failed" ? "planner.conflictReloadFailed" : "planner.saveFailed")));
     },
     [addRecipeToSlot, t],
   );

@@ -7,7 +7,7 @@ import { getRecipeTags } from "../lib/recipeTags";
 import styles from "./RecipeCard.module.css";
 
 type RecipeCardProps = {
-  recipe: Recipe;
+  recipe: Pick<Recipe, "id" | "title" | "thumbnail_url" | "library_tags" | "library_category" | "total_time_minutes">;
   isHighlighted?: boolean;
 };
 

@@ -74,6 +74,7 @@ export interface Recipe {
 
 export type MealPlanDay = {
   date: string;
+  revision?: number;
   breakfast: string[];
   lunch: string[];
   dinner: string[];
@@ -93,3 +94,11 @@ export interface User {
   is_library_public: boolean;
   is_admin?: boolean;
 }
+
+
+export type RecipeSummary = Pick<Recipe, "id" | "title" | "source_url" | "thumbnail_url" | "library_tags" | "library_category" | "is_public_catalog" | "catalog_source_recipe_id" | "total_time_minutes"> & {
+  ingredient_count: number;
+  step_count: number;
+  already_saved: boolean;
+};
+export type RecipePage = { items: RecipeSummary[]; next_cursor: string | null };

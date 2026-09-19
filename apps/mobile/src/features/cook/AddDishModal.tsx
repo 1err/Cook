@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import type { Recipe } from "@cooking/shared";
-import { Button } from "../../components";
-import { useApiClient } from "../../lib/api";
+import { useRecipePage } from "../../lib/useRecipePage";
+import { Button, TextField } from "../../components";
 import { useT } from "../../lib/i18n";
 import { colors, radii, spacing, typography } from "../../theme";
 
@@ -17,35 +16,17 @@ export function AddDishModal({
   onClose: () => void;
   visible: boolean;
 }) {
-  const apiClient = useApiClient();
   const t = useT();
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [search, setSearch] = useState("");
+  const page = useRecipePage("mine", {q: search}, visible);
+  const recipes = page.items;
+  const loading = page.loading && !recipes.length;
   const [selected, setSelected] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!visible) return;
-    let cancelled = false;
-    setLoading(true);
-    apiClient.recipes.list()
-      .then((items) => {
-        if (!cancelled) setRecipes(items);
-      })
-      .catch((caught) => {
-        if (!cancelled) setError(caught instanceof Error ? caught.message : null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [apiClient, visible]);
-
   const choices = useMemo(
-    () => recipes.filter((recipe) => recipe.steps?.length && !existingRecipeIds.includes(recipe.id)),
+    () => recipes.filter((recipe) => recipe.step_count && !existingRecipeIds.includes(recipe.id)),
     [existingRecipeIds, recipes],
   );
 
@@ -63,6 +44,7 @@ export function AddDishModal({
       <View style={styles.backdrop}>
         <View accessibilityViewIsModal style={styles.sheet}>
           <Text style={styles.title}>{t("cook.add.title")}</Text>
+          <TextField placeholder="Search recipes" value={search} onChangeText={setSearch} />
           <ScrollView contentContainerStyle={styles.list}>
             {loading ? <Text style={styles.muted}>{t("common.loading")}</Text> : choices.map((recipe) => {
               const checked = selected.includes(recipe.id);
@@ -83,7 +65,9 @@ export function AddDishModal({
               );
             })}
             {!loading && !choices.length ? <Text style={styles.muted}>{t("cook.add.empty")}</Text> : null}
+            {page.next ? <Button title={t("common.loadMoreRecipes")} disabled={page.loading} onPress={() => void page.more()} /> : null}
           </ScrollView>
+          {page.error ? <Text accessibilityRole="alert">{page.error}</Text> : null}
           {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
           <View style={styles.actions}>
             <Button disabled={busy} onPress={onClose} title={t("common.cancel")} variant="secondary" />

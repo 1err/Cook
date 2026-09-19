@@ -14,7 +14,9 @@ import {
   type Recipe,
   TAG_LABELS,
 } from "@cooking/shared";
-import { EmptyState, TextField } from "../../components";
+import { useT } from "../../lib/i18n";
+import { useRecipePage } from "../../lib/useRecipePage";
+import { EmptyState, TextField, Button } from "../../components";
 import { colors, radii, spacing, typography } from "../../theme";
 import { resolveImageUrl } from "../../lib/imageUrl";
 import { useRecipePickerData, type TagFilter } from "./useRecipePickerData";
@@ -51,9 +53,12 @@ type RecipePickerSheetProps = {
 
 export const RecipePickerSheet = forwardRef<RecipePickerSheetHandle, RecipePickerSheetProps>(
   function RecipePickerSheet({ recipes, onPick, onImportRecipe }, ref) {
+    const t = useT();
     const sheetRef = useRef<BottomSheetModal>(null);
     const [target, setTarget] = useState<RecipePickerTarget | null>(null);
-    const { search, setSearch, tagFilter, setTagFilter, filtered } = useRecipePickerData(recipes);
+    const { search, setSearch, tagFilter, setTagFilter } = useRecipePickerData(recipes);
+    const page = useRecipePage("mine", {q: search, tags: tagFilter === "all" ? [] : [tagFilter]});
+    const filtered = page.items;
 
     useImperativeHandle(ref, () => ({
       present: (next) => {
@@ -106,6 +111,7 @@ export const RecipePickerSheet = forwardRef<RecipePickerSheetHandle, RecipePicke
         <BottomSheetFlatList
           testID="recipe-picker-content"
           data={filtered}
+          ListFooterComponent={<View>{page.error ? <Text accessibilityRole="alert">{page.error}</Text> : null}{page.next ? <Button title={t("common.loadMoreRecipes")} disabled={page.loading} onPress={() => void page.more()} /> : null}</View>}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
@@ -156,7 +162,7 @@ export const RecipePickerSheet = forwardRef<RecipePickerSheetHandle, RecipePicke
           }
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           ListEmptyComponent={
-            recipes.length === 0 ? (
+            !search.trim() && tagFilter === "all" ? (
               <View style={styles.emptyWrap}>
                 <EmptyState
                   icon="restaurant-outline"
@@ -192,8 +198,8 @@ export const RecipePickerSheet = forwardRef<RecipePickerSheetHandle, RecipePicke
                   {item.title}
                 </Text>
                 <Text style={styles.rowSub}>
-                  {item.ingredients.length}{" "}
-                  {item.ingredients.length === 1 ? "ingredient" : "ingredients"}
+                  {item.ingredient_count}{" "}
+                  {item.ingredient_count === 1 ? "ingredient" : "ingredients"}
                 </Text>
               </View>
               <Ionicons name="add-circle" size={26} color={colors.primary} />

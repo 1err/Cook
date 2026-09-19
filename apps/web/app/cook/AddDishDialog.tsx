@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import type { Recipe } from "@cooking/shared";
+import { useMemo, useState } from "react";
+import { useRecipePage } from "../lib/useRecipePage";
 import { Button } from "../components/ui/Button";
-import { webApiClient } from "../lib/api";
 import { useT } from "../lib/i18n";
 import styles from "./CookPage.module.css";
 
@@ -17,31 +16,16 @@ export function AddDishDialog({
   onClose: () => void;
 }) {
   const t = useT();
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [search, setSearch] = useState("");
+  const page = useRecipePage("mine", {q: search});
+  const recipes = page.items;
+  const loading = page.loading && !recipes.length;
   const [selected, setSelected] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    webApiClient.recipes.list()
-      .then((items) => {
-        if (!cancelled) setRecipes(items);
-      })
-      .catch((caught) => {
-        if (!cancelled) setError(caught instanceof Error ? caught.message : t("cook.add.error"));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [t]);
-
   const choices = useMemo(
-    () => recipes.filter((recipe) => recipe.steps?.length && !existingRecipeIds.includes(recipe.id)),
+    () => recipes.filter((recipe) => recipe.step_count && !existingRecipeIds.includes(recipe.id)),
     [existingRecipeIds, recipes],
   );
 
@@ -57,6 +41,7 @@ export function AddDishDialog({
     <div className={styles.dialogBackdrop}>
       <section aria-label={t("cook.add.title")} aria-modal="true" className={styles.dialog} role="dialog">
         <h2>{t("cook.add.title")}</h2>
+        <input aria-label="Search recipes" type="search" value={search} onChange={event => setSearch(event.target.value)} />
         {loading ? <p role="status">{t("common.loading")}</p> : (
           <div className={styles.recipeChoices}>
             {choices.map((recipe) => (
@@ -76,6 +61,8 @@ export function AddDishDialog({
             {!choices.length ? <p>{t("cook.add.empty")}</p> : null}
           </div>
         )}
+        {page.next ? <Button disabled={page.loading} onClick={() => void page.more()}>{t("common.loadMoreRecipes")}</Button> : null}
+        {page.error ? <p role="alert">{page.error}</p> : null}
         {error ? <p className={styles.error} role="alert">{error}</p> : null}
         <div className={styles.dialogActions}>
           <Button disabled={busy} onClick={onClose} variant="secondary">{t("common.cancel")}</Button>

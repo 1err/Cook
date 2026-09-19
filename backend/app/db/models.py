@@ -84,6 +84,9 @@ class MealPlanModel(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
+    revision: Mapped[int] = mapped_column(sa.Integer(), nullable=False, default=1, server_default="1")
+    __table_args__ = (sa.CheckConstraint("revision >= 1", name="ck_meal_plan_revision"),)
+
     date: Mapped[str] = mapped_column(String(10), primary_key=True)  # YYYY-MM-DD
     recipe_ids: Mapped[str] = mapped_column(Text, nullable=False)  # JSON object; legacy rows may be JSON array
 

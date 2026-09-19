@@ -11,15 +11,12 @@ import { PageHeader, PageShell } from "../components/PageShell";
 import { CATEGORY_LABELS, type LibraryFilterId, type RecipeTagSlug } from "../lib/recipeCategories";
 import { getRecipeTags } from "../lib/recipeTags";
 import { TagFilterPopover } from "../components/TagFilterPopover";
-import type { Recipe } from "../types";
+import { useRecipePage } from "../lib/useRecipePage";
 import styles from "./LibraryPage.module.css";
 
 function LibraryPageContent() {
   const searchParams = useSearchParams();
   const highlightId = searchParams.get("highlight");
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [publicRecipes, setPublicRecipes] = useState<Recipe[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mineFilters, setMineFilters] = useState<RecipeTagSlug[]>([]);
   const [publicFilter, setPublicFilter] = useState<LibraryFilterId>("all");
@@ -39,72 +36,19 @@ function LibraryPageContent() {
     return () => window.removeEventListener("resize", updateColumnCount);
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    async function fetchRecipes() {
-      try {
-        const [mineRes, publicRes] = await Promise.all([
-          apiFetch("/recipes"),
-          apiFetch("/recipes/catalog"),
-        ]);
-        if (!mineRes.ok) throw new Error("Failed to load recipes");
-        const data = await mineRes.json();
-        const publicData = publicRes.ok ? await publicRes.json() : [];
-        if (!active) return;
-        setRecipes(data);
-        setPublicRecipes(Array.isArray(publicData) ? publicData : []);
-      } catch (caught) {
-        if (active) setError(caught instanceof Error ? caught.message : "Failed to load");
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-    fetchRecipes();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const filteredMine = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return [...recipes]
-      .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
-      .filter((recipe) => {
-        const tags = getRecipeTags(recipe);
-        return !(
-          (mineFilters.length > 0 && !mineFilters.every((tag) => tags.includes(tag))) ||
-          (query && !recipe.title.toLowerCase().includes(query))
-        );
-      });
-  }, [mineFilters, recipes, search]);
-
-  const filteredPublic = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return [...publicRecipes]
-      .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
-      .filter((recipe) => {
-        const tags = getRecipeTags(recipe);
-        return !(
-          (publicFilter !== "all" && !tags.includes(publicFilter)) ||
-          (query && !recipe.title.toLowerCase().includes(query))
-        );
-      });
-  }, [publicFilter, publicRecipes, search]);
+  const page = useRecipePage(view === "mine" ? "mine" : "catalog", {q: search, tags: view === "mine" ? mineFilters : publicFilter === "all" ? [] : [publicFilter]});
+  const recipes = view === "mine" ? page.items : [];
+  const publicRecipes = view === "public" ? page.items : [];
+  const loading = page.loading && !page.items.length;
+  const filteredMine = recipes;
+  const filteredPublic = publicRecipes;
+  const [savedPublicIds, setSavedPublicIds] = useState(new Set<string>());
 
   const mineFilterLabel = useMemo(() => {
     if (mineFilters.length === 0) return "All tags";
     if (mineFilters.length === 1) return CATEGORY_LABELS[mineFilters[0]];
     return `${mineFilters.length} tags`;
   }, [mineFilters]);
-
-  const savedPublicIds = useMemo(() => {
-    const ids = new Set<string>();
-    recipes.forEach((recipe) => {
-      ids.add(recipe.id);
-      if (recipe.catalog_source_recipe_id) ids.add(recipe.catalog_source_recipe_id);
-    });
-    return ids;
-  }, [recipes]);
 
   function toggleMineFilter(tag: RecipeTagSlug) {
     setMineFilters((current) =>
@@ -118,10 +62,7 @@ function LibraryPageContent() {
     try {
       const response = await apiFetch(`/recipes/catalog/${recipeId}/copy`, { method: "POST" });
       if (!response.ok) throw new Error((await response.text()) || "Could not add recipe");
-      const recipe: Recipe = await response.json();
-      setRecipes((current) =>
-        current.some((row) => row.id === recipe.id) ? current : [...current, recipe],
-      );
+      setSavedPublicIds(current => new Set(current).add(recipeId));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not add recipe");
     } finally {
@@ -129,6 +70,7 @@ function LibraryPageContent() {
     }
   }
 
+  const hasFilters = Boolean(search.trim()) || (view === "mine" ? mineFilters.length > 0 : publicFilter !== "all");
   const activeList = view === "mine" ? filteredMine : filteredPublic;
   const activeColumns = useMemo(
     () => Array.from({ length: columnCount }, (_, columnIndex) =>
@@ -197,7 +139,7 @@ function LibraryPageContent() {
         )}
       </div>
 
-      {error ? <p className={styles.error} role="alert">{error}</p> : null}
+      {error || page.error ? <p className={styles.error} role="alert">{error || page.error}</p> : null}
 
       {loading ? (
         <p className={styles.status}>{t("common.loading")}</p>
@@ -205,14 +147,14 @@ function LibraryPageContent() {
         <div className={styles.empty}>
           <p>
             {view === "mine"
-              ? recipes.length === 0
+              ? recipes.length === 0 && !hasFilters
                 ? t("library.yourShelfReady")
                 : t("common.noMatches")
-              : publicRecipes.length === 0
+              : publicRecipes.length === 0 && !hasFilters
                 ? t("library.publicShelfEmpty")
                 : t("common.noMatches")}
           </p>
-          {view === "mine" && recipes.length === 0 ? (
+          {view === "mine" && recipes.length === 0 && !hasFilters ? (
             <Link href="/import">{t("library.importRecipe")} →</Link>
           ) : null}
         </div>
@@ -231,7 +173,7 @@ function LibraryPageContent() {
                   );
                 }
 
-                const alreadyAdded = savedPublicIds.has(recipe.id);
+                const alreadyAdded = recipe.already_saved || savedPublicIds.has(recipe.id);
                 const tags = getRecipeTags(recipe).slice(0, 2);
                 return (
                   <article key={recipe.id} role="listitem" className={styles.publicCard}>
@@ -272,6 +214,7 @@ function LibraryPageContent() {
           ))}
         </div>
       )}
+      {page.next ? <button type="button" disabled={page.loading} onClick={() => void page.more()}>{t("common.loadMoreRecipes")}</button> : null}
     </>
   );
 }

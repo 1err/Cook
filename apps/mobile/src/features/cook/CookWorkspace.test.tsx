@@ -8,9 +8,8 @@ import type { MobileCookingSessionController } from "./useCookingSession";
 let mockIsFocused = true;
 const mockUseScreenWake = jest.fn();
 
-jest.mock("../../lib/api", () => ({
-  useApiClient: () => ({ recipes: { list: jest.fn().mockResolvedValue([]) } }),
-}));
+const mockApiClient = {recipes: {page: jest.fn().mockResolvedValue({items:[],next_cursor:null})}};
+jest.mock("../../lib/api", () => ({useApiClient: () => mockApiClient}));
 jest.mock("./useCookingAlerts", () => ({
   useCookingAlerts: () => ({ enabled: false, deviceId: "device-a", limitation: null, setAlertsEnabled: jest.fn() }),
 }));

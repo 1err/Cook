@@ -32,8 +32,8 @@ async def reserve_ai_budget(session: AsyncSession, account_id: str) -> None:
     """Reserve all four counters in one transaction; caller commits before AI work.
 
     Requests admitted but later failing still count, preventing expensive retry
-    loops. A reservation covers at most two bounded provider calls for extraction.
-    These are operation limits, not a currency-denominated billing meter.
+    loops. The independent per-call ledger reserves currency before each provider
+    call; these four counters remain operation-level abuse limits.
     """
     now = (await session.execute(select(func.clock_timestamp()))).scalar_one()
     timestamp = int(now.timestamp())

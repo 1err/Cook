@@ -58,8 +58,10 @@ async def shopping_list(
     current_user: UserModel = Depends(get_current_user),
 ):
     """Aggregated ingredients for meal plans in [start, end] (inclusive)."""
-    if start > end:
-        raise HTTPException(400, "Start date must not be after end date")
+    try:
+        repo_mealplan.validate_meal_plan_range(start.isoformat(), end.isoformat())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     plans = await repo_mealplan.get_meal_plans_in_range(session, start.isoformat(), end.isoformat(), current_user.id)
     recipes = await repo_recipes.get_recipes_by_ids(
         session, [rid for plan in plans for rid in plan.all_recipe_ids()], current_user.id,

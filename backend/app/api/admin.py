@@ -16,6 +16,9 @@ from app.db.models import UserModel
 from app.db.session import get_session
 from app.jobs.cache_warmer import get_cache_warmer_status, trigger_cache_warmer
 from app.jobs.cache_warmer_queries import ALL_QUERIES
+from app.jobs import durable_store
+from app.db.repo_store_jobs import QueueFull
+from app.services.weee_scraper import StoreScrapeError
 from app.services.store_product_service import (
     CACHE_TTL_SECONDS,
     CACHE_VERSION,
@@ -75,7 +78,7 @@ class CachePreviewResponse(BaseModel):
 
 
 class CacheRefreshOneBody(BaseModel):
-    query: str = Field(..., min_length=1)
+    query: str = Field(..., min_length=1, max_length=512)
 
 
 class CacheRefreshBody(BaseModel):
@@ -171,14 +174,21 @@ async def cache_refresh(
     current_user: UserModel = Depends(require_admin),
 ):
     _ = current_user
-    started = trigger_cache_warmer(force_refresh=not body.stale_only)
+    if durable_store.enabled():
+        try:
+            started = await durable_store.trigger_warmer(force_refresh=not body.stale_only)
+        except QueueFull as exc:
+            raise HTTPException(status_code=503, detail="Store queue is full", headers={"Retry-After": "3"}) from exc
+    else:
+        started = trigger_cache_warmer(force_refresh=not body.stale_only)
     return CacheRefreshResponse(started=bool(started["started"]), status=started["status"])
 
 
 @router.get("/cache-refresh-status", response_model=CacheRefreshStatusResponse)
 async def cache_refresh_status(current_user: UserModel = Depends(require_admin)):
     _ = current_user
-    return CacheRefreshStatusResponse(**get_cache_warmer_status())
+    status = await durable_store.warmer_status() if durable_store.enabled() else get_cache_warmer_status()
+    return CacheRefreshStatusResponse(**status)
 
 
 @router.post("/cache-refresh-one", response_model=CachePreviewEntry)
@@ -193,12 +203,15 @@ async def cache_refresh_one(
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
     cleaned_query = prepared.cache_query
     language = prepared.language
-    data = await fetch_store_products(
-        body.query,
-        session=session,
-        force_refresh=True,
-        release_read_session_on_miss=True,
-    )
+    try:
+        data = await fetch_store_products(
+            body.query,
+            session=session,
+            force_refresh=True,
+            release_read_session_on_miss=True,
+        )
+    except StoreScrapeError as exc:
+        raise HTTPException(status_code=503, detail="Store lookup temporarily unavailable", headers={"Retry-After": "3"}) from exc
     row = await repo_store_cache.get_cached_store_product_entry(
         session,
         query=cleaned_query,

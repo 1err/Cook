@@ -1,0 +1,144 @@
+{
+  "verifiedAtUtc": "2026-09-14T17:48:32.444442+00:00",
+  "releaseSourceCommit": "748ae762788a022fa31538a62cd4873fa5548607",
+  "backend": {
+    "service_task": "arn:aws:ecs:us-east-1:930067562682:task-definition/cooking-backend:10",
+    "running_count": 1,
+    "pending_count": 0,
+    "primary_rollout": "COMPLETED",
+    "expected_digest": "sha256:eb02230ca613b9814989e77586fb15b76309c57e15254df2cafc410a08cf0c48",
+    "tasks": [
+      {
+        "task_arn": "arn:aws:ecs:us-east-1:930067562682:task/cooking-cluster/86d12ee22664427f897d6d46a18b3678",
+        "digest": "sha256:eb02230ca613b9814989e77586fb15b76309c57e15254df2cafc410a08cf0c48",
+        "container_health": "UNKNOWN",
+        "log_stream": "ecs/backend/86d12ee22664427f897d6d46a18b3678",
+        "log_event_count": 286,
+        "startup_completed_seen": true,
+        "quota_migration_upgrade_seen": true,
+        "error_event_count": 0
+      }
+    ]
+  },
+  "frontend": {
+    "sourceCommit": "30a718a55a947ba1edf34f24b58b7df8854b132a",
+    "stagedVercel": {
+      "projectId": "prj_x4dQTj1LKA5VUlOpZrgNG15fDcr0",
+      "teamId": "team_nK2qTSFfXpRtcsy44Yp6e2O6",
+      "deploymentId": "dpl_By4DGBhUbSE4jnMJhtWMbW2bvt2e",
+      "url": "https://cook-p9j33fczm-jerrys-projects-08f739a2.vercel.app",
+      "state": "READY",
+      "target": "production",
+      "customDomainsPromoted": true,
+      "deploymentProtectionUnchanged": true,
+      "pageSmoke": "Live public-domain browser verification passed after promotion; deployment protection unchanged.",
+      "build": "Next 15.5.24 compilation, type checks, 16 static pages and dynamic routes passed; npm 11.19.1",
+      "publicApiBaseMatchesExpected": true,
+      "uploadFileCount": 152,
+      "uploadContainsBackendDocsGitSecretsOrTests": false,
+      "previousCustomDomainDeploymentId": "dpl_AJ8M1E79sqBJ3ypMT4WTXToC6ZpL",
+      "previousCustomDomainSourceCommit": "c26dae3b8af703aa66f1cf1ca37633188332d587",
+      "convenienceAliasMovedByVercelDuringSkipDomainStaging": "cook-jerrys-projects-08f739a2.vercel.app"
+    },
+    "docker": {
+      "buildExitCode": 0,
+      "tag": "cooking-web:professional-20260915",
+      "manifestListDigest": "sha256:0347efd44813aa2706e3d805292a9bb1f33cca27ceafe733338d9b5fef52dea1",
+      "configDigest": "sha256:d2e58e75d84839e31d164a5e9828b66292acd45888d6d85595ebe4980d16589c",
+      "log": "/private/tmp/cooking-release-web-docker.log",
+      "runtimeUid": 1001,
+      "runtimeNode": "v22.23.2",
+      "runtimeNext": "15.5.24",
+      "runtimeNpm": "11.19.1",
+      "loginStatus": 200,
+      "cssAssetStatuses": [
+        200,
+        200,
+        200
+      ],
+      "javascriptAssetStatus": 200,
+      "smokeContainerStopped": true,
+      "warning": "next start with output:standalone recommends using the standalone server entrypoint; current full runtime starts and serves successfully"
+    },
+    "productionDomains": {
+      "chef-world.com": {
+        "deploymentId": "dpl_By4DGBhUbSE4jnMJhtWMbW2bvt2e",
+        "state": "READY"
+      },
+      "www.chef-world.com": {
+        "deploymentId": "dpl_By4DGBhUbSE4jnMJhtWMbW2bvt2e",
+        "state": "READY"
+      }
+    }
+  },
+  "backendImageBuild": {
+    "build_id": "cooking-release-20260915-62ce314b:549ea91e-8003-48ea-96ef-57a1482c977f",
+    "sha": "748ae762788a022fa31538a62cd4873fa5548607",
+    "digest": "sha256:eb02230ca613b9814989e77586fb15b76309c57e15254df2cafc410a08cf0c48",
+    "archive_sha256": "455e4dfd55e2cb614354dfa5bdff20b2ae14b29be731190657ec5f4b120577cd",
+    "archive_bytes": 215698,
+    "resources_removed": true,
+    "cleanup_errors": []
+  },
+  "http": {
+    "health": 200,
+    "authenticated_me": 200,
+    "target_account_admin": true,
+    "admin_cache_preview": 200,
+    "cache_preview_has_entries_list": true,
+    "anonymous_admin_denied": true,
+    "cors_chef-world.com": {
+      "status": 200,
+      "exact_origin": true,
+      "credentials": true
+    },
+    "cors_www.chef-world.com": {
+      "status": 200,
+      "exact_origin": true,
+      "credentials": true
+    },
+    "untrusted_cors_denied": true,
+    "web/": 200,
+    "web/login": 200,
+    "web/preview": 200
+  },
+  "upload": {
+    "upload_status": 200,
+    "exact_stored_byte_count": 69,
+    "second_upload_not_required": true,
+    "public_image_status": 200,
+    "public_image_bytes_match": true,
+    "temporary_object_removed": true
+  },
+  "browser": {
+    "authorized_account_matches": true,
+    "blocked_write_attempts": 0,
+    "cache_api_status": 200,
+    "cache_heading_visible": true,
+    "identity_status": 200,
+    "ok": true,
+    "read_only": true,
+    "server_admin_role": true,
+    "store_cache_link_target": "/preview",
+    "store_cache_link_visible": true,
+    "unauthenticated_admin_link_hidden": true,
+    "unauthenticated_preview_redirects_to_login": true
+  },
+  "limits": {
+    "aiPerAccountPerMinute": 6,
+    "aiPerAccountPerDay": 50,
+    "aiGlobalPerMinute": 60,
+    "aiGlobalPerDay": 1000,
+    "aiOutputTokensPerCall": 4000,
+    "aiTimeoutSecondsPerCall": 35,
+    "aiPromptCharacters": 60000,
+    "imageBytes": 10485760,
+    "nonMultipartBodyBytes": 1048576,
+    "multipartBodyBytes": 12582912,
+    "dailyWindowTimezone": "UTC"
+  },
+  "redundancyLinesRemoved": 132,
+  "gitSourcePublished": false,
+  "paidAiRequestsForVerification": 0,
+  "uploadBucketVersioningEnabled": false
+}

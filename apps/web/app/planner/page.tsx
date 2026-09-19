@@ -3,7 +3,9 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiFetch } from "../lib/api";
+import { ApiError, resolveRecipeDetails } from "@cooking/api-client";
+import { useRecipePage } from "../lib/useRecipePage";
+import { apiFetch, webApiClient } from "../lib/api";
 import { userLocalStorage } from "../lib/userStorage";
 import { RequireAuth } from "../components/RequireAuth";
 import { PageShell } from "../components/PageShell";
@@ -38,6 +40,8 @@ type DayMutation = (slots: MealPlanSlots) => MealPlanSlots;
 
 type DateMutationQueue = {
   confirmed: MealPlanSlots;
+  revision: number;
+  conflicted: boolean;
   operations: DayMutation[];
   inFlight: boolean;
   generation: number;
@@ -87,17 +91,8 @@ function PlannerPageContent() {
   const pickerFallbackRef = useRef<HTMLElement | null>(null);
   const pickerWasOpenRef = useRef(false);
 
-  const sidebarRecipes = useMemo(() => {
-    const q = sideSearch.trim().toLowerCase();
-    return [...recipes]
-      .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
-      .filter((r) => {
-        const tags = getRecipeTags(r);
-        if (categoryFilter !== "all" && !tags.includes(categoryFilter)) return false;
-        if (q && !r.title.toLowerCase().includes(q)) return false;
-        return true;
-      });
-  }, [recipes, sideSearch, categoryFilter]);
+  const recipePage = useRecipePage("mine", {q: sideSearch, tags: categoryFilter === "all" ? [] : [categoryFilter]});
+  const sidebarRecipes = recipePage.items;
 
   useEffect(() => {
     let cancelled = false;
@@ -112,9 +107,8 @@ function PlannerPageContent() {
       setMutationError(null);
       setPlanLoadFailed(false);
       try {
-        const [plansResult, recipesResult] = await Promise.allSettled([
+        const [plansResult] = await Promise.allSettled([
           apiFetch(`/meal-plan?start=${start}&end=${end}`),
-          apiFetch("/recipes"),
         ]);
         const nextPlan: Record<string, MealPlanSlots> = Object.fromEntries(
           dates.map((date) => [date, emptyMealPlanSlots()]),
@@ -127,13 +121,8 @@ function PlannerPageContent() {
           }
           return;
         }
-        if (recipesResult.status === "rejected" || !recipesResult.value.ok) {
-          throw new Error("Failed to load recipes");
-        }
-        const [plans, recs]: [MealPlanDay[], Recipe[]] = await Promise.all([
-          plansResult.value.json(),
-          recipesResult.value.json(),
-        ]);
+        const plans: MealPlanDay[] = await plansResult.value.json();
+        const recs = await resolveRecipeDetails(webApiClient.recipes.get, plans.flatMap(plan => Object.values(normalizeMealPlanSlots(plan)).flat()));
         if (!cancelled) setRecipes(recs);
         plans.forEach((p) => {
           nextPlan[p.date] = normalizeMealPlanSlots(p);
@@ -144,6 +133,8 @@ function PlannerPageContent() {
               date,
               {
                 confirmed: nextPlan[date],
+                revision: plans.find(plan => plan.date === date)?.revision ?? 0,
+                conflicted: false,
                 operations: [],
                 inFlight: false,
                 generation,
@@ -180,14 +171,14 @@ function PlannerPageContent() {
     }
   }, [dates, loading, planByDate, planLoadFailed, start]);
 
-  async function putDay(date: string, slots: MealPlanSlots): Promise<MealPlanSlots> {
+  async function putDay(date: string, slots: MealPlanSlots, revision: number): Promise<MealPlanDay> {
     const res = await apiFetch(`/meal-plan/${date}`, {
       method: "PUT",
-      body: JSON.stringify(slots),
+      body: JSON.stringify({ ...slots, expected_revision: revision }),
     });
-    if (!res.ok) throw new Error("Failed to save meal plan");
+    if (!res.ok) throw new ApiError("Failed to save meal plan", res.status, res.status === 409 ? "meal_plan_conflict" : null);
     const updated: MealPlanDay = await res.json();
-    return normalizeMealPlanSlots(updated);
+    return updated;
   }
 
   function isCurrentQueue(date: string, queue: DateMutationQueue) {
@@ -216,14 +207,43 @@ function PlannerPageContent() {
     const operation = queue.operations[0];
     const target = operation(queue.confirmed);
     try {
-      const saved = await putDay(date, target);
+      const saved = await putDay(date, target, queue.revision);
       if (!isCurrentQueue(date, queue)) return;
-      queue.confirmed = saved;
+      queue.confirmed = normalizeMealPlanSlots(saved);
+      queue.revision = saved.revision ?? queue.revision + 1;
       queue.operations.shift();
       queue.inFlight = false;
       paintQueue(date, queue);
-    } catch {
+    } catch (error) {
       if (!isCurrentQueue(date, queue)) return;
+      if (error instanceof ApiError && error.status === 409) {
+        queue.conflicted = true;
+        queue.operations = [];
+        setMutationError(t("planner.conflictReloading"));
+        try {
+          const response = await apiFetch(`/meal-plan?start=${date}&end=${date}`);
+          if (!response.ok) throw new Error("Could not reload plan");
+          const plans: MealPlanDay[] = await response.json();
+          if (!isCurrentQueue(date, queue)) return;
+          const latest = plans.find(plan => plan.date === date);
+          queue.confirmed = normalizeMealPlanSlots(latest);
+          queue.revision = latest?.revision ?? 0;
+          queue.conflicted = false;
+          queue.inFlight = false;
+          paintQueue(date, queue);
+          setMutationError(t("planner.conflict"));
+          void resolveRecipeDetails(webApiClient.recipes.get, Object.values(queue.confirmed).flat()).then(recipes => {
+            if (isCurrentQueue(date, queue)) setRecipes(current => [...new Map([...current, ...recipes].map(recipe => [recipe.id, recipe])).values()]);
+          }).catch(() => undefined);
+        } catch {
+          if (isCurrentQueue(date, queue)) {
+            queue.inFlight = false;
+            setPlanLoadFailed(true);
+            setMutationError(t("planner.conflictReloadFailed"));
+          }
+        }
+        return;
+      }
       queue.operations.shift();
       queue.inFlight = false;
       paintQueue(date, queue);
@@ -234,7 +254,7 @@ function PlannerPageContent() {
 
   function enqueueDayMutation(date: string, operation: DayMutation) {
     const queue = mutationQueuesByDate.current[date];
-    if (!queue || !isCurrentQueue(date, queue)) return;
+    if (!queue || queue.conflicted || !isCurrentQueue(date, queue)) return;
     queue.operations.push(operation);
     setMutationError(null);
     paintQueue(date, queue);
@@ -284,7 +304,12 @@ function PlannerPageContent() {
     if (planLoadFailed) return;
     const current = planByDate[date] ?? emptyMealPlanSlots();
     if (current[slot].includes(recipeId)) return;
+    const generation = loadGeneration.current;
     enqueueDayMutation(date, (slots) => addRecipeToSlots(slots, slot, recipeId));
+    // Detail loading must not reorder the user's queued planner mutations.
+    void webApiClient.recipes.get(recipeId).then(recipe => {
+      if (loadGeneration.current === generation) setRecipes(current => [...current.filter(r => r.id !== recipeId), recipe]);
+    }).catch(() => undefined);
   }
 
   async function removeMeal(date: string, slot: MealType, recipeId: string) {
@@ -459,7 +484,7 @@ function PlannerPageContent() {
                           .slice(0, 2)
                           .map((tag) => CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " "))
                           .join(" • ")
-                      : t("recipe.ingredientsCount", { count: r.ingredients.length })}
+                      : t("recipe.ingredientsCount", { count: r.ingredient_count })}
                   </p>
                 );
               })()}
@@ -480,7 +505,7 @@ function PlannerPageContent() {
       ))
     ) : (
       <p className="planner-source-empty">
-        {recipes.length === 0 ? (
+        {!sideSearch.trim() && categoryFilter === "all" ? (
           <>
             <Link href="/import" className="font-bold">
               {t("planner.importRecipes")}
@@ -494,8 +519,9 @@ function PlannerPageContent() {
     );
   }
 
-  const railRecipeSourceList = renderRecipeSourceList("rail");
-  const pickerRecipeSourceList = renderRecipeSourceList("picker");
+  const pagination = <>{recipePage.error ? <p role="alert">{recipePage.error}</p> : null}{recipePage.next ? <button type="button" disabled={recipePage.loading} onClick={() => void recipePage.more()}>{t("common.loadMoreRecipes")}</button> : null}</>;
+  const railRecipeSourceList = <>{renderRecipeSourceList("rail")}{pagination}</>;
+  const pickerRecipeSourceList = <>{renderRecipeSourceList("picker")}{pagination}</>;
 
   return (
     <PageShell className={styles.page}>

@@ -1,7 +1,9 @@
+import { resolveRecipeDetails } from "@cooking/api-client";
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
   buildWeekMealPlanFingerprint,
+  normalizeMealPlanSlots,
   getWeekBounds,
   type MealPlanDay,
   plannerFingerprintStorageKey,
@@ -136,11 +138,11 @@ function reducer(state: State, action: Action): State {
 }
 
 async function fetchAll(apiClient: ApiClient, bounds: WeekBounds) {
-  const [items, mealPlans, recipes] = await Promise.all([
+  const [items, mealPlans] = await Promise.all([
     apiClient.shopping.list(bounds.start, bounds.end),
     apiClient.mealPlan.list(bounds.start, bounds.end),
-    apiClient.recipes.list(),
   ]);
+  const recipes = await resolveRecipeDetails(apiClient.recipes.get, mealPlans.flatMap(plan => Object.values(normalizeMealPlanSlots(plan)).flat()));
   return { items, mealPlans, recipes };
 }
 

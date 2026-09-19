@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api._types import LibraryTags, StepList, StringList
 from app.api.auth import get_current_user
 from app.api.ai_budget import enforce_ai_budget
+from app.api.abuse import enforce_upload_limits
 from app.core.config import settings
 from app.core.admin import can_manage_public_catalog
 from app.db import repo_mealplan, repo_recipes
@@ -25,7 +26,8 @@ from app.extract import (
     extract_recipe_from_text,
     is_usable_instruction_text,
 )
-from app.models import IngredientItem, Recipe, RecipeStep, coerce_steps
+from app.models import IngredientItem, Recipe, RecipeStep, RecipePage, coerce_steps
+from app.api.recipe_pages import RecipePageQuery, read_page
 from app.services.storage_service import (
     matches_image_signature,
     save_recipe_image_local,
@@ -66,6 +68,7 @@ async def upload_recipe_image(
     account_id = str(_user.id)
     # Authentication is the only DB work here; storage must not hold its connection.
     await session.close()
+    await enforce_upload_limits(account_id, len(data))
     region = (settings.AWS_REGION or "").strip()
     bucket = (settings.S3_BUCKET_NAME or "").strip()
     if region and bucket:
@@ -183,7 +186,19 @@ async def catalog_editor_status(
     return CatalogEditorStatus(can_manage=_can_manage_public_catalog(current_user))
 
 
-@router.get("/catalog", response_model=list[Recipe])
+@router.get("/page", response_model=RecipePage)
+async def recipes_page(query: RecipePageQuery = Depends(), session: AsyncSession = Depends(get_session),
+                       current_user: UserModel = Depends(get_current_user)):
+    return await read_page(session, current_user.id, query)
+
+
+@router.get("/catalog/page", response_model=RecipePage)
+async def catalog_page(query: RecipePageQuery = Depends(), session: AsyncSession = Depends(get_session),
+                       current_user: UserModel = Depends(get_current_user)):
+    return await read_page(session, current_user.id, query, catalog=True)
+
+
+@router.get("/catalog", response_model=list[Recipe], deprecated=True)
 async def recipes_catalog_list(
     session: AsyncSession = Depends(get_session),
     _user: UserModel = Depends(get_current_user),
@@ -203,7 +218,7 @@ async def copy_catalog_recipe(
     return recipe
 
 
-@router.get("", response_model=list[Recipe])
+@router.get("", response_model=list[Recipe], deprecated=True)
 async def recipes_list(
     session: AsyncSession = Depends(get_session),
     current_user: UserModel = Depends(get_current_user),

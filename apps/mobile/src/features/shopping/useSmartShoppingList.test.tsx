@@ -16,7 +16,7 @@ const mockApiClient = {
     refine: mockRefine,
   },
   mealPlan: { list: mockMealPlanList },
-  recipes: { list: mockRecipeList },
+  recipes: { get: async (id: string) => (await mockRecipeList()).find((r: {id: string}) => r.id === id) },
 };
 
 jest.mock("../../lib/api", () => ({ useApiClient: () => mockApiClient }));

@@ -1,0 +1,1277 @@
+{
+  "sampling_interval_seconds": 5,
+  "scope": "Local API process and current PostgreSQL DB; one observer DB connection included. Samples may miss shorter peaks.",
+  "database_version": "18.3 (Homebrew)",
+  "database_max_connections": 100,
+  "host_cpu_count": 10,
+  "host_memory_bytes": 25769803776,
+  "samples": [
+    {
+      "utc": "2026-09-19T03:36:52.478351+00:00",
+      "phase": "open",
+      "api_rss_kib": 120528,
+      "api_cpu_percent": 98.6,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:36:57.486850+00:00",
+      "phase": "open",
+      "api_rss_kib": 120560,
+      "api_cpu_percent": 98.4,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:37:02.493506+00:00",
+      "phase": "open",
+      "api_rss_kib": 120576,
+      "api_cpu_percent": 98.8,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:37:07.501518+00:00",
+      "phase": "open",
+      "api_rss_kib": 120768,
+      "api_cpu_percent": 2.0,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:37:12.509915+00:00",
+      "phase": "open",
+      "api_rss_kib": 120928,
+      "api_cpu_percent": 2.5,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:37:17.515853+00:00",
+      "phase": "open",
+      "api_rss_kib": 121040,
+      "api_cpu_percent": 1.2,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:37:22.532710+00:00",
+      "phase": "open",
+      "api_rss_kib": 121248,
+      "api_cpu_percent": 3.0,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:37:27.541567+00:00",
+      "phase": "open",
+      "api_rss_kib": 121248,
+      "api_cpu_percent": 2.0,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:37:32.548944+00:00",
+      "phase": "open",
+      "api_rss_kib": 121456,
+      "api_cpu_percent": 1.5,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:37:37.556471+00:00",
+      "phase": "open",
+      "api_rss_kib": 121440,
+      "api_cpu_percent": 1.9,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:37:42.565188+00:00",
+      "phase": "open",
+      "api_rss_kib": 121536,
+      "api_cpu_percent": 1.4,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:37:47.572282+00:00",
+      "phase": "open",
+      "api_rss_kib": 121536,
+      "api_cpu_percent": 1.4,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:37:52.578741+00:00",
+      "phase": "open",
+      "api_rss_kib": 121536,
+      "api_cpu_percent": 1.9,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:37:57.586686+00:00",
+      "phase": "open",
+      "api_rss_kib": 121552,
+      "api_cpu_percent": 1.5,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:38:02.598893+00:00",
+      "phase": "open",
+      "api_rss_kib": 121600,
+      "api_cpu_percent": 3.1,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:38:07.605743+00:00",
+      "phase": "open",
+      "api_rss_kib": 121616,
+      "api_cpu_percent": 3.5,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:38:12.616268+00:00",
+      "phase": "open",
+      "api_rss_kib": 121616,
+      "api_cpu_percent": 4.2,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:38:17.621981+00:00",
+      "phase": "open",
+      "api_rss_kib": 111136,
+      "api_cpu_percent": 4.6,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:38:22.630748+00:00",
+      "phase": "open",
+      "api_rss_kib": 67072,
+      "api_cpu_percent": 3.4,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:38:27.641008+00:00",
+      "phase": "open",
+      "api_rss_kib": 66816,
+      "api_cpu_percent": 5.3,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:38:32.653218+00:00",
+      "phase": "open",
+      "api_rss_kib": 66832,
+      "api_cpu_percent": 5.2,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:38:37.663244+00:00",
+      "phase": "open",
+      "api_rss_kib": 66848,
+      "api_cpu_percent": 3.7,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:38:42.672877+00:00",
+      "phase": "open",
+      "api_rss_kib": 66880,
+      "api_cpu_percent": 4.2,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:38:47.685030+00:00",
+      "phase": "open",
+      "api_rss_kib": 66880,
+      "api_cpu_percent": 3.3,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:38:52.697114+00:00",
+      "phase": "open",
+      "api_rss_kib": 66880,
+      "api_cpu_percent": 5.5,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:38:57.707409+00:00",
+      "phase": "open",
+      "api_rss_kib": 66992,
+      "api_cpu_percent": 4.6,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:39:02.716237+00:00",
+      "phase": "open",
+      "api_rss_kib": 67008,
+      "api_cpu_percent": 3.9,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:39:07.724327+00:00",
+      "phase": "open",
+      "api_rss_kib": 67120,
+      "api_cpu_percent": 12.2,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:39:12.730958+00:00",
+      "phase": "open",
+      "api_rss_kib": 67200,
+      "api_cpu_percent": 7.0,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:39:17.738679+00:00",
+      "phase": "open",
+      "api_rss_kib": 67824,
+      "api_cpu_percent": 9.1,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:39:22.750411+00:00",
+      "phase": "open",
+      "api_rss_kib": 67968,
+      "api_cpu_percent": 13.0,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:39:27.761139+00:00",
+      "phase": "open",
+      "api_rss_kib": 68208,
+      "api_cpu_percent": 9.1,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:39:32.771326+00:00",
+      "phase": "open",
+      "api_rss_kib": 68240,
+      "api_cpu_percent": 11.3,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:39:37.777994+00:00",
+      "phase": "open",
+      "api_rss_kib": 68432,
+      "api_cpu_percent": 6.6,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:39:42.788855+00:00",
+      "phase": "open",
+      "api_rss_kib": 68544,
+      "api_cpu_percent": 12.0,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:39:47.800688+00:00",
+      "phase": "open",
+      "api_rss_kib": 68656,
+      "api_cpu_percent": 9.8,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:39:52.813520+00:00",
+      "phase": "open",
+      "api_rss_kib": 68688,
+      "api_cpu_percent": 11.2,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:39:57.823718+00:00",
+      "phase": "open",
+      "api_rss_kib": 116816,
+      "api_cpu_percent": 10.9,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:40:02.835132+00:00",
+      "phase": "open",
+      "api_rss_kib": 116816,
+      "api_cpu_percent": 12.1,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:40:07.843736+00:00",
+      "phase": "open",
+      "api_rss_kib": 116816,
+      "api_cpu_percent": 47.1,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:40:12.851770+00:00",
+      "phase": "open",
+      "api_rss_kib": 116816,
+      "api_cpu_percent": 11.7,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:40:17.861397+00:00",
+      "phase": "open",
+      "api_rss_kib": 116816,
+      "api_cpu_percent": 14.2,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:40:22.872518+00:00",
+      "phase": "open",
+      "api_rss_kib": 116816,
+      "api_cpu_percent": 19.6,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:40:27.881327+00:00",
+      "phase": "open",
+      "api_rss_kib": 116816,
+      "api_cpu_percent": 13.9,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:40:32.889239+00:00",
+      "phase": "open",
+      "api_rss_kib": 116816,
+      "api_cpu_percent": 13.5,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:40:37.898252+00:00",
+      "phase": "open",
+      "api_rss_kib": 116752,
+      "api_cpu_percent": 11.4,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:40:42.904444+00:00",
+      "phase": "open",
+      "api_rss_kib": 116752,
+      "api_cpu_percent": 18.0,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:40:47.915128+00:00",
+      "phase": "open",
+      "api_rss_kib": 116752,
+      "api_cpu_percent": 19.9,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:40:52.923577+00:00",
+      "phase": "open",
+      "api_rss_kib": 116752,
+      "api_cpu_percent": 18.4,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:40:57.933948+00:00",
+      "phase": "open",
+      "api_rss_kib": 116944,
+      "api_cpu_percent": 18.9,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:41:02.945480+00:00",
+      "phase": "open",
+      "api_rss_kib": 117312,
+      "api_cpu_percent": 21.4,
+      "connections": 3,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:41:07.955471+00:00",
+      "phase": "open",
+      "api_rss_kib": 119056,
+      "api_cpu_percent": 16.3,
+      "connections": 4,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:41:12.963952+00:00",
+      "phase": "burst",
+      "api_rss_kib": 119200,
+      "api_cpu_percent": 98.6,
+      "connections": 4,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:41:17.971733+00:00",
+      "phase": "burst",
+      "api_rss_kib": 119200,
+      "api_cpu_percent": 100.9,
+      "connections": 4,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:41:22.979316+00:00",
+      "phase": "burst",
+      "api_rss_kib": 119152,
+      "api_cpu_percent": 98.3,
+      "connections": 4,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:41:27.988768+00:00",
+      "phase": "burst",
+      "api_rss_kib": 119152,
+      "api_cpu_percent": 98.3,
+      "connections": 4,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:41:32.997004+00:00",
+      "phase": "burst",
+      "api_rss_kib": 119152,
+      "api_cpu_percent": 98.8,
+      "connections": 4,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:41:38.006407+00:00",
+      "phase": "burst",
+      "api_rss_kib": 119152,
+      "api_cpu_percent": 98.1,
+      "connections": 4,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:41:43.019024+00:00",
+      "phase": "burst",
+      "api_rss_kib": 118912,
+      "api_cpu_percent": 98.6,
+      "connections": 4,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:41:48.028802+00:00",
+      "phase": "burst",
+      "api_rss_kib": 118752,
+      "api_cpu_percent": 98.1,
+      "connections": 4,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:41:53.038757+00:00",
+      "phase": "burst",
+      "api_rss_kib": 118768,
+      "api_cpu_percent": 98.3,
+      "connections": 4,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:41:58.044070+00:00",
+      "phase": "burst",
+      "api_rss_kib": 118768,
+      "api_cpu_percent": 98.9,
+      "connections": 4,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:42:03.050773+00:00",
+      "phase": "burst",
+      "api_rss_kib": 118784,
+      "api_cpu_percent": 99.1,
+      "connections": 4,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:42:08.058606+00:00",
+      "phase": "burst",
+      "api_rss_kib": 118320,
+      "api_cpu_percent": 95.1,
+      "connections": 4,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:42:13.066974+00:00",
+      "phase": "burst",
+      "api_rss_kib": 118320,
+      "api_cpu_percent": 96.7,
+      "connections": 4,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:42:18.074101+00:00",
+      "phase": "burst",
+      "api_rss_kib": 118320,
+      "api_cpu_percent": 96.8,
+      "connections": 4,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:42:23.082594+00:00",
+      "phase": "burst",
+      "api_rss_kib": 125312,
+      "api_cpu_percent": 7.2,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:42:28.089385+00:00",
+      "phase": "burst",
+      "api_rss_kib": 125376,
+      "api_cpu_percent": 13.3,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:42:33.098115+00:00",
+      "phase": "burst",
+      "api_rss_kib": 125376,
+      "api_cpu_percent": 12.0,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:42:38.105590+00:00",
+      "phase": "burst",
+      "api_rss_kib": 125264,
+      "api_cpu_percent": 40.9,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:42:43.114809+00:00",
+      "phase": "burst",
+      "api_rss_kib": 125328,
+      "api_cpu_percent": 13.4,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:42:48.122525+00:00",
+      "phase": "burst",
+      "api_rss_kib": 125344,
+      "api_cpu_percent": 41.0,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:42:53.134499+00:00",
+      "phase": "burst",
+      "api_rss_kib": 125312,
+      "api_cpu_percent": 13.8,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:42:58.142821+00:00",
+      "phase": "burst",
+      "api_rss_kib": 125360,
+      "api_cpu_percent": 43.6,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:43:03.158663+00:00",
+      "phase": "burst",
+      "api_rss_kib": 125392,
+      "api_cpu_percent": 12.7,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:43:08.166716+00:00",
+      "phase": "burst",
+      "api_rss_kib": 125392,
+      "api_cpu_percent": 39.8,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:43:13.177800+00:00",
+      "phase": "burst",
+      "api_rss_kib": 125360,
+      "api_cpu_percent": 16.3,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:43:18.185546+00:00",
+      "phase": "burst",
+      "api_rss_kib": 125488,
+      "api_cpu_percent": 48.6,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:43:23.194567+00:00",
+      "phase": "burst",
+      "api_rss_kib": 124640,
+      "api_cpu_percent": 17.6,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:43:28.202621+00:00",
+      "phase": "burst",
+      "api_rss_kib": 124512,
+      "api_cpu_percent": 23.8,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:43:33.211492+00:00",
+      "phase": "burst",
+      "api_rss_kib": 124672,
+      "api_cpu_percent": 10.2,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:43:38.219085+00:00",
+      "phase": "burst",
+      "api_rss_kib": 124576,
+      "api_cpu_percent": 20.8,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:43:43.230404+00:00",
+      "phase": "burst",
+      "api_rss_kib": 124640,
+      "api_cpu_percent": 12.1,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:43:48.238203+00:00",
+      "phase": "burst",
+      "api_rss_kib": 124640,
+      "api_cpu_percent": 12.7,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:43:53.248874+00:00",
+      "phase": "burst",
+      "api_rss_kib": 124512,
+      "api_cpu_percent": 15.4,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:43:58.261552+00:00",
+      "phase": "burst",
+      "api_rss_kib": 124544,
+      "api_cpu_percent": 7.4,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:44:03.269776+00:00",
+      "phase": "burst",
+      "api_rss_kib": 124544,
+      "api_cpu_percent": 15.1,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:44:08.277926+00:00",
+      "phase": "burst",
+      "api_rss_kib": 124544,
+      "api_cpu_percent": 8.2,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:44:13.286108+00:00",
+      "phase": "burst",
+      "api_rss_kib": 124560,
+      "api_cpu_percent": 12.6,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:44:18.298154+00:00",
+      "phase": "burst",
+      "api_rss_kib": 123072,
+      "api_cpu_percent": 9.2,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:44:23.310079+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122912,
+      "api_cpu_percent": 14.3,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:44:28.321608+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122912,
+      "api_cpu_percent": 10.9,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:44:33.333535+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122880,
+      "api_cpu_percent": 15.4,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:44:38.342087+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122944,
+      "api_cpu_percent": 14.8,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:44:43.350839+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122960,
+      "api_cpu_percent": 16.5,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:44:48.360769+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122880,
+      "api_cpu_percent": 15.0,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:44:53.373294+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122880,
+      "api_cpu_percent": 20.1,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:44:58.383462+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122880,
+      "api_cpu_percent": 15.1,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:45:03.395195+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122880,
+      "api_cpu_percent": 19.8,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:45:08.403505+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122880,
+      "api_cpu_percent": 21.4,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:45:13.413285+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122880,
+      "api_cpu_percent": 23.2,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:45:18.419721+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122928,
+      "api_cpu_percent": 20.8,
+      "connections": 6,
+      "active": 2,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:45:23.426229+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122784,
+      "api_cpu_percent": 45.9,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:45:28.432914+00:00",
+      "phase": "burst",
+      "api_rss_kib": 123088,
+      "api_cpu_percent": 34.3,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:45:33.442884+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122752,
+      "api_cpu_percent": 46.2,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:45:38.453346+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122736,
+      "api_cpu_percent": 4.1,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:45:43.463929+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122736,
+      "api_cpu_percent": 40.5,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:45:48.475737+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122736,
+      "api_cpu_percent": 4.8,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:45:53.484194+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122704,
+      "api_cpu_percent": 39.1,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:45:58.496413+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122864,
+      "api_cpu_percent": 6.0,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:46:03.504724+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122864,
+      "api_cpu_percent": 42.2,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:46:08.512983+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122736,
+      "api_cpu_percent": 7.8,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:46:13.520815+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122720,
+      "api_cpu_percent": 38.7,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:46:18.532237+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122720,
+      "api_cpu_percent": 8.4,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:46:23.540738+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122800,
+      "api_cpu_percent": 39.2,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:46:28.550899+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122752,
+      "api_cpu_percent": 9.8,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:46:33.560250+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122752,
+      "api_cpu_percent": 18.8,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:46:38.570722+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122720,
+      "api_cpu_percent": 16.8,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:46:43.579960+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122752,
+      "api_cpu_percent": 17.7,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:46:48.591137+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122752,
+      "api_cpu_percent": 16.0,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:46:53.599902+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122720,
+      "api_cpu_percent": 19.9,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:46:58.609130+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122720,
+      "api_cpu_percent": 17.3,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:47:03.616809+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122832,
+      "api_cpu_percent": 14.3,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:47:08.626597+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122720,
+      "api_cpu_percent": 28.0,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:47:13.639035+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122752,
+      "api_cpu_percent": 11.7,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:47:18.649135+00:00",
+      "phase": "burst",
+      "api_rss_kib": 122752,
+      "api_cpu_percent": 22.8,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:47:23.657838+00:00",
+      "phase": "recovery",
+      "api_rss_kib": 122640,
+      "api_cpu_percent": 16.0,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:47:28.667204+00:00",
+      "phase": "recovery",
+      "api_rss_kib": 122672,
+      "api_cpu_percent": 97.9,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:47:33.676493+00:00",
+      "phase": "recovery",
+      "api_rss_kib": 122688,
+      "api_cpu_percent": 98.9,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:47:38.684629+00:00",
+      "phase": "recovery",
+      "api_rss_kib": 122688,
+      "api_cpu_percent": 97.6,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:47:43.693956+00:00",
+      "phase": "recovery",
+      "api_rss_kib": 122688,
+      "api_cpu_percent": 97.9,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:47:48.701385+00:00",
+      "phase": "recovery",
+      "api_rss_kib": 122688,
+      "api_cpu_percent": 100.0,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:47:53.711242+00:00",
+      "phase": "recovery",
+      "api_rss_kib": 122688,
+      "api_cpu_percent": 98.3,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:47:58.721517+00:00",
+      "phase": "recovery",
+      "api_rss_kib": 122704,
+      "api_cpu_percent": 27.9,
+      "connections": 6,
+      "active": 2,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:48:03.732482+00:00",
+      "phase": "recovery",
+      "api_rss_kib": 122688,
+      "api_cpu_percent": 4.0,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:48:08.745093+00:00",
+      "phase": "recovery",
+      "api_rss_kib": 122688,
+      "api_cpu_percent": 5.4,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:48:13.756811+00:00",
+      "phase": "recovery",
+      "api_rss_kib": 122688,
+      "api_cpu_percent": 4.5,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:48:18.767865+00:00",
+      "phase": "recovery",
+      "api_rss_kib": 122688,
+      "api_cpu_percent": 4.9,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:48:23.782932+00:00",
+      "phase": "recovery",
+      "api_rss_kib": 102064,
+      "api_cpu_percent": 4.7,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    },
+    {
+      "utc": "2026-09-19T03:48:28.792233+00:00",
+      "phase": "recovery",
+      "api_rss_kib": 91712,
+      "api_cpu_percent": 31.6,
+      "connections": 6,
+      "active": 1,
+      "lock_waiters": 0
+    }
+  ],
+  "sampled_maxima": {
+    "api_rss_kib": 125488,
+    "api_cpu_percent": 100.9,
+    "connections": 6,
+    "active": 2,
+    "lock_waiters": 0
+  }
+}

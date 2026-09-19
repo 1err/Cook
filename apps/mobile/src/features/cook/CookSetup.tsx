@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
-import { ApiError } from "@cooking/api-client";
+import { ApiError, resolveRecipeDetails } from "@cooking/api-client";
 import type { CookingSession, MealPlanDay, MealType, Recipe } from "@cooking/shared";
 import { Button, Screen, SegmentedControl, TextField } from "../../components";
 import { useApiClient } from "../../lib/api";
 import { useT } from "../../lib/i18n";
+import { useRecipePage } from "../../lib/useRecipePage";
 import { colors, radii, spacing, typography } from "../../theme";
 
 const MEALS: MealType[] = ["breakfast", "lunch", "dinner"];
@@ -26,6 +27,7 @@ export function CookSetup({
   const [plans, setPlans] = useState<MealPlanDay[]>([]);
   const [manualSelection, setManualSelection] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+  const page = useRecipePage("mine", {q: search});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,8 +35,9 @@ export function CookSetup({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([apiClient.recipes.list(), apiClient.mealPlan.list(date, date)])
-      .then(([nextRecipes, nextPlans]) => {
+    apiClient.mealPlan.list(date, date)
+      .then(async nextPlans => {
+        const nextRecipes = await resolveRecipeDetails(apiClient.recipes.get, nextPlans.flatMap(plan => [...plan.breakfast, ...plan.lunch, ...plan.dinner]));
         if (!cancelled) {
           setRecipes(nextRecipes);
           setPlans(nextPlans);
@@ -57,10 +60,7 @@ export function CookSetup({
     return [...new Set(plan?.[meal] ?? [])];
   }, [date, meal, plans]);
   const selected = mode === "planned" ? plannedSelection : manualSelection;
-  const query = search.trim().toLocaleLowerCase();
-  const visibleRecipes = recipes.filter((recipe) =>
-    query ? recipe.title.toLocaleLowerCase().includes(query) : true,
-  );
+  const visibleRecipes = page.items;
 
   function toggle(recipeId: string) {
     setManualSelection((current) =>
@@ -137,7 +137,7 @@ export function CookSetup({
       ) : (
         <View style={styles.panel}>
           <TextField accessibilityLabel={t("common.search")} label={t("common.search")} onChangeText={setSearch} value={search} />
-          {visibleRecipes.map((recipe) => recipe.steps?.length ? (
+          {visibleRecipes.map((recipe) => recipe.step_count ? (
             <Pressable
               accessibilityLabel={recipe.title}
               accessibilityRole="checkbox"
@@ -164,6 +164,8 @@ export function CookSetup({
           ))}
         </View>
       )}
+      {page.next && mode === "manual" ? <Button title={t("common.loadMoreRecipes")} disabled={page.loading} onPress={() => void page.more()} /> : null}
+      {page.error ? <Text accessibilityRole="alert">{page.error}</Text> : null}
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
       <Button
         disabled={!selected.length}

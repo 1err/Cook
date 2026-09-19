@@ -1,0 +1,31 @@
+import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { useRecipePage } from './useRecipePage';
+import type { RecipePage } from '@cooking/shared';
+const mockLoad = jest.fn();
+let mockClient = {recipes:{page:mockLoad},users:{libraryPage:mockLoad}};
+jest.mock('./api',()=>({useApiClient:()=>mockClient}));
+const page = (id:string,next_cursor:string|null=null):RecipePage => ({items:[{id,title:id,ingredient_count:0,step_count:0,already_saved:false}],next_cursor});
+beforeEach(()=>{mockLoad.mockReset();mockClient={recipes:{page:mockLoad},users:{libraryPage:mockLoad}};});
+test('next-page data from an old account cannot appear after client replacement',async()=>{
+  let resolve!:(value:RecipePage)=>void;
+  mockLoad.mockResolvedValueOnce(page('Account A','next')).mockImplementationOnce(()=>new Promise<RecipePage>(r=>{resolve=r;})).mockResolvedValueOnce(page('Account B'));
+  const {result,rerender}=await renderHook(()=>useRecipePage());
+  await waitFor(()=>expect(result.current.items[0]?.id).toBe('Account A'));
+  await act(async()=>{void result.current.more();});
+  mockClient={...mockClient};
+  await rerender({});
+  await waitFor(()=>expect(result.current.items[0]?.id).toBe('Account B'));
+  await act(async()=>resolve(page('Leaked A')));
+  expect(result.current.items.map(r=>r.id)).toEqual(['Account B']);
+});
+test('filter changes replace data and only explicit more traverses the cursor',async()=>{
+  mockLoad.mockResolvedValueOnce(page('First','next')).mockResolvedValueOnce(page('Second')).mockResolvedValueOnce(page('Soup'));
+  const {result,rerender}=await renderHook(({q}:{q:string})=>useRecipePage('mine',{q}),{initialProps:{q:''}});
+  await waitFor(()=>expect(result.current.items[0]?.id).toBe('First'));
+  expect(mockLoad).toHaveBeenCalledTimes(1);
+  await act(async()=>result.current.more());
+  expect(result.current.items.map(r=>r.id)).toEqual(['First','Second']);
+  await rerender({q:'soup'});
+  await waitFor(()=>expect(result.current.items[0]?.id).toBe('Soup'));
+  expect(mockLoad).toHaveBeenLastCalledWith({q:'soup',cursor:null});
+});

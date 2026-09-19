@@ -18,10 +18,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.core.config import get_cors_origins_list
 from app.core.logging import setup_logging
 from app.core.http_security import HTTPGuardMiddleware
+from app.core.readiness import database_ready
 from app.core.llm import AIInputTooLargeError, AIUnavailableError, close_openai_client
 from app.db.session import dispose_engine, init_engine
 from app.api.auth import router as auth_router
@@ -33,6 +35,7 @@ from app.api.routes_store import router as store_router
 from app.api.routes_users import router as users_router
 from app.api.routes_cooking import router as cooking_router
 from app.api.admin import router as admin_router
+from app.api.admin_usage import router as admin_usage_router
 from app.jobs.cache_warmer import (
     shutdown_cache_warmer,
     start_scheduler,
@@ -97,7 +100,8 @@ async def _shutdown_application_resources() -> None:
 async def lifespan(app: FastAPI):
     init_engine()
     start_live_lookup_admission()
-    start_scheduler()
+    if settings.STORE_JOBS_MODE == "local":
+        start_scheduler()
     try:
         yield
     finally:
@@ -137,6 +141,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Outermost application middleware resolves client identity before admission.
+# Uvicorn's own proxy parsing is disabled in Docker/ECS to preserve the real
+# network peer until this explicit trust boundary is checked.
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=settings.TRUSTED_PROXY_CIDRS)
+
 app.include_router(auth_router)
 app.include_router(recipes_router)
 app.include_router(mealplan_router)
@@ -146,6 +155,7 @@ app.include_router(store_router)
 app.include_router(users_router)
 app.include_router(cooking_router)
 app.include_router(admin_router)
+app.include_router(admin_usage_router)
 
 _upload_root = get_local_upload_root()
 _upload_root.mkdir(parents=True, exist_ok=True)
@@ -155,3 +165,10 @@ app.mount("/uploads", StaticFiles(directory=str(_upload_root)), name="uploads")
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/ready")
+async def ready():
+    available = await database_ready()
+    return JSONResponse(status_code=200 if available else 503,
+                        content={"status": "ready" if available else "not_ready"})

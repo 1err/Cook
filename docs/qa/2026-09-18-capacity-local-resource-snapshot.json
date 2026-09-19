@@ -1,0 +1,14 @@
+{
+  "captured_at_utc": "2026-09-19T03:20:54.153095+00:00",
+  "measurement_kind": "single snapshot during local stepped load; not a peak or allocated-resource limit",
+  "postgres_version": "18.3 (Homebrew)",
+  "postgres_max_connections": "100",
+  "database_activity": {
+    "connections": 3,
+    "active": 1,
+    "waiting_on_locks": 0
+  },
+  "api_process_ps_rss_kib_cpu_percent_elapsed": "67056   2.1 08:13",
+  "hw.ncpu": 10,
+  "hw.memsize": 25769803776
+}

@@ -1,3 +1,4 @@
+import { recipePageFixture } from "./recipePageFixture";
 import { expect, test, type Page, type Route } from "@playwright/test";
 
 const appOrigin = `http://127.0.0.1:${process.env.PORT ?? "3000"}`;
@@ -61,8 +62,8 @@ async function installFixtures(page: Page) {
       is_library_public: false,
     }),
   );
-  await page.route("**/recipes/catalog", (route) => fulfillJson(route, publicRecipes));
-  await page.route("**/recipes", (route) => fulfillJson(route, recipes));
+  await page.route("**/recipes/catalog/page?*", (route) => fulfillJson(route, recipePageFixture(publicRecipes, route.request().url())));
+  await page.route("**/recipes/page?*", (route) => fulfillJson(route, recipePageFixture(recipes, route.request().url())));
 }
 
 test.beforeEach(async ({ page }) => {

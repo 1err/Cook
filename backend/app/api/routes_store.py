@@ -56,7 +56,7 @@ StoreProductsRouteResponse = StoreProductsResponse | list[StoreProduct]
 
 @router.get("/store-products", response_model=StoreProductsRouteResponse)
 async def store_products(
-    query: str = Query(..., min_length=1),
+    query: str = Query(..., min_length=1, max_length=512),
     store: str | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
     current_user: UserModel = Depends(get_current_user),

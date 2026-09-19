@@ -1,7 +1,11 @@
 import React from "react";
+jest.mock("../../lib/i18n", () => ({useT: () => (key: string) => key}));
 import { render, screen, within } from "@testing-library/react-native";
 import type { Recipe } from "@cooking/shared";
 import { RecipePickerSheet } from "./RecipePickerSheet";
+
+const mockApi = { recipes: {page: jest.fn(async () => ({items: [{id:"recipe-1", title:"Tomato egg stir-fry", ingredient_count:2, step_count:0, already_saved:true}],next_cursor:null}))} };
+jest.mock("../../lib/api", () => ({useApiClient: () => mockApi}));
 
 jest.mock("@gorhom/bottom-sheet", () => {
   const React = require("react");
@@ -39,5 +43,5 @@ test("keeps picker controls and recipe results in one scroll surface", async () 
   expect(within(content).getByText("Add a recipe")).toBeOnTheScreen();
   expect(within(content).getByPlaceholderText("Search your library")).toBeOnTheScreen();
   expect(within(content).getByText("All")).toBeOnTheScreen();
-  expect(within(content).getByText("Tomato egg stir-fry")).toBeOnTheScreen();
+  expect(await within(content).findByText("Tomato egg stir-fry")).toBeOnTheScreen();
 });

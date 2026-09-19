@@ -1,3 +1,4 @@
+import { ApiError, resolveRecipeDetails } from "@cooking/api-client";
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import {
   buildWeekMealPlanFingerprint,
@@ -25,6 +26,7 @@ type WeekBounds = {
 type ReadyData = {
   recipes: Recipe[];
   planByDate: Record<string, MealPlanSlots>;
+  revisions: Record<string, number>;
   bounds: WeekBounds;
 };
 
@@ -35,14 +37,17 @@ type State =
 
 type Action =
   | { type: "weekChanged"; bounds: WeekBounds }
+  | { type: "recipeResolved"; recipe: Recipe }
   | { type: "refreshStarted" }
   | { type: "refreshFinished" }
   | { type: "loaded"; recipes: Recipe[]; plans: MealPlanDay[]; bounds: WeekBounds }
   | { type: "loadFailed"; error: string }
-  | { type: "applyPlan"; date: string; slots: MealPlanSlots };
+  | { type: "applyPlan"; date: string; slots: MealPlanSlots; revision: number };
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
+    case "recipeResolved":
+      return state.status === "ready" || state.status === "refreshing" ? {...state, data: {...state.data, recipes: [...state.data.recipes.filter(r => r.id !== action.recipe.id), action.recipe]}} : state;
     case "weekChanged":
       return { status: "loading", bounds: action.bounds };
     case "refreshStarted":
@@ -65,7 +70,7 @@ function reducer(state: State, action: Action): State {
       return {
         status: "ready",
         bounds: action.bounds,
-        data: { recipes: action.recipes, planByDate, bounds: action.bounds },
+        data: { recipes: action.recipes, planByDate, revisions: Object.fromEntries(action.plans.map(plan => [plan.date, plan.revision ?? 0])), bounds: action.bounds },
       };
     }
     case "loadFailed":
@@ -78,17 +83,17 @@ function reducer(state: State, action: Action): State {
       const nextPlanByDate = { ...state.data.planByDate, [action.date]: action.slots };
       return {
         ...state,
-        data: { ...state.data, planByDate: nextPlanByDate },
+        data: { ...state.data, planByDate: nextPlanByDate, revisions: {...state.data.revisions, [action.date]: action.revision} },
       };
     }
   }
 }
 
 async function fetchWeek(apiClient: ApiClient, bounds: WeekBounds) {
-  const [plans, recipes] = await Promise.all([
+  const [plans] = await Promise.all([
     apiClient.mealPlan.list(bounds.start, bounds.end),
-    apiClient.recipes.list(),
   ]);
+  const recipes = await resolveRecipeDetails(apiClient.recipes.get, plans.flatMap(plan => Object.values(normalizeMealPlanSlots(plan)).flat()));
   return { plans, recipes };
 }
 
@@ -127,7 +132,7 @@ export function usePlannerWeek(weekStart: string | undefined): UsePlannerWeekRes
     reject: (error: unknown) => void;
     finished: Promise<void>;
   };
-  type DayQueue = { confirmed: MealPlanSlots; operations: Operation[]; running: boolean };
+  type DayQueue = { confirmed: MealPlanSlots; revision: number; conflicted: boolean; operations: Operation[]; running: boolean };
   const queues = useRef(new Map<string, DayQueue>());
   const mutationRevision = useRef(0);
 
@@ -160,11 +165,13 @@ export function usePlannerWeek(weekStart: string | undefined): UsePlannerWeekRes
             if (queue.operations.length === 0) queues.current.delete(date);
           } else if (queue.operations.length === 0) {
             queue.confirmed = planByDate[date];
+            queue.revision = plans.find(plan => plan.date === date)?.revision ?? 0;
+            queue.conflicted = false;
           } else {
             planByDate[date] = queue.operations.reduce((slots, operation) => operation.apply(slots), queue.confirmed);
           }
         }
-        dispatch({ type: "loaded", recipes, plans: bounds.dates.map((date) => ({ date, ...planByDate[date] })), bounds });
+        dispatch({ type: "loaded", recipes, plans: bounds.dates.map((date) => ({ date, ...planByDate[date], revision: queues.current.get(date)?.revision ?? plans.find(plan => plan.date === date)?.revision ?? 0 })), bounds });
         await writeFingerprint(bounds, planByDate).catch(() => {});
       } catch (e) {
         if (cancelled) return;
@@ -195,7 +202,11 @@ export function usePlannerWeek(weekStart: string | undefined): UsePlannerWeekRes
       for (const plan of plans) planByDate[plan.date] = normalizeMealPlanSlots(plan);
       for (const date of current.bounds.dates) {
         const queue = queues.current.get(date);
-        if (queue && queue.operations.length === 0) queue.confirmed = planByDate[date];
+        if (queue && queue.operations.length === 0) {
+          queue.confirmed = planByDate[date];
+          queue.revision = plans.find(plan => plan.date === date)?.revision ?? 0;
+          queue.conflicted = false;
+        }
       }
       await writeFingerprint(current.bounds, planByDate).catch(() => {});
     } catch (e) {
@@ -214,9 +225,10 @@ export function usePlannerWeek(weekStart: string | undefined): UsePlannerWeekRes
       if (current.status !== "ready" && current.status !== "refreshing") return Promise.resolve();
       let queue = queues.current.get(date);
       if (!queue) {
-        queue = { confirmed: current.data.planByDate[date] ?? emptyMealPlanSlots(), operations: [], running: false };
+        queue = { confirmed: current.data.planByDate[date] ?? emptyMealPlanSlots(), revision: current.data.revisions[date] ?? 0, conflicted: false, operations: [], running: false };
         queues.current.set(date, queue);
       }
+      if (queue.conflicted) return Promise.reject(new ApiError("Refresh the plan before trying again.", 409, "meal_plan_conflict_reload_failed"));
       const ownedQueue = queue;
       mutationRevision.current += 1;
       let resolve!: () => void;
@@ -227,7 +239,7 @@ export function usePlannerWeek(weekStart: string | undefined): UsePlannerWeekRes
       function paint() {
         if (queues.current.get(date) !== ownedQueue || !stateRef.current.bounds.dates.includes(date)) return;
         const slots = ownedQueue.operations.reduce((value, operation) => operation.apply(value), ownedQueue.confirmed);
-        dispatch({ type: "applyPlan", date, slots });
+        dispatch({ type: "applyPlan", date, slots, revision: ownedQueue.revision });
       }
 
       async function flush() {
@@ -236,15 +248,44 @@ export function usePlannerWeek(weekStart: string | undefined): UsePlannerWeekRes
         while (ownedQueue.operations.length > 0 && queues.current.get(date) === ownedQueue) {
           const operation = ownedQueue.operations[0];
           try {
-            const updated = await apiClient.mealPlan.updateDay(date, operation.apply(ownedQueue.confirmed));
+            const updated = await apiClient.mealPlan.updateDay(date, operation.apply(ownedQueue.confirmed), ownedQueue.revision);
             if (queues.current.get(date) !== ownedQueue) return;
             ownedQueue.confirmed = normalizeMealPlanSlots(updated);
+            ownedQueue.revision = updated.revision ?? ownedQueue.revision + 1;
             ownedQueue.operations.shift();
             paint();
             haptics.success();
             operation.resolve();
           } catch (error) {
             if (queues.current.get(date) !== ownedQueue) return;
+            if (error instanceof ApiError && error.status === 409) {
+              ownedQueue.conflicted = true;
+              const abandoned = ownedQueue.operations.splice(0);
+              let failure: Error = error;
+              try {
+                const plans = await apiClient.mealPlan.list(date, date);
+                if (queues.current.get(date) === ownedQueue) {
+                  const latest = plans.find(plan => plan.date === date);
+                  ownedQueue.confirmed = normalizeMealPlanSlots(latest);
+                  ownedQueue.revision = latest?.revision ?? 0;
+                  ownedQueue.conflicted = false;
+                  paint();
+                  void resolveRecipeDetails(apiClient.recipes.get, Object.values(ownedQueue.confirmed).flat()).then(recipes => {
+                    if (queues.current.get(date) === ownedQueue && stateRef.current.bounds.dates.includes(date)) {
+                      recipes.forEach(recipe => dispatch({type: "recipeResolved", recipe}));
+                    }
+                  }).catch(() => undefined);
+                  const latestState = stateRef.current;
+                  if (latestState.status === "ready" || latestState.status === "refreshing") await writeFingerprint(latestState.bounds, latestState.data.planByDate).catch(() => {});
+                }
+              } catch {
+                failure = new ApiError("Could not reload the changed plan. Refresh before trying again.", 409, "meal_plan_conflict_reload_failed");
+              } finally {
+                ownedQueue.running = false;
+                abandoned.forEach(pending => pending.reject(failure));
+              }
+              return;
+            }
             ownedQueue.operations.shift();
             paint();
             haptics.error();
@@ -266,9 +307,15 @@ export function usePlannerWeek(weekStart: string | undefined): UsePlannerWeekRes
   );
 
   const addRecipeToSlot = useCallback(
-    (date: string, slot: MealType, recipeId: string) =>
-      mutateSlot(date, slot, (cur) => (cur.includes(recipeId) ? cur : [...cur, recipeId])),
-    [mutateSlot],
+    (date: string, slot: MealType, recipeId: string) => {
+      const bounds = stateRef.current.bounds;
+      const pending = mutateSlot(date, slot, cur => cur.includes(recipeId) ? cur : [...cur, recipeId]);
+      void apiClient.recipes.get(recipeId).then(recipe => {
+        if (stateRef.current.bounds === bounds) dispatch({type: "recipeResolved", recipe});
+      }).catch(() => undefined);
+      return pending;
+    },
+    [mutateSlot, apiClient],
   );
 
   const removeRecipeFromSlot = useCallback(

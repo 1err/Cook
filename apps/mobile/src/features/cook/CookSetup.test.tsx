@@ -10,7 +10,10 @@ const mockRecipesList = jest.fn();
 const mockMealPlanList = jest.fn();
 const mockApiClient = {
   cooking: { create: mockCreate, active: mockActive, discard: mockDiscard },
-  recipes: { list: mockRecipesList },
+  recipes: {
+      page: async (options: {q?: string} = {}) => ({items: (await mockRecipesList()).filter((r: Recipe) => !options.q || r.title.toLowerCase().includes(options.q.toLowerCase())).map((r: Recipe) => ({...r, ingredient_count:r.ingredients.length, step_count:r.steps?.length ?? 0, already_saved:true})), next_cursor:null}),
+      get: async (id: string) => (await mockRecipesList()).find((r: Recipe) => r.id === id),
+    },
   mealPlan: { list: mockMealPlanList },
 };
 

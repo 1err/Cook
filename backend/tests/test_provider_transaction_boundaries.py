@@ -1,16 +1,18 @@
 """External work must not retain an authenticated request's SQL connection."""
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import UUID
 
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import QueuePool
 
 from app.api import ai_budget, auth, routes_instacart, routes_recipes, routes_shopping
 from app.db.models import AIUsageCounterModel, RecipeModel, UserModel
+from app.db.ai_cost_models import AIInflightLeaseModel
 from app.db.repo_ai_usage import counter_statement
 from app.db.session import get_session
 from app.models import Recipe
@@ -45,7 +47,7 @@ def boundary_app(monkeypatch, tmp_path):
         f"sqlite:///{tmp_path / 'boundaries.db'}", poolclass=QueuePool,
         connect_args={"check_same_thread": False},
     )
-    for model in (UserModel, RecipeModel, AIUsageCounterModel):
+    for model in (UserModel, RecipeModel, AIUsageCounterModel, AIInflightLeaseModel):
         model.__table__.create(engine)
     with Session(engine) as setup:
         setup.add(UserModel(id=USER_ID, email="boundary@example.com"))
@@ -99,11 +101,28 @@ async def test_tutorial_releases_owned_recipe_read_before_estimation(monkeypatch
     async def reserve(session, account_id):
         await session.execute(counter_statement(f"user:{account_id}", 60, 120, 10))
 
+    async def acquire_lease(session, account_id, request_id, **limits):
+        # Real lease persistence in the same admission transaction. PostgreSQL
+        # locking/count races are covered by the dedicated integration suite.
+        session.sync.add(AIInflightLeaseModel(id=request_id, account_id=account_id,
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=limits['ttl'])))
+
+    async def cleanup_lease(request_id):
+        boundary_app.assert_released()
+        with Session(boundary_app.engine) as session:
+            session.execute(delete(AIInflightLeaseModel).where(AIInflightLeaseModel.id == request_id))
+            session.commit()
+
     async def estimate(steps):
         boundary_app.assert_released()
+        with Session(boundary_app.engine) as verify:
+            leases = verify.execute(select(AIInflightLeaseModel)).scalars().all()
+            assert len(leases) == int(paid_ai), 'provider entered before committed lease admission'
         return steps
 
     monkeypatch.setattr(ai_budget, "reserve_ai_budget", reserve)
+    monkeypatch.setattr(ai_budget, "acquire_lease", acquire_lease)
+    monkeypatch.setattr(ai_budget, "cleanup_lease", cleanup_lease)
     monkeypatch.setattr(routes_recipes, "estimate_tutorial_step_metadata", estimate)
     async with client_for(boundary_app) as client:
         response = await client.post("/recipes/owned-recipe/tutorial/estimate", json={"steps": ["Simmer broth"]})
@@ -113,6 +132,7 @@ async def test_tutorial_releases_owned_recipe_read_before_estimation(monkeypatch
         assert verify.get(RecipeModel, "owned-recipe").title == "Soup"
         counters = verify.execute(select(AIUsageCounterModel)).scalars().all()
         assert len(counters) == int(paid_ai)
+        assert not verify.execute(select(AIInflightLeaseModel)).scalars().all()
 
 
 @pytest.mark.asyncio

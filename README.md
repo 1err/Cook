@@ -4,7 +4,7 @@ Video-first recipe planner: import from a supported video link or pasted recipe 
 
 Chef World has a Next.js web app, an Expo/React Native mobile app, and a shared FastAPI/PostgreSQL backend. The repository preserves one set of shared domain types, cooking-session rules, translations, and retailer handoff helpers across both clients.
 
-For engineering review, start with the [architecture](docs/architecture.md), [data inventory](docs/data-inventory.md), and [September 2026 engineering review](docs/engineering-review-2026-09-14.md). These document the implementation, verification evidence, and remaining App Store and production release work.
+For engineering review, start with the [architecture](docs/architecture.md), [data inventory](docs/data-inventory.md), and [September 2026 engineering review](docs/engineering-review-2026-09-14.md). These document the implementation, verification evidence, and remaining App Store and production release work. For the current scalability branch, also read the [capacity operating runbook](docs/capacity-operations.md) and [local workload harness](docs/qa/2026-09-18-capacity-harness.md); local test results do not establish production capacity.
 
 Shopping now includes **Shop on Instacart** alongside the existing Weee experience on web and iOS. It exports ingredients to an Instacart review page; a backend developer key is required for real shopping links. See the [Instacart setup guide](docs/qa/2026-09-14-instacart-setup.md).
 
@@ -50,7 +50,7 @@ cp .env.example .env
 Start PostgreSQL first (for the included local database, run `docker compose up -d postgres` from the repository root). Then apply migrations and run the API from `backend/`:
 
 ```bash
-alembic upgrade head
+python -m app.migrate
 python run.py
 ```
 
@@ -95,7 +95,7 @@ Video-link import does not download audiovisual media. It sends provider-exposed
 | TikTok | Public post title/caption returned by TikTok's oEmbed endpoint | This does **not** transcribe the video's speech. Ingredient-only text gets the same constrained recovery attempt; sparse, private, unavailable, or still-unrecoverable posts ask for a transcript. Arbitrary TikTok speech transcription needs a future provider. |
 
 - **Supported links:** Use public HTTPS YouTube or TikTok video URLs. RedNote and uploaded video files are not supported.
-- **Env:** Create a `backend/.env` file (see `.env.example`). Configure `OPENAI_API_KEY` for recipe extraction; without it, import reports that AI is unavailable. Shopping refinement and tutorial timing can use conservative local fallbacks. Never put a provider key in web/mobile public environment variables.
+- **Env:** Create a `backend/.env` file (see `.env.example`). Configure a server-only `OPENAI_API_KEY`, dated model prices, and explicit account/app AI monetary allowances within the combined operating budget for recipe extraction; the default AI monetary allowance is zero. Without a key, import reports that AI is unavailable. Shopping refinement and tutorial timing can use conservative local fallbacks. Never put a provider key in web/mobile public environment variables.
 - **Fallback:** When caption retrieval is blocked, YouTube import tries retained player metadata, the public watch page, bounded requests to YouTube player hosts, and finally an anonymous Jina Reader request for the canonical video description. This last fallback depends on a third-party public-page service and can be rate-limited. If extraction finds ingredients but no usable method, the model makes one constrained step-recovery attempt using only the extracted dish and ingredients. If no usable steps remain, the link import returns a clear request for a pasted transcript instead of an empty tutorial. Manual URL entry remains the Share Sheet fallback and the supported Android path.
 
 ### iOS Share Sheet

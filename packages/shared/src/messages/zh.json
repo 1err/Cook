@@ -1,4 +1,8 @@
 {
+  "planner.conflict": "此计划已在另一台设备上更新。请查看最新计划，再重新操作。",
+  "planner.conflictReloading": "此计划已在另一台设备上更新，正在加载最新计划…",
+  "planner.conflictReloadFailed": "此计划已在另一台设备上更新，但未能加载。请先刷新计划，再重新操作。",
+  "common.loadMoreRecipes": "加载更多菜谱",
   "common.loading": "加载中...",
   "common.add": "添加",
   "common.added": "已添加",

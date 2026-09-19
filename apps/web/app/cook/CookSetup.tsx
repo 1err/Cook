@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ApiError } from "@cooking/api-client";
+import { ApiError, resolveRecipeDetails } from "@cooking/api-client";
 import type { CookingSession, MealPlanDay, MealType, Recipe } from "@cooking/shared";
 import { Button } from "../components/ui/Button";
 import { webApiClient } from "../lib/api";
 import { useT } from "../lib/i18n";
+import { useRecipePage } from "../lib/useRecipePage";
 import styles from "./CookPage.module.css";
 import { getPlannedSelection } from "./cookSetupModel";
 
@@ -29,6 +30,7 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
   const [plans, setPlans] = useState<MealPlanDay[]>([]);
   const [manualSelection, setManualSelection] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+  const page = useRecipePage("mine", {q: search});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,8 +39,9 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([webApiClient.recipes.list(), webApiClient.mealPlan.list(date, date)])
-      .then(([nextRecipes, nextPlans]) => {
+    webApiClient.mealPlan.list(date, date)
+      .then(async nextPlans => {
+        const nextRecipes = await resolveRecipeDetails(webApiClient.recipes.get, nextPlans.flatMap(plan => [...plan.breakfast, ...plan.lunch, ...plan.dinner]));
         if (cancelled) return;
         setRecipes(nextRecipes);
         setPlans(nextPlans);
@@ -60,10 +63,7 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
     [date, meal, plans],
   );
   const selected = mode === "planned" ? plannedSelection : manualSelection;
-  const query = search.trim().toLocaleLowerCase();
-  const filteredRecipes = recipes.filter((recipe) =>
-    query ? recipe.title.toLocaleLowerCase().includes(query) : true,
-  );
+  const filteredRecipes = page.items;
 
   function toggleRecipe(recipeId: string) {
     setManualSelection((current) =>
@@ -176,7 +176,7 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
           </label>
           <div className={styles.recipeChoices} role="group" aria-label={t("cook.setup.chooseRecipes")}>
             {filteredRecipes.map((recipe) =>
-              recipe.steps?.length ? (
+              recipe.step_count ? (
                 <label key={recipe.id} className={styles.recipeChoice}>
                   <input
                     type="checkbox"
@@ -201,6 +201,8 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
         </div>
       )}
 
+      {page.next && mode === "manual" ? <Button disabled={page.loading} onClick={() => void page.more()}>{t("common.loadMoreRecipes")}</Button> : null}
+      {page.error ? <p role="alert">{page.error}</p> : null}
       {error ? <p role="alert" className={styles.error}>{error}</p> : null}
       <Button disabled={selected.length === 0} loading={submitting} onClick={() => void start()}>
         {t("cook.setup.startCount", { count: selected.length })}

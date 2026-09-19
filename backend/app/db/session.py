@@ -5,6 +5,7 @@ Postgres only (DATABASE_URL must be postgresql+asyncpg://...).
 import asyncio
 from collections.abc import AsyncGenerator
 import logging
+import ssl
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -71,14 +72,24 @@ def init_engine() -> None:
         if async_session_maker is None:
             async_session_maker = _make_session_maker(_engine)
         return
-    connect_args: dict = {}
+    connect_args: dict = {"server_settings": {
+        "statement_timeout": str(settings.DB_STATEMENT_TIMEOUT_MS),
+        "lock_timeout": str(settings.DB_LOCK_TIMEOUT_MS),
+        "idle_in_transaction_session_timeout": str(settings.DB_IDLE_TRANSACTION_TIMEOUT_MS),
+    }}
     if settings.DATABASE_SSL:
-        connect_args["ssl"] = True
+        connect_args["ssl"] = (ssl.create_default_context(cafile=settings.DATABASE_CA_FILE)
+                               if settings.DATABASE_CA_FILE else True)
 
     _engine = create_async_engine(
         settings.DATABASE_URL,
         echo=False,
-        connect_args=connect_args if connect_args else {},
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+        pool_timeout=settings.DB_POOL_TIMEOUT_SECONDS,
+        pool_recycle=settings.DB_POOL_RECYCLE_SECONDS,
+        pool_pre_ping=True,
+        connect_args=connect_args,
     )
     async_session_maker = _make_session_maker(_engine)
 

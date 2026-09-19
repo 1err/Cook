@@ -103,8 +103,8 @@ async function installShoppingFixtures(page: Page) {
       await fulfillJson(route, mealPlans);
       return;
     }
-    if (pathname === "/recipes") {
-      await fulfillJson(route, recipes);
+    if (pathname.startsWith("/recipes/")) {
+      await fulfillJson(route, recipes.find(recipe => recipe.id === pathname.split("/").at(-1)));
       return;
     }
     if (pathname === "/store-products/batch") {

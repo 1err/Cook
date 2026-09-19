@@ -1,0 +1,44 @@
+{
+  "result": "passed",
+  "completed_utc": "2026-09-19T03:50:31Z",
+  "duration_seconds": 19.098,
+  "scope": "Synthetic local PostgreSQL dump and separate-database restore; not cloud PITR, image restore, RPO or RTO qualification",
+  "schema": "20260918_upload_budget",
+  "dump_bytes": 22426596,
+  "tables": {
+    "users": {
+      "count": 10000,
+      "digest": "d44fcc255f9181d086d161b286c81687"
+    },
+    "auth_identities": {
+      "count": 10000,
+      "digest": "beca40e77b5f38602872996d6a42772b"
+    },
+    "recipes": {
+      "count": 112070,
+      "digest": "1cb7d72824c725c82ce86c9a28fff257"
+    },
+    "meal_plan": {
+      "count": 10000,
+      "digest": "b1d4518241bd0b29a6b2701172a6874d"
+    },
+    "cooking_sessions": {
+      "count": 200,
+      "digest": "8bfc4b3b0249c4d23fca470e1491c4f3"
+    },
+    "cooking_session_dishes": {
+      "count": 200,
+      "digest": "568964d3d4015a1205447fe6014844da"
+    },
+    "cooking_session_steps": {
+      "count": 1200,
+      "digest": "72e6a4c322e2df4518267362af204f2d"
+    },
+    "cooking_session_mutations": {
+      "count": 2907,
+      "digest": "1cf8205e9cfc7b72c0adcf2c18b42202"
+    }
+  },
+  "all_counts_and_row_content_digests_match": true,
+  "production_touched": false
+}

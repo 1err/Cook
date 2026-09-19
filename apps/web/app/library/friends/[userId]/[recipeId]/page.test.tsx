@@ -20,14 +20,15 @@ test.each(["A public description of these tomato noodles.", null])(
   "does not show private import text in the shared recipe subtitle (description: %s)",
   async (description) => {
     mockApiFetch.mockImplementation(async (path: string) => new Response(JSON.stringify(
-      path === "/recipes" ? [] : [{
+      {
         id: "recipe-1",
         title: "Tomato noodles",
         description,
         raw_extraction_text: "Private import guidance: synthetic family medical notes.",
         source_url: "https://example.com/noodles",
         ingredients: [{ name: "tomato", quantity: "2" }],
-      }],
+        already_saved: false,
+      },
     ), { status: 200 }));
 
     render(<FriendRecipeDetailPage />);
@@ -37,6 +38,6 @@ test.each(["A public description of these tomato noodles.", null])(
     expect(screen.getByRole("link", { name: "Original source →" })).toHaveAttribute(
       "href", "https://example.com/noodles",
     );
-    expect(mockApiFetch).toHaveBeenCalledWith("/users/friend-1/recipes");
+    expect(mockApiFetch).toHaveBeenCalledWith("/users/friend-1/recipes/recipe-1");
   },
 );

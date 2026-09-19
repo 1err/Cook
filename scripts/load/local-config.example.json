@@ -1,0 +1,15 @@
+{
+  "cpu": null,
+  "memory_mb": null,
+  "replicas": 1,
+  "database_version": null,
+  "database_connection_limit": null,
+  "database_pool_size": null,
+  "database_pool_overflow": null,
+  "region": "local",
+  "image_digest": null,
+  "frontend_revision": null,
+  "server_revision": null,
+  "abuse_limits_enabled": false,
+  "monthly_budget_usd": 150
+}

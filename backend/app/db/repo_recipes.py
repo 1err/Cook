@@ -2,11 +2,17 @@
 Recipe repository: async SQLAlchemy access. Maps DB rows to Pydantic Recipe.
 All queries filter by user_id (multi-tenant).
 """
+import base64
+import hashlib
+import hmac
 import json
 import uuid
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, cast, func, literal, or_, select, tuple_
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import aliased
+from app.core.config import settings
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -242,3 +248,96 @@ async def delete_recipe(session: AsyncSession, recipe_id: str, user_id: uuid.UUI
     await session.delete(row)
     await session.flush()
     return True
+
+
+def _page_scope_hash(scope: list) -> str:
+    return hashlib.sha256(json.dumps(scope, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+
+
+def _encode_page_cursor(scope: list, title: str, recipe_id: str) -> str:
+    payload = json.dumps([1, _page_scope_hash(scope), title, recipe_id], ensure_ascii=False, separators=(",", ":")).encode()
+    signature = hmac.new(settings.AUTH_SECRET.encode(), payload, hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(signature + payload).decode().rstrip("=")
+
+
+def _decode_page_cursor(cursor: str, scope: list) -> tuple[str, str]:
+    try:
+        if len(cursor) > 8192:
+            raise ValueError()
+        decoded = base64.b64decode(cursor + "=" * (-len(cursor) % 4), altchars=b"-_", validate=True)
+        signature, payload = decoded[:32], decoded[32:]
+        expected = hmac.new(settings.AUTH_SECRET.encode(), payload, hashlib.sha256).digest()
+        if not hmac.compare_digest(signature, expected):
+            raise ValueError()
+        version, saved_scope, title, recipe_id = json.loads(payload)
+        if version != 1 or saved_scope != _page_scope_hash(scope) or not isinstance(title, str) or not isinstance(recipe_id, str):
+            raise ValueError()
+        return title, recipe_id
+    except (ValueError, TypeError, UnicodeError) as exc:
+        raise ValueError("Invalid recipe cursor for this library or filter") from exc
+
+
+async def recipe_page(
+    session: AsyncSession, caller_id: uuid.UUID, *, owner_id: uuid.UUID | None = None,
+    catalog: bool = False, limit: int = 40, cursor: str | None = None,
+    q: str = "", tags: list[str] | None = None,
+):
+    """Read-committed keyset traversal: edits may move rows; clients deduplicate IDs.
+
+    Each query rechecks ownership/public visibility. No instructions are selected.
+    Inserts before the cursor appear on refresh, not later in the current traversal.
+    """
+    from app.models import RecipePage, RecipeSummary, LEGACY_LIBRARY_CATEGORY_TO_TAG
+    if not 1 <= limit <= 100:
+        raise ValueError("Page limit must be between 1 and 100")
+    q = q.strip().lower()
+    if len(q) > 200:
+        raise ValueError("Search is limited to 200 characters")
+    tags = sorted(coerce_library_tags(tags or []))
+    if owner_id is not None and catalog:
+        raise ValueError("Choose one library scope")
+    scope = [f"friend:{owner_id}" if owner_id is not None else "catalog" if catalog else "mine", str(caller_id), q, tags]
+    r = RecipeModel
+    copied = aliased(r)
+    already_saved = select(copied.id).where(
+        copied.user_id == caller_id,
+        or_(copied.id == r.id, copied.catalog_source_recipe_id == r.id),
+    ).exists()
+    if owner_id is None and not catalog:
+        already_saved = literal(True)
+    statement = select(
+        r.id, r.title, func.lower(r.title).label("sort_title"), r.source_url, r.thumbnail_url,
+        r.library_tags, r.library_category, r.is_public_catalog, r.catalog_source_recipe_id,
+        r.total_time_minutes, func.jsonb_array_length(cast(r.ingredients, JSONB)).label("ingredient_count"),
+        func.jsonb_array_length(cast(r.steps, JSONB)).label("step_count"), already_saved.label("already_saved"),
+    )
+    if catalog:
+        statement = statement.where(r.is_public_catalog.is_(True))
+    elif owner_id is not None:
+        statement = statement.where(r.user_id == owner_id, select(UserModel.id).where(
+            UserModel.id == owner_id, UserModel.is_library_public.is_(True), UserModel.id != caller_id,
+        ).exists())
+    else:
+        statement = statement.where(r.user_id == caller_id)
+    if q:
+        statement = statement.where(func.lower(r.title).contains(q, autoescape=True))
+    for tag in tags:
+        legacy = [key for key, value in LEGACY_LIBRARY_CATEGORY_TO_TAG.items() if value == tag]
+        statement = statement.where(or_(
+            cast(r.library_tags, JSONB).contains([tag]),
+            and_(or_(r.library_tags.is_(None), cast(r.library_tags, JSONB) == []), r.library_category.in_([tag, *legacy])),
+        ))
+    if cursor:
+        title, recipe_id = _decode_page_cursor(cursor, scope)
+        statement = statement.where(tuple_(func.left(func.lower(r.title), 256), func.lower(r.title), r.id) > tuple_(title[:256], title, recipe_id))
+    result = await session.execute(statement.order_by(func.left(func.lower(r.title), 256), func.lower(r.title), r.id).limit(limit + 1))
+    rows = result.mappings().all()
+    items = []
+    for row in rows[:limit]:
+        values = dict(row)
+        values.pop("sort_title")
+        values["library_tags"] = coerce_library_tags(json.loads(values["library_tags"] or "[]") or values["library_category"])
+        values["library_category"] = values["library_tags"][0] if values["library_tags"] else None
+        items.append(RecipeSummary(**values))
+    next_cursor = _encode_page_cursor(scope, rows[limit - 1]["sort_title"], rows[limit - 1]["id"]) if len(rows) > limit else None
+    return RecipePage(items=items, next_cursor=next_cursor)

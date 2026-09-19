@@ -55,9 +55,9 @@ elif name == "aws":
             deployment["taskDefinition"] = task.replace(":2", ":1")
         call_count = sum(json.loads(line)[1:3] == ["ecs", "describe-services"] for line in (root / "calls.jsonl").read_text().splitlines())
         current_task = task if completed else task.replace(":2", ":1")
-        if os.environ.get("CONCURRENT_RELEASE") and call_count > 1 and not completed:
+        if ((os.environ.get("CONCURRENT_RELEASE") and call_count > 1) or (os.environ.get("CONCURRENT_MIGRATION") and call_count > 3)) and not completed:
             current_task = task.replace(":2", ":3")
-        print(json.dumps({"services":[{"taskDefinition":current_task, "desiredCount":1, "runningCount":1, "pendingCount":0, "deployments":[deployment]}], "failures":[]}))
+        print(json.dumps({"services":[{"taskDefinition":current_task, "desiredCount":1, "runningCount":1, "pendingCount":0, "deployments":[deployment], "launchType":"FARGATE", "platformVersion":"LATEST", "networkConfiguration":{"awsvpcConfiguration":{"subnets":["subnet-private"], "securityGroups":["sg-private"], "assignPublicIp":"DISABLED"}}}], "failures":[]}))
     elif op == ["ecs", "describe-task-definition"]:
         fixture = root / "task-fixture.json"
         if fixture.exists():
@@ -70,15 +70,24 @@ elif name == "aws":
         assert "revision" not in payload and "taskDefinitionArn" not in payload
         (root / "registered.json").write_text(json.dumps(payload))
         print(task)
+    elif op == ["ecs", "run-task"]:
+        payload = json.loads(pathlib.Path(args[args.index("--cli-input-json")+1].removeprefix("file://")).read_text())
+        (root / "migration-run.json").write_text(json.dumps(payload))
+        print(json.dumps({"tasks":[] if os.environ.get("MIGRATION_RUN_FAILURE") else [{"taskArn":"arn:task:migration"}], "failures":[{"reason":"failed"}] if os.environ.get("MIGRATION_RUN_FAILURE") else []}))
+    elif op == ["ecs", "stop-task"]:
+        pass
     elif op == ["ecs", "update-service"]:
         assert args[args.index("--task-definition")+1] == task
         print("deployment-new")
     elif op == ["ecs", "list-tasks"]:
         print(json.dumps({"taskArns":["arn:task:one"]}))
+    elif op == ["ecs", "describe-tasks"] and "arn:task:migration" in args:
+        print(json.dumps({"tasks":[{"taskArn":"arn:task:migration", "taskDefinitionArn":task, "lastStatus":"RUNNING" if os.environ.get("MIGRATION_NOT_STOPPED") else "STOPPED", "stopCode":"TaskFailedToStart" if os.environ.get("MIGRATION_START_FAILURE") else "EssentialContainerExited", "containers":[{"name":"cooking-backend", "lastStatus":"STOPPED", "exitCode":1 if os.environ.get("MIGRATION_NONZERO") else 0, "imageDigest":"sha256:" + "b" * 64 if os.environ.get("MIGRATION_WRONG_DIGEST") else digest}]}], "failures":[{"reason":"missing"}] if os.environ.get("MIGRATION_DESCRIBE_FAILURE") else []}))
     elif op == ["ecs", "describe-tasks"]:
         print(json.dumps({"tasks":[{"taskDefinitionArn":task, "containers":[{"name":"cooking-backend", "imageDigest": "sha256:" + "b" * 64 if os.environ.get("WRONG_DIGEST") else digest}]}], "failures":[]}))
     elif op == ["ecs", "wait"]:
-        pass
+        if "tasks-stopped" in args and os.environ.get("MIGRATION_TIMEOUT"):
+            sys.exit(255)
     else:
         raise RuntimeError("Unhandled fake AWS command: " + repr(args))
 '''
@@ -108,7 +117,7 @@ class DeploySafetyTests(unittest.TestCase):
         return subprocess.run(["git", *args], cwd=self.root, check=True, capture_output=True, text=True)
 
     def deploy(self, **env):
-        return subprocess.run(["bash", str(self.root / "scripts/deploy-backend.sh")], cwd=self.root / "backend", input="y\n", text=True, capture_output=True, timeout=15, env={**os.environ, "PATH":str(self.root / "bin") + os.pathsep + os.environ["PATH"], "TEST_ROOT":str(self.root), "ACCOUNT":"123456789012", **env})
+        return subprocess.run(["bash", str(self.root / "scripts/deploy-backend.sh")], cwd=self.root / "backend", input="y\n", text=True, capture_output=True, timeout=15, env={**os.environ, "PATH":str(self.root / "bin") + os.pathsep + os.environ["PATH"], "TEST_ROOT":str(self.root), "ACCOUNT":"123456789012", "MIGRATION_SAFE_SIDECARS":"sidecar", **env})
 
     def calls(self):
         p = self.root / "calls.jsonl"
@@ -121,7 +130,7 @@ class DeploySafetyTests(unittest.TestCase):
         return str(path)
 
     def task_with_environment(self):
-        backend = {"name":"cooking-backend", "image":"123456789012.dkr.ecr.us-east-1.amazonaws.com/cooking-backend:old", "essential":True,
+        backend = {"name":"cooking-backend", "image":"123456789012.dkr.ecr.us-east-1.amazonaws.com/cooking-backend:old", "essential":True, "command":["sh", "-c", "alembic upgrade head && uvicorn app.main:app"],
                    "environment":[{"name":"KEEP_ENV", "value":"existing-private-value"}, {"name":"APP_ENV", "value":"development"}],
                    "secrets":[{"name":"PROVIDER_SECRET", "valueFrom":"arn:aws:ssm:us-east-1:123456789012:parameter/provider"}]}
         sidecar = {"name":"sidecar", "image":"sidecar:unchanged", "environment":[{"name":"APP_ENV", "value":"sidecar-setting"}]}
@@ -132,6 +141,36 @@ class DeploySafetyTests(unittest.TestCase):
 
     def assert_no_build_or_registration(self):
         self.assertFalse(any(call[0] == "docker" or call[1:3] in (["ecr", "get-login-password"], ["ecs", "register-task-definition"], ["ecs", "update-service"]) for call in self.calls()))
+
+    def test_migration_uses_new_revision_private_network_and_precedes_update(self):
+        result = self.deploy()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        migration = self.root / "migration-run.json"
+        self.assertTrue(migration.exists(), "release must migrate before updating the API")
+        payload = json.loads(migration.read_text())
+        self.assertEqual(payload["taskDefinition"], TASK)
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["networkConfiguration"]["awsvpcConfiguration"]["assignPublicIp"], "DISABLED")
+        self.assertEqual(payload["overrides"]["containerOverrides"], [{"name":"cooking-backend", "command":["python", "-m", "app.migrate"]}])
+        calls = self.calls()
+        self.assertLess(next(i for i,c in enumerate(calls) if c[1:3] == ["ecs", "run-task"]), next(i for i,c in enumerate(calls) if c[1:3] == ["ecs", "update-service"]))
+
+    def test_failed_or_unverifiable_migration_never_updates_service(self):
+        for failure in ("MIGRATION_RUN_FAILURE", "MIGRATION_TIMEOUT", "MIGRATION_NOT_STOPPED", "MIGRATION_START_FAILURE", "MIGRATION_NONZERO", "MIGRATION_WRONG_DIGEST", "MIGRATION_DESCRIBE_FAILURE", "CONCURRENT_MIGRATION"):
+            with self.subTest(failure=failure):
+                (self.root / "calls.jsonl").unlink(missing_ok=True)
+                result = self.deploy(**{failure:"1"})
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(any(c[1:3] == ["ecs", "update-service"] for c in self.calls()))
+                if failure == "MIGRATION_TIMEOUT":
+                    self.assertTrue(any(c[1:3] == ["ecs", "stop-task"] for c in self.calls()))
+
+    def test_sidecars_require_explicit_migration_safety_review(self):
+        self.task_with_environment()
+        result = self.deploy(MIGRATION_SAFE_SIDECARS="")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("sidecar", result.stderr.lower())
+        self.assert_no_build_or_registration()
 
     def test_dirty_tracked_backend_is_rejected_before_cloud_access(self):
         (self.root / "backend/app.py").write_text("COMMITTED = False\n")
@@ -200,6 +239,7 @@ class DeploySafetyTests(unittest.TestCase):
         self.assertEqual(updated["image"], "987654321098.dkr.ecr.eu-west-1.amazonaws.com/cooking-release@" + DIGEST)
         self.assertEqual(updated["environment"], [{"name":"KEEP_ENV", "value":"existing-private-value"}, {"name":"APP_ENV", "value":"production"}, {"name":"ADMIN_USER_IDS", "value":marker}])
         self.assertEqual(updated["secrets"], backend["secrets"])
+        self.assertEqual(updated["command"], ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"])
         self.assertEqual(payload["containerDefinitions"][1], sidecar)
         self.assertEqual(payload["tags"], tags)
         self.assertNotIn(marker, result.stdout + result.stderr + json.dumps(calls))
@@ -262,6 +302,7 @@ class DeploySafetyTests(unittest.TestCase):
         self.assertEqual(updated["environment"], [{"name":"KEEP_ENV", "value":"existing-private-value"}, {"name":"APP_ENV", "value":"production"}, {"name":"ADMIN_USER_IDS", "value":marker}, {"name":"OPTIONAL_VALUE", "value":""}])
         self.assertTrue(updated["image"].endswith("@" + DIGEST))
         self.assertEqual(updated["secrets"], backend["secrets"])
+        self.assertEqual(updated["command"], ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"])
         self.assertEqual(payload["containerDefinitions"][1], sidecar)
         self.assertEqual(payload["tags"], tags)
         self.assertEqual(sum(call[1:3] == ["ecs", "register-task-definition"] for call in self.calls()), 1)

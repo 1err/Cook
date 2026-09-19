@@ -19,7 +19,10 @@ vi.mock("../lib/api", () => ({
   webApiClient: {
     cooking: { active: mockActive, create: mockCreate, discard: mockDiscard },
     mealPlan: { list: mockMealPlanList },
-    recipes: { list: mockRecipesList },
+    recipes: {
+      page: async (options: {q?: string} = {}) => ({items: (await mockRecipesList()).filter((r: Recipe) => !options.q || r.title.toLowerCase().includes(options.q.toLowerCase())).map((r: Recipe) => ({...r, ingredient_count:r.ingredients.length, step_count:r.steps?.length ?? 0, already_saved:true})), next_cursor:null}),
+      get: async (id: string) => (await mockRecipesList()).find((r: Recipe) => r.id === id),
+    },
   },
 }));
 vi.mock("../lib/i18n", () => ({ useT: mockUseT }));

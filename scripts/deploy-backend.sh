@@ -83,6 +83,21 @@ jq -e --arg name "$CONTAINER_NAME" --slurpfile overrides "$RELEASE_TMP/task-env-
     (.secrets // [])[] | .name as $key | select($env | has($key))] | length == 0
 ' "$RELEASE_TMP/current-task.json" >/dev/null 2>/dev/null || fail "Task environment overrides conflict with ECS secrets or the task definition is invalid"
 
+# run-task starts every container in the same task definition. Explicitly review
+# auxiliary containers; an API/worker sidecar must never start by accident.
+# MIGRATION_SAFE_SIDECARS is a comma-separated list of reviewed names (e.g. a
+# telemetry log router). These containers are preserved, not command-overridden.
+jq -e --arg name "$CONTAINER_NAME" --arg safe "${MIGRATION_SAFE_SIDECARS:-}" '
+  ($safe | split(",") | map(select(length > 0))) as $safeNames |
+  .taskDefinition.containerDefinitions |
+  all(.[]; if .name == $name then
+    (.essential != false and ((.entryPoint // []) | length) == 0)
+    else .name as $n | ($safeNames | index($n)) != null end)
+' "$RELEASE_TMP/current-task.json" >/dev/null || fail "Migration requires an essential backend without a custom entrypoint and explicit MIGRATION_SAFE_SIDECARS review for every sidecar"
+jq -e '.services[0].networkConfiguration.awsvpcConfiguration |
+  (.subnets | length) > 0 and (.securityGroups | length) > 0
+' "$RELEASE_TMP/service.json" >/dev/null || fail "Migration requires the service awsvpc subnet/security group configuration"
+
 if [ -n "$PREBUILT_IMAGE_DIGEST" ]; then
   echo "==> verify prebuilt image for $REPO:$SHA"
   # Scope the lookup to the configured registry/repository and exact commit tag.
@@ -115,6 +130,7 @@ jq --arg name "$CONTAINER_NAME" --arg image "$IMAGE" --slurpfile overrides "$REL
   del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt) |
   (.containerDefinitions[] | select(.name == $name)) |= (
     .image = $image |
+    .command = ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"] |
     if ($env | length) > 0 then
       (.environment // []) as $existing |
       .environment = (
@@ -127,6 +143,48 @@ jq --arg name "$CONTAINER_NAME" --arg image "$IMAGE" --slurpfile overrides "$REL
 ' "$RELEASE_TMP/current-task.json" > "$RELEASE_TMP/new-task.json"
 NEW_TASK=$(aws ecs register-task-definition --cli-input-json "file://$RELEASE_TMP/new-task.json" --region "$REGION" --query 'taskDefinition.taskDefinitionArn' --output text)
 [[ "$NEW_TASK" == arn:*:task-definition/* ]] || fail "ECS did not return a task definition ARN"
+assert_service_unchanged
+
+# Production settings require explicit TRUSTED_PROXY_CIDRS from verified ALB
+# subnets. A missing/invalid value fails the migration before service update.
+# Use the exact immutable API revision, including its environment and secrets.
+# Network values and overrides stay in private files rather than command output.
+echo "==> running the release migration before changing the API service"
+jq --arg cluster "$CLUSTER" --arg task "$NEW_TASK" --arg name "$CONTAINER_NAME" '
+  .services[0] as $service |
+  {cluster: $cluster, taskDefinition: $task, count: 1,
+   networkConfiguration: $service.networkConfiguration,
+   overrides: {containerOverrides: [{name: $name, command: ["python", "-m", "app.migrate"]}]}} |
+  if (($service.capacityProviderStrategy // []) | length) > 0 then
+    .capacityProviderStrategy = $service.capacityProviderStrategy
+  else .launchType = ($service.launchType // "FARGATE") end |
+  if $service.platformVersion then .platformVersion = $service.platformVersion else . end
+' "$RELEASE_TMP/service.json" > "$RELEASE_TMP/migration-input.json"
+aws ecs run-task --cli-input-json "file://$RELEASE_TMP/migration-input.json" --region "$REGION" > "$RELEASE_TMP/migration-run.json" || fail "Migration task could not be launched; service was not updated"
+jq -e '(.failures | length) == 0 and (.tasks | length) == 1 and (.tasks[0].taskArn | type) == "string"' "$RELEASE_TMP/migration-run.json" >/dev/null || fail "Migration run-task returned failures; service was not updated"
+MIGRATION_TASK=$(jq -er '.tasks[0].taskArn' "$RELEASE_TMP/migration-run.json")
+# AWS tasks-stopped waiter is bounded (6 seconds x 100 attempts). On timeout or
+# interruption stop our migration task; never cancel another release's task.
+cleanup_release() {
+  if [ -n "${MIGRATION_TASK:-}" ]; then
+    aws ecs stop-task --cluster "$CLUSTER" --task "$MIGRATION_TASK" --reason "Migration release interrupted or timed out" --region "$REGION" > /dev/null 2>&1 || true
+  fi
+  rm -rf -- "$RELEASE_TMP"
+}
+trap cleanup_release EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$MIGRATION_TASK" --region "$REGION" || fail "Migration task timed out or could not be verified; service was not updated"
+aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$MIGRATION_TASK" --region "$REGION" > "$RELEASE_TMP/migration-stopped.json"
+jq -e --arg task "$NEW_TASK" --arg arn "$MIGRATION_TASK" --arg name "$CONTAINER_NAME" --arg digest "$DIGEST" '
+  (.failures | length) == 0 and (.tasks | length) == 1 and
+  (.tasks[0] | .taskArn == $arn and .taskDefinitionArn == $task and
+   .lastStatus == "STOPPED" and .stopCode == "EssentialContainerExited" and
+   ([.containers[] | select(.name == $name)] | length) == 1 and
+   any(.containers[]; .name == $name and .lastStatus == "STOPPED" and .exitCode == 0 and .imageDigest == $digest))
+' "$RELEASE_TMP/migration-stopped.json" >/dev/null || fail "Migration failed or its revision/digest was unverifiable; service was not updated"
+MIGRATION_TASK=""
+# Another serialized release must not be overwritten while migrations ran.
 assert_service_unchanged
 
 echo "==> deploying $NEW_TASK ($DIGEST)"
@@ -157,6 +215,8 @@ done
 
 HEALTH_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$API_BASE/health")
 [ "$HEALTH_CODE" = "200" ] || fail "Health check returned HTTP $HEALTH_CODE"
+READY_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$API_BASE/ready")
+[ "$READY_CODE" = "200" ] || fail "Readiness check returned HTTP $READY_CODE"
 PROBE_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$API_BASE$PROBE_PATH")
 case "$PROBE_CODE" in
   200|401|403|422) ;;

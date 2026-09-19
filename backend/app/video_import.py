@@ -1,5 +1,4 @@
 """Provider-aware parsing and caption retrieval for supported video URLs."""
-import asyncio
 from dataclasses import dataclass
 from http.client import HTTPException
 import json
@@ -888,8 +887,13 @@ def fetch_tiktok_text(source: VideoSource, *, opener=_open_tiktok_oembed) -> Vid
 
 
 async def fetch_video_text(source: VideoSource) -> VideoTextResult:
-    fetcher = fetch_youtube_text if source.provider == "youtube" else fetch_tiktok_text
-    return await asyncio.to_thread(fetcher, source)
+    from app.core.ai_context import current_ai_request
+    from app.core.config import settings
+    from app.core.video_process import run_video_fetch
+
+    context = current_ai_request.get()
+    deadline = context.deadline if context is not None else monotonic() + settings.AI_OPERATION_TIMEOUT_SECONDS
+    return await run_video_fetch(source, deadline=deadline)
 
 
 def _youtube_id(host: str, path: str, query: dict[str, list[str]]) -> str | None:

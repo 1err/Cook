@@ -1,3 +1,4 @@
+import { recipePageFixture } from "./recipePageFixture";
 import { expect, test, type Page, type Route } from "@playwright/test";
 
 const appOrigin = `http://127.0.0.1:${process.env.PORT ?? "3000"}`;
@@ -36,6 +37,7 @@ const recipes = Array.from({ length: 24 }, (_, index) => {
 });
 
 type MealPlanDay = {
+  revision: number;
   date: string;
   breakfast: string[];
   lunch: string[];
@@ -64,6 +66,7 @@ async function installPlannerFixtures(page: Page) {
       weekDates[0],
       {
         date: weekDates[0],
+        revision: 1,
         breakfast: ["recipe-01"],
         lunch: ["recipe-02", "recipe-03"],
         dinner: ["recipe-04", "recipe-05", "recipe-06"],
@@ -73,6 +76,7 @@ async function installPlannerFixtures(page: Page) {
       weekDates[1],
       {
         date: weekDates[1],
+        revision: 1,
         breakfast: ["recipe-07", "recipe-08", "recipe-09", "recipe-10"],
         lunch: [],
         dinner: [],
@@ -87,11 +91,11 @@ async function installPlannerFixtures(page: Page) {
       is_library_public: false,
     }),
   );
-  await page.route("**/recipes", (route) => fulfillJson(route, recipes));
   await page.route("**/recipes/*", (route) => {
     const recipeId = route.request().url().split("/").at(-1);
     return fulfillJson(route, recipes.find((recipe) => recipe.id === recipeId) ?? null);
   });
+  await page.route("**/recipes/page?*", (route) => fulfillJson(route, recipePageFixture(recipes, route.request().url())));
   await page.route("**/meal-plan?*", (route) => fulfillJson(route, [...plans.values()]));
   await page.route("**/meal-plan/*", async (route) => {
     if (route.request().method() !== "PUT") {
@@ -99,8 +103,13 @@ async function installPlannerFixtures(page: Page) {
       return;
     }
     const date = route.request().url().split("/").at(-1) ?? "";
-    const slots = route.request().postDataJSON() as Omit<MealPlanDay, "date">;
-    const saved = { date, ...slots };
+    const { expected_revision, ...slots } = route.request().postDataJSON() as Omit<MealPlanDay, "date" | "revision"> & { expected_revision: number };
+    const revision = plans.get(date)?.revision ?? 0;
+    if (expected_revision !== revision) {
+      await route.fulfill({ status: 409, contentType: "application/json", headers: corsHeaders(), body: JSON.stringify({ detail: { code: "meal_plan_conflict", message: "Plan changed" } }) });
+      return;
+    }
+    const saved = { date, ...slots, revision: revision + 1 };
     plans.set(date, saved);
     await fulfillJson(route, saved);
   });

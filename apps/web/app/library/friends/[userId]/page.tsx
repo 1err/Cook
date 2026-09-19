@@ -2,19 +2,23 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { PageHeader, PageShell } from "../../../components/PageShell";
 import { RequireAuth } from "../../../components/RequireAuth";
 import { apiFetch } from "../../../lib/api";
-import type { Recipe } from "../../../types";
 import { FriendLibraryCard } from "../FriendLibraryCard";
+import { useT } from "../../../lib/i18n";
+import { useRecipePage } from "../../../lib/useRecipePage";
 import styles from "../Friends.module.css";
 
 function FriendLibraryPageContent({ userId }: { userId: string }) {
-  const [theirs, setTheirs] = useState<Recipe[]>([]);
-  const [mine, setMine] = useState<Recipe[]>([]);
+  const t = useT();
+  const [search, setSearch] = useState("");
+  const page = useRecipePage(userId, {q: search});
+  const theirs = page.items;
+  const [savedSourceIds, setSavedSourceIds] = useState(new Set<string>());
   const [ownerEmail, setOwnerEmail] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const loading = page.loading && !theirs.length;
   const [unavailable, setUnavailable] = useState(false);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -23,51 +27,6 @@ function FriendLibraryPageContent({ userId }: { userId: string }) {
     const email = new URLSearchParams(window.location.search).get("email");
     if (email) setOwnerEmail(email);
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const [friendRecipes, myRecipes] = await Promise.all([
-          (async () => {
-            const response = await apiFetch(`/users/${encodeURIComponent(userId)}/recipes`);
-            if (response.status === 404) throw new Error("LIBRARY_GONE");
-            if (!response.ok) throw new Error(await response.text());
-            return (await response.json()) as Recipe[];
-          })(),
-          (async () => {
-            const response = await apiFetch("/recipes");
-            return response.ok ? ((await response.json()) as Recipe[]) : [];
-          })(),
-        ]);
-        if (!cancelled) {
-          setTheirs(friendRecipes);
-          setMine(myRecipes);
-        }
-      } catch (caught) {
-        if (cancelled) return;
-        setUnavailable(true);
-        if (!(caught instanceof Error && caught.message === "LIBRARY_GONE")) {
-          console.error("Failed to load friend library", caught);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [userId]);
-
-  const savedSourceIds = useMemo(() => {
-    const ids = new Set<string>();
-    mine.forEach((recipe) => {
-      ids.add(recipe.id);
-      if (recipe.catalog_source_recipe_id) ids.add(recipe.catalog_source_recipe_id);
-    });
-    return ids;
-  }, [mine]);
 
   async function copy(recipeId: string) {
     setCopyingId(recipeId);
@@ -82,10 +41,7 @@ function FriendLibraryPageContent({ userId }: { userId: string }) {
         return;
       }
       if (!response.ok) throw new Error(await response.text());
-      const newCopy = (await response.json()) as Recipe;
-      setMine((current) =>
-        current.some((recipe) => recipe.id === newCopy.id) ? current : [newCopy, ...current],
-      );
+      setSavedSourceIds(current => new Set(current).add(recipeId));
     } catch (caught) {
       setCopyError(caught instanceof Error ? caught.message : "Couldn't add — try again.");
     } finally {
@@ -93,9 +49,7 @@ function FriendLibraryPageContent({ userId }: { userId: string }) {
     }
   }
 
-  if (loading) {
-    return <PageShell><p className={styles.libraryStatus}>Loading…</p></PageShell>;
-  }
+
 
   if (unavailable) {
     return (
@@ -118,12 +72,14 @@ function FriendLibraryPageContent({ userId }: { userId: string }) {
         <PageHeader title={heading} />
       </div>
 
+      <input aria-label="Search recipes" type="search" value={search} onChange={event => setSearch(event.target.value)} />
+      {page.error ? <p role="alert">{page.error}</p> : null}
       {copyError ? <p className={styles.error} role="alert">{copyError}</p> : null}
-      {theirs.length === 0 ? <p className={styles.libraryStatus}>This library is empty.</p> : null}
+      {loading ? <p role="status">Loading…</p> : theirs.length === 0 ? <p className={styles.libraryStatus}>{search.trim() ? "No matching recipes." : "This library is empty."}</p> : null}
 
       <ul className={styles.recipeGrid}>
         {theirs.map((recipe) => {
-          const owned = savedSourceIds.has(recipe.id);
+          const owned = recipe.already_saved || savedSourceIds.has(recipe.id);
           const adding = copyingId === recipe.id;
           const detailHref = `/library/friends/${encodeURIComponent(userId)}/${encodeURIComponent(recipe.id)}${
             ownerEmail ? `?email=${encodeURIComponent(ownerEmail)}` : ""
@@ -139,6 +95,7 @@ function FriendLibraryPageContent({ userId }: { userId: string }) {
           );
         })}
       </ul>
+      {page.next ? <button disabled={page.loading} onClick={() => void page.more()}>{t("common.loadMoreRecipes")}</button> : null}
     </PageShell>
   );
 }

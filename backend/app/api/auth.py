@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.admin import is_admin
 from app.core.config import settings
+from app.api.abuse import enforce_auth_limits
 from app.core.security import (
     BCRYPT_MAX_PASSWORD_BYTES,
     MAX_LOGIN_PASSWORD_CHARACTERS,
@@ -123,8 +124,10 @@ async def register(
     body: RegisterBody,
     response: Response,
     session: AsyncSession = Depends(get_session),
+    request: Request = None,
 ):
     """Create user + local identity, set JWT cookie."""
+    await enforce_auth_limits(request, str(body.email), registration=True)
     if len(body.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     if len(body.password.encode("utf-8")) > BCRYPT_MAX_PASSWORD_BYTES:
@@ -157,8 +160,10 @@ async def login(
     body: LoginBody,
     response: Response,
     session: AsyncSession = Depends(get_session),
+    request: Request = None,
 ):
     """Verify local identity, set JWT cookie."""
+    await enforce_auth_limits(request, str(body.email), registration=False)
     identity = await repo_auth.get_identity(
         session, provider="local", provider_user_id=body.email.strip().lower()
     )

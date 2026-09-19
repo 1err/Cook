@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -13,9 +13,10 @@ import { Ionicons } from "@expo/vector-icons";
 import type { CompositeScreenProps } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
-import type { Recipe } from "@cooking/shared";
 import { useApiClient } from "../../lib/api";
-import { Button, EmptyState } from "../../components";
+import { useT } from "../../lib/i18n";
+import { useRecipePage } from "../../lib/useRecipePage";
+import { Button, EmptyState, TextField } from "../../components";
 import { haptics } from "../../lib/haptics";
 import { resolveImageUrl } from "../../lib/imageUrl";
 import { colors, radii, spacing, typography } from "../../theme";
@@ -37,101 +38,54 @@ type Props = CompositeScreenProps<
 type LibraryView = "mine" | "catalog";
 
 export function LibraryListScreen({ navigation }: Props) {
+  const t = useT();
   const apiClient = useApiClient();
   const [view, setView] = useState<LibraryView>("mine");
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [publicRecipes, setPublicRecipes] = useState<Recipe[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState("");
+  const page = useRecipePage(view, {q: search});
+  const [savedPublicIds, setSavedPublicIds] = useState(new Map<string, number>());
+  const copyVersion = useRef(0);
+  const pendingCopies = useRef(new Set<string>());
   const [error, setError] = useState<string | null>(null);
-  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
-
-  const load = useCallback(
-    async (mode: "initial" | "refresh") => {
-      if (mode === "initial") setLoading(true);
-      else setRefreshing(true);
-      setError(null);
-      setCatalogError(null);
-      try {
-        const [mine, pub] = await Promise.allSettled([
-          apiClient.recipes.list(),
-          apiClient.recipes.catalog(),
-        ]);
-        if (mine.status === "fulfilled") setRecipes(mine.value);
-        else setError(mine.reason instanceof Error ? mine.reason.message : "Failed to load recipes");
-        if (pub.status === "fulfilled") setPublicRecipes(pub.value);
-        else setCatalogError(pub.reason instanceof Error ? pub.reason.message : "Failed to load public recipes");
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load recipes");
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [apiClient],
-  );
-
-  useEffect(() => {
-    void load("initial");
-  }, [load]);
-
-  // Refetch own library when returning to the screen so newly imported / catalog-copied recipes appear.
-  useEffect(() => {
-    const unsubscribe = navigation.addListener("focus", () => {
-      apiClient.recipes
-        .list()
-        .then(setRecipes)
-        .catch(() => undefined);
-    });
-    return unsubscribe;
-  }, [navigation, apiClient]);
-
-  const savedPublicIds = useMemo(() => {
-    const ids = new Set<string>();
-    recipes.forEach((recipe) => {
-      ids.add(recipe.id);
-      if (recipe.catalog_source_recipe_id) ids.add(recipe.catalog_source_recipe_id);
-    });
-    return ids;
-  }, [recipes]);
+  const loading = page.loading && !page.items.length;
+  const refreshing = page.loading;
+  const load = useCallback(async () => {
+    const beforeRefresh = copyVersion.current;
+    await page.refresh();
+    // The refreshed page owns saved status for copies completed before it began.
+    // Keep later copy completions: this response may predate their server write.
+    setSavedPublicIds(previous => new Map([...previous].filter(([, version]) => version > beforeRefresh)));
+  }, [page.refresh]);
+  useEffect(() => { setSavedPublicIds(new Map()); }, [page.refresh]);
+  useEffect(() => navigation.addListener("focus", () => void load()), [navigation, load]);
 
   const handleCopy = useCallback(
     async (recipeId: string) => {
+      if (pendingCopies.current.has(recipeId)) return;
+      pendingCopies.current.add(recipeId);
       setCopyingId(recipeId);
       setError(null);
       try {
-        const copy = await apiClient.recipes.copyCatalog(recipeId);
-        // Optimistic local insert, then a server-confirmed refetch so we never
-        // show a stale list (e.g., if a previous focus listener raced this).
-        setRecipes((prev) => (prev.some((row) => row.id === copy.id) ? prev : [copy, ...prev]));
+        await apiClient.recipes.copyCatalog(recipeId);
+        const version = ++copyVersion.current;
+        setSavedPublicIds(prev => new Map(prev).set(recipeId, version));
         haptics.success();
-        try {
-          const fresh = await apiClient.recipes.list();
-          setRecipes(fresh);
-        } catch {
-          // Refetch is best-effort; the optimistic insert above keeps the UI consistent.
-        }
       } catch (e) {
         haptics.error();
         setError(e instanceof Error ? e.message : "Couldn't add recipe");
       } finally {
+        pendingCopies.current.delete(recipeId);
         setCopyingId(null);
       }
     },
     [apiClient],
   );
 
-  if (loading) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
-  }
 
-  const data = view === "mine" ? recipes : publicRecipes;
-  const visibleError = view === "mine" ? error : catalogError;
+
+  const data = page.items;
+  const visibleError = error || page.error;
 
   return (
     <FlatList
@@ -140,24 +94,31 @@ export function LibraryListScreen({ navigation }: Props) {
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={data.length === 0 ? styles.emptyContent : styles.listContent}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={() => void load("refresh")} tintColor={colors.primary} />
+        <RefreshControl refreshing={refreshing} onRefresh={() => void load()} tintColor={colors.primary} />
       }
       ItemSeparatorComponent={() => <View style={styles.separator} />}
+      ListFooterComponent={page.next ? <Button title={t("common.loadMoreRecipes")} disabled={page.loading} onPress={() => void page.more()} /> : null}
       ListHeaderComponent={
+        <View>
+        <TextField placeholder="Search recipes" value={search} onChangeText={setSearch} />
         <View style={styles.segmentRow}>
           <SegmentPill label="My Library" active={view === "mine"} onPress={() => setView("mine")} />
           <SegmentPill label="Public Library" active={view === "catalog"} onPress={() => setView("catalog")} />
         </View>
+        {visibleError ? <Text accessibilityRole="alert">{visibleError}</Text> : null}
+        </View>
       }
       ListEmptyComponent={
-        visibleError ? (
+        loading ? <ActivityIndicator color={colors.primary} /> : visibleError ? (
           <EmptyState
             icon="alert-circle-outline"
             title="Couldn't load recipes"
             description={visibleError}
             actionLabel="Try again"
-            onAction={() => void load("initial")}
+            onAction={() => void load()}
           />
+        ) : search.trim() ? (
+          <EmptyState title="No matching recipes" description="Try a different search." />
         ) : view === "mine" ? (
           <EmptyState
             icon="restaurant-outline"
@@ -196,7 +157,7 @@ export function LibraryListScreen({ navigation }: Props) {
             </Pressable>
           );
         }
-        const owned = savedPublicIds.has(item.id);
+        const owned = item.already_saved || savedPublicIds.has(item.id);
         return (
           <View style={styles.card}>
             {item.thumbnail_url ? (

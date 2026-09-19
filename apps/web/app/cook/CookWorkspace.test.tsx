@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { CookingDish, CookingSession, CookingStep } from "@cooking/shared";
+import type { Recipe, CookingDish, CookingSession, CookingStep } from "@cooking/shared";
 import { CookWorkspace } from "./CookWorkspace";
 import type { CookingSessionController } from "./useCookingSession";
 
@@ -9,7 +9,10 @@ const { mockRecipesList, mockUseT } = vi.hoisted(() => ({
   mockRecipesList: vi.fn(),
   mockUseT: vi.fn(),
 }));
-vi.mock("../lib/api", () => ({ webApiClient: { recipes: { list: mockRecipesList } } }));
+vi.mock("../lib/api", () => ({ webApiClient: { recipes: {
+      page: async (options: {q?: string} = {}) => ({items: (await mockRecipesList()).filter((r: Recipe) => !options.q || r.title.toLowerCase().includes(options.q.toLowerCase())).map((r: Recipe) => ({...r, ingredient_count:r.ingredients.length, step_count:r.steps?.length ?? 0, already_saved:true})), next_cursor:null}),
+      get: async (id: string) => (await mockRecipesList()).find((r: Recipe) => r.id === id),
+    } } }));
 vi.mock("../lib/i18n", () => ({ useT: mockUseT }));
 
 const messages: Record<string, string> = {

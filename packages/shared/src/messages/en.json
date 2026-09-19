@@ -1,4 +1,8 @@
 {
+  "planner.conflict": "This plan changed on another device. Review the latest plan and try your change again.",
+  "planner.conflictReloading": "This plan changed on another device. Loading the latest plan…",
+  "planner.conflictReloadFailed": "This plan changed on another device, but could not be reloaded. Refresh the planner before trying again.",
+  "common.loadMoreRecipes": "Load more recipes",
   "common.loading": "Loading...",
   "common.add": "Add",
   "common.added": "Added",

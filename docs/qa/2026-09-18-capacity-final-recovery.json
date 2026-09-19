@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "started_at_utc": "2026-09-19T03:47:23.614374+00:00",
+  "source": {
+    "git_revision": "748ae762788a022fa31538a62cd4873fa5548607",
+    "working_tree_dirty": true,
+    "backend_and_harness_sha256": "6fffd9a9f131d3ebe74494ce3fcf3f365cde62dce54c441fe7ad7ddc37783989"
+  },
+  "config": {
+    "cpu": null,
+    "memory_mb": null,
+    "replicas": 1,
+    "database_version": null,
+    "database_connection_limit": null,
+    "database_pool_size": null,
+    "database_pool_overflow": null,
+    "region": "local",
+    "image_digest": null,
+    "frontend_revision": null,
+    "server_revision": null,
+    "abuse_limits_enabled": false,
+    "monthly_budget_usd": 150
+  },
+  "target": "http://127.0.0.1:8099",
+  "provider_mode": "disabled; cache-only retailer endpoint; no AI calls",
+  "cache_case": "warm-declared",
+  "cache_case_verified": false,
+  "dataset": {
+    "accounts": 10000,
+    "recipes": 112070,
+    "catalog": 1000,
+    "selected_library_sizes": [
+      10,
+      100,
+      1000,
+      10000
+    ]
+  },
+  "workload": {
+    "mix_percent": {
+      "library": 20,
+      "catalog": 20,
+      "detail": 20,
+      "planner_read": 7,
+      "planner_write": 8,
+      "cooking_read": 8,
+      "cooking_write": 7,
+      "shopping": 5,
+      "cached_store": 5
+    },
+    "users": 100,
+    "max_concurrency": 100,
+    "model": "open-arrival",
+    "random_seed": 20260918,
+    "stage_seconds": 30.0,
+    "requested_rates": [
+      10.0
+    ]
+  },
+  "stages": [
+    {
+      "offered": 300,
+      "completed": 300,
+      "dropped": 0,
+      "unexpected_failures": 0,
+      "unexpected_failure_rate_including_drops": 0.0,
+      "achieved_rps": 9.999,
+      "read_count": 261,
+      "write_count": 39,
+      "routes": {
+        "GET /cooking-session/active": {
+          "count": 30,
+          "operation": "read",
+          "p50_ms": 8.477,
+          "p95_ms": 9.674,
+          "p99_ms": 10.037,
+          "status_counts": {
+            "200": 30
+          },
+          "passed_latency": true
+        },
+        "GET /meal-plan": {
+          "count": 17,
+          "operation": "read",
+          "p50_ms": 5.822,
+          "p95_ms": 7.695,
+          "p99_ms": 7.695,
+          "status_counts": {
+            "200": 17
+          },
+          "passed_latency": true
+        },
+        "GET /recipes/catalog/page": {
+          "count": 73,
+          "operation": "read",
+          "p50_ms": 9.341,
+          "p95_ms": 10.973,
+          "p99_ms": 11.937,
+          "status_counts": {
+            "200": 73
+          },
+          "passed_latency": true
+        },
+        "GET /recipes/page": {
+          "count": 54,
+          "operation": "read",
+          "p50_ms": 8.533,
+          "p95_ms": 10.541,
+          "p99_ms": 122.259,
+          "status_counts": {
+            "200": 54
+          },
+          "passed_latency": true
+        },
+        "GET /recipes/{id}": {
+          "count": 63,
+          "operation": "read",
+          "p50_ms": 6.6,
+          "p95_ms": 7.783,
+          "p99_ms": 8.084,
+          "status_counts": {
+            "200": 63
+          },
+          "passed_latency": true
+        },
+        "GET /shopping-list": {
+          "count": 12,
+          "operation": "read",
+          "p50_ms": 7.438,
+          "p95_ms": 8.477,
+          "p99_ms": 8.477,
+          "status_counts": {
+            "200": 12
+          },
+          "passed_latency": true
+        },
+        "POST /cooking-session/{id}/steps/{id}/actions": {
+          "count": 15,
+          "operation": "write",
+          "p50_ms": 10.68,
+          "p95_ms": 12.006,
+          "p99_ms": 12.006,
+          "status_counts": {
+            "200": 15
+          },
+          "passed_latency": true
+        },
+        "POST /store-products/batch (cache-only read)": {
+          "count": 12,
+          "operation": "read",
+          "p50_ms": 5.272,
+          "p95_ms": 6.596,
+          "p99_ms": 6.596,
+          "status_counts": {
+            "200": 12
+          },
+          "passed_latency": true
+        },
+        "PUT /meal-plan/{date}": {
+          "count": 24,
+          "operation": "write",
+          "p50_ms": 7.535,
+          "p95_ms": 8.713,
+          "p99_ms": 8.843,
+          "status_counts": {
+            "200": 24
+          },
+          "passed_latency": true
+        }
+      },
+      "passed": true,
+      "requested_rps": 10.0,
+      "sessions": null,
+      "duration_seconds": 30.002
+    }
+  ],
+  "passed": true,
+  "limitations": [
+    "Local evidence only; no cloud capacity claim.",
+    "Login preparation is excluded from ordinary route timing.",
+    "No signup/upload/AI/provider/recovery drill included.",
+    "CPU/memory/DB wait/locks must be collected externally.",
+    "Cold/warm label is operator-declared; setup itself warms authentication and cooking paths.",
+    "Synthetic retailer cache responses are not live provider capacity proof."
+  ],
+  "correctness": {
+    "owner_isolation_checks": 400,
+    "acknowledged_write_checks": 38,
+    "durable_cooking_mutations_checked": 15,
+    "cache_fresh_checks": 1,
+    "failures": 0
+  },
+  "highest_passing_rps": 10.0,
+  "duration_seconds_including_setup": 65.263,
+  "finished_at_utc": "2026-09-19T03:48:28.961488+00:00",
+  "verified_runtime_configuration_evidence": "2026-09-18-capacity-final-loaded-source.json"
+}

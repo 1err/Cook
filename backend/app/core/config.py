@@ -3,6 +3,8 @@ Application configuration from environment. No load_dotenv here; call from app e
 Postgres only: DATABASE_URL is required and must be a Postgres URL.
 """
 from functools import lru_cache
+from ipaddress import ip_network
+from decimal import Decimal
 from typing import List, Literal
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -20,6 +22,32 @@ class Settings(BaseSettings):
 
     APP_ENV: Literal["development", "test", "production"] = "development"
 
+    # Only verified immediate proxy subnet CIDRs may supply forwarded identity.
+    # Empty in development means no proxy is trusted. Production is fail-closed.
+    TRUSTED_PROXY_CIDRS: str = ""
+
+    @field_validator("TRUSTED_PROXY_CIDRS")
+    @classmethod
+    def validate_trusted_proxy_cidrs(cls, value: str) -> str:
+        if not value.strip():
+            return ""
+        networks = []
+        for item in value.split(","):
+            try:
+                network = ip_network(item.strip(), strict=True)
+            except ValueError:
+                raise ValueError("TRUSTED_PROXY_CIDRS must contain explicit IP addresses or canonical subnet CIDRs") from None
+            if network.prefixlen < (16 if network.version == 4 else 48):
+                raise ValueError("TRUSTED_PROXY_CIDRS must be narrowly scoped proxy subnets (IPv4 /16 or narrower; IPv6 /48 or narrower)")
+            networks.append(str(network))
+        return ",".join(dict.fromkeys(networks))
+
+    @model_validator(mode="after")
+    def require_production_proxy_trust(self) -> "Settings":
+        if self.APP_ENV == "production" and not self.TRUSTED_PROXY_CIDRS:
+            raise ValueError("Production requires explicit TRUSTED_PROXY_CIDRS for verified load balancer subnets")
+        return self
+
     # Required. No default. Must be postgresql+asyncpg://...
     DATABASE_URL: str = Field(
         ...,
@@ -29,6 +57,20 @@ class Settings(BaseSettings):
 
     # Set true for AWS RDS and other hosts that require TLS (asyncpg connect_args).
     DATABASE_SSL: bool = False
+    DATABASE_CA_FILE: str = ""
+    DB_POOL_SIZE: int = Field(5, ge=1, le=100)
+    DB_MAX_OVERFLOW: int = Field(0, ge=0, le=100)
+    DB_POOL_TIMEOUT_SECONDS: float = Field(5, gt=0, le=30)
+    DB_POOL_RECYCLE_SECONDS: int = Field(1800, ge=60)
+    DB_STATEMENT_TIMEOUT_MS: int = Field(15000, ge=100, le=120000)
+    DB_LOCK_TIMEOUT_MS: int = Field(5000, ge=100, le=30000)
+    DB_IDLE_TRANSACTION_TIMEOUT_MS: int = Field(15000, ge=100, le=120000)
+    DB_CONNECTION_BUDGET: int = Field(60, ge=10)
+    DB_ADMIN_CONNECTION_RESERVE: int = Field(10, ge=1)
+    DB_MAX_API_REPLICAS: int = Field(2, ge=1)
+    DB_MAX_WORKER_REPLICAS: int = Field(1, ge=0)
+    DB_PROCESSES_PER_TASK: int = Field(1, ge=1)
+    DB_DEPLOYMENT_SURGE_FACTOR: int = Field(2, ge=1, le=3)
 
     @model_validator(mode="after")
     def require_postgres(self) -> "Settings":
@@ -80,6 +122,77 @@ class Settings(BaseSettings):
     AI_USER_REQUESTS_PER_DAY: int = Field(50, ge=1)
     AI_GLOBAL_REQUESTS_PER_MINUTE: int = Field(60, ge=1)
     AI_GLOBAL_REQUESTS_PER_DAY: int = Field(1000, ge=1)
+    # Allocation must be explicit: an API key is not permission to consume the
+    # owner's entire combined hosting/AI budget. Prices are provider-verified inputs.
+    OPERATING_MONTHLY_BUDGET_USD: Decimal = Field(Decimal("150"), gt=0)
+    HOSTING_MONTHLY_RESERVE_USD: Decimal = Field(Decimal("150"), ge=0)
+    AI_MONTHLY_BUDGET_USD: Decimal = Field(Decimal("0"), ge=0)
+    AI_ACCOUNT_MONTHLY_BUDGET_USD: Decimal = Field(Decimal("0"), ge=0)
+    AI_PRICE_VERSION: str = ""
+    AI_PRICE_MODEL: str = ""
+    AI_INPUT_USD_PER_MILLION_TOKENS: Decimal | None = Field(None, gt=0)
+    AI_OUTPUT_USD_PER_MILLION_TOKENS: Decimal | None = Field(None, gt=0)
+    AI_GLOBAL_MAX_INFLIGHT: int = Field(4, ge=1, le=100)
+    AI_USER_MAX_INFLIGHT: int = Field(1, ge=1, le=20)
+    AI_OPERATION_TIMEOUT_SECONDS: float = Field(85, gt=0, le=120)
+
+    STORE_JOBS_MODE: Literal["auto", "local", "durable"] = "auto"
+    STORE_JOBS_QUEUE_MAX: int = Field(100, ge=1, le=10000)
+    STORE_JOBS_POLL_SECONDS: float = Field(0.5, ge=0.1, le=10)
+    STORE_JOBS_WAIT_SECONDS: float = Field(150, gt=0, le=180)
+    STORE_JOBS_LEASE_SECONDS: int = Field(180, ge=30, le=600)
+    STORE_JOBS_TIMEOUT_SECONDS: int = Field(125, ge=1, le=300)
+    STORE_JOBS_MAX_ATTEMPTS: int = Field(2, ge=1, le=5)
+    STORE_JOBS_RETRY_SECONDS: float = Field(5, ge=1, le=60)
+    STORE_JOBS_WARM_INTERVAL_SECONDS: int = Field(86400, ge=3600)
+    STORE_JOBS_RETENTION_SECONDS: int = Field(86400, ge=3600)
+    STORE_JOBS_ENABLED: bool = True
+
+    ABUSE_LIMITS_ENABLED: bool | None = None
+    AUTH_GLOBAL_PER_MINUTE: int = Field(120, ge=1)
+    AUTH_LOGIN_IP_PER_MINUTE: int = Field(60, ge=1)
+    AUTH_LOGIN_ACCOUNT_PER_MINUTE: int = Field(10, ge=1)
+    AUTH_REGISTER_IP_PER_HOUR: int = Field(20, ge=1)
+    AUTH_REGISTER_ACCOUNT_PER_HOUR: int = Field(5, ge=1)
+    UPLOAD_ACCOUNT_PER_HOUR: int = Field(30, ge=1)
+    UPLOAD_GLOBAL_PER_MINUTE: int = Field(120, ge=1)
+    UPLOAD_ACCOUNT_BYTES_PER_DAY: int = Field(50 * 1024 * 1024, ge=1024 * 1024)
+    # Cumulative growth since inventory baseline, not a daily reset. Unknown
+    # writes stay reserved; verified cleanup is needed to recover this allowance.
+    UPLOAD_GLOBAL_TOTAL_COUNT: int = Field(10000, ge=1)
+    UPLOAD_GLOBAL_TOTAL_BYTES: int = Field(5 * 1024 ** 3, ge=1)
+    UPLOAD_ACCOUNT_TOTAL_COUNT: int = Field(200, ge=1)
+    UPLOAD_ACCOUNT_TOTAL_BYTES: int = Field(100 * 1024 ** 2, ge=1)
+
+    @model_validator(mode="after")
+    def validate_capacity_allocations(self) -> "Settings":
+        connections = ((self.DB_MAX_API_REPLICAS + self.DB_MAX_WORKER_REPLICAS)
+                       * self.DB_DEPLOYMENT_SURGE_FACTOR * self.DB_PROCESSES_PER_TASK
+                       * (self.DB_POOL_SIZE + self.DB_MAX_OVERFLOW)
+                       # Each worker may have an independent supervisor DB
+                       # connection; migrations use one outside all app pools.
+                       + self.DB_MAX_WORKER_REPLICAS * self.DB_DEPLOYMENT_SURGE_FACTOR
+                       * self.DB_PROCESSES_PER_TASK + 1
+                       + self.DB_ADMIN_CONNECTION_RESERVE)
+        if connections > self.DB_CONNECTION_BUDGET:
+            raise ValueError("Configured pools and rollout overlap exceed the database connection budget")
+        if self.HOSTING_MONTHLY_RESERVE_USD + self.AI_MONTHLY_BUDGET_USD > self.OPERATING_MONTHLY_BUDGET_USD:
+            raise ValueError("AI allocation plus hosting reserve exceeds the combined monthly budget")
+        if self.AI_ACCOUNT_MONTHLY_BUDGET_USD > self.AI_MONTHLY_BUDGET_USD:
+            raise ValueError("Account AI allocation exceeds the app AI allocation")
+        if self.AI_USER_MAX_INFLIGHT > self.AI_GLOBAL_MAX_INFLIGHT:
+            raise ValueError("Account AI concurrency exceeds app concurrency")
+        if self.STORE_JOBS_LEASE_SECONDS < self.STORE_JOBS_TIMEOUT_SECONDS + 30:
+            raise ValueError("Store job lease must include at least 30 seconds for cleanup after timeout")
+        if self.STORE_JOBS_MODE == "auto":
+            self.STORE_JOBS_MODE = "durable" if self.APP_ENV == "production" else "local"
+        if self.APP_ENV == "production" and self.STORE_JOBS_MODE != "durable":
+            raise ValueError("Production requires durable store jobs")
+        if self.ABUSE_LIMITS_ENABLED is None:
+            self.ABUSE_LIMITS_ENABLED = self.APP_ENV != "test"
+        if self.APP_ENV == "production" and not self.ABUSE_LIMITS_ENABLED:
+            raise ValueError("Production requires shared auth and upload admission")
+        return self
 
     # S3 uploads (optional). If unset, images save under LOCAL_IMAGE_UPLOAD_DIR.
     AWS_REGION: str = ""

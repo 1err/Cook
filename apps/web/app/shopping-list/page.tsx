@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import type { StoreProductsBatchResponse, StoreProductsResponse } from "@cooking/api-client";
+import { ApiError, resolveRecipeDetails } from "@cooking/api-client";
 import { apiFetch } from "../lib/api";
 import { userLocalStorage, userSessionStorage } from "../lib/userStorage";
 import { RequireAuth } from "../components/RequireAuth";
@@ -15,6 +16,7 @@ import {
   buildCartAssistantDraft,
   buildInstacartItems,
   buildWeekMealPlanFingerprint,
+  normalizeMealPlanSlots,
   formatWeekRangeDisplay,
   getDisplayCategory,
   getPrevNextWeek,
@@ -461,10 +463,9 @@ function ShoppingListPageContent() {
       setPlanMealsExpanded(false);
       setError(null);
       try {
-        const [listRes, planRes, recipesRes] = await Promise.all([
+        const [listRes, planRes] = await Promise.all([
           apiFetch(`/shopping-list?start=${start}&end=${end}`),
           apiFetch(`/meal-plan?start=${start}&end=${end}`),
-          apiFetch("/recipes"),
         ]);
         if (!listRes.ok) throw new Error("Failed to load");
         const data: ShoppingListItem[] = await listRes.json();
@@ -477,11 +478,13 @@ function ShoppingListPageContent() {
         }
         setMealPlans(plansPayload);
         const latestFingerprint = buildWeekMealPlanFingerprint(weekDates, plansPayload);
-        let rmap: Record<string, Recipe> = {};
-        if (recipesRes.ok) {
-          const recs: Recipe[] = await recipesRes.json();
-          rmap = Object.fromEntries(recs.map((r) => [r.id, r]));
-        }
+        const recs = await resolveRecipeDetails(async id => {
+          const response = await apiFetch(`/recipes/${encodeURIComponent(id)}`);
+          if (!response.ok) throw new ApiError("Failed to load planned recipe", response.status);
+          return response.json();
+        }, plansPayload.flatMap(plan => Object.values(normalizeMealPlanSlots(plan)).flat()));
+        if (cancelled) return;
+        const rmap = Object.fromEntries(recs.map(recipe => [recipe.id, recipe]));
         setRecipeById(rmap);
         try {
           const raw = userSessionStorage.getItem(smartListStorageKey(start));

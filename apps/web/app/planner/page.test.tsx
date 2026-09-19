@@ -1,3 +1,4 @@
+import { normalizeMealPlanSlots } from "@cooking/shared";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
@@ -20,7 +21,16 @@ vi.mock("../components/RequireAuth", () => ({
   RequireAuth: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-vi.mock("../lib/api", () => ({ apiFetch: mockApiFetch }));
+vi.mock("../lib/api", () => ({
+  apiFetch: mockApiFetch,
+  webApiClient: { recipes: {
+    page: async (options: {q?: string; tags?: string[]} = {}) => {
+      const rows = await (await mockApiFetch("/recipes")).json();
+      return { items: rows.filter((r: any) => (!options.q || r.title.toLowerCase().includes(options.q.toLowerCase())) && (!options.tags?.length || options.tags.every(tag => r.library_tags?.includes(tag) || r.library_category === tag))).map((r: any) => ({...r, ingredient_count:r.ingredients.length, step_count:r.steps?.length ?? 0, already_saved:true})), next_cursor:null };
+    },
+    get: async (id: string) => (await (await mockApiFetch("/recipes")).json()).find((r: any) => r.id === id),
+  } },
+}));
 vi.mock("../lib/i18n", () => ({ useT: mockUseT }));
 
 const messages: Record<string, string> = {
@@ -55,6 +65,7 @@ const messages: Record<string, string> = {
   "planner.planYourWeek": "to plan your week.",
   "planner.savedRecipes": "Recipe Library",
   "planner.savedRecipesDesc": "Drag recipes into your week.",
+  "planner.conflict": "This plan changed on another device. Review the latest plan and try your change again.",
   "planner.saveFailed": "Could not save your planner change. Your previous plan was restored.",
   "planner.retryLoad": "Retry loading plan",
   "planner.searchAria": "Search recipes for planner",
@@ -111,7 +122,7 @@ function mockDeferredPlannerWrites(putResponses: DeferredResponse[]) {
     if (path === "/meal-plan/2026-08-10" && options?.method === "PUT") {
       requests.push({
         date: path.slice("/meal-plan/".length),
-        slots: JSON.parse(String(options.body)),
+        slots: normalizeMealPlanSlots(JSON.parse(String(options.body))),
       });
       const deferred = putResponses.shift();
       if (!deferred) throw new Error("Unexpected additional meal-plan PUT");
@@ -247,7 +258,7 @@ test("lists every overflow recipe and removes any chosen recipe from the manager
     }
     if (path === "/recipes") return Promise.resolve(jsonResponse(recipes));
     if (path === "/meal-plan/2026-08-10" && options?.method === "PUT") {
-      const slots = JSON.parse(String(options.body));
+      const slots = normalizeMealPlanSlots(JSON.parse(String(options.body)));
       requests.push(slots);
       return Promise.resolve(jsonResponse({ date: "2026-08-10", ...slots }));
     }
@@ -318,7 +329,7 @@ test("restores picker focus to the meal-slot fallback when selection replaces it
       );
     }
     if (path === "/meal-plan/2026-08-10" && options?.method === "PUT") {
-      const slots = JSON.parse(String(options.body));
+      const slots = normalizeMealPlanSlots(JSON.parse(String(options.body)));
       return Promise.resolve(jsonResponse({ date: "2026-08-10", ...slots }));
     }
     throw new Error(`Unexpected request: ${path}`);
@@ -483,7 +494,7 @@ test("settles writes for separate dates independently when the earlier date late
     if (path.startsWith("/meal-plan/") && options?.method === "PUT") {
       requests.push({
         date: path.slice("/meal-plan/".length),
-        slots: JSON.parse(String(options.body)),
+        slots: normalizeMealPlanSlots(JSON.parse(String(options.body))),
       });
       return path.endsWith("2026-08-10") ? dateA.promise : dateB.promise;
     }
@@ -533,7 +544,7 @@ test("blocks mutations after a failed plan read until retry restores authoritati
       );
     }
     if (path === "/meal-plan/2026-08-10" && options?.method === "PUT") {
-      const slots = JSON.parse(String(options.body));
+      const slots = normalizeMealPlanSlots(JSON.parse(String(options.body)));
       requests.push({ date: "2026-08-10", slots });
       return Promise.resolve(jsonResponse({ date: "2026-08-10", ...slots }));
     }
@@ -605,4 +616,37 @@ test("offers the same protected retry when the plan request rejects", async () =
       screen.getByRole("button", { name: "Choose a recipe for dinner on 2026-08-10" }),
     ).toBeEnabled();
   });
+});
+
+
+test("reloads a conflicted date and protects another device's edits before retry", async () => {
+  const writes: Array<Record<string, unknown>> = [];
+  let revision = 4;
+  let dinner = ["recipe-1"];
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([{date:"2026-08-10",breakfast:[],lunch:[],dinner,revision}]));
+    if (path === "/recipes") return Promise.resolve(jsonResponse([
+      {id:"recipe-1",title:"First recipe",ingredients:[]},
+      {id:"recipe-2",title:"Second recipe",ingredients:[]},
+      {id:"recipe-3",title:"Remote recipe",ingredients:[]},
+    ]));
+    if (options?.method === "PUT") {
+      const body = JSON.parse(String(options.body));
+      writes.push(body);
+      if(writes.length===1) {
+        revision=5; dinner=["recipe-1","recipe-3"];
+        return Promise.resolve(jsonResponse({detail:{code:"meal_plan_conflict",message:"Changed"}},409));
+      }
+      return Promise.resolve(jsonResponse({date:"2026-08-10",...body,revision:6}));
+    }
+    throw new Error(path);
+  });
+  const user=userEvent.setup();
+  render(<PlannerPage />);
+  await addDinnerRecipe(user,"Second recipe");
+  await screen.findByText("This plan changed on another device. Review the latest plan and try your change again.");
+  expect(writes[0].expected_revision).toBe(4);
+  await addDinnerRecipe(user,"Second recipe");
+  await waitFor(()=>expect(writes).toHaveLength(2));
+  expect(writes[1]).toMatchObject({expected_revision:5,dinner:["recipe-1","recipe-3","recipe-2"]});
 });

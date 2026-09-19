@@ -1,14 +1,39 @@
+export { RecipePager } from "./recipePager";
 import type {
   CookingActionPayload,
   CookingSession,
   InstacartItem,
   MealPlanDay,
   Recipe,
+  RecipePage,
   RecipeStep,
   RecipeTagSlug,
   ShoppingListItem,
   User,
 } from "@cooking/shared";
+
+export type RecipePageOptions = { limit?: number; cursor?: string | null; q?: string; tags?: RecipeTagSlug[] };
+export function recipePageQuery(options: RecipePageOptions = {}): string {
+  const params = new URLSearchParams({ limit: String(options.limit ?? 40) });
+  if (options.cursor) params.set("cursor", options.cursor);
+  if (options.q?.trim()) params.set("q", options.q.trim());
+  for (const tag of options.tags ?? []) params.append("tags", tag);
+  return params.toString();
+}
+
+/** Resolve only selected recipes; at most four detail requests run at a time. */
+export async function resolveRecipeDetails(get: (id: string) => Promise<Recipe>, ids: string[]): Promise<Recipe[]> {
+  const pending = [...new Set(ids)];
+  const found: Recipe[] = [];
+  await Promise.all(Array.from({ length: Math.min(4, pending.length) }, async () => {
+    while (pending.length) {
+      const id = pending.shift()!;
+      try { found.push(await get(id)); }
+      catch (error) { if (!(error instanceof ApiError && error.status === 404)) throw error; }
+    }
+  }));
+  return found;
+}
 
 export type AuthStrategy =
   | { kind: "cookie" }
@@ -174,7 +199,10 @@ export function createApiClient(options: ApiClientOptions) {
         }),
     },
     recipes: {
+      /** @deprecated Compatibility for older releases; use page for lists. */
       list: () => json<Recipe[]>("/recipes"),
+      page: (options: RecipePageOptions = {}) => json<RecipePage>(`/recipes/page?${recipePageQuery(options)}`),
+      catalogPage: (options: RecipePageOptions = {}) => json<RecipePage>(`/recipes/catalog/page?${recipePageQuery(options)}`),
       get: (id: string) => json<Recipe>(`/recipes/${encodeURIComponent(id)}`),
       create: (payload: Partial<Recipe>) =>
         json<Recipe>("/recipes", { method: "POST", body: JSON.stringify(payload) }),
@@ -186,6 +214,7 @@ export function createApiClient(options: ApiClientOptions) {
           { method: "POST", body: JSON.stringify({ steps }) },
         ),
       remove: (id: string) => request(`/recipes/${encodeURIComponent(id)}`, { method: "DELETE" }),
+      /** @deprecated Use catalogPage for bounded summary browsing. */
       catalog: () => json<Recipe[]>("/recipes/catalog"),
       copyCatalog: (id: string) => json<Recipe>(`/recipes/catalog/${encodeURIComponent(id)}/copy`, { method: "POST" }),
       editorStatus: () => json<{ can_manage: boolean }>("/recipes/catalog/editor-status"),
@@ -204,6 +233,11 @@ export function createApiClient(options: ApiClientOptions) {
     users: {
       searchByEmail: (email: string) =>
         json<User>(`/users/search?email=${encodeURIComponent(email)}`),
+      libraryPage: (userId: string, options: RecipePageOptions = {}) =>
+        json<RecipePage>(`/users/${encodeURIComponent(userId)}/recipes/page?${recipePageQuery(options)}`),
+      libraryRecipe: (userId: string, recipeId: string) =>
+        json<Recipe & { already_saved: boolean }>(`/users/${encodeURIComponent(userId)}/recipes/${encodeURIComponent(recipeId)}`),
+      /** @deprecated Use libraryPage or libraryRecipe. */
       libraryRecipes: (userId: string) =>
         json<Recipe[]>(`/users/${encodeURIComponent(userId)}/recipes`),
       copyFriendRecipe: (userId: string, recipeId: string) =>
@@ -215,10 +249,10 @@ export function createApiClient(options: ApiClientOptions) {
     mealPlan: {
       list: (start: string, end: string) =>
         json<MealPlanDay[]>(`/meal-plan?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`),
-      updateDay: (date: string, payload: { breakfast: string[]; lunch: string[]; dinner: string[] }) =>
+      updateDay: (date: string, payload: { breakfast: string[]; lunch: string[]; dinner: string[] }, expectedRevision?: number) =>
         json<MealPlanDay>(`/meal-plan/${encodeURIComponent(date)}`, {
           method: "PUT",
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ ...payload, ...(expectedRevision === undefined ? {} : { expected_revision: expectedRevision }) }),
         }),
     },
     cooking: {

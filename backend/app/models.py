@@ -300,6 +300,7 @@ def normalize_meal_plan_slots(raw: object) -> dict[str, list[str]]:
 
 class MealPlan(BaseModel):
     """One row per date. date is YYYY-MM-DD."""
+    revision: int = Field(default=0, ge=0)
     id: str  # same as date for simplicity
     date: str
     breakfast: list[str] = Field(default_factory=list)
@@ -313,3 +314,24 @@ class MealPlan(BaseModel):
 class ShoppingListItem(BaseModel):
     name: str
     total_quantity: str
+
+
+class RecipeSummary(BaseModel):
+    """List projection; recipe instructions and private import text are detail-only."""
+    id: str
+    title: str
+    source_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    library_tags: list[str] = Field(default_factory=list)
+    library_category: Optional[str] = None
+    is_public_catalog: bool = False
+    catalog_source_recipe_id: Optional[str] = None
+    total_time_minutes: Optional[int] = None
+    ingredient_count: int = 0
+    step_count: int = 0
+    already_saved: bool = False
+
+
+class RecipePage(BaseModel):
+    items: list[RecipeSummary]
+    next_cursor: Optional[str] = None
