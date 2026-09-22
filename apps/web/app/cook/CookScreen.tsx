@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "../components/ui/Button";
+import { Icon } from "../components/ui/Icon";
 import { useT } from "../lib/i18n";
 import styles from "./CookPage.module.css";
 import { useCookingSession } from "./useCookingSession";
@@ -26,7 +27,7 @@ export function CookScreen() {
     return (
       <section className={styles.centerState}>
         <div className={styles.errorPanel}>
-          <span className={`material-symbols-outlined ${styles.errorIcon}`} aria-hidden="true">skillet</span>
+          <span className={styles.errorIcon} aria-hidden="true"><Icon name="chef" size={32} /></span>
           <p className={styles.eyebrow}>{t("nav.cook")}</p>
           <h1>{t("cook.error.title")}</h1>
           <p role="alert">{controller.error}</p>

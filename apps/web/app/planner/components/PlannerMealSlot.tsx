@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { MEAL_PLAN_SLOTS, type MealType, type Recipe } from "@cooking/shared";
 import { useT } from "../../lib/i18n";
+import { Icon } from "../../components/ui/Icon";
 import { PLANNER_MEAL_LABEL_KEYS } from "../plannerMessages";
 
 export type PlannerMealSlotProps = {
@@ -146,7 +147,7 @@ export function PlannerMealSlot({
                     date,
                   })}
                 >
-                  <span className="material-symbols-outlined text-sm">close</span>
+                  <Icon name="close" size={16} />
                 </button>
               </div>
             ))}
@@ -186,7 +187,7 @@ export function PlannerMealSlot({
           aria-label={t("planner.chooseRecipeForSlot", { slot: slotLabel, date })}
         >
           <span className="planner-slot-plus" aria-hidden="true">
-            <span className="material-symbols-outlined text-2xl opacity-40">add</span>
+            <Icon name="add" size={17} />
           </span>
           <span className="planner-slot-empty-trigger__label planner-slot-action--mobile font-headline">{t("planner.chooseRecipe")}</span>
         </button>

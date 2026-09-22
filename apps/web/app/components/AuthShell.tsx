@@ -4,8 +4,7 @@ import type { ReactNode } from "react";
 import { LanguageControl } from "./LanguageControl";
 import { PublicLinks } from "../public-site/PublicShell";
 
-const HERO_IMAGE =
-  "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1600&q=80";
+const HERO_IMAGE = "/brand/editorial-dinner.png";
 
 export function AuthShell({
   title,

@@ -123,7 +123,6 @@
 
 .heroMedia {
   display: grid;
-  min-height: 0;
   min-height: 18rem;
   overflow: hidden;
   border-radius: var(--cw-radius-card);
@@ -333,8 +332,8 @@
 }
 
 .stepIllustration svg {
-  width: 72%;
-  height: 72%;
+  width: 88%;
+  height: 88%;
 }
 
 .stepContent {
@@ -396,23 +395,25 @@
   }
 
   .tutorialSteps > li {
-    grid-template-columns: 2.2rem minmax(0, 1fr);
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+    gap: 0.35rem 0.8rem;
   }
 
   .stepVisual {
-    grid-column: 2;
+    grid-column: 1;
     grid-row: 2;
+    width: 3.5rem;
   }
 
   .stepIllustration {
     grid-column: 1;
     grid-row: 2;
-    width: 2.5rem;
+    width: 3.5rem;
   }
 
   .stepContent {
     grid-column: 2;
-    grid-row: 1;
+    grid-row: 1 / span 2;
   }
 }
 
@@ -428,8 +429,8 @@
   }
 
   .tutorialHeader {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
   }
 }
 
@@ -457,6 +458,7 @@
 .ingredients strong { font-weight: 400; font-size: 0.9375rem; }
 .stepNumber { border: 0; background: var(--cw-color-subtle-surface); color: var(--cw-color-ink); width: 2.5rem; height: 2.5rem; font-size: 1rem; font-weight: 500; }
 @media (max-width: 820px) {
+  .stepNumber { grid-column: 1; grid-row: 1; justify-self: center; width: 1.75rem; height: 1.75rem; font-size: 0.8125rem; }
   .hero { gap: 1.5rem; }
   .content { gap: 2rem; }
   .ingredients { border-right: 0; padding-right: 0; }

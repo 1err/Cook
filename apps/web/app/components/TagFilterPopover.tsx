@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "./ui/Icon";
 import {
   CATEGORY_LABELS,
   RECIPE_TAG_GROUPS,
@@ -67,9 +68,9 @@ export function TagFilterPopover({
         aria-label={ariaLabel}
         onClick={() => setOpen((prev) => !prev)}
       >
-        <span className="material-symbols-outlined">filter_alt</span>
+        <span aria-hidden="true"><Icon name="filter" size={24} /></span>
         <span>{currentLabel}</span>
-        <span className="material-symbols-outlined">expand_more</span>
+        <span aria-hidden="true"><Icon name="chevronDown" size={24} /></span>
       </button>
 
       {open ? (

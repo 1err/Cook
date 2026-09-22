@@ -28,6 +28,20 @@ describe("resolveRecipeStepVisual", () => {
     });
   });
 
+  it.each([
+    ["Stir-fry the pork until browned", "sear", "meat"],
+    ["Fold the wrapper over the filling", "assemble", "generic"],
+    ["Stir the sauce until smooth", "mix", "generic"],
+  ] as const)(
+    "resolves overlapping English action words: %s",
+    (text, actionType, ingredientVariant) => {
+      expect(resolveRecipeStepVisual("other", text)).toEqual({
+        actionType,
+        ingredientVariant,
+      });
+    },
+  );
+
   it("uses a neutral fallback when neither metadata nor text identifies an action", () => {
     expect(resolveRecipeStepVisual(null, "Continue with the next step")).toEqual({
       actionType: "other",

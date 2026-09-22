@@ -17,16 +17,20 @@ const INFERRED_ACTION_PATTERNS: ReadonlyArray<{
       /(?:切|剁|斩|切片|切块|切丁|切丝|切碎|切粒|颗粒|滚刀|slice|chop|dice|mince|julienne|\bcut\b)/iu,
   },
   {
+    actionType: "sear",
+    pattern: /(?:煎|炒|爆香|煸|sear|brown|pan[ -]?fry|stir[ -]?fry|saut[ée])/iu,
+  },
+  {
+    actionType: "assemble",
+    pattern: /(?:组装|包起|卷起|折叠|叠放|assemble|wrap|stuff|layer|fill|fold)/iu,
+  },
+  {
     actionType: "mix",
-    pattern: /(?:拌|混合|搅拌|搅匀|打散|mix|stir|whisk|combine|fold)/iu,
+    pattern: /(?:拌|混合|搅拌|搅匀|打散|mix|stir|whisk|combine)/iu,
   },
   {
     actionType: "season",
     pattern: /(?:调味|撒盐|加盐|胡椒|香料|season|seasoning|\bsalt\b|pepper|spice)/iu,
-  },
-  {
-    actionType: "sear",
-    pattern: /(?:煎|炒|爆香|煸|sear|brown|pan[ -]?fry|stir[ -]?fry|saut[ée])/iu,
   },
   {
     actionType: "simmer",
@@ -43,10 +47,6 @@ const INFERRED_ACTION_PATTERNS: ReadonlyArray<{
   {
     actionType: "drain",
     pattern: /(?:沥|滤出|滤干|控干|drain|strain|colander)/iu,
-  },
-  {
-    actionType: "assemble",
-    pattern: /(?:组装|包起|卷起|折叠|叠放|assemble|wrap|stuff|layer|fill)/iu,
   },
   {
     actionType: "plate",

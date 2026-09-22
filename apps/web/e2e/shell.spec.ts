@@ -34,7 +34,7 @@ test("renders an accessible responsive authenticated shell", async ({ page }, te
         headerHeight: inner.parentElement!.getBoundingClientRect().height,
       };
     });
-    expect(geometry.width).toBeCloseTo(1353.6, 0);
+    expect(geometry.width).toBeCloseTo(1280, 0);
     expect(geometry.rootFont).toBe(16);
     expect(geometry.headerHeight).toBeGreaterThanOrEqual(80);
     expect(Math.abs(geometry.left - geometry.right)).toBeLessThanOrEqual(1);

@@ -26,7 +26,7 @@ and editorial redesign together and authorized deployment after verification.
 - Shared/API client: 49 tests passed.
 - Delivery safety: 43 tests passed using the project's Python environment.
 - Local browser against a disposable real PostgreSQL database: account creation,
-  manual recipe save/detail, planner insertion and basic grocery aggregation pass.
+  manual recipe save/detail, planner insertion, basic grocery aggregation, checking/copying, and password-confirmed deletion pass. The disposable account is gone and the AI ledger contains zero calls. Recovery pages retain no-store, no-referrer, CSP, nosniff and frame-denial headers; no external Google stylesheet appears on them.
 - The first browser suite exposed outdated visual/layout expectations while the
   source UI task was still changing. Final snapshot, visual review and regression
   rerun remain required; the earlier partial run is not a release pass.

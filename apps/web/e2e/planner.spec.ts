@@ -96,6 +96,7 @@ async function installPlannerFixtures(page: Page) {
     return fulfillJson(route, recipes.find((recipe) => recipe.id === recipeId) ?? null);
   });
   await page.route("**/recipes/page?*", (route) => fulfillJson(route, recipePageFixture(recipes, route.request().url())));
+  await page.route("**/cooking-session/active", (route) => fulfillJson(route, null));
   await page.route("**/meal-plan?*", (route) => fulfillJson(route, [...plans.values()]));
   await page.route("**/meal-plan/*", async (route) => {
     if (route.request().method() !== "PUT") {
@@ -116,8 +117,27 @@ async function installPlannerFixtures(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (route) => route.abort());
   await installPlannerFixtures(page);
   await page.goto("/planner?week=2026-08-10");
+});
+
+test("keeps Planner pictograms and picker controls usable without external icon fonts", async ({ page }) => {
+  await expect(page.getByRole("heading", { name: "Weekly planner" })).toBeVisible();
+  await expect(page.getByText(/^(search|filter_alt|expand_more|close|add)$/)).toHaveCount(0);
+  const emptySlot = page.getByRole("button", { name: "Choose a recipe for dinner on 2026-08-11" });
+  await expect(emptySlot.locator("svg")).toBeVisible();
+  await emptySlot.click();
+
+  const picker = page.getByRole("dialog", { name: "Choose recipe for meal slot" });
+  await expect(picker).toBeVisible();
+  await expect(picker.getByText(/^(search|filter_alt|expand_more|close|add)$/)).toHaveCount(0);
+  await picker.getByRole("button", { name: "Filter planner recipes by tag" }).click();
+  await expect(picker.getByRole("dialog", { name: "Filter planner recipes by tag" })).toBeVisible();
+  await picker.getByRole("button", { name: "Weeknight", exact: true }).click();
+  await expect(picker.getByRole("button", { name: "Clear filter" })).toBeVisible();
+  await picker.getByRole("button", { name: "Close recipe picker" }).last().click();
+  await expect(picker).toBeHidden();
 });
 
 test("renders a readable day-card week beside a compact recipe rail", async ({ page }, testInfo) => {
@@ -164,6 +184,7 @@ test("renders a readable day-card week beside a compact recipe rail", async ({ p
     const railThumbnail = rail.querySelector<HTMLElement>(".planner-drag-card__thumb")!;
     const mainRect = main.getBoundingClientRect();
     return {
+      boardAreaWidth: week.parentElement!.parentElement!.getBoundingClientRect().width,
       cardColumns: getComputedStyle(week).gridTemplateColumns.split(" ").length,
       clippedDayCards: dayCards.filter((card) => card.scrollHeight > card.clientHeight).length,
       documentWidth: document.documentElement.scrollWidth,
@@ -174,6 +195,9 @@ test("renders a readable day-card week beside a compact recipe rail", async ({ p
       railThumbnailWidth: railThumbnail.getBoundingClientRect().width,
       rightGutter: window.innerWidth - mainRect.right,
       viewportWidth: window.innerWidth,
+      weekWidth: week.getBoundingClientRect().width,
+      workspaceColumns: getComputedStyle(rail.parentElement!).gridTemplateColumns,
+      workspaceWidth: rail.parentElement!.getBoundingClientRect().width,
     };
   });
   expect(workspaceMetrics.documentWidth).toBeLessThanOrEqual(workspaceMetrics.viewportWidth);
@@ -193,11 +217,15 @@ test("renders a readable day-card week beside a compact recipe rail", async ({ p
       const title = card.querySelector<HTMLElement>(".planner-meal-card__title")!;
       return {
         bodyWidth: body.getBoundingClientRect().width,
+        cardWidth: card.getBoundingClientRect().width,
         cardHeight: card.getBoundingClientRect().height,
         columns: getComputedStyle(card).gridTemplateColumns,
+        dayCardWidth: card.closest<HTMLElement>(".planner-day-card")!.getBoundingClientRect().width,
         imageDisplay: getComputedStyle(image).display,
         imageHeight: image.getBoundingClientRect().height,
         imageWidth: image.getBoundingClientRect().width,
+        recipeRowWidth: card.closest<HTMLElement>(".planner-slot-recipe")!.getBoundingClientRect().width,
+        slotWidth: card.closest<HTMLElement>("[data-testid='planner-meal-slot']")!.getBoundingClientRect().width,
         titleVisibleRatio: title.clientWidth / title.scrollWidth,
         titleWidth: title.getBoundingClientRect().width,
         titleWhiteSpace: getComputedStyle(title).whiteSpace,
@@ -208,7 +236,10 @@ test("renders a readable day-card week beside a compact recipe rail", async ({ p
   expect(mealCardMetrics.imageWidth).toBeCloseTo(64, 0);
   expect(mealCardMetrics.imageHeight).toBeCloseTo(52, 0);
   expect(mealCardMetrics.cardHeight).toBeGreaterThanOrEqual(52);
-  expect(mealCardMetrics.bodyWidth, JSON.stringify(mealCardMetrics)).toBeGreaterThanOrEqual(100);
+  expect(
+    mealCardMetrics.bodyWidth,
+    JSON.stringify({ workspaceMetrics, mealCardMetrics }),
+  ).toBeGreaterThanOrEqual(100);
   expect(mealCardMetrics.titleVisibleRatio, JSON.stringify(mealCardMetrics)).toBeGreaterThan(0.9);
   expect(mealCardMetrics.titleFontSize).toBeGreaterThanOrEqual(14);
   expect(mealCardMetrics.titleWhiteSpace).toBe("normal");

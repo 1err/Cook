@@ -201,9 +201,9 @@ test("keeps preparation in context and renders smart groceries without horizonta
       viewportWidth: window.innerWidth,
     };
   });
-  expect(shellMetrics.shellWidth).toBeLessThanOrEqual(1440);
+  expect(shellMetrics.shellWidth).toBeLessThanOrEqual(1280);
   if (testInfo.project.name === "desktop") {
-    expect(shellMetrics.shellWidth).toBeGreaterThan(1300);
+    expect(shellMetrics.shellWidth).toBeGreaterThanOrEqual(1120);
   }
   expect(Math.abs(shellMetrics.leftGutter - shellMetrics.rightGutter)).toBeLessThanOrEqual(1);
   expect(shellMetrics.documentWidth).toBeLessThanOrEqual(shellMetrics.viewportWidth);

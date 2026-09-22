@@ -11,6 +11,7 @@ import { RequireAuth } from "../components/RequireAuth";
 import { PageHeader, PageShell } from "../components/PageShell";
 import { useT } from "../lib/i18n";
 import { TagFilterPopover } from "../components/TagFilterPopover";
+import { Icon } from "../components/ui/Icon";
 import type { Recipe } from "../types";
 import {
   MEAL_PLAN_SLOTS,
@@ -433,7 +434,7 @@ function PlannerPageContent() {
   const recipeSourceControls = (
     <>
       <div className="planner-editorial__search">
-        <span className="material-symbols-outlined" aria-hidden>search</span>
+        <span aria-hidden="true"><Icon name="search" size={16} /></span>
         <input
           type="search"
           placeholder={t("planner.searchLibrary")}
@@ -622,7 +623,7 @@ function PlannerPageContent() {
                   onClick={closeRecipePicker}
                   aria-label={t("planner.closeRecipePicker")}
                 >
-                  <span className="material-symbols-outlined" aria-hidden="true">close</span>
+                  <Icon name="close" size={24} />
                   <span className="planner-mobile-picker__close-label">
                     {t("planner.closeRecipePicker")}
                   </span>
@@ -655,7 +656,7 @@ function PlannerPageContent() {
                             date: slotPicker.date,
                           })}
                         >
-                          <span className="material-symbols-outlined" aria-hidden="true">close</span>
+                          <Icon name="close" size={24} />
                         </button>
                       </div>
                     )) : (
@@ -668,7 +669,7 @@ function PlannerPageContent() {
                       className="planner-slot-manager__add font-headline"
                       onClick={() => setSlotPicker((current) => current ? { ...current, mode: "add" } : null)}
                     >
-                      <span className="material-symbols-outlined" aria-hidden="true">add</span>
+                      <Icon name="add" size={24} />
                       {t("planner.addRecipe")}
                     </button>
                   </div>
