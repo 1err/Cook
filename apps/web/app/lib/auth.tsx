@@ -10,13 +10,16 @@ export type AuthUser = {
   email: string;
   is_library_public: boolean;
   is_admin?: boolean;
+  email_verified?: boolean;
 };
 
 type AuthContextValue = {
   user: AuthUser | null;
   loading: boolean;
-  refreshUser: () => Promise<void>;
+  refreshUser: (options?: { newSession?: boolean }) => Promise<void>;
   logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
   setLibraryVisibility: (isPublic: boolean) => Promise<void>;
 };
 
@@ -35,8 +38,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const generation = useRef(0);
+  const accountGeneration = useRef(0);
+  const activeUserId = useRef<string | null>(null);
 
-  const refreshUser = useCallback(async () => {
+  const refreshUser = useCallback(async (options?: { newSession?: boolean }) => {
+    if (options?.newSession) {
+      accountGeneration.current += 1;
+      activeUserId.current = null;
+      clearUserStorage();
+      setUser(null);
+      setLoading(true);
+    }
     const requestGeneration = ++generation.current;
     try {
       const res = await apiFetch("/auth/me");
@@ -44,44 +56,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.status === 200) {
         const data = await res.json();
         if (requestGeneration !== generation.current) return;
+        if (activeUserId.current !== data.id) accountGeneration.current += 1;
+        activeUserId.current = data.id;
         bindUserStorage(data.id);
         setUser({
           id: data.id,
           email: data.email,
           is_library_public: Boolean(data.is_library_public),
           is_admin: data.is_admin === true,
+          email_verified: data.email_verified === true,
         });
-      } else {
+      } else if (res.status === 401) {
         // Stale cookie (e.g. user id from another DB) still sends a valid JWT; backend returns 401.
-        if (res.status === 401) {
-          clearUserStorage();
-          await apiFetch("/auth/logout", { method: "POST" }).catch(() => {});
-        }
+        clearUserStorage();
+        accountGeneration.current += 1;
+        activeUserId.current = null;
         if (requestGeneration === generation.current) setUser(null);
+      } else {
+        throw Object.assign(new Error("Couldn't refresh account"), { status: res.status });
       }
-    } catch {
-      if (requestGeneration === generation.current) setUser(null);
     } finally {
       if (requestGeneration === generation.current) setLoading(false);
     }
   }, []);
 
-  const logout = useCallback(async () => {
-    const logoutGeneration = ++generation.current;
+  const finishAccountAction = useCallback(async (path: string, options: RequestInit) => {
+    const requestGeneration = accountGeneration.current;
+    const response = await apiFetch(path, options);
+    if (!response.ok) {
+      throw Object.assign(new Error("Account action failed"), { status: response.status });
+    }
+    if (accountGeneration.current !== requestGeneration) return;
+    generation.current += 1;
+    accountGeneration.current += 1;
+    activeUserId.current = null;
     clearUserStorage();
     setUser(null);
     setLoading(false);
-    try {
-      await apiFetch("/auth/logout", { method: "POST" });
-    } catch {
-      // ignore network errors
-    } finally {
-      if (generation.current === logoutGeneration) {
-        clearUserStorage();
-        router.push("/login");
-      }
-    }
+    router.push("/login");
   }, [router]);
+  const logout = useCallback(() => finishAccountAction("/auth/logout", { method: "POST" }), [finishAccountAction]);
+  const logoutAll = useCallback(() => finishAccountAction("/auth/logout-all", { method: "POST" }), [finishAccountAction]);
+  const deleteAccount = useCallback((password: string) => finishAccountAction("/auth/account", {
+    method: "DELETE", body: JSON.stringify({ password }),
+  }), [finishAccountAction]);
 
   const setLibraryVisibility = useCallback(async (isPublic: boolean) => {
     const requestGeneration = generation.current;
@@ -101,12 +119,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    refreshUser();
+    void refreshUser().catch(() => {});
   }, [refreshUser]);
 
   useEffect(() => {
     function expire(broadcast = true) {
       generation.current += 1;
+      accountGeneration.current += 1;
+      activeUserId.current = null;
       clearUserStorage({ broadcast });
       setUser(null);
       setLoading(false);
@@ -120,8 +140,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         expire(false);
         return;
       }
+      if (event.newValue !== activeUserId.current) expire(false);
       setLoading(true);
-      void refreshUser();
+      void refreshUser().catch(() => {});
     }
     const handleExpired = () => expire();
     window.addEventListener(AUTH_EXPIRED_EVENT, handleExpired);
@@ -133,7 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshUser]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, refreshUser, logout, setLibraryVisibility }}>
+    <AuthContext.Provider value={{ user, loading, refreshUser, logout, logoutAll, deleteAccount, setLibraryVisibility }}>
       {children}
     </AuthContext.Provider>
   );

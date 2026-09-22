@@ -174,3 +174,37 @@ test("preserves a parse error until a source edit or mode change clears it", asy
   await fireEvent.press(screen.getByRole("tab", { name: "Transcript" }));
   expect(screen.queryByText("This TikTok does not expose enough recipe text.")).not.toBeOnTheScreen();
 });
+
+test('creates and saves a manual recipe without calling either parsing provider', async () => {
+  const nav = navigation();
+  await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Create recipe manually' }));
+  expect(screen.getByRole('button', { name: 'Save recipe' })).toBeDisabled();
+  await fireEvent.changeText(screen.getByLabelText('Title'), 'Family noodles');
+  await fireEvent.changeText(screen.getByLabelText('Ingredient'), 'Noodles');
+  await fireEvent.changeText(screen.getByLabelText('Quantity'), '200 g');
+  await fireEvent.changeText(screen.getByLabelText('Step 1'), 'Boil noodles.');
+  await fireEvent.press(screen.getByRole('button', { name: 'Save recipe' }));
+  await waitFor(() => expect(nav.parentNavigate).toHaveBeenCalled());
+  expect(mockParseLink).not.toHaveBeenCalled();
+  expect(mockParseTranscript).not.toHaveBeenCalled();
+  expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ title: 'Family noodles', source_url: null, ingredients: [{ name: 'Noodles', quantity: '200 g' }], steps: [expect.objectContaining({ text: 'Boil noodles.' })] }));
+});
+
+test('does not navigate from a save belonging to an unmounted account view', async () => {
+  const nav = navigation();
+  let finish!: (recipe: Recipe) => void;
+  mockCreate.mockImplementation(() => new Promise<Recipe>(resolve => { finish = resolve; }));
+  const rendered = await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Create recipe manually' }));
+  await fireEvent.changeText(screen.getByLabelText('Title'), 'Noodles');
+  await fireEvent.changeText(screen.getByLabelText('Ingredient'), 'Noodles');
+  await fireEvent.changeText(screen.getByLabelText('Step 1'), 'Boil noodles.');
+  void fireEvent.press(screen.getByRole('button', { name: 'Save recipe' }));
+  await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+  await rendered.unmount();
+  finish({ ...parsedDraft, id: 'previous-user-recipe' });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(nav.value.goBack).not.toHaveBeenCalled();
+  expect(nav.parentNavigate).not.toHaveBeenCalled();
+});

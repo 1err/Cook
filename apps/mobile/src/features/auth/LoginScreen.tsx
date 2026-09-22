@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import { Image, StyleSheet, Text, TextInput, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { useT } from "../../lib/i18n";
 import { useAuth } from "../../lib/auth";
 import { Button, Screen, TextField } from "../../components";
 import { colors, spacing, typography } from "../../theme";
@@ -10,6 +11,7 @@ type Props = NativeStackScreenProps<AuthStackParamList, "Login">;
 
 export function LoginScreen({ navigation }: Props) {
   const { login } = useAuth();
+  const t = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -79,6 +81,12 @@ export function LoginScreen({ navigation }: Props) {
             loading={submitting}
             fullWidth
             size="lg"
+          />
+          <Button
+            title={t("account.forgotPassword")}
+            onPress={() => navigation.navigate("ForgotPassword", { email: email.trim() })}
+            variant="ghost"
+            fullWidth
           />
           <Button
             title="Create account"

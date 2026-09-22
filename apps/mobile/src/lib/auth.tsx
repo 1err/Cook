@@ -11,6 +11,7 @@ type MobileUser = {
   id: string;
   email: string;
   is_library_public: boolean;
+  email_verified?: boolean;
 };
 
 type AuthContextValue = {
@@ -20,6 +21,9 @@ type AuthContextValue = {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
+  refreshUser: () => Promise<void>;
   invalidateToken: (rejectedToken: string) => void;
   setLibraryVisibility: (isPublic: boolean) => Promise<void>;
 };
@@ -33,6 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const tokenRef = useRef<string | null>(null);
   const generation = useRef(0);
   const tokenWrites = useRef<Promise<void>>(Promise.resolve());
+  const accountClears = useRef<Promise<void>>(Promise.resolve());
 
   const persistToken = useCallback((next: string | null) => {
     const write = tokenWrites.current.catch(() => {}).then(async () => {
@@ -51,12 +56,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return write;
   }, []);
 
-  const clearAccountData = useCallback(async (preserveCooking = false) => {
-    ephemeral.clear();
-    await Promise.allSettled([cancelAllCookingNotifications(), clearUserScopedPersistent({ preserveCooking })]);
+  const clearAccountData = useCallback((preserveCooking = false) => {
+    // A new login waits behind earlier cleanup, so an old account's delayed
+    // storage/notification cleanup cannot erase the next account's data.
+    const cleanup = accountClears.current.catch(() => {}).then(async () => {
+      ephemeral.clear();
+      await Promise.allSettled([cancelAllCookingNotifications(), clearUserScopedPersistent({ preserveCooking })]);
+    });
+    accountClears.current = cleanup;
+    return cleanup;
   }, []);
 
-  const logout = useCallback(async () => {
+  const clearSession = useCallback(async () => {
     generation.current += 1;
     tokenRef.current = null;
     setToken(null);
@@ -65,11 +76,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await Promise.all([persistToken(null), clearAccountData()]);
   }, [clearAccountData, persistToken]);
 
+  const finishAccountAction = useCallback(async (action: "logout" | "logoutAll" | "deleteAccount", password = "") => {
+    const requestGeneration = ++generation.current;
+    const requestToken = tokenRef.current;
+    if (requestToken) {
+      // Do not invalidate local state on a failed mutation. In particular a
+      // wrong deletion password or offline revocation must retain the account.
+      const client = buildClient(requestToken);
+      const response = action === "deleteAccount"
+        ? await client.auth.deleteAccount(password)
+        : await client.auth[action]();
+      if (!response.ok) throw new Error("Account request was not confirmed");
+    } else if (action !== "logout") {
+      throw new Error("Not signed in");
+    }
+    if (generation.current !== requestGeneration || tokenRef.current !== requestToken) return;
+    await clearSession();
+  }, [clearSession]);
+
+  const logout = useCallback(() => finishAccountAction("logout"), [finishAccountAction]);
+  const logoutAll = useCallback(() => finishAccountAction("logoutAll"), [finishAccountAction]);
+  const deleteAccount = useCallback((password: string) => finishAccountAction("deleteAccount", password), [finishAccountAction]);
+
   const invalidateToken = useCallback((rejectedToken: string) => {
     if (tokenRef.current !== rejectedToken) return;
     // Auth state clears synchronously; a platform storage failure cannot resurrect the UI.
-    void logout().catch(() => {});
-  }, [logout]);
+    void clearSession().catch(() => {});
+  }, [clearSession]);
+
+  const refreshUser = useCallback(async () => {
+    const requestToken = tokenRef.current;
+    const requestGeneration = generation.current;
+    if (!requestToken) throw new Error("Not signed in");
+    const me = await buildClient(requestToken, () => invalidateToken(requestToken)).auth.me();
+    if (tokenRef.current !== requestToken || generation.current !== requestGeneration) return;
+    setUser(me);
+  }, [invalidateToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,7 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (loginGeneration !== generation.current) return;
     tokenRef.current = res.access_token;
     setToken(res.access_token);
-    setUser({ id: res.id, email: res.email, is_library_public: res.is_library_public });
+    setUser({ id: res.id, email: res.email, is_library_public: res.is_library_public, email_verified: res.email_verified });
   }, [clearAccountData, persistToken]);
 
   const register = useCallback(async (email: string, password: string) => {
@@ -130,7 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (registerGeneration !== generation.current) return;
     tokenRef.current = res.access_token;
     setToken(res.access_token);
-    setUser({ id: res.id, email: res.email, is_library_public: res.is_library_public });
+    setUser({ id: res.id, email: res.email, is_library_public: res.is_library_public, email_verified: res.email_verified });
   }, [clearAccountData, persistToken]);
 
   const setLibraryVisibility = useCallback(
@@ -147,8 +189,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ token, user, loading, login, register, logout, invalidateToken, setLibraryVisibility }),
-    [invalidateToken, loading, login, logout, register, setLibraryVisibility, token, user],
+    () => ({ token, user, loading, login, register, logout, logoutAll, deleteAccount, refreshUser, invalidateToken, setLibraryVisibility }),
+    [deleteAccount, invalidateToken, loading, login, logout, logoutAll, refreshUser, register, setLibraryVisibility, token, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

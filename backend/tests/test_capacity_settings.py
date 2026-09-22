@@ -27,12 +27,27 @@ def test_connection_budget_counts_supervisor_and_migration_separately():
     assert settings(**values, DB_CONNECTION_BUDGET=12)
 
 
-def test_money_allocation_requires_room_after_hosting_reserve():
-    with pytest.raises(ValidationError, match="hosting reserve"):
-        settings(OPERATING_MONTHLY_BUDGET_USD="150", HOSTING_MONTHLY_RESERVE_USD="130",
-                 AI_MONTHLY_BUDGET_USD="30")
-    configured = settings(HOSTING_MONTHLY_RESERVE_USD="120", AI_MONTHLY_BUDGET_USD="30")
-    assert configured.AI_MONTHLY_BUDGET_USD == Decimal("30")
+def test_ai_allocation_is_independent_of_legacy_hosting_estimates():
+    configured = settings(OPERATING_MONTHLY_BUDGET_USD="150", HOSTING_MONTHLY_RESERVE_USD="150",
+                          AI_MONTHLY_BUDGET_USD="29", AI_ACCOUNT_MONTHLY_BUDGET_USD="3")
+    assert configured.AI_MONTHLY_BUDGET_USD == Decimal("29")
+
+
+@pytest.mark.parametrize("amount", ["30.000000001", "150", "1000000"])
+def test_ai_allocation_above_thirty_dollars_is_rejected(amount):
+    with pytest.raises(ValidationError):
+        settings(HOSTING_MONTHLY_RESERVE_USD="0", AI_MONTHLY_BUDGET_USD=amount)
+
+
+def test_explicit_beta_overlay_loads_reviewed_allowance_and_model_prices():
+    from pathlib import Path
+    from app.core.ai_cost import configured_price
+    configured = Settings(_env_file=Path(__file__).resolve().parents[1] / '.env.beta.example',
+                          DATABASE_URL='postgresql+asyncpg://test:test@localhost/test', APP_ENV='test')
+    price = configured_price(configured)
+    assert configured.AI_MONTHLY_BUDGET_USD == Decimal('29')
+    assert configured.AI_ACCOUNT_MONTHLY_BUDGET_USD == Decimal('3')
+    assert (price.input_usd_per_million, price.output_usd_per_million) == (Decimal('.15'), Decimal('.60'))
 
 
 def test_production_uses_shared_jobs_and_default_zero_ai_allocation():

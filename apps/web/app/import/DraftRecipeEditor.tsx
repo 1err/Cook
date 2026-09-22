@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { isCompleteRecipeDraft } from "@cooking/shared";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { useT } from "../lib/i18n";
 import { RECIPE_TAG_GROUPS, type RecipeTagSlug } from "../lib/recipeCategories";
@@ -29,16 +30,20 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
 
 export interface DraftRecipeEditorProps {
   draft: Recipe;
+  requireCompleteRecipe?: boolean;
   onChange: (next: Recipe) => void;
   onBack: () => void;
   onSaveSuccess: (savedId: string) => void;
 }
 
-export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: DraftRecipeEditorProps) {
+export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requireCompleteRecipe = false }: DraftRecipeEditorProps) {
   const t = useT();
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tutorialValid, setTutorialValid] = useState(true);
+  const complete = !requireCompleteRecipe || isCompleteRecipeDraft(draft);
   const draftTags = draft.library_tags ?? [];
 
   function toggleDraftTag(tag: RecipeTagSlug) {
@@ -67,7 +72,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
   }
 
   async function handleSaveRecipe() {
-    if (!tutorialValid) return;
+    if (saving || !tutorialValid || !complete) return;
     setError(null);
     setSaving(true);
     try {
@@ -76,15 +81,17 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
         body: JSON.stringify({
           ...draft,
           ingredients: draft.ingredients.filter((item) => item.name.trim()),
+          ...(requireCompleteRecipe ? { title: draft.title.trim(), steps: draft.steps?.filter(step => step.text.trim()) } : {}),
         }),
       });
       if (!response.ok) throw new Error(await readErrorMessage(response, t("common.save")));
       const saved: Recipe = await response.json();
-      onSaveSuccess(saved.id);
+      if (mounted.current) onSaveSuccess(saved.id);
     } catch (caught) {
+      if (!mounted.current) return;
       setError(caught instanceof Error ? caught.message : t("common.save"));
     } finally {
-      setSaving(false);
+      if (mounted.current) setSaving(false);
     }
   }
 
@@ -100,12 +107,13 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
           type="button"
           className={styles.saveButton}
           onClick={() => void handleSaveRecipe()}
-          disabled={saving || !tutorialValid}
+          disabled={saving || !tutorialValid || !complete}
         >
           {saving ? t("common.saving") : t("import.saveRecipe")}
         </button>
       </header>
 
+      {!complete ? <p>{t("import.manualRequired")}</p> : null}
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
 
       <div className={styles.reviewColumns}>

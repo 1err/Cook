@@ -31,6 +31,7 @@ type LoadedData = {
   items: ShoppingListItem[];
   mealPlans: MealPlanDay[];
   recipeById: Record<string, Recipe>;
+  previewUnavailable?: boolean;
   refinedData: RefineResponse | null;
   hidden: Set<number>;
   checked: Set<number>;
@@ -49,7 +50,7 @@ type Action =
   | { type: "loadFailed"; bounds: WeekBounds; error: string }
   | { type: "refineStarted"; weekStart: string }
   | { type: "refineFailed"; weekStart: string; error: string }
-  | { type: "refineSucceeded"; weekStart: string; refinedData: RefineResponse; fingerprint: string }
+  | { type: "refineSucceeded"; weekStart: string; refinedData: RefineResponse; fingerprint: string; items: ShoppingListItem[]; mealPlans: MealPlanDay[] }
   | { type: "backStarted"; weekStart: string }
   | { type: "setStale"; weekStart: string; stale: boolean }
   | { type: "toggleChecked"; index: number }
@@ -92,6 +93,9 @@ function reducer(state: State, action: Action): State {
         data: {
           ...state.data,
           refinedData: action.refinedData,
+          items: action.items,
+          mealPlans: action.mealPlans,
+          previewUnavailable: false,
           hidden: new Set(),
           checked: new Set(),
           savedFingerprint: action.fingerprint,
@@ -138,12 +142,19 @@ function reducer(state: State, action: Action): State {
 }
 
 async function fetchAll(apiClient: ApiClient, bounds: WeekBounds) {
+  let previewUnavailable = false;
   const [items, mealPlans] = await Promise.all([
     apiClient.shopping.list(bounds.start, bounds.end),
-    apiClient.mealPlan.list(bounds.start, bounds.end),
+    apiClient.mealPlan.list(bounds.start, bounds.end).catch(() => {
+      previewUnavailable = true;
+      return [] as MealPlanDay[];
+    }),
   ]);
-  const recipes = await resolveRecipeDetails(apiClient.recipes.get, mealPlans.flatMap(plan => Object.values(normalizeMealPlanSlots(plan)).flat()));
-  return { items, mealPlans, recipes };
+  const recipes = await resolveRecipeDetails(apiClient.recipes.get, mealPlans.flatMap(plan => Object.values(normalizeMealPlanSlots(plan)).flat())).catch(() => {
+    previewUnavailable = true;
+    return [] as Recipe[];
+  });
+  return { items, mealPlans, recipes, previewUnavailable };
 }
 
 export function useSmartShoppingList(weekStart: string | undefined) {
@@ -184,7 +195,7 @@ export function useSmartShoppingList(weekStart: string | undefined) {
     const bounds = state.bounds;
     void (async () => {
       try {
-        const { items, mealPlans, recipes } = await fetchAll(apiClient, bounds);
+        const { items, mealPlans, recipes, previewUnavailable } = await fetchAll(apiClient, bounds);
         if (cancelled) return;
         const recipeById: Record<string, Recipe> = {};
         for (const r of recipes) recipeById[r.id] = r;
@@ -194,7 +205,7 @@ export function useSmartShoppingList(weekStart: string | undefined) {
         const hidden = cached?.hidden ?? new Set<number>();
         const checked = cached?.checked ?? new Set<number>();
         const savedFingerprint = cached?.plannerFingerprint ?? null;
-        const smartListStale = Boolean(savedFingerprint && savedFingerprint !== currentFingerprint);
+        const smartListStale = previewUnavailable || Boolean(savedFingerprint && savedFingerprint !== currentFingerprint);
         if (cancelled) return;
         dispatch({
           type: "loaded",
@@ -203,6 +214,7 @@ export function useSmartShoppingList(weekStart: string | undefined) {
             items,
             mealPlans,
             recipeById,
+            previewUnavailable,
             refinedData,
             hidden,
             checked,
@@ -272,7 +284,7 @@ export function useSmartShoppingList(weekStart: string | undefined) {
         dispatch({
           type: "setStale",
           weekStart: current.bounds.start,
-          stale: reference !== savedFingerprint,
+          stale: Boolean(current.data.previewUnavailable) || reference !== savedFingerprint,
         });
       })();
     }, []),
@@ -318,6 +330,8 @@ export function useSmartShoppingList(weekStart: string | undefined) {
         weekStart: originWeek,
         refinedData: refined,
         fingerprint,
+        items,
+        mealPlans,
       });
       return { status: "succeeded", weekStart: originWeek };
     } catch (e) {

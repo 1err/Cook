@@ -9,7 +9,7 @@ from typing import List, Literal
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import EmailStr, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -95,6 +95,34 @@ class Settings(BaseSettings):
     # Auth: JWT signing. Required for auth endpoints. Use a long random string (e.g. openssl rand -hex 32).
     AUTH_SECRET: str = Field("", repr=False)
 
+    # Activate only after SES identity verification and production sending access.
+    EMAIL_PROVIDER: Literal["disabled", "ses"] = "disabled"
+    SES_REGION: str = ""
+    SES_SENDER_EMAIL: EmailStr | None = None
+    SES_IDENTITY_VERIFIED: bool = False
+    PUBLIC_WEB_ORIGIN: str = ""
+    PASSWORD_RESET_TTL_SECONDS: int = Field(1800, ge=300, le=3600)
+    EMAIL_VERIFICATION_TTL_SECONDS: int = Field(86400, ge=300, le=86400)
+    ACCOUNT_EMAIL_IP_PER_HOUR: int = Field(20, ge=1)
+    ACCOUNT_EMAIL_ADDRESS_PER_HOUR: int = Field(5, ge=1)
+    ACCOUNT_CONFIRM_IP_PER_MINUTE: int = Field(20, ge=1)
+    ACCOUNT_CLEANUP_ENABLED: bool = True
+    ACCOUNT_CLEANUP_POLL_SECONDS: float = Field(30, ge=1, le=300)
+
+    @model_validator(mode="after")
+    def validate_account_email_origin(self) -> "Settings":
+        origin = self.PUBLIC_WEB_ORIGIN
+        if origin:
+            parsed = urlsplit(origin)
+            allowed = {item.strip() for item in self.CORS_ALLOW_ORIGINS.split(",")}
+            if (parsed.scheme not in {"http", "https"} or not parsed.hostname
+                    or parsed.username or parsed.password or parsed.path or parsed.query
+                    or parsed.fragment or origin not in allowed):
+                raise ValueError("PUBLIC_WEB_ORIGIN must be an explicit first-party CORS origin without a path")
+            if self.APP_ENV == "production" and parsed.scheme != "https":
+                raise ValueError("Production account links require HTTPS")
+        return self
+
     # Production requires secure cookies. Sibling HTTPS subdomains are normally
     # same-site; unrelated preview domains need SameSite=none plus Secure.
     COOKIE_SECURE: bool = False
@@ -122,11 +150,11 @@ class Settings(BaseSettings):
     AI_USER_REQUESTS_PER_DAY: int = Field(50, ge=1)
     AI_GLOBAL_REQUESTS_PER_MINUTE: int = Field(60, ge=1)
     AI_GLOBAL_REQUESTS_PER_DAY: int = Field(1000, ge=1)
-    # Allocation must be explicit: an API key is not permission to consume the
-    # owner's entire combined hosting/AI budget. Prices are provider-verified inputs.
+    # Hosting fields are retained for historical planning/report compatibility.
+    # The approved AI ceiling is independent of that former combined estimate.
     OPERATING_MONTHLY_BUDGET_USD: Decimal = Field(Decimal("150"), gt=0)
     HOSTING_MONTHLY_RESERVE_USD: Decimal = Field(Decimal("150"), ge=0)
-    AI_MONTHLY_BUDGET_USD: Decimal = Field(Decimal("0"), ge=0)
+    AI_MONTHLY_BUDGET_USD: Decimal = Field(Decimal("0"), ge=0, le=30)
     AI_ACCOUNT_MONTHLY_BUDGET_USD: Decimal = Field(Decimal("0"), ge=0)
     AI_PRICE_VERSION: str = ""
     AI_PRICE_MODEL: str = ""
@@ -138,8 +166,8 @@ class Settings(BaseSettings):
 
     STORE_JOBS_MODE: Literal["auto", "local", "durable"] = "auto"
     STORE_JOBS_QUEUE_MAX: int = Field(100, ge=1, le=10000)
-    STORE_JOBS_POLL_SECONDS: float = Field(0.5, ge=0.1, le=10)
-    STORE_JOBS_WAIT_SECONDS: float = Field(150, gt=0, le=180)
+    STORE_JOBS_POLL_SECONDS: float = Field(2, ge=1, le=10)
+    STORE_JOBS_WAIT_SECONDS: float = Field(25, gt=0, le=30)
     STORE_JOBS_LEASE_SECONDS: int = Field(180, ge=30, le=600)
     STORE_JOBS_TIMEOUT_SECONDS: int = Field(125, ge=1, le=300)
     STORE_JOBS_MAX_ATTEMPTS: int = Field(2, ge=1, le=5)
@@ -147,6 +175,13 @@ class Settings(BaseSettings):
     STORE_JOBS_WARM_INTERVAL_SECONDS: int = Field(86400, ge=3600)
     STORE_JOBS_RETENTION_SECONDS: int = Field(86400, ge=3600)
     STORE_JOBS_ENABLED: bool = True
+    # All HTTP retailer callers (including cache hits/batches) share these
+    # PostgreSQL limits across replicas. Timed-out callers never cancel jobs.
+    STORE_REQUEST_GLOBAL_PER_MINUTE: int = Field(120, ge=1, le=600)
+    STORE_REQUEST_ACCOUNT_PER_MINUTE: int = Field(30, ge=1, le=120)
+    STORE_REQUEST_GLOBAL_MAX_INFLIGHT: int = Field(12, ge=1, le=24)
+    STORE_REQUEST_ACCOUNT_MAX_INFLIGHT: int = Field(2, ge=1, le=4)
+    STORE_REQUEST_TIMEOUT_SECONDS: float = Field(30, gt=0, le=40)
 
     ABUSE_LIMITS_ENABLED: bool | None = None
     AUTH_GLOBAL_PER_MINUTE: int = Field(120, ge=1)
@@ -176,14 +211,14 @@ class Settings(BaseSettings):
                        + self.DB_ADMIN_CONNECTION_RESERVE)
         if connections > self.DB_CONNECTION_BUDGET:
             raise ValueError("Configured pools and rollout overlap exceed the database connection budget")
-        if self.HOSTING_MONTHLY_RESERVE_USD + self.AI_MONTHLY_BUDGET_USD > self.OPERATING_MONTHLY_BUDGET_USD:
-            raise ValueError("AI allocation plus hosting reserve exceeds the combined monthly budget")
         if self.AI_ACCOUNT_MONTHLY_BUDGET_USD > self.AI_MONTHLY_BUDGET_USD:
             raise ValueError("Account AI allocation exceeds the app AI allocation")
         if self.AI_USER_MAX_INFLIGHT > self.AI_GLOBAL_MAX_INFLIGHT:
             raise ValueError("Account AI concurrency exceeds app concurrency")
         if self.STORE_JOBS_LEASE_SECONDS < self.STORE_JOBS_TIMEOUT_SECONDS + 30:
             raise ValueError("Store job lease must include at least 30 seconds for cleanup after timeout")
+        if self.STORE_REQUEST_ACCOUNT_MAX_INFLIGHT > self.STORE_REQUEST_GLOBAL_MAX_INFLIGHT:
+            raise ValueError("Account retailer concurrency exceeds global retailer concurrency")
         if self.STORE_JOBS_MODE == "auto":
             self.STORE_JOBS_MODE = "durable" if self.APP_ENV == "production" else "local"
         if self.APP_ENV == "production" and self.STORE_JOBS_MODE != "durable":

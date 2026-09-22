@@ -233,6 +233,12 @@ function ShoppingListPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const [basicChecks, setBasicChecks] = useState<{ week: string; keys: Set<string> }>({ week: start, keys: new Set() });
+  const basicChecked = basicChecks.week === start ? basicChecks.keys : new Set<string>();
+  const basicKey = (item: ShoppingListItem) => JSON.stringify([item.name, item.total_quantity]);
+  const [previewUnavailable, setPreviewUnavailable] = useState(false);
+  const [loadVersion, setLoadVersion] = useState(0);
   const [bulkLoadingProducts, setBulkLoadingProducts] = useState(false);
   const [bulkLoadProgress, setBulkLoadProgress] = useState<{ current: number; total: number } | null>(null);
   const [refinedData, setRefinedData] = useState<RefineResponse | null>(null);
@@ -442,6 +448,8 @@ function ShoppingListPageContent() {
   const activeRefinedData = smartWeekStart === start ? refinedData : null;
   const activeSavedPlannerFingerprint = smartWeekStart === start ? savedPlannerFingerprint : null;
 
+  useEffect(() => { setCopied(false); setCopyError(null); }, [items, smartChecked, basicChecks, activeRefinedData]);
+
   useEffect(() => {
     let cancelled = false;
     refineGenerationRef.current += 1;
@@ -450,6 +458,9 @@ function ShoppingListPageContent() {
     async function load() {
       setLoading(true);
       setItems([]);
+      setPreviewUnavailable(false);
+      setCopyError(null);
+      setCopied(false);
       setMealPlans([]);
       setRecipeById({});
       setRefinedData(null);
@@ -465,25 +476,34 @@ function ShoppingListPageContent() {
       try {
         const [listRes, planRes] = await Promise.all([
           apiFetch(`/shopping-list?start=${start}&end=${end}`),
-          apiFetch(`/meal-plan?start=${start}&end=${end}`),
+          apiFetch(`/meal-plan?start=${start}&end=${end}`).catch(() => null),
         ]);
         if (!listRes.ok) throw new Error("Failed to load");
         const data: ShoppingListItem[] = await listRes.json();
         if (cancelled) return;
         setItems(data);
         let plansPayload: MealPlanDay[] = [];
-        if (planRes.ok) {
-          const pj = await planRes.json();
-          if (Array.isArray(pj)) plansPayload = pj;
+        let previewFailed = !planRes?.ok;
+        if (planRes?.ok) {
+          try {
+            const pj = await planRes.json();
+            if (Array.isArray(pj)) plansPayload = pj;
+            else previewFailed = true;
+          } catch { previewFailed = true; }
         }
+        if (cancelled) return;
         setMealPlans(plansPayload);
         const latestFingerprint = buildWeekMealPlanFingerprint(weekDates, plansPayload);
         const recs = await resolveRecipeDetails(async id => {
           const response = await apiFetch(`/recipes/${encodeURIComponent(id)}`);
           if (!response.ok) throw new ApiError("Failed to load planned recipe", response.status);
           return response.json();
-        }, plansPayload.flatMap(plan => Object.values(normalizeMealPlanSlots(plan)).flat()));
+        }, plansPayload.flatMap(plan => Object.values(normalizeMealPlanSlots(plan)).flat())).catch(() => {
+          previewFailed = true;
+          return [];
+        });
         if (cancelled) return;
+        setPreviewUnavailable(previewFailed);
         const rmap = Object.fromEntries(recs.map(recipe => [recipe.id, recipe]));
         setRecipeById(rmap);
         try {
@@ -497,7 +517,7 @@ function ShoppingListPageContent() {
               setSmartChecked(parsed.checked);
               setSavedPlannerFingerprint(parsed.plannerFingerprint);
               setSmartListStale(
-                Boolean(parsed.plannerFingerprint && parsed.plannerFingerprint !== latestFingerprint)
+                previewFailed || Boolean(parsed.plannerFingerprint && parsed.plannerFingerprint !== latestFingerprint)
               );
             }
           }
@@ -514,7 +534,7 @@ function ShoppingListPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [start, end, weekDates]);
+  }, [start, end, weekDates, loadVersion]);
 
   useEffect(() => {
     if (!activeRefinedData) return;
@@ -583,9 +603,9 @@ function ShoppingListPageContent() {
     function syncSmartStaleState() {
       try {
         const latest = userLocalStorage.getItem(plannerFingerprintStorageKey(start)) ?? currentPlannerFingerprint;
-        setSmartListStale(latest !== activeSavedPlannerFingerprint);
+        setSmartListStale(previewUnavailable || latest !== activeSavedPlannerFingerprint);
       } catch {
-        setSmartListStale(currentPlannerFingerprint !== activeSavedPlannerFingerprint);
+        setSmartListStale(previewUnavailable || currentPlannerFingerprint !== activeSavedPlannerFingerprint);
       }
     }
     function handleVisibilityChange() {
@@ -598,7 +618,7 @@ function ShoppingListPageContent() {
       window.removeEventListener("focus", syncSmartStaleState);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [activeRefinedData, activeSavedPlannerFingerprint, currentPlannerFingerprint, start]);
+  }, [activeRefinedData, activeSavedPlannerFingerprint, currentPlannerFingerprint, previewUnavailable, start]);
 
   function setWeek(week: string) {
     router.push(`/shopping-list?week=${week}`);
@@ -863,15 +883,20 @@ function ShoppingListPageContent() {
     [mealPlans, recipeById, start],
   );
 
-  function handleCopyList() {
-    if (!activeRefinedData) return;
-    const lines = visiblePurchaseItems
-      .filter((row) => !smartChecked.has(row.origIndex))
-      .map((p) => `${p.name} — ${p.suggested_purchase || ""}`.trim());
-    navigator.clipboard.writeText(lines.join("\n")).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+  async function handleCopyList() {
+    const week = start;
+    const lines = activeRefinedData
+      ? visiblePurchaseItems.filter(row => !smartChecked.has(row.origIndex))
+          .map(row => [row.name, row.suggested_purchase].filter(Boolean).join(" — "))
+      : items.filter(item => !basicChecked.has(basicKey(item)))
+          .map(item => [item.name, item.total_quantity].filter(Boolean).join(" — "));
+    setCopyError(null);
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      if (activeWeekStartRef.current === week) setCopied(true);
+    } catch {
+      if (activeWeekStartRef.current === week) setCopyError(t("shopping.copyFailed"));
+    }
   }
 
   async function handlePrepareSmartList() {
@@ -899,6 +924,7 @@ function ShoppingListPageContent() {
       if (!isCurrentRefine()) return;
       setItems(latestItems);
       setMealPlans(latestPlans);
+      setPreviewUnavailable(!latestPlanRes.ok);
       const latestPlannerFingerprint = buildWeekMealPlanFingerprint(weekDates, latestPlans);
       const res = await apiFetch("/shopping-list/refine", {
         method: "POST",
@@ -912,7 +938,7 @@ function ShoppingListPageContent() {
       setRefinedData(data);
       setSmartWeekStart(start);
       setSavedPlannerFingerprint(latestPlannerFingerprint);
-      setSmartListStale(false);
+      setSmartListStale(!latestPlanRes.ok);
       setSmartHidden(new Set());
       setSmartChecked(new Set());
       clearCartAssistantState(true);
@@ -1092,7 +1118,7 @@ function ShoppingListPageContent() {
   }
 
   if (loading) return <p className="shop-muted shop-page--wide">{t("common.loading")}</p>;
-  if (error) return <p className="shop-error shop-page--wide">{error}</p>;
+  if (error) return <div className="shop-error shop-page--wide"><p role="alert">{error}</p><button type="button" onClick={() => setLoadVersion(value => value + 1)}>{t("shopping.retry")}</button></div>;
 
   const smartItemCount = visiblePurchaseItems.filter((r) => !smartChecked.has(r.origIndex)).length;
   const mealRowsVisible = planMealsExpanded ? planRows : planRows.slice(0, PREVIEW_MEAL_ROWS);
@@ -1123,7 +1149,7 @@ function ShoppingListPageContent() {
         title={`${t("shopping.title")} · ${weekRangeLabel}`}
         listKey={`${start}:${activeRefinedData ? "smart" : "original"}`}
         items={buildInstacartItems({
-          originalItems: items,
+          originalItems: items.filter(item => !basicChecked.has(basicKey(item))),
           purchaseItems: activeRefinedData?.purchase_items,
           hidden: smartHidden,
           checked: smartChecked,
@@ -1131,6 +1157,35 @@ function ShoppingListPageContent() {
         disabled={refining}
         stale={Boolean(activeRefinedData && smartListStale)}
       />
+
+      {copyError ? <p className={styles.error} role="alert">{copyError}</p> : null}
+      {!activeRefinedData && items.length > 0 ? (
+        <section className={styles.category} aria-label={t("shopping.basicList")}>
+          <header className={styles.categoryHeader}>
+            <h2 className="cw-display">{t("shopping.basicList")}</h2>
+            <button type="button" onClick={() => void handleCopyList()} disabled={items.every(item => basicChecked.has(basicKey(item)))}>{copied ? t("shopping.copied") : t("shopping.copyList")}</button>
+          </header>
+          <p className={styles.itemBlock}>{t("shopping.basicDescription")}</p>
+          {items.map(item => {
+            const key = basicKey(item);
+            const checked = basicChecked.has(key);
+            return <div className={`${styles.itemBlock} ${checked ? styles.checked : ""}`} key={key}>
+              <div className={styles.itemRow}><label>
+                <input type="checkbox" checked={checked} aria-label={t(checked ? "shopping.markStillNeedToBuy" : "shopping.markAlreadyHave", { name: item.name })} onChange={() => {
+                  setCopied(false);
+                  setBasicChecks(current => {
+                    const keys = new Set(current.week === start ? current.keys : []);
+                    if (keys.has(key)) keys.delete(key); else keys.add(key);
+                    return { week: start, keys };
+                  });
+                }} />
+                <span><strong>{item.name}</strong><small>{item.total_quantity}</small></span>
+              </label></div>
+            </div>;
+          })}
+        </section>
+      ) : null}
+      {previewUnavailable ? <p role="status">{t("shopping.previewUnavailable")}</p> : null}
 
       {!hasPlannedMeals && items.length === 0 ? (
         <div className={styles.empty}>

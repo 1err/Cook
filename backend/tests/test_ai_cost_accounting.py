@@ -24,6 +24,37 @@ def test_unknown_price_and_model_fail_closed():
         configured_price(settings)
 
 
+@pytest.mark.parametrize("model,input_rate,output_rate", [
+    ("gpt-4o-mini", ".01", ".60"),
+    ("gpt-4o-mini", ".15", ".01"),
+    ("gpt-4o", ".15", ".60"),
+])
+def test_unverified_or_underpriced_models_cannot_under_reserve(model, input_rate, output_rate):
+    settings = SimpleNamespace(OPENAI_MODEL=model, AI_PRICE_MODEL=model, AI_PRICE_VERSION="2026-09-22",
+                               AI_INPUT_USD_PER_MILLION_TOKENS=Decimal(input_rate),
+                               AI_OUTPUT_USD_PER_MILLION_TOKENS=Decimal(output_rate))
+    with pytest.raises(ValueError):
+        configured_price(settings)
+
+
+def test_repository_enforces_thirty_dollars_even_with_an_excessive_cap():
+    from datetime import date
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from app.db.ai_cost_models import AIMonthlyBudgetModel
+    from app.db.repo_ai_cost import money_reservation_statement
+    from app.db.repo_ai_usage import AIUsageLimitExceeded
+    engine = create_engine('sqlite://')
+    AIMonthlyBudgetModel.__table__.create(engine)
+    with Session(engine) as session:
+        month = date(2026, 9, 1)
+        assert session.execute(money_reservation_statement('global', month, 29_000_000_000, 100_000_000_000)).scalar_one() == 29_000_000_000
+        assert session.execute(money_reservation_statement('global', month, 2_000_000_000, 100_000_000_000)).scalar_one_or_none() is None
+        with pytest.raises(AIUsageLimitExceeded):
+            money_reservation_statement('global', date(2026, 10, 1), 31_000_000_000, 100_000_000_000)
+    engine.dispose()
+
+
 def test_money_caps_and_month_rollover_are_atomic():
     from datetime import date
     from sqlalchemy import create_engine, select

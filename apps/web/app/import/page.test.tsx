@@ -61,3 +61,38 @@ describe("ImportPage source errors", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+it('creates and saves a manual recipe without calling a parsing provider', async () => {
+  const user = userEvent.setup();
+  mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ id: 'manual-saved' }), { status: 200 }));
+  render(<ImportPage />);
+  await user.click(screen.getByRole('button', { name: 'import.createManually' }));
+  expect(mockApiFetch).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: 'import.saveRecipe' })).toBeDisabled();
+  await user.type(screen.getByLabelText('recipe.recipeTitle'), 'Family noodles');
+  await user.type(screen.getByLabelText('Ingredient 1'), 'Noodles');
+  await user.type(screen.getByLabelText('Ingredient 1 amount'), '200 g');
+  await user.type(screen.getByLabelText('recipe.tutorial.editor.stepLabel'), 'Boil noodles.');
+  await user.click(screen.getByRole('button', { name: 'import.saveRecipe' }));
+  await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/recipe/manual-saved'));
+  expect(mockApiFetch).toHaveBeenCalledTimes(1);
+  const [endpoint, options] = mockApiFetch.mock.calls[0];
+  expect(endpoint).toBe('/recipes');
+  expect(JSON.parse(options.body)).toMatchObject({ title: 'Family noodles', source_url: null, ingredients: [{ name: 'Noodles', quantity: '200 g' }], steps: [{ text: 'Boil noodles.' }] });
+});
+
+it('does not navigate to an old manual save after the account view unmounts', async () => {
+  const user = userEvent.setup();
+  let finish!: (response: Response) => void;
+  mockApiFetch.mockImplementation(() => new Promise<Response>(resolve => { finish = resolve; }));
+  const rendered = render(<ImportPage />);
+  await user.click(screen.getByRole('button', { name: 'import.createManually' }));
+  await user.type(screen.getByLabelText('recipe.recipeTitle'), 'Noodles');
+  await user.type(screen.getByLabelText('Ingredient 1'), 'Noodles');
+  await user.type(screen.getByLabelText('recipe.tutorial.editor.stepLabel'), 'Boil noodles.');
+  await user.click(screen.getByRole('button', { name: 'import.saveRecipe' }));
+  rendered.unmount();
+  finish(new Response(JSON.stringify({ id: 'previous-user-recipe' })));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(mockPush).not.toHaveBeenCalled();
+});

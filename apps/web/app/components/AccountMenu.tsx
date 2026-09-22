@@ -16,6 +16,8 @@ type AccountMenuProps = {
 export function AccountMenu({ email, isAdmin, onLogout }: AccountMenuProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
+  const [pending, setPending] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
@@ -46,8 +48,11 @@ export function AccountMenu({ email, isAdmin, onLogout }: AccountMenuProps) {
 
   const closeMenu = () => setOpen(false);
   const handleLogout = async () => {
-    closeMenu();
-    await onLogout();
+    if (pending) return;
+    setPending(true); setLogoutError(false);
+    try { await onLogout(); closeMenu(); }
+    catch { setLogoutError(true); }
+    finally { setPending(false); }
   };
   const initial = email.trim().charAt(0).toUpperCase() || "?";
 
@@ -113,10 +118,11 @@ export function AccountMenu({ email, isAdmin, onLogout }: AccountMenuProps) {
           ) : null}
 
           <div className={styles.logoutSection}>
-            <button className={styles.action} onClick={() => void handleLogout()} type="button">
+            <button className={styles.action} onClick={() => void handleLogout()} type="button" disabled={pending}>
               <Icon name="logout" />
               <span>{t("nav.logOut")}</span>
             </button>
+            {logoutError ? <p role="alert">{t("account.tryAgain")}</p> : null}
           </div>
         </div>
       ) : null}

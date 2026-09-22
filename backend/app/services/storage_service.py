@@ -21,7 +21,7 @@ def get_local_upload_root() -> Path:
     return (Path.cwd() / "uploads").resolve()
 
 
-def save_recipe_image_local(content: bytes, content_type: str) -> str:
+def save_recipe_image_local(content: bytes, content_type: str, object_key: str | None = None) -> str:
     """
     Write image bytes to local disk. Returns URL path segment starting with /uploads/...
     """
@@ -30,12 +30,14 @@ def save_recipe_image_local(content: bytes, content_type: str) -> str:
     recipes_dir.mkdir(parents=True, exist_ok=True)
     ext = mimetypes.guess_extension(content_type) or ".bin"
     key = f"{uuid.uuid4().hex}{ext}"
-    path = recipes_dir / key
+    relative = object_key or f"recipes/{key}"
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
-    return f"/uploads/recipes/{key}"
+    return f"/uploads/{relative}"
 
 
-def save_recipe_image_s3(content: bytes, content_type: str, account_id: str) -> str:
+def save_recipe_image_s3(content: bytes, content_type: str, account_id: str, object_key: str | None = None) -> str:
     """Persist exactly the bytes validated by the route; no reusable PUT grant."""
     if not settings.AWS_REGION or not settings.S3_BUCKET_NAME:
         raise ValueError(
@@ -51,7 +53,7 @@ def save_recipe_image_s3(content: bytes, content_type: str, account_id: str) -> 
 
     file_id = uuid.uuid4().hex
     ext = mimetypes.guess_extension(content_type) or ""
-    key = f"recipes/{account_id}/{file_id}{ext}"
+    key = object_key or f"recipes/{account_id}/{file_id}{ext}"
 
     try:
         s3_client.put_object(Bucket=settings.S3_BUCKET_NAME, Key=key,

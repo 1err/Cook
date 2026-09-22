@@ -37,7 +37,7 @@ export default function LoginPage() {
         );
         return;
       }
-      await refreshUser();
+      await refreshUser({ newSession: true });
       const params = new URLSearchParams(window.location.search);
       router.push(safeAuthRedirect(params.get("redirect")));
     } catch (err) {
@@ -97,6 +97,7 @@ export default function LoginPage() {
             placeholder="••••••••"
           />
         </div>
+        <Link href="/forgot-password">{t("account.forgotPassword")}</Link>
         {error && (
           <p style={{ margin: 0, color: "var(--error-muted)", fontSize: "0.9rem", fontWeight: 500 }}>
             {error}

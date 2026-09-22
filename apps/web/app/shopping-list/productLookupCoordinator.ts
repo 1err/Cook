@@ -4,6 +4,7 @@ import type {
   StoreProductsResponse,
 } from "@cooking/api-client";
 import { isSafeWeeeProductUrl } from "@cooking/shared";
+import { loadStoreProductBatches } from "@cooking/api-client";
 import type { ProductLookupState } from "./productLoading";
 
 export type ProductLookupStorage = {
@@ -207,7 +208,11 @@ export function createProductLookupCoordinator({
 
   function callLoadBatch(preflight: BatchPreflight) {
     const queries = preflight.entries.map((entry) => entry.query);
-    return loadBatch(queries, preflight.controller.signal);
+    return loadStoreProductBatches(
+      queries,
+      (batch) => loadBatch(batch, preflight.controller.signal),
+      () => !preflight.cancelled && shouldPublish(preflight.generation),
+    );
   }
 
   function start(entry: QueueEntry) {

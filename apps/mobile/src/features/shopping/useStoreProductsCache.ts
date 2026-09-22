@@ -5,6 +5,7 @@ import type {
   StoreProductsResponse,
 } from "@cooking/api-client";
 import { isSafeWeeeProductUrl } from "@cooking/shared";
+import { loadStoreProductBatches } from "@cooking/api-client";
 import { useApiClient, type ApiClient } from "../../lib/api";
 import {
   MAX_STORE_PRODUCT_TTL_MS,
@@ -422,7 +423,11 @@ export function useStoreProductsCache(weekStart: string | null) {
       void Promise.resolve()
         .then(() => {
           if (!mountedRef.current || generationRef.current !== generation) return undefined;
-          return apiClientRef.current.shopping.storeProductsBatch(newEntries.map((entry) => entry.query));
+          return loadStoreProductBatches(
+            newEntries.map((entry) => entry.query),
+            (batch) => apiClientRef.current.shopping.storeProductsBatch(batch),
+            () => mountedRef.current && generationRef.current === generation,
+          );
         })
         .then(
         (value) => {

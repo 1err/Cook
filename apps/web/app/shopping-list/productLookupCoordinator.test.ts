@@ -16,6 +16,50 @@ import {
 
 const FUTURE_EXPIRES_AT = new Date(Date.now() + 60_000).toISOString();
 
+test.each([101, 200])("loads %i cached ingredients in bounded batches without individual requests", async (count) => {
+  const queries = Array.from({ length: count }, (_, index) => `Ingredient ${index}`);
+  let active = 0;
+  let peak = 0;
+  const loadBatch = vi.fn(async (batch: string[]) => {
+    if (batch.length > 100) throw new Error("422: too many queries");
+    active += 1;
+    peak = Math.max(peak, active);
+    await Promise.resolve();
+    active -= 1;
+    return { entries: batch.map((query) => ({
+      query, status: "fresh" as const, products: [product(query)], expires_at: FUTURE_EXPIRES_AT,
+    })) };
+  });
+  const load = vi.fn(async (query: string) => response([product(query)]));
+  const coordinator = createProductLookupCoordinator({ load, loadBatch, shouldPublish: () => true, onState: vi.fn() });
+
+  const results = await Promise.all(coordinator.requestBulk(queries, 1));
+
+  expect(load).not.toHaveBeenCalled();
+  expect(loadBatch.mock.calls.map(([batch]) => batch.length)).toEqual([100, count - 100]);
+  expect(peak).toBe(1);
+  expect(results.every((result) => result.status === "success")).toBe(true);
+});
+
+test("stops remaining cache batches when the shopping generation changes", async () => {
+  const first = deferred<StoreProductsBatchResponse>();
+  let current = true;
+  const loadBatch = vi.fn((_queries: string[]) => first.promise);
+  const load = vi.fn();
+  const onState = vi.fn();
+  const coordinator = createProductLookupCoordinator({ load, loadBatch, shouldPublish: () => current, onState });
+  const requests = coordinator.requestBulk(Array.from({ length: 200 }, (_, index) => `Ingredient ${index}`), 1);
+  await vi.waitFor(() => expect(loadBatch).toHaveBeenCalledTimes(1));
+  expect(loadBatch.mock.calls[0][0]).toHaveLength(100);
+  current = false;
+  onState.mockClear();
+  first.resolve({ entries: [] });
+  await Promise.all(requests);
+  expect(loadBatch).toHaveBeenCalledTimes(1);
+  expect(load).not.toHaveBeenCalled();
+  expect(onState).not.toHaveBeenCalled();
+});
+
 function product(name: string): StoreProduct {
   return {
     name,

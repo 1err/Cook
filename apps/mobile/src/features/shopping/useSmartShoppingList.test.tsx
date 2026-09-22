@@ -268,3 +268,15 @@ test("a newer overlapping prepare wins and the older completion is stale", async
   await expect(firstWork).resolves.toEqual({ status: "stale", weekStart: "2026-08-10" });
   expect(result.current.state).toMatchObject({ data: { refinedData: SECOND_REFINED } });
 });
+
+test('recovers an unavailable preview after successful refinement and returns to current raw ingredients', async () => {
+  mockMealPlanList.mockRejectedValueOnce(new Error('Preview offline'));
+  const { result } = await renderReady();
+  expect(result.current.state).toMatchObject({ data: { previewUnavailable: true } });
+  const latestItems = [{ name: 'Milk', total_quantity: '2 cartons' }];
+  mockShoppingList.mockResolvedValue(latestItems);
+  await act(async () => { await result.current.prepareSmartList(); });
+  expect(result.current.state).toMatchObject({ data: { previewUnavailable: false, items: latestItems } });
+  await act(async () => { await result.current.backToOriginal(); });
+  expect(result.current.state).toMatchObject({ data: { refinedData: null, items: latestItems } });
+});

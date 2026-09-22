@@ -13,6 +13,7 @@ import "./styles/foundation.css";
 import { AuthProvider } from "./lib/auth";
 import { Header } from "./components/Header";
 import { I18nProvider } from "./lib/i18n";
+import { ThirdPartyStyles } from "./components/ThirdPartyStyles";
 
 export const metadata: Metadata = {
   title: "Chef World — Recipe library & planner",
@@ -27,10 +28,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap"
-        />
+        <ThirdPartyStyles />
       </head>
       <body>
         <I18nProvider>

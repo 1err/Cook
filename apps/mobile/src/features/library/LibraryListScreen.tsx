@@ -40,9 +40,14 @@ type LibraryView = "mine" | "catalog";
 export function LibraryListScreen({ navigation }: Props) {
   const t = useT();
   const apiClient = useApiClient();
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const [catalogVisited, setCatalogVisited] = useState(false);
   const [view, setView] = useState<LibraryView>("mine");
   const [search, setSearch] = useState("");
-  const page = useRecipePage(view, {q: search});
+  const minePage = useRecipePage("mine", { q: search });
+  const catalogPage = useRecipePage("catalog", { q: search }, catalogVisited);
+  const page = view === "mine" ? minePage : catalogPage;
   const [savedPublicIds, setSavedPublicIds] = useState(new Map<string, number>());
   const copyVersion = useRef(0);
   const pendingCopies = useRef(new Set<string>());
@@ -52,12 +57,13 @@ export function LibraryListScreen({ navigation }: Props) {
   const refreshing = page.loading;
   const load = useCallback(async () => {
     const beforeRefresh = copyVersion.current;
-    await page.refresh();
+    const refreshed = await page.refresh();
+    if (!mounted.current || !refreshed || view !== "catalog") return;
     // The refreshed page owns saved status for copies completed before it began.
     // Keep later copy completions: this response may predate their server write.
     setSavedPublicIds(previous => new Map([...previous].filter(([, version]) => version > beforeRefresh)));
-  }, [page.refresh]);
-  useEffect(() => { setSavedPublicIds(new Map()); }, [page.refresh]);
+  }, [page.refresh, view]);
+  useEffect(() => { setSavedPublicIds(new Map()); }, [apiClient]);
   useEffect(() => navigation.addListener("focus", () => void load()), [navigation, load]);
 
   const handleCopy = useCallback(
@@ -68,18 +74,21 @@ export function LibraryListScreen({ navigation }: Props) {
       setError(null);
       try {
         await apiClient.recipes.copyCatalog(recipeId);
+        if (!mounted.current) return;
         const version = ++copyVersion.current;
         setSavedPublicIds(prev => new Map(prev).set(recipeId, version));
+        void minePage.refresh();
         haptics.success();
       } catch (e) {
+        if (!mounted.current) return;
         haptics.error();
         setError(e instanceof Error ? e.message : "Couldn't add recipe");
       } finally {
         pendingCopies.current.delete(recipeId);
-        setCopyingId(null);
+        if (mounted.current) setCopyingId(null);
       }
     },
-    [apiClient],
+    [apiClient, minePage.refresh],
   );
 
 
@@ -103,9 +112,10 @@ export function LibraryListScreen({ navigation }: Props) {
         <TextField placeholder="Search recipes" value={search} onChangeText={setSearch} />
         <View style={styles.segmentRow}>
           <SegmentPill label="My Library" active={view === "mine"} onPress={() => setView("mine")} />
-          <SegmentPill label="Public Library" active={view === "catalog"} onPress={() => setView("catalog")} />
+          <SegmentPill label="Public Library" active={view === "catalog"} onPress={() => { setCatalogVisited(true); setView("catalog"); }} />
         </View>
         {visibleError ? <Text accessibilityRole="alert">{visibleError}</Text> : null}
+        {page.error ? <Button title={t("library.retry")} disabled={page.loading} onPress={() => void load()} /> : null}
         </View>
       }
       ListEmptyComponent={
@@ -114,8 +124,6 @@ export function LibraryListScreen({ navigation }: Props) {
             icon="alert-circle-outline"
             title="Couldn't load recipes"
             description={visibleError}
-            actionLabel="Try again"
-            onAction={() => void load()}
           />
         ) : search.trim() ? (
           <EmptyState title="No matching recipes" description="Try a different search." />
@@ -123,7 +131,9 @@ export function LibraryListScreen({ navigation }: Props) {
           <EmptyState
             icon="restaurant-outline"
             title="No recipes yet"
-            description="Tap + to import your first recipe from a YouTube video or pasted transcript."
+            description={t("library.addRecipeDescription")}
+            actionLabel={t("library.addRecipe")}
+            onAction={() => navigation.navigate("ImportModal")}
           />
         ) : (
           <EmptyState

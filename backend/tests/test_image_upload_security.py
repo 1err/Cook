@@ -37,7 +37,13 @@ async def test_s3_receives_only_the_validated_bytes_not_an_unbounded_upload_capa
     s3 = Mock()
     monkeypatch.setattr(storage_service.boto3, "client", lambda *a, **kw: s3)
     data = b"\x89PNG\r\n\x1a\n" + b"test-image-content"
-    user = SimpleNamespace(id=uuid4())
+    user = SimpleNamespace(id=uuid4(), auth_version=0)
+    key = f"recipes/{user.id}/{uuid4().hex}.png"
+    monkeypatch.setattr(routes_recipes, "reserve_owned_image", AsyncMock(return_value={
+        "id": uuid4(), "storage_kind": "s3", "object_key": key,
+        "file_url": f"https://test-bucket.s3.us-east-1.amazonaws.com/{key}",
+    }))
+    monkeypatch.setattr(routes_recipes, "finish_owned_upload", AsyncMock())
     file = UploadFile(BytesIO(data), headers=Headers({"content-type": "image/png"}))
     result = await routes_recipes.upload_recipe_image(
         request(), file, user, session=SimpleNamespace(close=AsyncMock()),

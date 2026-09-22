@@ -37,7 +37,7 @@ def test_login_input_has_a_reasonable_upper_bound():
 
 @pytest.fixture
 def account(monkeypatch):
-    user = SimpleNamespace(id=UUID(int=401), email="user@example.com", is_library_public=False)
+    user = SimpleNamespace(id=UUID(int=401), email="user@example.com", is_library_public=False, auth_version=0)
 
     async def no_existing(*args):
         return None
@@ -51,7 +51,7 @@ def account(monkeypatch):
     monkeypatch.setattr(auth.repo_auth, "get_user_by_email", no_existing)
     monkeypatch.setattr(auth.repo_auth, "create_user", create_user)
     monkeypatch.setattr(auth.repo_auth, "create_identity", create_identity)
-    monkeypatch.setattr(auth, "create_access_token", lambda subject: "test-token")
+    monkeypatch.setattr(auth, "create_access_token", lambda subject, claims=None: "test-token")
     return user
 
 
@@ -131,6 +131,10 @@ async def test_login_password_check_runs_outside_event_loop(monkeypatch, account
         verify_threads.append(threading.get_ident())
         return True
 
+    async def locked_identity(*args):
+        return await identity(), account
+
+    monkeypatch.setattr(auth.repo_accounts, "lock_login_identity", locked_identity)
     monkeypatch.setattr(auth.repo_auth, "get_identity", identity)
     monkeypatch.setattr(auth.repo_auth, "get_user_by_id", get_user)
     monkeypatch.setattr(auth, "verify_password", verify)
@@ -143,7 +147,7 @@ async def test_login_password_check_runs_outside_event_loop(monkeypatch, account
 
 
 def test_user_responses_include_server_computed_admin_capability(monkeypatch):
-    user = SimpleNamespace(id=UUID(int=401), email="user@example.com", is_library_public=False)
+    user = SimpleNamespace(id=UUID(int=401), email="user@example.com", is_library_public=False, auth_version=0)
     monkeypatch.setattr(auth, "is_admin", lambda current: current.id == user.id, raising=False)
     assert auth.UserResponse.from_model(user).model_dump().get("is_admin") is True
     assert auth.AuthResponse.from_model_with_token(user, "test-token").model_dump().get("is_admin") is True

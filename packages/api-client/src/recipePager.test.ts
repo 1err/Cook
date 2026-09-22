@@ -27,3 +27,15 @@ describe('recipe pager ownership', () => {
     expect(pager.state.items.map(x => x.id)).toEqual(['new','last']);
   });
 });
+
+it('keeps successfully loaded recipes when refresh fails and retries without duplicates', async () => {
+  const load = vi.fn().mockResolvedValueOnce(page('Saved', 'next')).mockRejectedValueOnce(new Error('Offline')).mockResolvedValueOnce(page('Updated'));
+  const pager = new RecipePager(load);
+  await pager.refresh();
+  await pager.refresh();
+  expect(pager.state.items.map(item => item.title)).toEqual(['Saved']);
+  expect(pager.state.error).toBe('Offline');
+  await pager.refresh();
+  expect(pager.state.items.map(item => item.title)).toEqual(['Updated']);
+  expect(pager.state.error).toBeNull();
+});

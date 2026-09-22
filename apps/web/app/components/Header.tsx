@@ -6,6 +6,7 @@ import { useEffect, useId, useState } from "react";
 import { isAdminUser } from "../lib/admin";
 import { useAuth } from "../lib/auth";
 import { useI18n } from "../lib/i18n";
+import { isPublicAuthPath } from "../lib/publicAuthPath";
 import { AccountMenu } from "./AccountMenu";
 import styles from "./Header.module.css";
 import { ActionLink } from "./ui/Button";
@@ -29,7 +30,7 @@ export function Header() {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  if (pathname === "/login" || pathname === "/register") {
+  if (isPublicAuthPath(pathname)) {
     return null;
   }
 

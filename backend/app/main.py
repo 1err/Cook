@@ -48,6 +48,7 @@ from app.services.store_product_service import (
 )
 from app.services.weee_scraper import shutdown_weee_scraper
 from app.services.storage_service import get_local_upload_root
+from app.jobs.account_cleanup import start_account_cleanup, shutdown_account_cleanup
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -73,6 +74,7 @@ async def _shutdown_application_resources() -> None:
         ("live lookup", shutdown_live_lookups),
         ("Weee browser", shutdown_weee_scraper),
         ("AI client", close_openai_client),
+        ("account cleanup", shutdown_account_cleanup),
         ("database", dispose_engine),
     ):
         try:
@@ -100,6 +102,7 @@ async def _shutdown_application_resources() -> None:
 async def lifespan(app: FastAPI):
     init_engine()
     start_live_lookup_admission()
+    start_account_cleanup()
     if settings.STORE_JOBS_MODE == "local":
         start_scheduler()
     try:
@@ -146,7 +149,9 @@ app.add_middleware(
 # network peer until this explicit trust boundary is checked.
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=settings.TRUSTED_PROXY_CIDRS)
 
+from app.api.account_routes import router as account_router
 app.include_router(auth_router)
+app.include_router(account_router)
 app.include_router(recipes_router)
 app.include_router(mealplan_router)
 app.include_router(shopping_router)

@@ -13,6 +13,7 @@ from sqlalchemy.pool import QueuePool
 from app.api import ai_budget, auth, routes_instacart, routes_recipes, routes_shopping
 from app.db.models import AIUsageCounterModel, RecipeModel, UserModel
 from app.db.ai_cost_models import AIInflightLeaseModel
+from app.db.account_models import RevokedSessionModel, OwnedImageModel
 from app.db.repo_ai_usage import counter_statement
 from app.db.session import get_session
 from app.models import Recipe
@@ -31,6 +32,9 @@ class SqlSession:
     async def execute(self, statement):
         return self.sync.execute(statement)
 
+    async def get(self, model, key):
+        return self.sync.get(model, key)
+
     async def commit(self):
         self.sync.commit()
 
@@ -47,7 +51,7 @@ def boundary_app(monkeypatch, tmp_path):
         f"sqlite:///{tmp_path / 'boundaries.db'}", poolclass=QueuePool,
         connect_args={"check_same_thread": False},
     )
-    for model in (UserModel, RecipeModel, AIUsageCounterModel, AIInflightLeaseModel):
+    for model in (UserModel, RecipeModel, AIUsageCounterModel, AIInflightLeaseModel, RevokedSessionModel, OwnedImageModel):
         model.__table__.create(engine)
     with Session(engine) as setup:
         setup.add(UserModel(id=USER_ID, email="boundary@example.com"))
@@ -142,11 +146,31 @@ async def test_image_storage_releases_auth_read_before_storage(monkeypatch, boun
     monkeypatch.setattr(routes_recipes.settings, "S3_BUCKET_NAME", "test-bucket" if s3 else "")
     data = b"\x89PNG\r\n\x1a\nsynthetic-image"
 
+    async def reserve(user_id, version, content_type, base_url):
+        boundary_app.assert_released()
+        from uuid import uuid4
+        image_id = uuid4()
+        key = f"recipes/{user_id}/{image_id.hex}.png"
+        url = f"https://images.example.test/{key}"
+        with Session(boundary_app.engine) as session:
+            session.add(OwnedImageModel(id=image_id, owner_id=user_id, storage_kind="s3" if s3 else "local",
+                bucket="test-bucket" if s3 else "", region="test-region" if s3 else "", object_key=key,
+                file_url=url, state="pending_upload"))
+            session.commit()
+        return {"id": image_id, "object_key": key, "file_url": url, "storage_kind": "s3" if s3 else "local"}
+
+    async def finish(image_id):
+        boundary_app.assert_released()
+
+    monkeypatch.setattr(routes_recipes, "reserve_owned_image", reserve)
+    monkeypatch.setattr(routes_recipes, "finish_owned_upload", finish)
+
     def save(content, content_type, *owner):
         boundary_app.assert_released()
         assert content == data and content_type == "image/png"
         if s3:
-            assert owner == (str(USER_ID),)
+            assert owner[0] == str(USER_ID)
+            assert owner[1].startswith(f"recipes/{USER_ID}/")
             return "https://images.example.test/recipe.png"
         return "/uploads/recipe.png"
 
@@ -154,7 +178,7 @@ async def test_image_storage_releases_auth_read_before_storage(monkeypatch, boun
     async with client_for(boundary_app) as client:
         response = await client.post("/recipes/upload-image", files={"file": ("recipe.png", data, "image/png")})
     assert response.status_code == 200
-    assert response.json()["file_url"].endswith("/recipe.png")
+    assert f"recipes/{USER_ID}/" in response.json()["file_url"]
 
 
 @pytest.mark.asyncio

@@ -23,9 +23,10 @@ function SplashGate() {
 }
 
 export function RootStack() {
-  const { token, loading } = useAuth();
+  const { token, user, loading } = useAuth();
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
-  const [navigationReady, setNavigationReady] = useState(false);
+  const accountKey = user?.id ?? (token ? "authenticated" : "anonymous");
+  const [navigationReady, setNavigationReady] = useState<string | null>(null);
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
   const consumedIntentKeyRef = useRef<string | null>(null);
 
@@ -38,7 +39,7 @@ export function RootStack() {
     if (
       loading ||
       !token ||
-      !navigationReady ||
+      navigationReady !== accountKey ||
       !navigationRef.isReady()
     ) {
       return;
@@ -58,6 +59,7 @@ export function RootStack() {
     }
     resetShareIntent();
   }, [
+    accountKey,
     hasShareIntent,
     loading,
     navigationReady,
@@ -72,7 +74,7 @@ export function RootStack() {
   if (loading) return <SplashGate />;
 
   return (
-    <NavigationContainer ref={navigationRef} onReady={() => setNavigationReady(true)}>
+    <NavigationContainer key={accountKey} ref={navigationRef} onReady={() => setNavigationReady(accountKey)}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!token ? (
           <Stack.Screen name="Auth" component={AuthStack} />

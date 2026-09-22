@@ -29,7 +29,8 @@ async def pg_sessions():
         pytest.skip("Requires an explicitly configured disposable PostgreSQL test database")
     parsed = make_url(database_url)
     assert parsed.drivername == "postgresql+asyncpg"
-    assert parsed.database == "cooking_audit_test"
+    assert parsed.database in {"cooking_audit_test", "chef_beta_budget_20260922",
+                               "chef_beta_accounts_20260922", "chef_beta_full_20260922"}
     effective_host = str(parsed.query.get("host", parsed.host or ""))
     assert effective_host in {"localhost", "127.0.0.1", "::1"} or effective_host.startswith(
         "/private/tmp/cooking-disposable-db-"

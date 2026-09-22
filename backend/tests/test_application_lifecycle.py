@@ -8,6 +8,15 @@ from app import main
 from app.db import session as db_session
 
 
+@pytest.fixture(autouse=True)
+def isolate_cleanup_worker(monkeypatch):
+    async def stopped():
+        pass
+    monkeypatch.setattr(main, "start_account_cleanup", lambda: None)
+    monkeypatch.setattr(main, "shutdown_account_cleanup", stopped)
+
+
+
 @pytest.mark.asyncio
 async def test_lifespan_starts_admission_and_shuts_resources_down_in_order(
     monkeypatch: pytest.MonkeyPatch,
@@ -24,6 +33,8 @@ async def test_lifespan_starts_admission_and_shuts_resources_down_in_order(
             events.append(name)
         return result
 
+    monkeypatch.setattr(main, "start_account_cleanup", record("start_cleanup"))
+    monkeypatch.setattr(main, "shutdown_account_cleanup", record_async("stop_cleanup"))
     monkeypatch.setattr(main, "init_engine", record("init_engine"))
     monkeypatch.setattr(main, "start_live_lookup_admission", record("start_admission"))
     monkeypatch.setattr(main, "start_scheduler", record("start_scheduler"))
@@ -35,17 +46,19 @@ async def test_lifespan_starts_admission_and_shuts_resources_down_in_order(
     monkeypatch.setattr(main, "dispose_engine", record_async("dispose_engine"))
 
     async with main.lifespan(SimpleNamespace()):  # type: ignore[arg-type]
-        assert events == ["init_engine", "start_admission", "start_scheduler"]
+        assert events == ["init_engine", "start_admission", "start_cleanup", "start_scheduler"]
 
     assert events == [
         "init_engine",
         "start_admission",
+        "start_cleanup",
         "start_scheduler",
         "stop_scheduler",
         "stop_admission",
         "stop_warmer",
         "stop_live",
         "stop_browser",
+        "stop_cleanup",
         "dispose_engine",
     ]
 

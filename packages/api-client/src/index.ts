@@ -1,4 +1,5 @@
 export { RecipePager } from "./recipePager";
+export { loadStoreProductBatches } from "./storeProductBatches";
 import type {
   CookingActionPayload,
   CookingSession,
@@ -180,6 +181,21 @@ export function createApiClient(options: ApiClientOptions) {
   return {
     request,
     auth: {
+      capabilities: () => json<{ password_recovery: boolean; email_verification: boolean }>("/auth/capabilities"),
+      requestPasswordReset: (email: string) => json<{ ok: boolean }>("/auth/password-reset/request", {
+        method: "POST", body: JSON.stringify({ email }),
+      }),
+      confirmPasswordReset: (token: string, password: string) => json<{ ok: boolean }>("/auth/password-reset/confirm", {
+        method: "POST", body: JSON.stringify({ token, password }),
+      }),
+      requestEmailVerification: () => json<{ ok: boolean }>("/auth/email-verification/request", { method: "POST" }),
+      confirmEmailVerification: (token: string) => json<{ ok: boolean }>("/auth/email-verification/confirm", {
+        method: "POST", body: JSON.stringify({ token }),
+      }),
+      logoutAll: () => json<{ ok: boolean }>("/auth/logout-all", { method: "POST" }),
+      deleteAccount: (password: string) => json<{ ok: boolean }>("/auth/account", {
+        method: "DELETE", body: JSON.stringify({ password }),
+      }),
       login: (email: string, password: string) =>
         json<User & { access_token?: string }>(`/auth/login`, {
           method: "POST",

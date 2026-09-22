@@ -5,6 +5,7 @@ import { PageHeader, PageShell } from "../components/PageShell";
 import { RequireAuth } from "../components/RequireAuth";
 import { useAuth } from "../lib/auth";
 import styles from "./Settings.module.css";
+import { AccountSecurity } from "./AccountSecurity";
 
 function SettingsPageContent() {
   const { user, setLibraryVisibility } = useAuth();
@@ -48,6 +49,7 @@ function SettingsPageContent() {
         </label>
       </section>
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
+      <AccountSecurity />
     </PageShell>
   );
 }

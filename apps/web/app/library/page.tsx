@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "../lib/api";
@@ -16,11 +16,14 @@ import styles from "./LibraryPage.module.css";
 
 function LibraryPageContent() {
   const searchParams = useSearchParams();
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const highlightId = searchParams.get("highlight");
   const [error, setError] = useState<string | null>(null);
   const [mineFilters, setMineFilters] = useState<RecipeTagSlug[]>([]);
   const [publicFilter, setPublicFilter] = useState<LibraryFilterId>("all");
   const [search, setSearch] = useState("");
+  const [catalogVisited, setCatalogVisited] = useState(false);
   const [view, setView] = useState<"mine" | "public">("mine");
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const [columnCount, setColumnCount] = useState(3);
@@ -36,7 +39,9 @@ function LibraryPageContent() {
     return () => window.removeEventListener("resize", updateColumnCount);
   }, []);
 
-  const page = useRecipePage(view === "mine" ? "mine" : "catalog", {q: search, tags: view === "mine" ? mineFilters : publicFilter === "all" ? [] : [publicFilter]});
+  const minePage = useRecipePage("mine", { q: search, tags: mineFilters });
+  const catalogPage = useRecipePage("catalog", { q: search, tags: publicFilter === "all" ? [] : [publicFilter] }, catalogVisited);
+  const page = view === "mine" ? minePage : catalogPage;
   const recipes = view === "mine" ? page.items : [];
   const publicRecipes = view === "public" ? page.items : [];
   const loading = page.loading && !page.items.length;
@@ -62,11 +67,14 @@ function LibraryPageContent() {
     try {
       const response = await apiFetch(`/recipes/catalog/${recipeId}/copy`, { method: "POST" });
       if (!response.ok) throw new Error((await response.text()) || "Could not add recipe");
+      if (!mounted.current) return;
       setSavedPublicIds(current => new Set(current).add(recipeId));
+      void minePage.refresh();
     } catch (caught) {
+      if (!mounted.current) return;
       setError(caught instanceof Error ? caught.message : "Could not add recipe");
     } finally {
-      setCopyingId(null);
+      if (mounted.current) setCopyingId(null);
     }
   }
 
@@ -98,7 +106,7 @@ function LibraryPageContent() {
           role="tab"
           aria-selected={view === "public"}
           className={styles.tab}
-          onClick={() => setView("public")}
+          onClick={() => { setCatalogVisited(true); setView("public"); }}
         >
           {t("library.publicLibrary")}
         </button>
@@ -139,11 +147,15 @@ function LibraryPageContent() {
         )}
       </div>
 
-      {error || page.error ? <p className={styles.error} role="alert">{error || page.error}</p> : null}
+      {error ? <p className={styles.error} role="alert">{error}</p> : null}
+      {page.error ? <div>
+        <p className={styles.error} role="alert">{page.error}</p>
+        <button type="button" disabled={page.loading} onClick={() => void page.refresh()}>{t("library.retry")}</button>
+      </div> : null}
 
       {loading ? (
         <p className={styles.status}>{t("common.loading")}</p>
-      ) : activeList.length === 0 ? (
+      ) : activeList.length === 0 && page.error ? null : activeList.length === 0 ? (
         <div className={styles.empty}>
           <p>
             {view === "mine"
@@ -155,7 +167,7 @@ function LibraryPageContent() {
                 : t("common.noMatches")}
           </p>
           {view === "mine" && recipes.length === 0 && !hasFilters ? (
-            <Link href="/import">{t("library.importRecipe")} →</Link>
+            <Link href="/import">{t("library.addRecipe")} →</Link>
           ) : null}
         </div>
       ) : (

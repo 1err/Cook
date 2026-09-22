@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import type { ShareIntent } from "expo-share-intent";
 import { RootStack } from "./RootStack";
 
@@ -17,7 +17,7 @@ type MockShareContext = {
   resetShareIntent: jest.Mock;
 };
 
-let mockAuthState: { loading: boolean; token: string | null } = {
+let mockAuthState: { loading: boolean; token: string | null; user?: { id: string } } = {
   loading: true,
   token: null,
 };
@@ -56,12 +56,17 @@ jest.mock("@react-navigation/native", () => {
 jest.mock("@react-navigation/native-stack", () => ({
   createNativeStackNavigator: () => ({
     Navigator: ({ children }: { children: React.ReactNode }) => children,
-    Screen: () => null,
+    Screen: ({ component: Component }: { component: React.ComponentType }) => <Component />,
   }),
 }));
 
 jest.mock("./AuthStack", () => ({ AuthStack: () => null }));
-jest.mock("./MainTabs", () => ({ MainTabs: () => null }));
+jest.mock("./MainTabs", () => ({ MainTabs: () => {
+  const React = require("react");
+  const { TextInput } = require("react-native");
+  const [draft, setDraft] = React.useState("");
+  return <TextInput accessibilityLabel="Private draft" value={draft} onChangeText={setDraft} />;
+} }));
 jest.mock("./stacks/AccountStack", () => ({ AccountStack: () => null }));
 jest.mock("../features/import/ImportModalScreen", () => ({ ImportModalScreen: () => null }));
 
@@ -162,4 +167,25 @@ describe("RootStack shared video bridge", () => {
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(mockResetShareIntent).toHaveBeenCalledTimes(1);
   });
+});
+
+test("switching accounts discards the previous account's mounted private draft", async () => {
+  mockShareContext = { ...mockShareContext, hasShareIntent: false };
+  mockAuthState = { loading: false, token: "alice-token", user: { id: "alice" } };
+  const view = await render(<RootStack />);
+  await fireEvent.changeText(screen.getByLabelText("Private draft"), "Alice's private recipe");
+  mockAuthState = { loading: false, token: "bob-token", user: { id: "bob" } };
+  await view.rerender(<RootStack />);
+  expect(screen.getByLabelText("Private draft")).toHaveProp("value", "");
+});
+
+
+test("refreshing verification for the same account preserves its private screen state", async () => {
+  mockShareContext = { ...mockShareContext, hasShareIntent: false };
+  mockAuthState = { loading: false, token: "alice-token", user: { id: "alice" } };
+  const view = await render(<RootStack />);
+  await fireEvent.changeText(screen.getByLabelText("Private draft"), "My recipe draft");
+  mockAuthState = { ...mockAuthState, user: { id: "alice" } };
+  await view.rerender(<RootStack />);
+  expect(screen.getByLabelText("Private draft")).toHaveProp("value", "My recipe draft");
 });

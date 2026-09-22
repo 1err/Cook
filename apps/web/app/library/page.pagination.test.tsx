@@ -42,3 +42,47 @@ test('a delayed next page cannot repopulate a changed search', async () => {
   await act(async () => resolve(page('Stale result')));
   expect(screen.queryByRole('heading',{name:'Stale result'})).not.toBeInTheDocument();
 });
+
+test('retains private recipes across a catalog failure and retries only the failed catalog', async () => {
+  mine.mockResolvedValueOnce(page('My saved recipe')).mockRejectedValue(new Error('Private offline'));
+  catalog.mockRejectedValueOnce(new Error('Catalog offline')).mockResolvedValueOnce(page('Recovered public recipe'));
+  render(<LibraryPage />);
+  await screen.findByRole('heading', { name: 'My saved recipe' });
+  fireEvent.click(screen.getByRole('tab', { name: 'library.publicLibrary' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Catalog offline');
+  fireEvent.click(screen.getByRole('button', { name: 'library.retry' }));
+  await screen.findByRole('heading', { name: 'Recovered public recipe' });
+  fireEvent.click(screen.getByRole('tab', { name: 'library.myLibrary' }));
+  expect(screen.getByRole('heading', { name: 'My saved recipe' })).toBeVisible();
+  expect(mine).toHaveBeenCalledTimes(1);
+  expect(catalog).toHaveBeenCalledTimes(2);
+});
+
+test('a catalog copy refreshes the retained private library', async () => {
+  const { apiFetch } = await import('../lib/api');
+  vi.mocked(apiFetch).mockResolvedValue(new Response('{}'));
+  mine.mockResolvedValueOnce(page('Previously saved')).mockResolvedValueOnce(page('Newly copied'));
+  catalog.mockResolvedValueOnce(page('Public recipe'));
+  render(<LibraryPage />);
+  await screen.findByRole('heading', { name: 'Previously saved' });
+  fireEvent.click(screen.getByRole('tab', { name: 'library.publicLibrary' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'library.addToMyLibrary' }));
+  await screen.findByRole('button', { name: 'library.inYourLibrary' });
+  fireEvent.click(screen.getByRole('tab', { name: 'library.myLibrary' }));
+  await screen.findByRole('heading', { name: 'Newly copied' });
+});
+
+test('a catalog copy completing after unmount cannot refresh another account', async () => {
+  const { apiFetch } = await import('../lib/api');
+  let finish!: (response: Response) => void;
+  vi.mocked(apiFetch).mockImplementation(() => new Promise<Response>(resolve => { finish = resolve; }));
+  mine.mockResolvedValue(page('Saved recipe'));
+  catalog.mockResolvedValue(page('Public recipe'));
+  const rendered = render(<LibraryPage />);
+  await screen.findByRole('heading', { name: 'Saved recipe' });
+  fireEvent.click(screen.getByRole('tab', { name: 'library.publicLibrary' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'library.addToMyLibrary' }));
+  rendered.unmount();
+  await act(async () => { finish(new Response('{}')); });
+  expect(mine).toHaveBeenCalledTimes(1);
+});

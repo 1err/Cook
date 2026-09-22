@@ -8,8 +8,12 @@ from dataclasses import dataclass
 from decimal import Decimal, ROUND_CEILING
 
 NANO_USD = 1_000_000_000
-SUPPORTED_MODELS = {'gpt-4o-mini', 'gpt-4o-mini-2024-07-18', 'gpt-4o',
-                    'gpt-4o-2024-05-13', 'gpt-4o-2024-08-06', 'gpt-4o-2024-11-20'}
+APP_AI_HARD_CAP_NANO = 30 * NANO_USD
+# Official GPT-4o mini model page verified 2026-09-22. Conservative higher
+# rates are allowed; lower/unreviewed rates could silently defeat the cap.
+SUPPORTED_MODELS = {'gpt-4o-mini', 'gpt-4o-mini-2024-07-18'}
+MIN_INPUT_RATE = Decimal('0.15')
+MIN_OUTPUT_RATE = Decimal('0.60')
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,8 @@ def configured_price(settings) -> Price:
              Decimal(str(settings.AI_OUTPUT_USD_PER_MILLION_TOKENS))]
     if any(not rate.is_finite() or rate <= 0 for rate in rates):
         raise ValueError('AI prices must be positive finite USD amounts')
+    if rates[0] < MIN_INPUT_RATE or rates[1] < MIN_OUTPUT_RATE:
+        raise ValueError('AI rates are below the verified model price')
     return Price(model, settings.AI_PRICE_VERSION, *rates)
 
 

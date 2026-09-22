@@ -14,6 +14,7 @@ from app.db import repo_store_cache
 from app.db import session as db_session
 from app.services.store_product_service import BatchStoreProductsEntry
 from app.services import store_product_service, weee_scraper
+from test_postgres_integrations import pg_sessions
 
 
 PRODUCT = {
@@ -111,6 +112,90 @@ def test_batch_route_accepts_more_than_fifty_inputs_without_live_scraping(
             for query in queries
         ]
     }
+
+
+@pytest.mark.parametrize('queries', [[f'ingredient-{i}' for i in range(101)], ['x' * 513]])
+def test_batch_rejects_excessive_count_or_query_length_before_database_work(monkeypatch, queries):
+    async def batch(*args, **kwargs):
+        return []
+    monkeypatch.setattr(routes_store, 'fetch_cached_store_products_batch', batch)
+    with TestClient(authenticated_store_app()) as client:
+        response = client.post('/store-products/batch', json={'queries': queries})
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_third_simultaneous_lookup_for_an_account_is_rejected_before_provider_work(monkeypatch, pg_sessions):
+    from uuid import uuid4
+    from app.core.config import settings
+    from unittest.mock import AsyncMock
+    monkeypatch.setattr(settings, 'ABUSE_LIMITS_ENABLED', True)
+    monkeypatch.setattr(db_session, 'async_session_maker', pg_sessions)
+    decisions, release = asyncio.Queue(), asyncio.Event()
+    async def fetch(*args, **kwargs):
+        await decisions.put('accepted')
+        await release.wait()
+        return SimpleNamespace(products=[], cached_at=None)
+    monkeypatch.setattr(routes_store, 'fetch_store_products_with_metadata', fetch)
+    app = authenticated_store_app()
+    user = SimpleNamespace(id=uuid4())
+    app.dependency_overrides[routes_store.get_current_user] = lambda: user
+    app.dependency_overrides[routes_store.get_session] = lambda: SimpleNamespace(close=AsyncMock())
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+        async def request():
+            response = await client.get('/store-products', params={'query': 'tofu'})
+            if response.status_code != 200:
+                await decisions.put(response.status_code)
+            return response
+        tasks = [asyncio.create_task(request()) for _ in range(3)]
+        try:
+            outcomes = [await asyncio.wait_for(decisions.get(), 2) for _ in tasks]
+            assert outcomes.count('accepted') == 2
+            assert outcomes.count(429) == 1
+        finally:
+            release.set()
+            await asyncio.gather(*tasks)
+
+
+@pytest.mark.asyncio
+async def test_cache_hit_read_connections_are_released_before_admission_cleanup(monkeypatch, pg_sessions):
+    from uuid import uuid4
+    from sqlalchemy import text, select, func, delete
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from app.core.config import settings
+    from app.db.job_models import StoreRequestLeaseModel
+    # Exactly two connections exposes a cleanup/read-transaction circular wait.
+    engine = create_async_engine(pg_sessions.kw['bind'].url, pool_size=2, max_overflow=0, pool_timeout=.05)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    async with sessions.begin() as session:
+        await session.execute(delete(StoreRequestLeaseModel))
+    monkeypatch.setattr(db_session, 'async_session_maker', sessions)
+    monkeypatch.setattr(settings, 'ABUSE_LIMITS_ENABLED', True)
+    arrived, complete = 0, asyncio.Event()
+    async def fetch(*args, session, **kwargs):
+        nonlocal arrived
+        await session.execute(text('SELECT 1'))
+        arrived += 1
+        if arrived == 2:
+            complete.set()
+        await complete.wait()
+        return SimpleNamespace(products=[], cached_at=None)
+    async def get_session():
+        async with sessions() as session:
+            yield session
+    monkeypatch.setattr(routes_store, 'fetch_store_products_with_metadata', fetch)
+    app = authenticated_store_app()
+    app.dependency_overrides[routes_store.get_current_user] = lambda: SimpleNamespace(id=uuid4())
+    app.dependency_overrides[routes_store.get_session] = get_session
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
+            responses = await asyncio.wait_for(asyncio.gather(*(
+                client.get('/store-products', params={'query': 'tofu'}) for _ in range(2))), 2)
+            assert all(response.status_code == 200 for response in responses)
+        async with sessions() as session:
+            assert await session.scalar(select(func.count()).select_from(StoreRequestLeaseModel)) == 0
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio

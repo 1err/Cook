@@ -21,7 +21,7 @@ from app.core.security import (
     verify_password,
 )
 from app.db.session import get_session
-from app.db import repo_auth
+from app.db import repo_auth, repo_accounts
 from app.db.models import UserModel
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -46,12 +46,14 @@ class UserResponse(BaseModel):
     email: str
     is_library_public: bool
     is_admin: bool = False
+    email_verified: bool = False
 
     @classmethod
     def from_model(cls, u: UserModel) -> "UserResponse":
         return cls(
             id=str(u.id), email=u.email, is_library_public=bool(u.is_library_public),
             is_admin=is_admin(u),
+            email_verified=bool(getattr(u, "email_verified", False)),
         )
 
 
@@ -65,6 +67,7 @@ class AuthResponse(UserResponse):
             email=u.email,
             is_library_public=bool(u.is_library_public),
             is_admin=is_admin(u),
+            email_verified=bool(getattr(u, "email_verified", False)),
             access_token=token,
         )
 
@@ -91,19 +94,21 @@ def _clear_cookie(response: Response) -> None:
     )
 
 
+def presented_token(request: Request) -> str | None:
+    auth_header = request.headers.get("Authorization")
+    if auth_header:
+        scheme, _, value = auth_header.partition(" ")
+        if scheme.lower() == "bearer" and value.strip():
+            return value.strip()
+    return request.cookies.get(COOKIE_NAME)
+
+
 async def get_current_user(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> UserModel:
-    """Dependency: read JWT from bearer header or cookie, validate, return user."""
-    token = None
-    auth_header = request.headers.get("Authorization") or request.headers.get("authorization")
-    if auth_header:
-        scheme, _, value = auth_header.partition(" ")
-        if scheme.lower() == "bearer" and value.strip():
-            token = value.strip()
-    if token is None:
-        token = request.cookies.get(COOKIE_NAME)
+    """Accept unrevoked JWTs of this account's current generation only."""
+    token = presented_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     payload = decode_access_token(token)
@@ -116,6 +121,10 @@ async def get_current_user(
     user = await repo_auth.get_user_by_id(session, user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    version = payload.get("auth_version", 0)
+    if (not isinstance(version, int) or isinstance(version, bool)
+            or version != user.auth_version or await repo_accounts.is_token_revoked(session, token)):
+        raise HTTPException(status_code=401, detail="Session expired. Please sign in again.")
     return user
 
 
@@ -150,7 +159,7 @@ async def register(
         if getattr(exc.orig, "sqlstate", None) == "23505":
             raise HTTPException(status_code=400, detail="Email already registered") from exc
         raise
-    token = create_access_token(str(user.id))
+    token = create_access_token(str(user.id), {"auth_version": user.auth_version})
     _set_cookie(response, token)
     return AuthResponse.from_model_with_token(user, token)
 
@@ -164,24 +173,27 @@ async def login(
 ):
     """Verify local identity, set JWT cookie."""
     await enforce_auth_limits(request, str(body.email), registration=False)
-    identity = await repo_auth.get_identity(
-        session, provider="local", provider_user_id=body.email.strip().lower()
-    )
-    if not identity or not identity.password_hash:
+    identity, user = await repo_accounts.lock_login_identity(session, body.email.strip().lower())
+    if (identity is None or user is None or not identity.password_hash
+            or not await run_in_threadpool(verify_password, body.password, identity.password_hash)):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    if not await run_in_threadpool(verify_password, body.password, identity.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    user = await repo_auth.get_user_by_id(session, identity.user_id)
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found")
-    token = create_access_token(str(user.id))
+    token = create_access_token(str(user.id), {"auth_version": user.auth_version})
     _set_cookie(response, token)
     return AuthResponse.from_model_with_token(user, token)
 
 
 @router.post("/logout")
-async def logout(response: Response):
-    """Clear JWT cookie."""
+async def logout(response: Response, request: Request, session: AsyncSession = Depends(get_session)):
+    """Revoke the presented session as well as clearing its browser cookie."""
+    token = presented_token(request)
+    payload = decode_access_token(token) if token else None
+    if payload and "sub" in payload and isinstance(payload.get("exp"), (int, float)):
+        try:
+            user_id = uuid.UUID(payload["sub"])
+        except (TypeError, ValueError):
+            user_id = None
+        if user_id is not None and await repo_accounts.lock_user(session, user_id) is not None:
+            await repo_accounts.revoke_token(session, user_id, token, payload["exp"])
     _clear_cookie(response)
     return {"ok": True}
 

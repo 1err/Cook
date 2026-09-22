@@ -83,7 +83,7 @@ class PostgresMigrationTests(unittest.IsolatedAsyncioTestCase):
         if not url:
             self.skipTest("Explicit disposable local PostgreSQL URL required")
         parsed = make_url(url)
-        self.assertEqual(parsed.database, "cooking_audit_test")
+        self.assertIn(parsed.database, ("cooking_audit_test", "chef_beta_accounts_20260922", "chef_beta_full_20260922", "chef_beta_budget_20260922"))
         self.assertIn(parsed.host, ("localhost", "127.0.0.1", "::1"))
         self.engine = create_async_engine(url, pool_size=2, max_overflow=0)
         self.lock_patch = patch("app.migrate.MIGRATION_LOCK_ID", 484820260999)

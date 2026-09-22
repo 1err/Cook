@@ -41,3 +41,11 @@ class StoreJobScheduleModel(Base):
     __tablename__ = 'store_job_schedule'
     name: Mapped[str] = mapped_column(sa.String(32), primary_key=True)
     next_due: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+
+
+class StoreRequestLeaseModel(Base):
+    """Short HTTP admission leases, separate from durable browser ownership."""
+    __tablename__ = 'store_request_leases'
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    account_id: Mapped[str] = mapped_column(sa.String(36), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False, index=True)

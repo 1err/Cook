@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
+import { isCompleteRecipeDraft } from "@cooking/shared";
 import type { IngredientItem, Recipe, RecipeStep, RecipeTagSlug } from "@cooking/shared";
 import { Button, TextField } from "../../components";
 import { useT } from "../../lib/i18n";
@@ -16,6 +17,7 @@ import { resolveImageUrl } from "../../lib/imageUrl";
 
 export type DraftRecipeEditorProps = {
   draft: Recipe;
+  requireCompleteRecipe?: boolean;
   onChange: (next: Recipe) => void;
   saving: boolean;
   estimating?: boolean;
@@ -32,6 +34,7 @@ export type DraftRecipeEditorProps = {
 
 export function DraftRecipeEditor({
   draft,
+  requireCompleteRecipe = false,
   onChange,
   saving,
   estimating = false,
@@ -50,6 +53,7 @@ export function DraftRecipeEditor({
   const [tutorialValid, setTutorialValid] = useState(true);
   const tutorialOnly = focus === "tutorial";
   const busy = saving || estimating;
+  const complete = !requireCompleteRecipe || isCompleteRecipeDraft(draft);
   const resolvedSaveLabel = saveLabel ?? (tutorialOnly ? t("recipe.tutorial.save") : "Save recipe");
   const resolvedCancelLabel = cancelLabel ?? (tutorialOnly ? t("recipe.tutorial.cancel") : "Back");
 
@@ -174,6 +178,7 @@ export function DraftRecipeEditor({
         </>
       ) : null}
 
+      {!complete ? <Text>{t("import.manualRequired")}</Text> : null}
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
 
       <View style={styles.actions}>
@@ -194,7 +199,7 @@ export function DraftRecipeEditor({
           title={resolvedSaveLabel}
           onPress={onSave}
           loading={saving}
-          disabled={busy || !tutorialValid}
+          disabled={busy || !tutorialValid || !complete}
           fullWidth
           size="lg"
         />

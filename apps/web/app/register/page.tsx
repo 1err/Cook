@@ -37,7 +37,7 @@ export default function RegisterPage() {
         );
         return;
       }
-      await refreshUser();
+      await refreshUser({ newSession: true });
       const params = new URLSearchParams(window.location.search);
       router.push(safeAuthRedirect(params.get("redirect")));
     } catch (err) {

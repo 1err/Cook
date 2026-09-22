@@ -90,6 +90,13 @@
   color: var(--cw-color-error);
 }
 
+.account { margin-top: 1.5rem; display: grid; justify-content: stretch; gap: 1rem; }
+.account p { margin: 0; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+.deletion { display: grid; gap: 1rem; border-top: 1px solid var(--cw-color-divider); padding-top: 1rem; }
+.deletion h3 { margin: 0; }
+.confirm { display: flex; align-items: flex-start; gap: 0.6rem; }
+
 @media (max-width: 540px) {
   .section {
     align-items: flex-start;

@@ -83,6 +83,50 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
+test.each([101, 200])("loads %i cached ingredients in bounded batches without individual requests", async (count) => {
+  const queries = Array.from({ length: count }, (_, index) => `Ingredient ${index}`);
+  let active = 0;
+  let peak = 0;
+  mockStoreProductsBatch.mockImplementation(async (batch: string[]) => {
+    if (batch.length > 100) throw new Error("422: too many queries");
+    active += 1;
+    peak = Math.max(peak, active);
+    await Promise.resolve();
+    active -= 1;
+    return { entries: batch.map((query) => ({
+      query, status: "fresh", products: [RICE], expires_at: futureExpiry(),
+    })) };
+  });
+  mockStoreProducts.mockResolvedValue(response([RICE]));
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+  await waitFor(() => expect(result.current.hydrated).toBe(true));
+
+  await act(async () => { await result.current.loadAll(queries); });
+
+  expect(mockStoreProducts).not.toHaveBeenCalled();
+  expect(mockStoreProductsBatch.mock.calls.map(([batch]) => batch.length)).toEqual([100, count - 100]);
+  expect(peak).toBe(1);
+  expect(Object.keys(result.current.products)).toHaveLength(count);
+  expect(result.current.bulkLoading).toEqual({ active: false, done: count, total: count });
+});
+
+test("stops remaining cache batches after the shopping list is reset", async () => {
+  const first = deferred<{ entries: [] }>();
+  mockStoreProductsBatch.mockReturnValue(first.promise);
+  const { result } = await renderHook(() => useStoreProductsCache("2026-08-10"));
+  await waitFor(() => expect(result.current.hydrated).toBe(true));
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = result.current.loadAll(Array.from({ length: 200 }, (_, index) => `Ingredient ${index}`));
+  });
+  expect(mockStoreProductsBatch.mock.calls[0][0]).toHaveLength(100);
+  await act(async () => { result.current.resetLive(); });
+  await act(async () => { first.resolve({ entries: [] }); await pending; });
+  expect(mockStoreProductsBatch).toHaveBeenCalledTimes(1);
+  expect(mockStoreProducts).not.toHaveBeenCalled();
+  expect(result.current.products).toEqual({});
+});
+
 test("hydrates fresh stored positives immediately without batch or GET", async () => {
   mockReadSmartProducts.mockResolvedValue({
     open: { rice: true, tofu: false },

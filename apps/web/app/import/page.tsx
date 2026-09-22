@@ -1,5 +1,6 @@
 "use client";
 
+import { createManualRecipeDraft } from "@cooking/shared";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader, PageShell } from "../components/PageShell";
@@ -37,10 +38,11 @@ const INITIAL_VALUES: ImportSourceValues = {
   libraryTags: [],
 };
 
-export default function ImportPage() {
+function ImportPageContent() {
   const router = useRouter();
   const t = useT();
   const [values, setValues] = useState<ImportSourceValues>(INITIAL_VALUES);
+  const [manual, setManual] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draftRecipe, setDraftRecipe] = useState<Recipe | null>(null);
@@ -52,6 +54,7 @@ export default function ImportPage() {
 
   async function handleImportPreview() {
     setError(null);
+    setManual(false);
     setLoading(true);
     try {
       const endpoint = values.mode === "link" ? "/recipes/parse/link" : "/recipes/parse/transcript";
@@ -80,28 +83,36 @@ export default function ImportPage() {
   }
 
   return (
-    <RequireAuth>
-      <PageShell>
-        {draftRecipe ? (
-          <DraftRecipeEditor
-            draft={draftRecipe}
-            onChange={setDraftRecipe}
-            onBack={() => setDraftRecipe(null)}
-            onSaveSuccess={(savedId) => router.push(`/recipe/${savedId}`)}
+    <PageShell>
+      {draftRecipe ? (
+        <DraftRecipeEditor
+          draft={draftRecipe}
+          requireCompleteRecipe={manual}
+          onChange={setDraftRecipe}
+          onBack={() => setDraftRecipe(null)}
+          onSaveSuccess={(savedId) => router.push(`/recipe/${savedId}`)}
+        />
+      ) : (
+        <>
+          <PageHeader title="Import recipe" />
+          <button type="button" disabled={loading} onClick={() => {
+            setError(null);
+            setManual(true);
+            setDraftRecipe(createManualRecipeDraft());
+          }}>{t("import.createManually")}</button>
+          <ImportSourceStep
+            values={values}
+            parsing={loading}
+            error={error}
+            onChange={handleValuesChange}
+            onSubmit={() => void handleImportPreview()}
           />
-        ) : (
-          <>
-            <PageHeader title="Import recipe" />
-            <ImportSourceStep
-              values={values}
-              parsing={loading}
-              error={error}
-              onChange={handleValuesChange}
-              onSubmit={() => void handleImportPreview()}
-            />
-          </>
-        )}
-      </PageShell>
-    </RequireAuth>
+        </>
+      )}
+    </PageShell>
   );
+}
+
+export default function ImportPage() {
+  return <RequireAuth><ImportPageContent /></RequireAuth>;
 }

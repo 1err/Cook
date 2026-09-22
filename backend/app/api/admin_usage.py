@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.admin import require_admin
 from app.core.config import settings
+from app.core.ai_cost import APP_AI_HARD_CAP_NANO, usd_to_nano
 from app.db.ai_cost_models import AIMonthlyBudgetModel, AICallLedgerModel, AIInflightLeaseModel
 from app.db.repo_ai_cost import db_now
 from app.db.session import get_session
@@ -27,19 +28,24 @@ async def ai_usage(session: AsyncSession = Depends(get_session),
     global_row = (await session.execute(query.where(AIMonthlyBudgetModel.scope == 'global'))).scalar_one_or_none()
     rows = (await session.execute(query.where(AIMonthlyBudgetModel.scope != 'global').order_by(
         AIMonthlyBudgetModel.scope).limit(limit + 1).offset(offset))).scalars().all()
-    def totals(row):
-        return {'reserved_usd': usd(row.reserved_nano if row else 0),
-                'spent_usd': usd(row.spent_nano if row else 0)}
+    global_cap = min(usd_to_nano(settings.AI_MONTHLY_BUDGET_USD), APP_AI_HARD_CAP_NANO)
+    account_cap = min(usd_to_nano(settings.AI_ACCOUNT_MONTHLY_BUDGET_USD), global_cap)
+    def totals(row, cap):
+        reserved, spent = (row.reserved_nano, row.spent_nano) if row else (0, 0)
+        return {'reserved_usd': usd(reserved), 'spent_usd': usd(spent),
+                'remaining_usd': usd(max(0, cap - reserved - spent))}
     tokens = (await session.execute(select(func.sum(AICallLedgerModel.input_tokens),
         func.sum(AICallLedgerModel.output_tokens), func.count()).where(AICallLedgerModel.month == month))).one()
     inflight = (await session.execute(select(func.count()).select_from(AIInflightLeaseModel).where(
         AIInflightLeaseModel.expires_at > now))).scalar_one()
-    return {'month_utc': month.isoformat(), 'global': totals(global_row),
-            'monthly_cap_usd': str(settings.AI_MONTHLY_BUDGET_USD),
-            'account_monthly_cap_usd': str(settings.AI_ACCOUNT_MONTHLY_BUDGET_USD),
+    return {'month_utc': month.isoformat(), 'global': totals(global_row, global_cap),
+            'monthly_cap_usd': usd(global_cap),
+            'account_monthly_cap_usd': usd(account_cap),
+            'hard_monthly_cap_usd': usd(APP_AI_HARD_CAP_NANO),
+            'scope': 'App-managed model calls admitted in this UTC month; excludes other key usage, taxes and hosting.',
             'input_tokens': tokens[0] or 0, 'output_tokens': tokens[1] or 0,
             'provider_call_reservations': tokens[2], 'inflight_operations': inflight,
-            'accounts': [{'account_id': row.scope.removeprefix('user:'), **totals(row)} for row in rows[:limit]],
+            'accounts': [{'account_id': row.scope.removeprefix('user:'), **totals(row, account_cap)} for row in rows[:limit]],
             'has_more': len(rows) > limit}
 
 
@@ -50,7 +56,9 @@ async def operating_limits(session: AsyncSession = Depends(get_session)):
     return {
         'monthly_budget_usd': str(settings.OPERATING_MONTHLY_BUDGET_USD),
         'hosting_reserve_usd': str(settings.HOSTING_MONTHLY_RESERVE_USD),
+        'hosting_fields_scope': 'Historical planning only; no combined hosting budget is enforced.',
         'ai_monthly_budget_usd': str(settings.AI_MONTHLY_BUDGET_USD),
+        'ai_hard_monthly_cap_usd': usd(APP_AI_HARD_CAP_NANO),
         'billing_verified': False,
         'ai_operations': {'account_per_minute': settings.AI_USER_REQUESTS_PER_MINUTE,
                           'account_per_day': settings.AI_USER_REQUESTS_PER_DAY,
@@ -70,4 +78,10 @@ async def operating_limits(session: AsyncSession = Depends(get_session)):
         'store_jobs': {'mode': settings.STORE_JOBS_MODE, 'queue_max': settings.STORE_JOBS_QUEUE_MAX,
                        'max_attempts': settings.STORE_JOBS_MAX_ATTEMPTS,
                        'timeout_seconds': settings.STORE_JOBS_TIMEOUT_SECONDS},
+        'store_requests': {'global_per_minute': settings.STORE_REQUEST_GLOBAL_PER_MINUTE,
+                           'account_per_minute': settings.STORE_REQUEST_ACCOUNT_PER_MINUTE,
+                           'global_inflight': settings.STORE_REQUEST_GLOBAL_MAX_INFLIGHT,
+                           'account_inflight': settings.STORE_REQUEST_ACCOUNT_MAX_INFLIGHT,
+                           'timeout_seconds': settings.STORE_REQUEST_TIMEOUT_SECONDS,
+                           'scope': 'Shared across API replicas; independent of durable jobs.'},
     }

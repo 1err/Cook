@@ -58,6 +58,87 @@ test("auth retains the server-authorized admin role", async () => {
   expect(result.current.user).toMatchObject({ is_admin: true });
 });
 
+test("failed account deletion preserves identity and private data, successful deletion clears both", async () => {
+  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  userSessionStorage.setItem("smartShoppingList:week", "private groceries");
+  apiFetch.mockResolvedValueOnce(new Response("Wrong password", { status: 403 }));
+  await act(async () => { await expect(result.current.deleteAccount("wrong")).rejects.toMatchObject({ status: 403 }); });
+  expect(result.current.user?.id).toBe("alice");
+  expect(userSessionStorage.getItem("smartShoppingList:week")).toBe("private groceries");
+  apiFetch.mockResolvedValueOnce(new Response("{}"));
+  await act(async () => result.current.deleteAccount("correct"));
+  expect(result.current.user).toBeNull();
+  expect(userSessionStorage.getItem("smartShoppingList:week")).toBeNull();
+  expect(apiFetch).toHaveBeenLastCalledWith("/auth/account", { method: "DELETE", body: JSON.stringify({ password: "correct" }) });
+});
+
+test("failed sign-out everywhere retains identity and can be retried", async () => {
+  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  apiFetch.mockRejectedValueOnce(new Error("network"));
+  await act(async () => { await expect(result.current.logoutAll()).rejects.toThrow("network"); });
+  expect(result.current.user?.id).toBe("alice");
+  apiFetch.mockResolvedValueOnce(new Response("{}"));
+  await act(async () => result.current.logoutAll());
+  expect(result.current.user).toBeNull();
+});
+
+test("a network failure during verification refresh preserves the current account", async () => {
+  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  apiFetch.mockRejectedValueOnce(new Error("offline"));
+  await act(async () => { await expect(result.current.refreshUser()).rejects.toThrow("offline"); });
+  expect(result.current.user?.id).toBe("alice");
+});
+
+test("a failed refresh after a successful new login cannot retain the previous account", async () => {
+  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  userSessionStorage.setItem("smartShoppingList:week", "Alice groceries");
+  apiFetch.mockRejectedValueOnce(new Error("offline"));
+  await act(async () => { await expect(result.current.refreshUser({ newSession: true })).rejects.toThrow("offline"); });
+  expect(result.current.user).toBeNull();
+  expect(userSessionStorage.getItem("smartShoppingList:week")).toBeNull();
+  expect(result.current.loading).toBe(false);
+});
+
+test("ordinary logout reports a network failure without pretending the cookie was revoked", async () => {
+  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  apiFetch.mockRejectedValueOnce(new Error("offline"));
+  await act(async () => { await expect(result.current.logout()).rejects.toThrow("offline"); });
+  expect(result.current.user?.id).toBe("alice");
+});
+
+test("a late account deletion response cannot clear a newer identity", async () => {
+  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  let resolveDelete!: (response: Response) => void;
+  apiFetch.mockImplementation((path: string) => path === "/auth/account"
+    ? new Promise((resolve) => { resolveDelete = resolve; })
+    : Promise.resolve(new Response(JSON.stringify({ id: "bob", email: "bob@example.com" }))));
+  let pending!: Promise<void>;
+  await act(async () => { pending = result.current.deleteAccount("password"); });
+  await act(async () => { await result.current.refreshUser(); });
+  await act(async () => { resolveDelete(new Response("{}")); await pending; });
+  expect(result.current.user?.id).toBe("bob");
+});
+
+test("a same-account status refresh cannot suppress successful logout", async () => {
+  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  let resolveLogout!: (response: Response) => void;
+  apiFetch.mockImplementation((path: string) => path === "/auth/logout-all"
+    ? new Promise((resolve) => { resolveLogout = resolve; })
+    : Promise.resolve(new Response(JSON.stringify({ id: "alice", email: "alice@example.com" }))));
+  let pending!: Promise<void>;
+  await act(async () => { pending = result.current.logoutAll(); });
+  await act(async () => { await result.current.refreshUser(); });
+  await act(async () => { resolveLogout(new Response("{}")); await pending; });
+  expect(result.current.user).toBeNull();
+});
+
 test("an auth refresh completing after logout cannot restore the old account", async () => {
   const { result } = renderHook(useAuth, { wrapper: AuthProvider });
   await waitFor(() => expect(result.current.user?.id).toBe("alice"));
@@ -85,6 +166,21 @@ test("a logout from another tab clears identity without re-authenticating with i
   });
   expect(result.current.user).toBeNull();
   expect(apiFetch.mock.calls.length).toBe(callsBefore);
+});
+
+test("a failed refresh after another tab changes the cookie account cannot retain the old identity", async () => {
+  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  userSessionStorage.setItem("smartShoppingList:week", "Alice groceries");
+  apiFetch.mockRejectedValueOnce(new Error("offline"));
+  await act(async () => {
+    localStorage.setItem(AUTH_USER_STORAGE_KEY, "bob");
+    window.dispatchEvent(new StorageEvent("storage", { key: AUTH_USER_STORAGE_KEY, oldValue: "alice", newValue: "bob" }));
+  });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.user).toBeNull();
+  expect(userSessionStorage.getItem("smartShoppingList:week")).toBeNull();
+  expect(localStorage.getItem(AUTH_USER_STORAGE_KEY)).toBe("bob");
 });
 
 test("verifying a new tab preserves the already user-scoped cooking replay cache", async () => {

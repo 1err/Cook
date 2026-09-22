@@ -11,7 +11,13 @@ jest.mock("@react-native-async-storage/async-storage", () => require("@react-nat
 jest.mock("../features/cook/notifications", () => ({ cancelAllCookingNotifications: jest.fn() }));
 const mockMe = jest.fn();
 const mockLogin = jest.fn();
-jest.mock("./api", () => ({ buildClient: () => ({ auth: { me: mockMe, login: mockLogin } }) }));
+const mockLogout = jest.fn();
+const mockLogoutAll = jest.fn();
+const mockDeleteAccount = jest.fn();
+jest.mock("./api", () => ({ buildClient: () => ({ auth: {
+  me: mockMe, login: mockLogin, logout: mockLogout,
+  logoutAll: mockLogoutAll, deleteAccount: mockDeleteAccount,
+} }) }));
 
 beforeEach(() => {
   jest.resetAllMocks();
@@ -21,6 +27,9 @@ beforeEach(() => {
   jest.mocked(SecureStore.deleteItemAsync).mockResolvedValue();
   jest.mocked(cancelAllCookingNotifications).mockResolvedValue();
   mockMe.mockResolvedValue({ id: "alice", email: "alice@example.com", is_library_public: false });
+  mockLogout.mockResolvedValue({ ok: true });
+  mockLogoutAll.mockResolvedValue({ ok: true });
+  mockDeleteAccount.mockResolvedValue({ ok: true });
 });
 
 test("logout clears authenticated memory even when notification cleanup fails", async () => {
@@ -85,4 +94,68 @@ test("a login completing after logout cannot restore the account", async () => {
   expect(result.current.user).toBeNull();
   expect(result.current.token).toBeNull();
   expect(SecureStore.setItemAsync).not.toHaveBeenCalledWith("cooking-mobile-token", "new-token");
+});
+
+test("logout keeps the account until server revocation succeeds", async () => {
+  const { result } = await renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  let finish!: (value: { ok: boolean }) => void;
+  mockLogout.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+  let pending!: Promise<void>;
+  await act(async () => { pending = result.current.logout(); });
+  expect(result.current.user?.id).toBe("alice");
+  expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
+  await act(async () => { finish({ ok: true }); await pending; });
+  expect(result.current.user).toBeNull();
+});
+
+test.each(["logout", "logoutAll", "deleteAccount"] as const)("failed %s retains the account and saved credential", async (action) => {
+  const { result } = await renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  ({ logout: mockLogout, logoutAll: mockLogoutAll, deleteAccount: mockDeleteAccount })[action]
+    .mockRejectedValue(new ApiError("Rejected", action === "deleteAccount" ? 403 : 503));
+  await act(async () => {
+    await expect(action === "deleteAccount" ? result.current.deleteAccount("wrong password") : result.current[action]()).rejects.toThrow();
+  });
+  expect(result.current.user?.id).toBe("alice");
+  expect(result.current.token).toBe("saved-token");
+  expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
+});
+
+test.each(["logout", "logoutAll", "deleteAccount"] as const)("a late %s response cannot clear a newly signed-in account", async (action) => {
+  const { result } = await renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  let finish!: (value: { ok: boolean }) => void;
+  ({ logout: mockLogout, logoutAll: mockLogoutAll, deleteAccount: mockDeleteAccount })[action]
+    .mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+  let pending!: Promise<void>;
+  await act(async () => { pending = action === "deleteAccount" ? result.current.deleteAccount("password") : result.current[action](); });
+  mockLogin.mockResolvedValue({ id: "bob", email: "bob@example.com", is_library_public: false, access_token: "bob-token" });
+  await act(async () => { await result.current.login("bob@example.com", "password"); });
+  await act(async () => { finish({ ok: true }); await pending; });
+  expect(result.current.user?.id).toBe("bob");
+  expect(result.current.token).toBe("bob-token");
+  expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
+});
+
+test("token invalidation clears locally without trying another authenticated logout", async () => {
+  const { result } = await renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  await act(async () => { result.current.invalidateToken("saved-token"); });
+  expect(result.current.user).toBeNull();
+  expect(mockLogout).not.toHaveBeenCalled();
+});
+
+test("an old verification refresh cannot replace the new account", async () => {
+  const { result } = await renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  let finish!: (value: unknown) => void;
+  mockMe.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  let refresh!: Promise<void>;
+  await act(async () => { refresh = result.current.refreshUser(); });
+  mockLogin.mockResolvedValue({ id: "bob", email: "bob@example.com", is_library_public: false, email_verified: false, access_token: "bob-token" });
+  await act(async () => { await result.current.login("bob@example.com", "password"); });
+  await act(async () => { finish({ id: "alice", email: "alice@example.com", is_library_public: false, email_verified: true }); await refresh; });
+  expect(result.current.user?.id).toBe("bob");
+  expect(result.current.user?.email_verified).toBe(false);
 });

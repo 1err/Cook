@@ -91,6 +91,7 @@ export interface ShoppingListItem {
 export interface User {
   id: string;
   email: string;
+  email_verified?: boolean;
   is_library_public: boolean;
   is_admin?: boolean;
 }

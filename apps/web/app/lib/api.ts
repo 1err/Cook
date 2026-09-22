@@ -1,6 +1,7 @@
 import { getApiBase } from "../config";
 import { createApiClient } from "@cooking/api-client";
 import { AUTH_EXPIRED_EVENT, clearUserStorage, getAuthGeneration } from "./userStorage";
+import { isPublicAuthPath } from "./publicAuthPath";
 
 export const webApiClient = createApiClient({
   baseUrl: getApiBase(),
@@ -11,7 +12,7 @@ export const webApiClient = createApiClient({
     clearUserStorage();
     window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
     const pathname = window.location.pathname;
-    if (pathname !== "/login" && pathname !== "/register") {
+    if (!isPublicAuthPath(pathname)) {
       const redirect = `${window.location.pathname}${window.location.search || ""}`;
       window.location.href = `/login?redirect=${encodeURIComponent(redirect)}`;
     }

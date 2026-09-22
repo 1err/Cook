@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { Fragment, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../lib/auth";
 
@@ -17,7 +17,7 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
 
   if (loading) return <div style={loadingWrapStyle}><p style={loadingStyle}>Opening your workspace…</p></div>;
   if (!user) return null;
-  return <>{children}</>;
+  return <Fragment key={user.id}>{children}</Fragment>;
 }
 
 const loadingWrapStyle: React.CSSProperties = {

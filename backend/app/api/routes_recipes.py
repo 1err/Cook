@@ -19,6 +19,7 @@ from app.api.abuse import enforce_upload_limits
 from app.core.config import settings
 from app.core.admin import can_manage_public_catalog
 from app.db import repo_mealplan, repo_recipes
+from app.services.owned_images import reserve_owned_image, finish_owned_upload
 from app.db.models import UserModel
 from app.db.session import get_session
 from app.extract import (
@@ -69,19 +70,17 @@ async def upload_recipe_image(
     # Authentication is the only DB work here; storage must not hold its connection.
     await session.close()
     await enforce_upload_limits(account_id, len(data))
-    region = (settings.AWS_REGION or "").strip()
-    bucket = (settings.S3_BUCKET_NAME or "").strip()
-    if region and bucket:
-        try:
-            file_url = await run_in_threadpool(save_recipe_image_s3, data, content_type, account_id)
-        except Exception as e:
-            logger.warning("Image upload failed error_type=%s", type(e).__name__)
-            raise HTTPException(503, "Image upload is temporarily unavailable.") from None
-        return UploadImageResponse(upload_url="", file_url=file_url)
-
-    rel = await run_in_threadpool(save_recipe_image_local, data, content_type)
-    base = str(request.base_url).rstrip("/")
-    return UploadImageResponse(upload_url="", file_url=f"{base}{rel}")
+    receipt = await reserve_owned_image(_user.id, _user.auth_version, content_type, str(request.base_url))
+    try:
+        if receipt["storage_kind"] == "s3":
+            await run_in_threadpool(save_recipe_image_s3, data, content_type, account_id, receipt["object_key"])
+        else:
+            await run_in_threadpool(save_recipe_image_local, data, content_type, receipt["object_key"])
+        await finish_owned_upload(receipt["id"])
+    except Exception as e:
+        logger.warning("Image upload failed error_type=%s", type(e).__name__)
+        raise HTTPException(503, "Image upload is temporarily unavailable.") from None
+    return UploadImageResponse(upload_url="", file_url=receipt["file_url"])
 
 
 def _append_import_notes(text: str, notes: str) -> str:

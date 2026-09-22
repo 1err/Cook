@@ -1,8 +1,9 @@
-import React, { useCallback, useLayoutEffect, useReducer } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import type { CompositeScreenProps } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { Recipe, RecipeTagSlug } from "@cooking/shared";
+import { createManualRecipeDraft, isCompleteRecipeDraft, type Recipe, type RecipeTagSlug } from "@cooking/shared";
+import { useT } from "../../lib/i18n";
 import { useApiClient } from "../../lib/api";
 import { Button, EmptyState } from "../../components";
 import { colors, spacing } from "../../theme";
@@ -83,6 +84,10 @@ type Props = CompositeScreenProps<
 
 export function ImportModalScreen({ navigation, route }: Props) {
   const apiClient = useApiClient();
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const t = useT();
+  const [manual, setManual] = useState(false);
   const [state, dispatch] = useReducer(
     reducer,
     route.params?.initialUrl,
@@ -106,6 +111,7 @@ export function ImportModalScreen({ navigation, route }: Props) {
       dispatch({ type: "previewFailed", error: "Paste a transcript first." });
       return;
     }
+    setManual(false);
     dispatch({ type: "previewStarted" });
     try {
       const payload = {
@@ -120,8 +126,9 @@ export function ImportModalScreen({ navigation, route }: Props) {
               transcript: state.transcript.trim(),
               ...payload,
             });
-      dispatch({ type: "previewSucceeded", draft });
+      if (mounted.current) dispatch({ type: "previewSucceeded", draft });
     } catch (e) {
+      if (!mounted.current) return;
       dispatch({
         type: "previewFailed",
         error: e instanceof Error ? e.message : "Couldn't parse your recipe.",
@@ -130,31 +137,35 @@ export function ImportModalScreen({ navigation, route }: Props) {
   }, [apiClient, state.mode, state.url, state.transcript, state.notes, state.title, state.libraryTags]);
 
   const handleSave = useCallback(async () => {
-    if (!state.draft) return;
+    if (!state.draft || state.saving || (manual && !isCompleteRecipeDraft(state.draft))) return;
     dispatch({ type: "saveStarted" });
     try {
       const cleanedIngredients = state.draft.ingredients.filter((i) => i.name.trim().length > 0);
       const saved = await apiClient.recipes.create({
         ...state.draft,
         ingredients: cleanedIngredients,
+        ...(manual ? { title: state.draft.title.trim(), steps: state.draft.steps?.filter(step => step.text.trim()) } : {}),
       });
+      if (!mounted.current) return;
       navigation.goBack();
       navigation.getParent()?.navigate("Main", {
         screen: "Library",
         params: { screen: "RecipeDetail", params: { recipeId: saved.id } },
       });
     } catch (e) {
+      if (!mounted.current) return;
       dispatch({
         type: "saveFailed",
         error: e instanceof Error ? e.message : "Couldn't save your recipe.",
       });
     }
-  }, [apiClient, navigation, state.draft]);
+  }, [apiClient, navigation, state.draft, state.saving, manual]);
 
   if (state.phase === "draft" && state.draft) {
     return (
       <DraftRecipeEditor
         draft={state.draft}
+        requireCompleteRecipe={manual}
         onChange={(next) => dispatch({ type: "setDraft", draft: next })}
         saving={state.saving}
         error={state.error}
@@ -173,6 +184,10 @@ export function ImportModalScreen({ navigation, route }: Props) {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
+      <Button title={t("import.createManually")} variant="secondary" disabled={state.parsing} onPress={() => {
+        setManual(true);
+        dispatch({ type: "previewSucceeded", draft: createManualRecipeDraft() });
+      }} />
       <ImportSourceTabs
         value={state.mode}
         onChange={(mode) => dispatch({ type: "setMode", mode })}

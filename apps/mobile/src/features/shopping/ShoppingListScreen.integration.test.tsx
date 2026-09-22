@@ -247,3 +247,26 @@ test("cold hydration keeps a confirmed alternative pending when a closed cached 
   expect(mockStoreProducts).not.toHaveBeenCalled();
   expect(screen.queryByRole("button", { name: /Review Weee cart/ })).not.toBeOnTheScreen();
 });
+
+test('checks and shares the basic grocery list without refinement and survives an AI failure', async () => {
+  const { Share } = require('react-native');
+  const share = jest.spyOn(Share, 'share').mockResolvedValue({ action: Share.sharedAction });
+  mockShoppingList.mockResolvedValue([{ name: 'Rice', total_quantity: '1 bag' }, { name: 'Milk', total_quantity: '1 carton' }]);
+  mockRefine.mockRejectedValue(new Error('Monthly AI allowance reached'));
+  await render(screenElement('2026-08-10'));
+  const user = userEvent.setup();
+  await user.press(await screen.findByRole('checkbox', { name: 'Rice' }));
+  await user.press(screen.getByRole('button', { name: 'shopping.shareList' }));
+  expect(share).toHaveBeenCalledWith({ message: 'Milk — 1 carton' });
+  expect(mockRefine).not.toHaveBeenCalled();
+  await user.press(screen.getByRole('button', { name: 'Prepare smart shopping list' }));
+  await screen.findByText('Monthly AI allowance reached');
+  expect(screen.getByRole('checkbox', { name: 'Rice' })).toBeChecked();
+  share.mockRestore();
+});
+
+test('shows basic groceries when optional meal preview fails', async () => {
+  mockMealPlanList.mockRejectedValue(new Error('Meal preview unavailable'));
+  await render(screenElement('2026-08-10'));
+  expect(await screen.findByRole('checkbox', { name: 'Rice' })).toBeEnabled();
+});

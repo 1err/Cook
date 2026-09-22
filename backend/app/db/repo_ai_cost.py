@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 
-from app.core.ai_cost import Price, estimate_cost_nano
+from app.core.ai_cost import APP_AI_HARD_CAP_NANO, Price, estimate_cost_nano
 from app.db.ai_cost_models import AICallLedgerModel, AIInflightLeaseModel, AIMonthlyBudgetModel
 from app.db.repo_ai_usage import AIUsageLimitExceeded
 
@@ -16,6 +16,8 @@ async def db_now(session):
 
 def money_reservation_statement(scope, month, amount, cap):
     table = AIMonthlyBudgetModel.__table__
+    if scope == 'global':
+        cap = min(cap, APP_AI_HARD_CAP_NANO)
     # A first insert must respect the cap too (ON CONFLICT WHERE only protects updates).
     if amount <= 0 or amount > cap:
         raise AIUsageLimitExceeded(3600)

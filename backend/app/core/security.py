@@ -3,6 +3,7 @@ JWT and password hashing for auth. Secret from AUTH_SECRET env.
 OAuth-ready: local provider now; Google etc. can add more identities later.
 """
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -53,6 +54,7 @@ def create_access_token(subject: str, extra_claims: dict[str, Any] | None = None
         "sub": subject,
         "exp": expire,
         "iat": now,
+        "jti": uuid.uuid4().hex,
     }
     if extra_claims:
         payload.update(extra_claims)

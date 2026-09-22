@@ -4,13 +4,15 @@ Store product lookup route.
 Returns current Weee results with an explicit legacy response shape for old clients.
 """
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
+from app.api.store_admission import store_request_admission
+from app.core.config import settings
 from app.db.session import get_session
 from app.db.models import UserModel
 from app.services.store_product_service import (
@@ -37,7 +39,7 @@ class StoreProductsResponse(BaseModel):
 
 
 class StoreProductsBatchBody(BaseModel):
-    queries: list[str]
+    queries: list[Annotated[str, Field(max_length=512)]] = Field(max_length=100)
 
 
 class StoreProductsBatchEntryResponse(BaseModel):
@@ -70,11 +72,20 @@ async def store_products(
         raise HTTPException(status_code=422, detail="Query cannot be empty.")
 
     try:
-        result = await fetch_store_products_with_metadata(
-            query,
-            session=session,
-            release_read_session_on_miss=True,
-        )
+        if settings.ABUSE_LIMITS_ENABLED:
+            # Authentication has finished; don't hold its connection while
+            # acquiring shared admission. Cache reads can reopen this session.
+            await session.close()
+        async with store_request_admission(current_user):
+            try:
+                result = await fetch_store_products_with_metadata(
+                    query,
+                    session=session,
+                    release_read_session_on_miss=True,
+                )
+            finally:
+                if settings.ABUSE_LIMITS_ENABLED:
+                    await session.close()
     except StoreScrapeError as exc:
         raise HTTPException(
             status_code=503,
@@ -101,7 +112,14 @@ async def store_products_batch(
     """Return cached Weee products only, without scheduling a live scrape."""
     _ = current_user
 
-    cached_entries = await fetch_cached_store_products_batch(body.queries, session)
+    if settings.ABUSE_LIMITS_ENABLED:
+        await session.close()
+    async with store_request_admission(current_user):
+        try:
+            cached_entries = await fetch_cached_store_products_batch(body.queries, session)
+        finally:
+            if settings.ABUSE_LIMITS_ENABLED:
+                await session.close()
     entries = [
         StoreProductsBatchEntryResponse(
             query=entry.query,

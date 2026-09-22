@@ -122,3 +122,48 @@ test("an unavailable public catalog does not hide the user's own recipes", async
   );
   await waitFor(() => expect(screen.getByText("Tomato egg stir-fry")).toBeOnTheScreen());
 });
+
+test('retains the private library after a catalog error and retries the failed source', async () => {
+  mockList.mockResolvedValueOnce(recipes).mockRejectedValue(new Error('Private offline'));
+  mockCatalog.mockRejectedValueOnce(new Error('Catalog offline')).mockResolvedValueOnce([{ ...recipes[0], id: 'public-1', title: 'Recovered catalog' }]);
+  await render(<LibraryListScreen navigation={{ addListener: jest.fn(() => jest.fn()), navigate: jest.fn() } as never} route={{ key: 'library', name: 'LibraryList' }} />);
+  await screen.findByText('Tomato egg stir-fry');
+  await fireEvent.press(screen.getByRole('button', { name: 'Public Library' }));
+  await screen.findByRole('alert');
+  await fireEvent.press(screen.getByRole('button', { name: 'library.retry' }));
+  await screen.findByText('Recovered catalog');
+  await fireEvent.press(screen.getByRole('button', { name: 'My Library' }));
+  expect(screen.getByText('Tomato egg stir-fry')).toBeOnTheScreen();
+  expect(mockList).toHaveBeenCalledTimes(1);
+});
+
+test('a copied recipe appears in the retained private library', async () => {
+  await renderCatalog();
+  mockList.mockResolvedValue([{ ...recipes[0], title: 'Newly copied' }]);
+  await fireEvent.press(screen.getByRole('button', { name: 'Add to library' }));
+  await screen.findByRole('button', { name: 'In your library' });
+  await fireEvent.press(screen.getByRole('button', { name: 'My Library' }));
+  expect(await screen.findByText('Newly copied')).toBeOnTheScreen();
+});
+
+test('a failed refresh keeps a completed copy marked as saved', async () => {
+  await renderCatalog();
+  await fireEvent.press(screen.getByRole('button', { name: 'Add to library' }));
+  await screen.findByRole('button', { name: 'In your library' });
+  mockCatalog.mockRejectedValueOnce(new Error('Catalog offline'));
+  await act(async () => { await focusLibrary(); });
+  expect(screen.getByRole('button', { name: 'In your library' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'library.retry' })).toBeEnabled();
+});
+
+test('a late catalog copy does not refresh after the account view unmounts', async () => {
+  let finish!: () => void;
+  mockApiClient.recipes.copyCatalog.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+  mockCatalog.mockResolvedValue([{ ...recipes[0], already_saved: false }]);
+  const rendered = await render(<LibraryListScreen navigation={{ addListener: jest.fn(() => jest.fn()), navigate: jest.fn() } as never} route={{ key: 'library', name: 'LibraryList' }} />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Public Library' }));
+  await fireEvent.press(await screen.findByRole('button', { name: 'Add to library' }));
+  await rendered.unmount();
+  await act(async () => { finish(); });
+  expect(mockList).toHaveBeenCalledTimes(1);
+});

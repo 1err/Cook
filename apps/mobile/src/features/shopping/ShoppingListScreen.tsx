@@ -49,6 +49,8 @@ import {
   type MobileCartAssistantIngredient,
 } from "./useCartAssistant";
 import { canonicalStoreProductKey } from "./storeProductIdentity";
+import { useT } from "../../lib/i18n";
+import { BasicShoppingList, basicShoppingItemKey } from "./BasicShoppingList";
 import { InstacartShoppingPanel } from "./InstacartShoppingPanel";
 
 type Props = CompositeScreenProps<
@@ -134,6 +136,7 @@ export async function openCurrentCartProduct({
 }
 
 export function ShoppingListScreen({ navigation, route }: Props) {
+  const t = useT();
   const weekStart = route.params?.weekStart;
   const { state, refresh, prepareSmartList, backToOriginal, toggleChecked, hideItem } =
     useSmartShoppingList(weekStart);
@@ -161,6 +164,8 @@ export function ShoppingListScreen({ navigation, route }: Props) {
   const [cartReviewOpen, setCartReviewOpen] = useState(false);
   const [skippedTokens, setSkippedTokens] = useState<Set<string>>(new Set());
   const requestedWeekStart = useMemo(() => getWeekBounds(weekStart).start, [weekStart]);
+  const [basicChecks, setBasicChecks] = useState<{ week: string; keys: Set<string> }>({ week: requestedWeekStart, keys: new Set() });
+  const basicChecked = basicChecks.week === requestedWeekStart ? basicChecks.keys : new Set<string>();
   const activeRouteWeekRef = useRef(requestedWeekStart);
   activeRouteWeekRef.current = requestedWeekStart;
   const previousWeekRef = useRef(requestedWeekStart);
@@ -338,7 +343,7 @@ export function ShoppingListScreen({ navigation, route }: Props) {
 
       <InstacartShoppingPanel
         items={buildInstacartItems({
-          originalItems: data.items,
+          originalItems: data.items.filter(item => !basicChecked.has(basicShoppingItemKey(item))),
           purchaseItems: data.refinedData?.purchase_items,
           hidden: data.hidden,
           checked: data.checked,
@@ -355,6 +360,14 @@ export function ShoppingListScreen({ navigation, route }: Props) {
 
       {!data.refinedData ? (
         <>
+          <BasicShoppingList key={bounds.start} items={data.items} checked={basicChecked} onToggle={key => {
+            setBasicChecks(current => {
+              const keys = new Set(current.week === requestedWeekStart ? current.keys : []);
+              if (keys.has(key)) keys.delete(key); else keys.add(key);
+              return { week: requestedWeekStart, keys };
+            });
+          }} />
+          {data.previewUnavailable ? <Text accessibilityRole="alert">{t("shopping.previewUnavailable")}</Text> : null}
           <PlannedMealsPreview
             weekStart={bounds.start}
             mealPlans={data.mealPlans}

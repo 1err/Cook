@@ -36,6 +36,8 @@ class UserModel(Base):
     is_library_public: Mapped[bool] = mapped_column(
         sa.Boolean(), nullable=False, server_default=sa.false()
     )
+    email_verified: Mapped[bool] = mapped_column(sa.Boolean(), nullable=False, default=False, server_default=sa.false())
+    auth_version: Mapped[int] = mapped_column(sa.Integer(), nullable=False, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), server_default=sa.func.now())
     auth_identities: Mapped[list["AuthIdentityModel"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

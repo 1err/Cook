@@ -51,6 +51,35 @@ async def test_concurrent_money_cap_never_overspends(accounting):
 
 
 @pytest.mark.asyncio
+async def test_parallel_accounts_cannot_cross_hard_thirty_dollars_even_with_bad_runtime_cap(accounting):
+    async with accounting.begin() as session:
+        month = (await repo.db_now(session)).date().replace(day=1)
+        session.add(AIMonthlyBudgetModel(scope='global', month=month,
+                    spent_nano=29_999_993_000, reserved_nano=0))
+    calls = await asyncio.gather(*(reserve(accounting, account=str(i), global_cap=100_000_000_000)
+                                   for i in range(12)))
+    assert sum(call is not None for call in calls) == 1
+    async with accounting() as session:
+        global_row = await session.get(AIMonthlyBudgetModel, ('global', month))
+        assert global_row.spent_nano + global_row.reserved_nano == 29_999_999_000
+
+
+@pytest.mark.asyncio
+async def test_admin_remaining_allowance_subtracts_unknown_reservations(accounting, monkeypatch):
+    from app.api.admin_usage import ai_usage, settings
+    monkeypatch.setattr(settings, 'AI_MONTHLY_BUDGET_USD', Decimal('0.00001'))
+    monkeypatch.setattr(settings, 'AI_ACCOUNT_MONTHLY_BUDGET_USD', Decimal('0.00001'))
+    call = await reserve(accounting)
+    async with accounting.begin() as session:
+        await repo.reconcile_call(session, call)
+    async with accounting() as session:
+        result = await ai_usage(session, limit=50, offset=0)
+    assert result['global']['remaining_usd'] == '0.000004'
+    assert result['accounts'][0]['remaining_usd'] == '0.000004'
+    assert result['hard_monthly_cap_usd'] == '30'
+
+
+@pytest.mark.asyncio
 async def test_account_cap_rollback_does_not_leak_global_reservation(accounting):
     assert await reserve(accounting, global_cap=100000, account_cap=10000)
     assert await reserve(accounting, global_cap=100000, account_cap=10000) is None

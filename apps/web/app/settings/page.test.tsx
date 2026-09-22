@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import SettingsPage from "./page";
+import { I18nProvider } from "../lib/i18n";
 
 const { mockSetLibraryVisibility, mockUseAuth } = vi.hoisted(() => ({
   mockSetLibraryVisibility: vi.fn(),
@@ -13,6 +14,7 @@ vi.mock("../components/RequireAuth", () => ({
   RequireAuth: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock("../lib/auth", () => ({ useAuth: mockUseAuth }));
+vi.mock("../lib/api", () => ({ webApiClient: { auth: { capabilities: async () => ({ email_verification: false }) } } }));
 
 afterEach(cleanup);
 
@@ -26,7 +28,7 @@ beforeEach(() => {
 
 it("keeps the sharing consequence beside a clearly labeled control", async () => {
   const user = userEvent.setup();
-  render(<SettingsPage />);
+  render(<I18nProvider><SettingsPage /></I18nProvider>);
 
   expect(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
   const control = screen.getByRole("checkbox", { name: /Share my library/i });
