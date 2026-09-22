@@ -1,3 +1,4 @@
+import { API_BASE } from "./api";
 import { expect, test, type Page, type Route } from "@playwright/test";
 
 const appOrigin = `http://127.0.0.1:${process.env.PORT ?? "3000"}`;
@@ -57,7 +58,7 @@ async function fulfillJson(route: Route, body: unknown) {
 async function installImportFixtures(page: Page) {
   let savedRecipe: Record<string, unknown> | null = null;
 
-  await page.route("http://localhost:8000/**", async (route) => {
+  await page.route(`${API_BASE}/**`, async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
     if (pathname === "/auth/me") {

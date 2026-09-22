@@ -154,6 +154,9 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
       leftGutter: mainRect.left,
       matrixBottom: matrix.getBoundingClientRect().bottom,
       railBottom: rail.getBoundingClientRect().bottom,
+      railWidth: rail.getBoundingClientRect().width,
+      railColumns: getComputedStyle(rail.querySelector<HTMLElement>(".planner-editorial__sidebar-scroll")!).gridTemplateColumns.split(" ").length,
+      dayRowHeight: matrix.querySelector<HTMLElement>(".planner-matrix__row")!.getBoundingClientRect().height,
       rightGutter: window.innerWidth - mainRect.right,
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
@@ -163,6 +166,11 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
   });
   expect(workspaceMetrics.documentHeight).toBeLessThanOrEqual(workspaceMetrics.viewportHeight);
   expect(workspaceMetrics.documentWidth).toBeLessThanOrEqual(workspaceMetrics.viewportWidth);
+  expect(workspaceMetrics.railWidth, JSON.stringify(workspaceMetrics)).toBeGreaterThanOrEqual(450);
+  expect(workspaceMetrics.railWidth, JSON.stringify(workspaceMetrics)).toBeLessThanOrEqual(480);
+  expect(workspaceMetrics.railColumns).toBe(2);
+  expect(workspaceMetrics.dayRowHeight, JSON.stringify(workspaceMetrics)).toBeGreaterThanOrEqual(100);
+  expect(workspaceMetrics.dayRowHeight, JSON.stringify(workspaceMetrics)).toBeLessThanOrEqual(112);
   expect(Math.abs(workspaceMetrics.leftGutter - workspaceMetrics.rightGutter)).toBeLessThanOrEqual(1);
   expect(
     Math.max(
@@ -186,14 +194,18 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
         titleVisibleRatio: title.clientWidth / title.scrollWidth,
         titleWidth: title.getBoundingClientRect().width,
         titleWhiteSpace: getComputedStyle(title).whiteSpace,
+        titleFontSize: parseFloat(getComputedStyle(title).fontSize),
       };
     });
-  expect(mealCardMetrics.imageWidth, JSON.stringify(mealCardMetrics)).toBeGreaterThanOrEqual(94);
-  expect(mealCardMetrics.imageWidth, JSON.stringify(mealCardMetrics)).toBeLessThanOrEqual(96);
-  expect(mealCardMetrics.titleVisibleRatio, JSON.stringify(mealCardMetrics)).toBeGreaterThan(0.58);
+  expect(mealCardMetrics.imageWidth, JSON.stringify(mealCardMetrics)).toBeGreaterThanOrEqual(65);
+  expect(mealCardMetrics.imageWidth, JSON.stringify(mealCardMetrics)).toBeLessThanOrEqual(67);
+  expect(mealCardMetrics.cardWidth, JSON.stringify(mealCardMetrics)).toBeGreaterThanOrEqual(209);
+  expect(mealCardMetrics.cardWidth, JSON.stringify(mealCardMetrics)).toBeLessThanOrEqual(245);
+  expect(mealCardMetrics.titleVisibleRatio, JSON.stringify(mealCardMetrics)).toBeGreaterThan(0.5);
+  expect(mealCardMetrics.titleFontSize).toBeGreaterThanOrEqual(11);
   expect(mealCardMetrics.titleWhiteSpace).toBe("nowrap");
   expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeGreaterThanOrEqual(8);
-  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeLessThanOrEqual(20);
+  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeLessThanOrEqual(64);
 
   await expect(page).toHaveScreenshot("planner-matrix.png", {
     animations: "disabled",
@@ -271,7 +283,7 @@ test("uses the picker width for its tag menu and separates the first tag group",
     };
   });
 
-  expect(tagMetrics.panelWidth, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(650);
+  expect(tagMetrics.panelWidth, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(600);
   expect(tagMetrics.panelLeft, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(tagMetrics.sheetLeft);
   expect(tagMetrics.panelRight, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(tagMetrics.sheetRight);
   expect(tagMetrics.firstGroupGap, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(18);
@@ -374,6 +386,18 @@ test("switches from stacked rows to the full matrix at the actual breakpoint", a
       getComputedStyle(row).gridTemplateColumns.split(" ").length,
     ),
   ).toBe(4);
+  const layout = await page.locator(".planner-editorial__sidebar").evaluate((rail) => {
+    const board = rail.parentElement!.querySelector<HTMLElement>(".planner-matrix")!;
+    return {
+      railRight: rail.getBoundingClientRect().right,
+      boardLeft: board.getBoundingClientRect().left,
+      railColumns: getComputedStyle(rail.querySelector<HTMLElement>(".planner-editorial__sidebar-scroll")!).gridTemplateColumns.split(" ").length,
+      pageOverflows: document.documentElement.scrollWidth > window.innerWidth,
+    };
+  });
+  expect(layout.railRight).toBeLessThan(layout.boardLeft);
+  expect(layout.railColumns).toBe(1);
+  expect(layout.pageOverflows).toBe(false);
 });
 
 test("keeps the Chinese overflow action inside its meal cell", async ({ page }, testInfo) => {

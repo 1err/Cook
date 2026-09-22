@@ -30,9 +30,13 @@ test("renders an accessible responsive authenticated shell", async ({ page }, te
         left: rect.left,
         right: window.innerWidth - rect.right,
         width: rect.width,
+        rootFont: parseFloat(getComputedStyle(document.documentElement).fontSize),
+        headerHeight: inner.parentElement!.getBoundingClientRect().height,
       };
     });
     expect(geometry.width).toBe(1280);
+    expect(geometry.rootFont).toBe(14);
+    expect(geometry.headerHeight).toBeLessThanOrEqual(62);
     expect(Math.abs(geometry.left - geometry.right)).toBeLessThanOrEqual(1);
   }
   await expect(page.getByRole("link", { name: "Add Recipe" })).toBeVisible();
@@ -50,6 +54,7 @@ test("renders an accessible responsive authenticated shell", async ({ page }, te
   await expect(page.getByRole("link", { name: "Planner" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Cook" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Shopping" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link")).toHaveText(["Library", "Planner", "Shopping", "Cook"]);
   const results = await new AxeBuilder({ page }).include("header").analyze();
   expect(results.violations).toEqual([]);
   await expect(page.locator("header")).toHaveScreenshot("authenticated-shell.png", {

@@ -232,6 +232,12 @@
   white-space: nowrap;
 }
 
+@media (min-width: 1200px) {
+  .grid {
+    --library-columns: 4;
+  }
+}
+
 @media (max-width: 980px) {
   .grid {
     --library-columns: 2;

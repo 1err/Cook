@@ -4,7 +4,7 @@
 
 .workspace {
   display: grid;
-  height: clamp(32rem, calc(100dvh - 12.5rem), 51rem);
+  height: clamp(512px, calc(100dvh - 200px), 816px);
   min-height: 0;
   align-items: stretch;
   gap: 1rem;
@@ -545,6 +545,63 @@
 
 .page :global(.planner-slot-empty-trigger__label) {
   display: none;
+}
+
+@media (min-width: 901px) {
+  .workspace {
+    grid-template-columns: clamp(240px, 28%, 300px) minmax(0, 1fr);
+  }
+
+  .page :global(.planner-editorial__sidebar) {
+    width: auto;
+  }
+
+  .page :global(.planner-editorial__sidebar-head .planner-filter-bar) {
+    position: relative;
+  }
+
+  .page :global(.planner-editorial__sidebar-head .tag-filter-popover) {
+    position: static;
+  }
+
+  .page :global(.planner-editorial__sidebar-head .planner-filter-bar .tag-filter-popover__panel) {
+    width: 100%;
+  }
+
+  .page :global(.planner-source-card--rail .planner-drag-card) {
+    min-height: 64px;
+  }
+
+  .page :global(.planner-drag-card__meta),
+  .page :global(.planner-matrix__header span),
+  .page :global(.planner-matrix__day span),
+  .page :global(.planner-meal-card__title),
+  .page :global(.planner-slot-action),
+  .page :global(.planner-slot-overflow-cue) {
+    font-size: max(0.68rem, 11px);
+  }
+
+  .page :global(.planner-matrix) {
+    grid-template-rows: 48px repeat(7, minmax(0, 1fr));
+  }
+
+  .page :global(.planner-meal-card) {
+    grid-template-columns: 66px minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 1280px) {
+  .workspace {
+    grid-template-columns: clamp(360px, 38%, 480px) minmax(0, 1fr);
+  }
+
+  .page :global(.planner-editorial__sidebar-scroll) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .page :global(.planner-source-empty) {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 900px) {

@@ -1,3 +1,4 @@
+import { API_BASE } from "./api";
 import { expect, test, type Page, type Route } from "@playwright/test";
 
 const appOrigin = `http://127.0.0.1:${process.env.PORT ?? "3000"}`;
@@ -79,7 +80,7 @@ async function fulfillJson(route: Route, body: unknown) {
 }
 
 async function installShoppingFixtures(page: Page) {
-  await page.route("http://localhost:8000/**", async (route) => {
+  await page.route(`${API_BASE}/**`, async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
 
@@ -334,7 +335,7 @@ test("keeps live matches pending and treats unsafe or empty settled results as u
   let releaseUnsafeKale!: () => void;
   const unsafeKalePending = new Promise<void>((resolve) => { releaseUnsafeKale = resolve; });
 
-  await page.route("http://localhost:8000/**", async (route) => {
+  await page.route(`${API_BASE}/**`, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === "/store-products/batch") {
@@ -414,7 +415,7 @@ test("loads batch cache hits before one serial miss and permits retry after a fa
   const milkPending = new Promise<void>((resolve) => { releaseMilk = resolve; });
   let eggCalls = 0;
 
-  await page.route("http://localhost:8000/**", async (route) => {
+  await page.route(`${API_BASE}/**`, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === "/shopping-list" || url.pathname === "/meal-plan") {

@@ -1,3 +1,4 @@
+import { API_BASE } from "./api";
 import { expect, test, type Page, type Route } from "@playwright/test";
 
 const appOrigin = `http://127.0.0.1:${process.env.PORT ?? "3000"}`;
@@ -35,7 +36,7 @@ async function fulfillJson(route: Route, body: unknown) {
 }
 
 async function installFixtures(page: Page) {
-  await page.route("http://localhost:8000/**", async (route) => {
+  await page.route(`${API_BASE}/**`, async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
     if (pathname === "/auth/me") {
@@ -52,6 +53,10 @@ async function installFixtures(page: Page) {
     }
     if (pathname === `/recipes/${recipe.id}` && request.method() === "PATCH") {
       await fulfillJson(route, { ...recipe, ...(request.postDataJSON() as object) });
+      return;
+    }
+    if (pathname === "/cooking-session/active") {
+      await fulfillJson(route, null);
       return;
     }
     if (pathname === "/recipes/catalog/editor-status") {
@@ -72,6 +77,7 @@ test("keeps the recipe detail hero compact, top-aligned, and responsive", async 
   const title = page.getByRole("heading", { level: 1, name: recipe.title });
   const heroHeader = title.locator("xpath=..");
   await expect(title).toBeVisible();
+  await expect(page.getByText("Failed to fetch", { exact: true })).toHaveCount(0);
 
   const layout = await heroHeader.evaluate((header) => {
     const heading = header.querySelector("h1")!;
@@ -96,7 +102,7 @@ test("keeps the recipe detail hero compact, top-aligned, and responsive", async 
 
 test("presents recipe editing as one clear, functional workflow", async ({ page }, testInfo) => {
   const saveCapture: { current: Record<string, unknown> | null } = { current: null };
-  await page.route(`http://localhost:8000/recipes/${recipe.id}`, async (route) => {
+  await page.route(`${API_BASE}/recipes/${recipe.id}`, async (route) => {
     if (route.request().method() === "PATCH") {
       saveCapture.current = route.request().postDataJSON() as Record<string, unknown>;
       await fulfillJson(route, { ...recipe, ...saveCapture.current });

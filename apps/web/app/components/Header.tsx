@@ -15,8 +15,8 @@ import { IconButton } from "./ui/IconButton";
 const PRIMARY_LINKS = [
   { href: "/library", key: "nav.library" },
   { href: "/planner", key: "nav.planner" },
-  { href: "/cook", key: "nav.cook" },
   { href: "/shopping-list", key: "nav.shopping" },
+  { href: "/cook", key: "nav.cook" },
 ] as const;
 
 export function Header() {
@@ -39,7 +39,7 @@ export function Header() {
   const addRecipeHref = `/import?from=${encodeURIComponent(pathname)}`;
 
   return (
-    <header className={styles.header}>
+    <header className={styles.header} data-app-shell>
       <div className={styles.inner}>
         <Link
           aria-label={t("nav.appName")}

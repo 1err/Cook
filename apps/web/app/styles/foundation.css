@@ -3,6 +3,22 @@
   --cw-shell-gutter: clamp(1rem, 2vw, 2rem);
 }
 
+/* Compact desktop workspace; public pages and touch layouts keep their scale. */
+@media (min-width: 1024px) {
+  html:has([data-app-shell]) {
+    font-size: 87.5%;
+    --cw-shell-max: 1280px;
+    --app-header-height: 60px;
+    --cw-space-3: 10px;
+    --cw-space-4: 14px;
+    --cw-space-6: 20px;
+    --cw-space-8: 28px;
+    --cw-space-10: 36px;
+    --cw-space-14: 48px;
+    --cw-space-18: 64px;
+  }
+}
+
 body {
   background: var(--cw-color-canvas);
   color: var(--cw-color-ink);

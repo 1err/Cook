@@ -185,3 +185,19 @@ button.menuButton {
     display: none;
   }
 }
+
+@media (min-width: 1024px) {
+  .header {
+    --cw-account-size: 36px;
+  }
+
+  .brandMark {
+    width: 32px;
+    height: 32px;
+  }
+
+  .accountSkeleton {
+    width: 36px;
+    height: 36px;
+  }
+}

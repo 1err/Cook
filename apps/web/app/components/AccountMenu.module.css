@@ -13,9 +13,9 @@
   font-family: Inter, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
   font-size: 1rem;
   font-weight: 700;
-  height: 44px;
+  height: var(--cw-account-size, 44px);
   justify-content: center;
-  width: 44px;
+  width: var(--cw-account-size, 44px);
 }
 
 .trigger:hover,

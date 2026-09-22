@@ -54,15 +54,15 @@ afterEach(() => {
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
 });
 
-test("keeps Library first and places Cook between Planner and Shopping", () => {
+test("orders navigation from Library and Planner to Shopping and Cook", () => {
   render(<Header />);
 
   const destinationLinks = screen.getByRole("navigation", { name: "Main" }).querySelectorAll("a");
   expect([...destinationLinks].map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
     ["Library", "/library"],
     ["Planner", "/planner"],
-    ["Cook", "/cook"],
     ["Shopping", "/shopping-list"],
+    ["Cook", "/cook"],
   ]);
   expect(screen.getByRole("link", { name: "Planner" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByRole("link", { name: "Add Recipe" })).toHaveAttribute(
