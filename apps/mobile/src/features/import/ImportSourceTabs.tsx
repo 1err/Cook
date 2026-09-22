@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { colors, radii, spacing, typography } from "../../theme";
+import { colors, spacing, typography } from "../../theme";
 
 export type ImportMode = "link" | "transcript";
 
@@ -41,25 +41,22 @@ export function ImportSourceTabs({ value, onChange, disabled = false }: ImportSo
 const styles = StyleSheet.create({
   wrap: {
     flexDirection: "row",
-    backgroundColor: colors.surfaceContainerLow,
-    borderRadius: radii.md,
-    padding: 4,
-    marginBottom: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.divider,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+    marginBottom: spacing.xl,
+    gap: spacing.md,
   },
   tab: {
     flex: 1,
+    minHeight: 44,
     paddingVertical: spacing.sm,
-    borderRadius: radii.sm,
     alignItems: "center",
+    justifyContent: "center",
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
   },
-  tabActive: {
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.divider,
-  },
+  tabActive: { borderBottomColor: colors.terracotta },
   label: { ...typography.subhead, color: colors.onSurfaceVariant, fontWeight: "600" },
-  labelActive: { color: colors.onSurface },
+  labelActive: { color: colors.terracotta },
   pressed: { opacity: 0.8 },
 });

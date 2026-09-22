@@ -1,6 +1,6 @@
 # Capacity and operating controls
 
-The owner-approved ceiling is **USD 150 per month combined**, including AWS, Vercel, AI and other operating services. Higher usage does not automatically authorize a higher bill. This branch adds application controls and reproducible local tests; it does not establish a production user-count guarantee or automatically change cloud resources.
+The current owner-approved AI ceiling is **under USD 30 per month**; the beta overlay allocates **USD 29 per UTC calendar month**. Existing hosting is acceptable to the owner. This supersedes the earlier USD 150 combined planning assumption. The application ledger covers modeled app requests, not taxes, historical spending before activation, or other applications sharing the provider credential. Controls and local tests do not establish a production user-count guarantee or automatically change cloud resources.
 
 ## Deployable unit and preflight
 
@@ -17,7 +17,7 @@ Before production rollout, verify:
 5. Load balancer readiness path `/ready`, graceful drain timing and trusted proxy addresses. Authentication IP limits use the ASGI peer; do not trust arbitrary forwarded headers. Without verified proxy trust, ALB peers can share an allowance and legitimate sign-in throughput can suffer. Restrict direct ingress and test real forwarded-client behavior before enabling at scale.
 6. A verified existing-image inventory baseline. New cumulative counters start empty; they bound new growth and do not retroactively measure historical objects.
 
-`scripts/prepare-scaling.py` accepts a sanitized JSON resource/cost worksheet and emits reviewable ECS scaling/worker/CloudWatch request bodies. It **cannot apply them**. All eight monthly cost components must be known, even when verified zero. It estimates two API tasks at maximum, one worker and release overlap; totals above $150 are refused. `cheap` has a minimum of one API task; `api-ha` requires two API tasks in at least two zones. Both cap at two. A single-AZ database remains a failure domain.
+`scripts/prepare-scaling.py` is a historical planning tool using the former USD 150 combined worksheet. It accepts sanitized resources and emits reviewable request bodies; it **cannot apply them** and is not the current spending policy. Its two-API maximum and one-worker estimates require all eight cost components, including verified zeros. Do not apply its private-subnet assumptions to the existing public-subnet service without verifying egress. A single-AZ database remains a failure domain.
 
 ## Current application defaults
 

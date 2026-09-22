@@ -1,7 +1,7 @@
 .shell {
   margin-inline: auto;
   min-width: 0;
-  padding-block: var(--cw-space-8);
+  padding-block: clamp(1.75rem, 2.2vw, 2.5rem);
   width: min(calc(100% - (2 * var(--cw-shell-gutter))), var(--cw-shell-max));
 }
 
@@ -39,10 +39,10 @@
 .title {
   color: var(--cw-color-ink);
   font-family: var(--cw-type-display-family), var(--cw-type-display-fallback);
-  font-size: clamp(2rem, 4vw, 3rem);
-  font-weight: 700;
-  letter-spacing: -0.045em;
-  line-height: 1.04;
+  font-size: clamp(2.25rem, 4vw, 3.25rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
   margin: 0;
 }
 
@@ -51,6 +51,16 @@
   display: flex;
   flex: 0 0 auto;
   gap: var(--cw-space-2);
+}
+
+.description {
+  color: var(--cw-color-muted-ink);
+  font-family: var(--cw-font-display);
+  font-size: clamp(1.125rem, 1.6vw, 1.4rem);
+  font-weight: 400;
+  line-height: 1.5;
+  margin: 0.45rem 0 0;
+  max-width: 48rem;
 }
 
 @media (max-width: 640px) {

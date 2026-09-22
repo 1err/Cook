@@ -4,11 +4,13 @@ import { useState } from "react";
 import { PageHeader, PageShell } from "../components/PageShell";
 import { RequireAuth } from "../components/RequireAuth";
 import { useAuth } from "../lib/auth";
+import { useEditorialCopy } from "../lib/editorialCopy";
 import styles from "./Settings.module.css";
 import { AccountSecurity } from "./AccountSecurity";
 
 function SettingsPageContent() {
   const { user, setLibraryVisibility } = useAuth();
+  const editorialCopy = useEditorialCopy();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,7 +31,7 @@ function SettingsPageContent() {
 
   return (
     <PageShell>
-      <PageHeader title="Settings" />
+      <PageHeader title="Settings" description={editorialCopy["settings.tagline"]} />
       <section className={styles.section}>
         <div className={styles.copy}>
           <h2>Share my library</h2>

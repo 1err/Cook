@@ -120,14 +120,18 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/planner?week=2026-08-10");
 });
 
-test("renders a day-by-meal matrix with compact multi-recipe states", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Desktop matrix geometry is verified once.");
+test("renders a readable day-card week beside a compact recipe rail", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Desktop day-card geometry is verified once.");
 
   await expect(page.getByRole("heading", { name: "Recipe Library" })).toBeVisible();
-  await expect(page.getByRole("table", { name: "Weekly meal plan" })).toBeVisible();
-  await expect(page.getByTestId("planner-day-row")).toHaveCount(7);
+  await expect(page.getByRole("region", { name: "Meal planner" })).toBeVisible();
+  await expect(page.getByTestId("planner-day-card")).toHaveCount(7);
   await expect(page.getByTestId("planner-meal-slot")).toHaveCount(21);
-  await expect(page.getByRole("columnheader", { name: "Breakfast" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Mon 10" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sun 16" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Breakfast" })).toHaveCount(7);
+  await expect(page.getByRole("heading", { name: "Lunch" })).toHaveCount(7);
+  await expect(page.getByRole("heading", { name: "Dinner" })).toHaveCount(7);
 
   for (const [slotIndex, layout] of [
     ["0", "one"],
@@ -150,36 +154,37 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
   ).toBeVisible();
   await expect(overflowSlot.getByRole("button", { name: /Open Recipe 07/ })).toBeVisible();
   await expect(overflowSlot.getByRole("button", { name: /Open Recipe 08/ })).toBeVisible();
-  await expect(overflowSlot.getByRole("button", { name: /Open Recipe 09/ })).toHaveCount(0);
+  await expect(overflowSlot.getByRole("button", { name: /Open Recipe 09/ })).toBeVisible();
+  await expect(overflowSlot.getByRole("button", { name: /Open Recipe 10/ })).toHaveCount(0);
 
   const workspaceMetrics = await page.locator("main").evaluate((main) => {
     const rail = main.querySelector<HTMLElement>(".planner-editorial__sidebar")!;
-    const matrix = main.querySelector<HTMLElement>(".planner-matrix")!;
-    const board = matrix.parentElement!;
+    const week = main.querySelector<HTMLElement>(".planner-week-grid")!;
+    const dayCards = Array.from(week.querySelectorAll<HTMLElement>(".planner-day-card"));
+    const railThumbnail = rail.querySelector<HTMLElement>(".planner-drag-card__thumb")!;
     const mainRect = main.getBoundingClientRect();
     return {
-      documentHeight: document.documentElement.scrollHeight,
+      cardColumns: getComputedStyle(week).gridTemplateColumns.split(" ").length,
+      clippedDayCards: dayCards.filter((card) => card.scrollHeight > card.clientHeight).length,
       documentWidth: document.documentElement.scrollWidth,
       leftGutter: mainRect.left,
-      matrixBottom: matrix.getBoundingClientRect().bottom,
-      railBottom: rail.getBoundingClientRect().bottom,
+      railWidth: rail.getBoundingClientRect().width,
+      railDisplay: getComputedStyle(rail.querySelector<HTMLElement>(".planner-editorial__sidebar-scroll")!).display,
+      railThumbnailHeight: railThumbnail.getBoundingClientRect().height,
+      railThumbnailWidth: railThumbnail.getBoundingClientRect().width,
       rightGutter: window.innerWidth - mainRect.right,
       viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-      boardBottom: board.getBoundingClientRect().bottom,
-      viewportBottomGap: window.innerHeight - board.getBoundingClientRect().bottom,
     };
   });
-  expect(workspaceMetrics.documentHeight).toBeLessThanOrEqual(workspaceMetrics.viewportHeight);
   expect(workspaceMetrics.documentWidth).toBeLessThanOrEqual(workspaceMetrics.viewportWidth);
+  expect(workspaceMetrics.railWidth, JSON.stringify(workspaceMetrics)).toBeGreaterThanOrEqual(220);
+  expect(workspaceMetrics.railWidth, JSON.stringify(workspaceMetrics)).toBeLessThanOrEqual(270);
+  expect(workspaceMetrics.railDisplay).toBe("flex");
+  expect(workspaceMetrics.railThumbnailWidth).toBeCloseTo(64, 0);
+  expect(workspaceMetrics.railThumbnailHeight).toBeCloseTo(52, 0);
+  expect(workspaceMetrics.cardColumns).toBe(3);
+  expect(workspaceMetrics.clippedDayCards).toBe(0);
   expect(Math.abs(workspaceMetrics.leftGutter - workspaceMetrics.rightGutter)).toBeLessThanOrEqual(1);
-  expect(
-    Math.max(
-      Math.abs(workspaceMetrics.matrixBottom - workspaceMetrics.railBottom),
-      Math.abs(workspaceMetrics.boardBottom - workspaceMetrics.railBottom),
-    ),
-    JSON.stringify(workspaceMetrics),
-  ).toBeLessThanOrEqual(1);
   const mealCardMetrics = await page
     .getByRole("button", { name: /Open Recipe 01/ })
     .evaluate((card) => {
@@ -188,21 +193,25 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
       const title = card.querySelector<HTMLElement>(".planner-meal-card__title")!;
       return {
         bodyWidth: body.getBoundingClientRect().width,
-        cardWidth: card.getBoundingClientRect().width,
+        cardHeight: card.getBoundingClientRect().height,
         columns: getComputedStyle(card).gridTemplateColumns,
         imageDisplay: getComputedStyle(image).display,
+        imageHeight: image.getBoundingClientRect().height,
         imageWidth: image.getBoundingClientRect().width,
         titleVisibleRatio: title.clientWidth / title.scrollWidth,
         titleWidth: title.getBoundingClientRect().width,
         titleWhiteSpace: getComputedStyle(title).whiteSpace,
+        titleFontSize: parseFloat(getComputedStyle(title).fontSize),
       };
     });
-  expect(mealCardMetrics.imageWidth, JSON.stringify(mealCardMetrics)).toBeGreaterThanOrEqual(94);
-  expect(mealCardMetrics.imageWidth, JSON.stringify(mealCardMetrics)).toBeLessThanOrEqual(96);
-  expect(mealCardMetrics.titleVisibleRatio, JSON.stringify(mealCardMetrics)).toBeGreaterThan(0.58);
-  expect(mealCardMetrics.titleWhiteSpace).toBe("nowrap");
-  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeGreaterThanOrEqual(8);
-  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeLessThanOrEqual(20);
+  expect(mealCardMetrics.imageDisplay).toBe("block");
+  expect(mealCardMetrics.imageWidth).toBeCloseTo(64, 0);
+  expect(mealCardMetrics.imageHeight).toBeCloseTo(52, 0);
+  expect(mealCardMetrics.cardHeight).toBeGreaterThanOrEqual(52);
+  expect(mealCardMetrics.bodyWidth, JSON.stringify(mealCardMetrics)).toBeGreaterThanOrEqual(100);
+  expect(mealCardMetrics.titleVisibleRatio, JSON.stringify(mealCardMetrics)).toBeGreaterThan(0.9);
+  expect(mealCardMetrics.titleFontSize).toBeGreaterThanOrEqual(14);
+  expect(mealCardMetrics.titleWhiteSpace).toBe("normal");
 
   await expect(page).toHaveScreenshot("planner-matrix.png", {
     animations: "disabled",
@@ -280,7 +289,7 @@ test("uses the picker width for its tag menu and separates the first tag group",
     };
   });
 
-  expect(tagMetrics.panelWidth, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(650);
+  expect(tagMetrics.panelWidth, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(600);
   expect(tagMetrics.panelLeft, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(tagMetrics.sheetLeft);
   expect(tagMetrics.panelRight, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(tagMetrics.sheetRight);
   expect(tagMetrics.firstGroupGap, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(18);
@@ -342,18 +351,19 @@ test("preserves picker, remove, drag, and open interactions", async ({ page }, t
   await expect(page).toHaveURL(/\/recipe\/recipe-02$/);
 });
 
-test("stacks the matrix and keeps the picker usable on phone and tablet", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === "desktop", "Responsive stacking runs in phone and tablet projects.");
+test("uses responsive day cards and keeps the picker usable on phone and tablet", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "desktop", "Responsive day cards run in phone and tablet projects.");
 
-  await expect(page.getByTestId("planner-day-row")).toHaveCount(7);
+  await expect(page.getByTestId("planner-day-card")).toHaveCount(7);
   await expect(page.getByTestId("planner-meal-slot")).toHaveCount(21);
   await expect(page.locator(".planner-editorial__sidebar")).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-  const firstRow = page.getByTestId("planner-day-row").first();
-  expect(
-    await firstRow.evaluate((row) => getComputedStyle(row).gridTemplateColumns.split(" ").length),
-  ).toBe(1);
+  const cardColumns = await page.locator(".planner-week-grid").evaluate((week) =>
+    getComputedStyle(week).gridTemplateColumns.split(" ").length,
+  );
+  expect(cardColumns).toBe(testInfo.project.name === "phone" ? 1 : 2);
+  await expect(page.getByRole("heading", { name: "Mon 10" })).toBeVisible();
 
   await page.getByRole("button", { name: "Choose a recipe for breakfast on 2026-08-12" }).click();
   const picker = page.getByRole("dialog", { name: "Choose recipe for meal slot" });
@@ -365,24 +375,43 @@ test("stacks the matrix and keeps the picker usable on phone and tablet", async 
   expect(pickerLayout).toEqual({ display: "flex", flexDirection: "column" });
 });
 
-test("switches from stacked rows to the full matrix at the actual breakpoint", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "The exact breakpoint is verified once.");
+test("switches day-card columns at the responsive breakpoints", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "The card breakpoints are verified once.");
 
-  await page.setViewportSize({ width: 900, height: 800 });
+  await page.setViewportSize({ width: 700, height: 800 });
   await expect(page.locator(".planner-editorial__sidebar")).toBeHidden();
   expect(
-    await page.getByTestId("planner-day-row").first().evaluate((row) =>
-      getComputedStyle(row).gridTemplateColumns.split(" ").length,
+    await page.locator(".planner-week-grid").evaluate((week) =>
+      getComputedStyle(week).gridTemplateColumns.split(" ").length,
     ),
   ).toBe(1);
 
   await page.setViewportSize({ width: 901, height: 800 });
   await expect(page.locator(".planner-editorial__sidebar")).toBeVisible();
   expect(
-    await page.getByTestId("planner-day-row").first().evaluate((row) =>
-      getComputedStyle(row).gridTemplateColumns.split(" ").length,
+    await page.locator(".planner-week-grid").evaluate((week) =>
+      getComputedStyle(week).gridTemplateColumns.split(" ").length,
     ),
-  ).toBe(4);
+  ).toBe(2);
+  const layout = await page.locator(".planner-editorial__sidebar").evaluate((rail) => {
+    const board = rail.parentElement!.querySelector<HTMLElement>(".planner-week-grid")!;
+    return {
+      railRight: rail.getBoundingClientRect().right,
+      boardLeft: board.getBoundingClientRect().left,
+      railDisplay: getComputedStyle(rail.querySelector<HTMLElement>(".planner-editorial__sidebar-scroll")!).display,
+      pageOverflows: document.documentElement.scrollWidth > window.innerWidth,
+    };
+  });
+  expect(layout.railRight).toBeLessThan(layout.boardLeft);
+  expect(layout.railDisplay).toBe("flex");
+  expect(layout.pageOverflows).toBe(false);
+
+  await page.setViewportSize({ width: 1181, height: 800 });
+  expect(
+    await page.locator(".planner-week-grid").evaluate((week) =>
+      getComputedStyle(week).gridTemplateColumns.split(" ").length,
+    ),
+  ).toBe(3);
 });
 
 test("keeps the Chinese overflow action inside its meal cell", async ({ page }, testInfo) => {

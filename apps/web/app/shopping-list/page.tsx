@@ -10,11 +10,11 @@ import { userLocalStorage, userSessionStorage } from "../lib/userStorage";
 import { RequireAuth } from "../components/RequireAuth";
 import { PageHeader, PageShell } from "../components/PageShell";
 import { useI18n, useT } from "../lib/i18n";
+import { useEditorialCopy } from "../lib/editorialCopy";
 import type { Recipe } from "../types";
 import {
   GROCERY_CATEGORY_ORDER,
   buildCartAssistantDraft,
-  buildInstacartItems,
   buildWeekMealPlanFingerprint,
   normalizeMealPlanSlots,
   formatWeekRangeDisplay,
@@ -31,7 +31,6 @@ import {
 import { ShoppingCategorySection } from "./ShoppingCategorySection";
 import { ShoppingSmartBar } from "./ShoppingSmartBar";
 import { CartAssistantDialog } from "./CartAssistantDialog";
-import { InstacartShoppingPanel } from "./InstacartShoppingPanel";
 import styles from "./ShoppingList.module.css";
 import {
   buildVisualProductQueue,
@@ -99,10 +98,10 @@ function buildPlannedMealRows(
   plans: MealPlanDay[],
   recipes: Record<string, Recipe | undefined>,
   weekMondayYmd: string,
-): { recipeId: string; title: string; slot: PlanSlot; dayShort: string; date: string }[] {
+): { recipeId: string; title: string; thumbnailUrl?: string; slot: PlanSlot; dayShort: string; date: string }[] {
   const { dates: weekDates } = getWeekBounds(weekMondayYmd);
   const dowByDate = new Map(weekDates.map((d, i) => [d, DOW_SHORT[i]]));
-  const rows: { recipeId: string; title: string; slot: PlanSlot; dayShort: string; date: string }[] = [];
+  const rows: { recipeId: string; title: string; thumbnailUrl?: string; slot: PlanSlot; dayShort: string; date: string }[] = [];
   for (const p of plans) {
     const dayShort = dowByDate.get(p.date) ?? "";
     if (!dayShort) continue;
@@ -115,6 +114,7 @@ function buildPlannedMealRows(
         rows.push({
           recipeId: rid,
           title,
+          thumbnailUrl: rec?.thumbnail_url?.trim() || undefined,
           slot,
           dayShort,
           date: p.date,
@@ -219,6 +219,7 @@ function confirmationIngredientKey(token: string): string | null {
 function ShoppingListPageContent() {
   const router = useRouter();
   const { language } = useI18n();
+  const editorialCopy = useEditorialCopy();
   const t = useT();
   const searchParams = useSearchParams();
   const weekParam = searchParams.get("week");
@@ -1129,9 +1130,43 @@ function ShoppingListPageContent() {
 
   const orderedCategories = [...SHOPPING_PRIMARY_CATEGORIES, ...SHOPPING_SECONDARY_CATEGORIES];
 
+  const plannedMealsPanel = (
+    <section className={styles.plannedMeals} aria-labelledby="shopping-planned-meals-title">
+      <header>
+        <div>
+          <span className={styles.contextLabel}>{editorialCopy["shopping.thisWeek"]}</span>
+          <h2 className="cw-display" id="shopping-planned-meals-title">Planned meals</h2>
+        </div>
+        <span>{planRows.length} {planRows.length === 1 ? "recipe" : "recipes"}</span>
+      </header>
+      {hasPlannedMeals ? (
+        <div className={styles.mealList}>
+          {mealRowsVisible.map((row, index) => (
+            <Link key={`${row.date}-${row.slot}-${row.recipeId}-${index}`} href={`/recipe/${row.recipeId}`}>
+              {row.thumbnailUrl ? (
+                <span className={styles.mealThumbnail} aria-hidden>
+                  <img src={row.thumbnailUrl} alt="" loading="lazy" />
+                </span>
+              ) : null}
+              <span className={styles.mealCopy}>
+                <strong>{row.title}</strong>
+                <span>{row.dayShort} · {slotLabel(row.slot)}</span>
+              </span>
+            </Link>
+          ))}
+          {moreMealsCount > 0 ? (
+            <button type="button" onClick={() => setPlanMealsExpanded((expanded) => !expanded)}>
+              {planMealsExpanded ? "Show less" : `+ ${moreMealsCount} more`}
+            </button>
+          ) : null}
+        </div>
+      ) : <p>No recipe slots filled for this range yet.</p>}
+    </section>
+  );
+
   return (
-    <PageShell>
-      <PageHeader title={t("shopping.title")} />
+    <PageShell className={styles.page}>
+      <PageHeader title={t("shopping.title")} description={editorialCopy["shopping.tagline"]} />
 
       <section className={styles.weekBar} aria-label="Week range">
         <div>
@@ -1145,19 +1180,11 @@ function ShoppingListPageContent() {
         </div>
       </section>
 
-      <InstacartShoppingPanel
-        title={`${t("shopping.title")} · ${weekRangeLabel}`}
-        listKey={`${start}:${activeRefinedData ? "smart" : "original"}`}
-        items={buildInstacartItems({
-          originalItems: items.filter(item => !basicChecked.has(basicKey(item))),
-          purchaseItems: activeRefinedData?.purchase_items,
-          hidden: smartHidden,
-          checked: smartChecked,
-        })}
-        disabled={refining}
-        stale={Boolean(activeRefinedData && smartListStale)}
-      />
-
+      <section
+        className={styles.workspace}
+        aria-label={activeRefinedData ? undefined : "Prepare smart shopping list"}
+      >
+        <div className={styles.listColumn}>
       {copyError ? <p className={styles.error} role="alert">{copyError}</p> : null}
       {!activeRefinedData && items.length > 0 ? (
         <section className={styles.category} aria-label={t("shopping.basicList")}>
@@ -1186,7 +1213,6 @@ function ShoppingListPageContent() {
         </section>
       ) : null}
       {previewUnavailable ? <p role="status">{t("shopping.previewUnavailable")}</p> : null}
-
       {!hasPlannedMeals && items.length === 0 ? (
         <div className={styles.empty}>
           <strong>{t("shopping.noMealsPlanned")}</strong>
@@ -1196,6 +1222,7 @@ function ShoppingListPageContent() {
         <>
           <ShoppingSmartBar
             itemCount={smartItemCount}
+            totalCount={visiblePurchaseItems.length}
             stale={smartListStale}
             refining={refining}
             copied={copied}
@@ -1262,31 +1289,10 @@ function ShoppingListPageContent() {
           ) : null}
         </>
       ) : (
-        <section className={styles.preparePanel} aria-label="Prepare smart shopping list">
-          <div className={styles.plannedMeals}>
-            <header>
-              <h2 className="cw-display">Planned meals</h2>
-              <span>{planRows.length} {planRows.length === 1 ? "recipe" : "recipes"}</span>
-            </header>
-            {hasPlannedMeals ? (
-              <div className={styles.mealList}>
-                {mealRowsVisible.map((row, index) => (
-                  <Link key={`${row.date}-${row.slot}-${row.recipeId}-${index}`} href={`/recipe/${row.recipeId}`}>
-                    <strong>{row.title}</strong>
-                    <span>{row.dayShort} · {slotLabel(row.slot)}</span>
-                  </Link>
-                ))}
-                {moreMealsCount > 0 ? (
-                  <button type="button" onClick={() => setPlanMealsExpanded((expanded) => !expanded)}>
-                    {planMealsExpanded ? "Show less" : `+ ${moreMealsCount} more`}
-                  </button>
-                ) : null}
-              </div>
-            ) : <p>No recipe slots filled for this range yet.</p>}
-          </div>
-
-          <aside className={styles.prepareAction}>
+          <section className={styles.prepareAction}>
+            <span className={styles.contextLabel}>{editorialCopy["shopping.originalList"]}</span>
             <h2 className="cw-display">Prepare smart list</h2>
+            <p className={styles.prepareCopy}>{editorialCopy["shopping.prepareDescription"]}</p>
             <dl>
               <div><dt>Recipes</dt><dd>{planRows.length}</dd></div>
               <div><dt>Ingredients</dt><dd>{items.length}</dd></div>
@@ -1295,9 +1301,13 @@ function ShoppingListPageContent() {
             <button type="button" onClick={() => void handlePrepareSmartList()} disabled={!canPrepareSmart}>
               {refining ? "Preparing…" : "Prepare smart shopping list"}
             </button>
-          </aside>
-        </section>
+          </section>
       )}
+        </div>
+        <aside className={styles.retailerColumn}>
+          {plannedMealsPanel}
+        </aside>
+      </section>
     </PageShell>
   );
 }

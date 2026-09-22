@@ -383,7 +383,7 @@
   "library.clearFilter": "清除筛选",
   "library.yourShelfReady": "你的菜谱架已准备好",
   "library.publicShelfEmpty": "公开菜谱架为空",
-  "library.importRecipePrompt": "从链接或文字稿导入一道菜谱后，就会显示在这里。",
+  "library.importRecipePrompt": "手动创建菜谱，或从链接、文字导入后，就会显示在这里。",
   "library.tryAnotherFilter": "试试其他筛选条件或搜索词。",
   "library.publicShelfEmptyDesc": "当精选菜谱发布后，所有已登录用户都会在这里看到。",
   "library.importRecipe": "导入菜谱",

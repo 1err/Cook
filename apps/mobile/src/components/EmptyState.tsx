@@ -37,7 +37,7 @@ const styles = StyleSheet.create({
   wrap: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacing["3xl"],
+    paddingVertical: spacing["4xl"],
     paddingHorizontal: spacing.xl,
   },
   iconBubble: {
@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
     ...typography.title3,
     color: colors.onSurface,
     textAlign: "center",
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
   },
   description: {
     ...typography.subhead,

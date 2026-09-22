@@ -6,11 +6,11 @@ import LibraryPage from './page';
 const { mine, catalog } = vi.hoisted(() => ({mine:vi.fn(),catalog:vi.fn()}));
 vi.mock('next/navigation', () => ({useSearchParams: () => new URLSearchParams()}));
 vi.mock('../components/RequireAuth', () => ({RequireAuth: ({children}: {children:ReactNode}) => <>{children}</>}));
-vi.mock('../lib/i18n', () => ({useT: () => (key:string) => key}));
+vi.mock('../lib/i18n', () => ({useT: () => (key:string) => key, useI18n: () => ({language:'en'})}));
 vi.mock('../lib/api', () => ({apiFetch:vi.fn(),webApiClient:{recipes:{page:mine,catalogPage:catalog}}}));
 const page = (id:string, next_cursor:string|null=null, already_saved=false):RecipePage => ({items:[{id,title:id,ingredient_count:0,step_count:0,already_saved}],next_cursor});
-beforeEach(() => {mine.mockReset();catalog.mockReset();});
-afterEach(cleanup);
+beforeEach(() => {mine.mockReset();catalog.mockReset();vi.stubGlobal('ResizeObserver',class {observe(){}disconnect(){}});});
+afterEach(() => {cleanup();vi.unstubAllGlobals();});
 
 test('loads one page on demand, searches server-side, and uses per-row copy state without private-library scans', async () => {
   mine.mockResolvedValueOnce(page('First','next')).mockResolvedValueOnce(page('Later')).mockResolvedValueOnce(page('Needle'));

@@ -143,9 +143,25 @@ export function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { gap: spacing.lg },
-  row: { flexDirection: "row", alignItems: "center", backgroundColor: colors.white, borderRadius: radii.lg, padding: spacing.md },
-  iconBubble: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primaryFixed, alignItems: "center", justifyContent: "center", marginRight: spacing.md },
+  content: { gap: spacing.lg, paddingTop: spacing.xl },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.divider,
+    padding: spacing.md,
+  },
+  iconBubble: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primaryFixed,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.md,
+  },
   rowBody: { flex: 1 },
   rowLabel: { ...typography.footnote, color: colors.onSurfaceVariant, fontWeight: "600" },
   rowValue: { ...typography.body, color: colors.onSurface, marginTop: 2 },

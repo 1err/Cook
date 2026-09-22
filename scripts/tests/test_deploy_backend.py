@@ -201,6 +201,16 @@ class DeploySafetyTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("Deploy complete", result.stdout)
 
+    def test_api_task_has_explicit_ecs_liveness_and_graceful_stop(self):
+        result = self.deploy()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        container = json.loads((self.root / "registered.json").read_text())["containerDefinitions"][0]
+        health = container["healthCheck"]
+        self.assertEqual(health["command"][:3], ["CMD", "python", "-c"])
+        self.assertIn("http://127.0.0.1:8000/health", health["command"][3])
+        self.assertEqual(health["startPeriod"], 60)
+        self.assertEqual(container["stopTimeout"], 120)
+
     def test_ecs_rollback_cannot_report_success(self):
         result = self.deploy(ROLLBACK="1")
         self.assertNotEqual(result.returncode, 0)

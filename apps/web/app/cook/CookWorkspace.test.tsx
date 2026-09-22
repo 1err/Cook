@@ -13,7 +13,7 @@ vi.mock("../lib/api", () => ({ webApiClient: { recipes: {
       page: async (options: {q?: string} = {}) => ({items: (await mockRecipesList()).filter((r: Recipe) => !options.q || r.title.toLowerCase().includes(options.q.toLowerCase())).map((r: Recipe) => ({...r, ingredient_count:r.ingredients.length, step_count:r.steps?.length ?? 0, already_saved:true})), next_cursor:null}),
       get: async (id: string) => (await mockRecipesList()).find((r: Recipe) => r.id === id),
     } } }));
-vi.mock("../lib/i18n", () => ({ useT: mockUseT }));
+vi.mock("../lib/i18n", () => ({ useT: mockUseT, useI18n: () => ({ language: "en" }) }));
 
 const messages: Record<string, string> = {
   "cook.active.eyebrow": "Cooking now",

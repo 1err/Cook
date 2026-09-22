@@ -214,7 +214,7 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
       {resolveImageUrl(recipe.thumbnail_url) ? (
         <Image
           source={{ uri: resolveImageUrl(recipe.thumbnail_url) }}
-          style={[styles.hero, heroRatio ? { aspectRatio: heroRatio } : null]}
+          style={[styles.hero, heroRatio ? { aspectRatio: Math.max(1.25, Math.min(heroRatio, 1.8)) } : null]}
           contentFit="cover"
           transition={200}
           onLoad={(e) => {
@@ -357,10 +357,10 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.recipePaper },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.recipePaper },
   content: { paddingBottom: spacing["3xl"] },
-  hero: { width: "100%", aspectRatio: 16 / 9, backgroundColor: colors.accentSoft, borderBottomLeftRadius: radii.lg, borderBottomRightRadius: radii.lg },
+  hero: { width: "100%", aspectRatio: 16 / 9, backgroundColor: colors.accentSoft },
   heroPlaceholder: { alignItems: "center", justifyContent: "center" },
-  body: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
-  title: { ...typography.recipeTitle, color: colors.onSurface, textAlign: "center" },
+  body: { paddingHorizontal: spacing.lg, paddingTop: spacing.xl },
+  title: { ...typography.recipeTitle, color: colors.onSurface, textAlign: "left", lineHeight: 37 },
   metaCard: {
     marginTop: spacing.lg,
     padding: spacing.lg,

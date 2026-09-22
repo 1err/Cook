@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { PageHeader, PageShell } from "../components/PageShell";
 import { RequireAuth } from "../components/RequireAuth";
 import { apiFetch } from "../lib/api";
+import { useEditorialCopy } from "../lib/editorialCopy";
 import { useT } from "../lib/i18n";
 import type { Recipe } from "../types";
 import { DraftRecipeEditor } from "./DraftRecipeEditor";
@@ -41,6 +42,7 @@ const INITIAL_VALUES: ImportSourceValues = {
 function ImportPageContent() {
   const router = useRouter();
   const t = useT();
+  const editorialCopy = useEditorialCopy();
   const [values, setValues] = useState<ImportSourceValues>(INITIAL_VALUES);
   const [manual, setManual] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -94,12 +96,13 @@ function ImportPageContent() {
         />
       ) : (
         <>
-          <PageHeader title="Import recipe" />
-          <button type="button" disabled={loading} onClick={() => {
-            setError(null);
-            setManual(true);
-            setDraftRecipe(createManualRecipeDraft());
-          }}>{t("import.createManually")}</button>
+          <PageHeader title="Import recipe" description={editorialCopy["import.tagline"]} actions={
+            <button className="btn-secondary" type="button" disabled={loading} onClick={() => {
+              setError(null);
+              setManual(true);
+              setDraftRecipe(createManualRecipeDraft());
+            }}>{t("import.createManually")}</button>
+          } />
           <ImportSourceStep
             values={values}
             parsing={loading}

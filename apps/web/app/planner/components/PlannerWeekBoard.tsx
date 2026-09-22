@@ -27,10 +27,6 @@ function dayOfMonth(date: string): number {
   return Number(date.split("-")[2]);
 }
 
-function capitalize(value: string) {
-  return `${value.charAt(0).toLocaleUpperCase()}${value.slice(1)}`;
-}
-
 export function PlannerWeekBoard({
   dates,
   today,
@@ -49,44 +45,48 @@ export function PlannerWeekBoard({
   const t = useT();
 
   return (
-    <div className="planner-matrix" role="table" aria-label="Weekly meal plan">
-      <div className="planner-matrix__header" role="row">
-        <span role="columnheader">Day</span>
-        {MEAL_PLAN_SLOTS.map((slot) => (
-          <span key={slot} role="columnheader">{capitalize(t(PLANNER_MEAL_LABEL_KEYS[slot]))}</span>
-        ))}
-      </div>
-
+    <div className="planner-week-grid" role="region" aria-label={t("recipe.mealPlanner")}>
       {dates.map((date, dayIndex) => (
         <section
           key={date}
-          data-testid="planner-day-row"
-          className={`planner-matrix__row${date === today ? " is-today" : ""}`}
-          role="row"
+          data-testid="planner-day-card"
+          className={`planner-day-card${date === today ? " is-today" : ""}`}
+          aria-labelledby={`planner-day-${date}`}
         >
-          <header className="planner-matrix__day" role="rowheader">
-            <strong>{DAY_SHORT[dayIndex]}</strong>
-            <span>{dayOfMonth(date)}</span>
-          </header>
-          {MEAL_PLAN_SLOTS.map((slot) => (
-            <div className="planner-matrix__cell" role="cell" key={slot}>
-              <PlannerMealSlot
-                date={date}
-                slot={slot}
-                recipeIds={(planByDate[date] ?? emptyMealPlanSlots())[slot]}
-                recipesById={recipesById}
-                isDragOver={draggingSlot?.date === date && draggingSlot.slot === slot}
-                mutationsDisabled={mutationsDisabled}
-                onChoose={() => onChoose(date, slot)}
-                onManage={() => onManage(date, slot)}
-                onOpen={onOpen}
-                onRemove={(recipeId) => onRemove(date, slot, recipeId)}
-                onDragOver={onDragOver}
-                onDragLeave={onDragLeave}
-                onDrop={onDrop}
-              />
+          <header className="planner-day-card__header">
+            <div>
+              <p className="planner-day-card__eyebrow">{DAY_SHORT[dayIndex]}</p>
+              <h2
+                id={`planner-day-${date}`}
+                aria-label={`${DAY_SHORT[dayIndex]} ${dayOfMonth(date)}`}
+              >
+                {dayOfMonth(date)}
+              </h2>
             </div>
-          ))}
+            {date === today ? <span className="planner-day-card__today" aria-hidden="true" /> : null}
+          </header>
+
+          <div className="planner-day-card__meals">
+            {MEAL_PLAN_SLOTS.map((slot) => (
+              <div className="planner-day-card__meal" key={slot}>
+                <PlannerMealSlot
+                  date={date}
+                  slot={slot}
+                  recipeIds={(planByDate[date] ?? emptyMealPlanSlots())[slot]}
+                  recipesById={recipesById}
+                  isDragOver={draggingSlot?.date === date && draggingSlot.slot === slot}
+                  mutationsDisabled={mutationsDisabled}
+                  onChoose={() => onChoose(date, slot)}
+                  onManage={() => onManage(date, slot)}
+                  onOpen={onOpen}
+                  onRemove={(recipeId) => onRemove(date, slot, recipeId)}
+                  onDragOver={onDragOver}
+                  onDragLeave={onDragLeave}
+                  onDrop={onDrop}
+                />
+              </div>
+            ))}
+          </div>
         </section>
       ))}
     </div>

@@ -1,4 +1,5 @@
 import { recipePageFixture } from "./recipePageFixture";
+import { API_BASE } from "./api";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import type { CookingSession, CookingStep } from "@cooking/shared";
 
@@ -122,7 +123,7 @@ async function fulfillJson(route: Route, body: unknown) {
 
 async function installCookingFixtures(page: Page, actions: unknown[]) {
   let session: ReturnType<typeof freshSession> | null = null;
-  await page.route("http://localhost:8000/**", async (route) => {
+  await page.route(`${API_BASE}/**`, async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
     if (pathname === "/auth/me") {
@@ -197,7 +198,7 @@ async function installCookingFixtures(page: Page, actions: unknown[]) {
 async function installOfflineFixtures(page: Page) {
   let session = freshSession();
   const network = { offline: false, conflict: false };
-  await page.route("http://localhost:8000/**", async (route) => {
+  await page.route(`${API_BASE}/**`, async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
     if (pathname === "/auth/me") {

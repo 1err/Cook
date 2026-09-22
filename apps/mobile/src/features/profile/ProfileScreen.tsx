@@ -83,7 +83,7 @@ export function ProfileScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   identity: {
     alignItems: "center",
-    paddingVertical: spacing.xl,
+    paddingVertical: spacing["2xl"],
     paddingHorizontal: spacing.lg,
   },
   avatar: {
@@ -95,11 +95,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: spacing.md,
   },
-  email: { ...typography.headline, color: colors.onSurface },
+  email: { ...typography.headline, color: colors.onSurface, textAlign: "center" },
   group: {
     marginHorizontal: spacing.lg,
     backgroundColor: colors.white,
     borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.divider,
     overflow: "hidden",
   },
   language: {

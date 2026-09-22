@@ -42,3 +42,23 @@ test("a current account's 401 still clears its saved private state", async () =>
   expect(sessionStorage.getItem(AUTH_USER_STORAGE_KEY)).toBeNull();
   expect(sessionStorage.getItem("smartShoppingList:week:user:alice")).toBeNull();
 });
+
+test.each(["/", "/about", "/privacy", "/terms", "/contact"])(
+  "an expired session leaves the public %s page readable", async (pathname) => {
+    const location = { pathname, search: "", href: pathname };
+    vi.stubGlobal("window", { location, dispatchEvent: vi.fn() });
+    bindUserStorage("alice");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("Expired token", { status: 401 })));
+    await expect(webApiClient.auth.me()).rejects.toMatchObject({ status: 401 });
+    expect(location.href).toBe(pathname);
+    expect(sessionStorage.getItem(AUTH_USER_STORAGE_KEY)).toBeNull();
+  },
+);
+
+test("an expired session still redirects a protected page with its return destination", async () => {
+  const location = { pathname: "/library", search: "?tab=friends", href: "/library?tab=friends" };
+  vi.stubGlobal("window", { location, dispatchEvent: vi.fn() });
+  vi.stubGlobal("fetch", vi.fn(async () => new Response("Expired token", { status: 401 })));
+  await expect(webApiClient.auth.me()).rejects.toMatchObject({ status: 401 });
+  expect(location.href).toBe("/login?redirect=%2Flibrary%3Ftab%3Dfriends");
+});

@@ -9,6 +9,7 @@ type PageShellProps = {
 
 type PageHeaderProps = {
   title: string;
+  description?: ReactNode;
   actions?: ReactNode;
   eyebrow?: ReactNode;
 };
@@ -24,12 +25,13 @@ export function PageShell({ children, className = "", size = "default" }: PageSh
   );
 }
 
-export function PageHeader({ title, actions, eyebrow }: PageHeaderProps) {
+export function PageHeader({ title, description, actions, eyebrow }: PageHeaderProps) {
   return (
     <div className={styles.pageHeader}>
       <div className={styles.titleGroup}>
         {eyebrow ? <div className={styles.eyebrow}>{eyebrow}</div> : null}
         <h1 className={styles.title}>{title}</h1>
+        {description ? <p className={styles.description}>{description}</p> : null}
       </div>
       {actions ? <div className={styles.actions}>{actions}</div> : null}
     </div>

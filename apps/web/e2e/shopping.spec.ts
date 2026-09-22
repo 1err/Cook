@@ -1,3 +1,4 @@
+import { API_BASE } from "./api";
 import { expect, test, type Page, type Route } from "@playwright/test";
 
 const appOrigin = `http://127.0.0.1:${process.env.PORT ?? "3000"}`;
@@ -79,7 +80,7 @@ async function fulfillJson(route: Route, body: unknown) {
 }
 
 async function installShoppingFixtures(page: Page) {
-  await page.route("http://localhost:8000/**", async (route) => {
+  await page.route(`${API_BASE}/**`, async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
 
@@ -141,9 +142,23 @@ async function installShoppingFixtures(page: Page) {
   });
 }
 
+const instacartRequests = new WeakMap<Page, string[]>();
+
 test.beforeEach(async ({ page }) => {
+  const requests: string[] = [];
+  instacartRequests.set(page, requests);
+  page.on("request", (request) => {
+    if (/instacart/i.test(request.url())) requests.push(request.url());
+  });
   await installShoppingFixtures(page);
   await page.goto("/shopping-list?week=2026-08-10");
+});
+
+test.afterEach(async ({ page }) => {
+  await expect(page.getByRole("button", { name: /instacart/i })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /instacart/i })).toHaveCount(0);
+  await expect(page.getByText(/instacart/i)).toHaveCount(0);
+  expect(instacartRequests.get(page)).toEqual([]);
 });
 
 test("loads local Inter faces for every requested Shopping weight", async ({ page }) => {
@@ -186,7 +201,10 @@ test("keeps preparation in context and renders smart groceries without horizonta
       viewportWidth: window.innerWidth,
     };
   });
-  expect(shellMetrics.shellWidth).toBeLessThanOrEqual(1280);
+  expect(shellMetrics.shellWidth).toBeLessThanOrEqual(1440);
+  if (testInfo.project.name === "desktop") {
+    expect(shellMetrics.shellWidth).toBeGreaterThan(1300);
+  }
   expect(Math.abs(shellMetrics.leftGutter - shellMetrics.rightGutter)).toBeLessThanOrEqual(1);
   expect(shellMetrics.documentWidth).toBeLessThanOrEqual(shellMetrics.viewportWidth);
 
@@ -208,24 +226,35 @@ test("keeps preparation in context and renders smart groceries without horizonta
   await produceSection.getByRole("button", { name: "View products" }).click();
   await expect(produceSection.getByTestId("store-product-row")).toHaveCount(3);
   const expandedLayout = await produceSection.evaluate((section) => ({
-    columnCount: getComputedStyle(section.parentElement!).columnCount,
+    categoryDisplay: getComputedStyle(section.parentElement!).display,
+    categoryColumns: getComputedStyle(section.parentElement!).gridTemplateColumns.split(" ").length,
     gridWidth: section.parentElement?.getBoundingClientRect().width ?? 0,
     sectionWidth: section.getBoundingClientRect().width,
+    productColumns: getComputedStyle(section.querySelector<HTMLElement>("[role='radiogroup']")!).gridTemplateColumns.split(" ").length,
   }));
-  if (testInfo.project.name !== "desktop") {
-    expect(expandedLayout.columnCount).toBe("1");
-    expect(expandedLayout.sectionWidth).toBeGreaterThan(expandedLayout.gridWidth * 0.9);
-  } else {
-    expect(expandedLayout.columnCount).toBe("2");
-    expect(expandedLayout.sectionWidth).toBeLessThan(expandedLayout.gridWidth * 0.7);
-  }
+  expect(expandedLayout.categoryDisplay).toBe("grid");
+  expect(expandedLayout.categoryColumns).toBe(1);
+  expect(expandedLayout.sectionWidth).toBeGreaterThan(expandedLayout.gridWidth * 0.99);
+  const expectedProductColumns = testInfo.project.name === "desktop" ? 3 : testInfo.project.name === "tablet" ? 2 : 1;
+  expect(expandedLayout.productColumns).toBe(expectedProductColumns);
   const productRows = produceSection.getByTestId("store-product-row");
-  const verticalRows = await productRows.evaluateAll((rows) => rows.map((row) => {
+  const productRects = await productRows.evaluateAll((rows) => rows.map((row) => {
     const rect = row.getBoundingClientRect();
-    return { bottom: rect.bottom, top: rect.top };
+    return { bottom: rect.bottom, left: rect.left, top: rect.top };
   }));
-  expect(verticalRows[1].top).toBeGreaterThanOrEqual(verticalRows[0].bottom);
-  expect(verticalRows[2].top).toBeGreaterThanOrEqual(verticalRows[1].bottom);
+  if (expectedProductColumns === 1) {
+    expect(productRects[1].top).toBeGreaterThanOrEqual(productRects[0].bottom);
+    expect(productRects[2].top).toBeGreaterThanOrEqual(productRects[1].bottom);
+  } else {
+    expect(Math.abs(productRects[1].top - productRects[0].top)).toBeLessThanOrEqual(1);
+    expect(productRects[1].left).toBeGreaterThan(productRects[0].left);
+    if (expectedProductColumns === 3) {
+      expect(Math.abs(productRects[2].top - productRects[0].top)).toBeLessThanOrEqual(1);
+      expect(productRects[2].left).toBeGreaterThan(productRects[1].left);
+    } else {
+      expect(productRects[2].top).toBeGreaterThanOrEqual(Math.max(productRects[0].bottom, productRects[1].bottom));
+    }
+  }
   await expect(produceSection.getByRole("link", { name: "View on Weee" })).toHaveCount(3);
 
   if (testInfo.project.name === "desktop" && process.platform === "darwin") {
@@ -236,7 +265,7 @@ test("keeps preparation in context and renders smart groceries without horizonta
   }
 });
 
-test("reviews editable top picks and records only explicit user-confirmed Weee progress", async ({ page }) => {
+test("reviews editable top picks and records only explicit user-confirmed Weee progress", async ({ page }, testInfo) => {
   await expect(page.getByRole("button", { name: /Review Weee cart/ })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Prepare smart shopping list" }).click();
@@ -257,6 +286,12 @@ test("reviews editable top picks and records only explicit user-confirmed Weee p
   await expect(milkChoices.getByRole("radio", { name: "Whole milk carton: Selected for cart" })).toBeChecked();
   await expect(page.getByText("Top pick", { exact: true })).toHaveCount(3);
 
+  await kaleChoices.getByRole("radio", { name: "Choose Tuscan kale for cart" }).check();
+  await expect(kaleChoices.getByRole("radio", { name: "Tuscan kale: Selected for cart" })).toBeChecked();
+  if (testInfo.project.name === "desktop") {
+    await kaleChoices.evaluate((group) => group.scrollIntoView({ block: "center" }));
+    await expect(kaleChoices).toHaveScreenshot("shopping-three-choices.png", { animations: "disabled" });
+  }
   await kaleChoices.getByRole("radio", { name: "Choose Baby kale for cart" }).check();
   await expect(kaleChoices.getByRole("radio", { name: "Baby kale: Selected for cart" })).toBeChecked();
 
@@ -334,7 +369,7 @@ test("keeps live matches pending and treats unsafe or empty settled results as u
   let releaseUnsafeKale!: () => void;
   const unsafeKalePending = new Promise<void>((resolve) => { releaseUnsafeKale = resolve; });
 
-  await page.route("http://localhost:8000/**", async (route) => {
+  await page.route(`${API_BASE}/**`, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === "/store-products/batch") {
@@ -414,7 +449,7 @@ test("loads batch cache hits before one serial miss and permits retry after a fa
   const milkPending = new Promise<void>((resolve) => { releaseMilk = resolve; });
   let eggCalls = 0;
 
-  await page.route("http://localhost:8000/**", async (route) => {
+  await page.route(`${API_BASE}/**`, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === "/shopping-list" || url.pathname === "/meal-plan") {

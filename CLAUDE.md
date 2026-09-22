@@ -420,6 +420,39 @@ Pages and components import shared helpers (week math, meal-plan slot helpers, i
 
 The slug union `RecipeTagSlug` lives in `@cooking/shared/types`.
 
+### Public website and recipe library layout
+
+The web root `/` is an English-only Chef World homepage explaining the save, plan, shop,
+and guided-cooking flow. `/about`, `/privacy`, `/terms`, and `/contact` are also public.
+Their header and footer use the same Home/About/Contact/Privacy/Terms page links under
+`apps/web/app/public-site/`. The header and home hero have an `Open app` link to `/library`;
+existing authentication handles signed-in users or redirects guests to login. Public pages
+use English without changing the saved language preference for the bilingual web app.
+Existing `/login` and `/register` routes link back to the public policies. This is not an
+invite-only registration gate. The current contact is `jerryxiang24@gmail.com`.
+
+`lib/publicRoutes.ts` is the exact public-path allowlist used by the session-expiry redirect
+and app header. A 401 still clears stale private state, but leaves those public pages
+readable; protected pages retain their existing login redirect. Public content is rendered
+without waiting for authentication or backend availability. `sitemap.ts` lists only the
+informational pages; robots rules are crawler guidance, not access controls.
+
+The public Privacy Notice describes actual storage, AI processing, sharing/copying,
+externally hosted resources, and manual data requests. Keep `public-site/documents.ts`
+aligned with `docs/data-inventory.md` when behavior changes.
+No retailer partnership or API access is claimed by the public overview.
+
+Personal and catalog recipe lists use `library/LibraryMasonry.tsx`. It measures rendered
+card heights and places each successive card in the shortest responsive column, with
+ResizeObserver updates for images and width changes. The DOM retains recipe sort order
+for keyboard and screen-reader navigation. Do not restore fixed modulo column assignment.
+Browser regressions cover the seventh card, image loading, filtering, and 4/3/2/1-column resizing.
+
+Desktop app routes use a compact 87.5% root type scale while keeping the 1280px shell.
+The `data-app-shell` header marker scopes this to the workspace; public pages and mobile
+retain their normal scale. The planner keeps its row heights, widens the recipe rail to
+two columns at 1280px and above, and uses narrower planned-dish thumbnails.
+
 ### Recipe tags
 
 Two parallel concepts on `RecipeModel`:

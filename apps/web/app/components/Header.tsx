@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { isAdminUser } from "../lib/admin";
+import { isPublicPage } from "../lib/publicRoutes";
 import { useAuth } from "../lib/auth";
 import { useI18n } from "../lib/i18n";
 import { isPublicAuthPath } from "../lib/publicAuthPath";
@@ -11,12 +12,13 @@ import { AccountMenu } from "./AccountMenu";
 import styles from "./Header.module.css";
 import { ActionLink } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
+import { Icon } from "./ui/Icon";
 
 const PRIMARY_LINKS = [
-  { href: "/library", key: "nav.library" },
-  { href: "/planner", key: "nav.planner" },
-  { href: "/cook", key: "nav.cook" },
-  { href: "/shopping-list", key: "nav.shopping" },
+  { href: "/library", key: "nav.library", icon: "book" },
+  { href: "/planner", key: "nav.planner", icon: "calendar" },
+  { href: "/shopping-list", key: "nav.shopping", icon: "shopping" },
+  { href: "/cook", key: "nav.cook", icon: "chef" },
 ] as const;
 
 export function Header() {
@@ -30,7 +32,7 @@ export function Header() {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  if (isPublicAuthPath(pathname)) {
+  if (isPublicPage(pathname) || isPublicAuthPath(pathname)) {
     return null;
   }
 
@@ -39,7 +41,7 @@ export function Header() {
   const addRecipeHref = `/import?from=${encodeURIComponent(pathname)}`;
 
   return (
-    <header className={styles.header}>
+    <header className={styles.header} data-app-shell>
       <div className={styles.inner}>
         <Link
           aria-label={t("nav.appName")}
@@ -86,6 +88,7 @@ export function Header() {
                   key={link.href}
                   onClick={() => setMobileMenuOpen(false)}
                 >
+                  <Icon className={styles.navIcon} name={link.icon} size={22} />
                   {t(link.key)}
                 </Link>
               );

@@ -45,9 +45,9 @@ export function TimerTray({ dishes }: { dishes: CookingDish[] }) {
 
 const styles = StyleSheet.create({
   tray: { paddingTop: spacing.sm, paddingBottom: spacing.lg, borderTopWidth: 1, borderTopColor: colors.divider, backgroundColor: colors.surface },
-  heading: { ...typography.caption, color: colors.mutedInk, fontWeight: "700", paddingHorizontal: spacing.lg, marginBottom: spacing.xs },
+  heading: { ...typography.footnote, color: colors.mutedInk, fontFamily: "Inter_600SemiBold", paddingHorizontal: spacing.lg, marginBottom: spacing.xs },
   row: { gap: spacing.sm, paddingHorizontal: spacing.lg },
-  timer: { minWidth: 132, padding: spacing.md, borderRadius: radii.md, backgroundColor: colors.subtleSurface },
+  timer: { minWidth: 132, padding: spacing.md, borderRadius: radii.md, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surface },
   title: { ...typography.subhead, color: colors.ink },
   time: { ...typography.headline, color: colors.terracotta, fontVariant: ["tabular-nums"] },
   attention: { color: colors.error },

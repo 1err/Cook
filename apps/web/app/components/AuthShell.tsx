@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { LanguageControl } from "./LanguageControl";
+import { PublicLinks } from "../public-site/PublicShell";
 
 const HERO_IMAGE =
   "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1600&q=80";
@@ -64,6 +65,7 @@ export function AuthShell({
           <div style={{ marginTop: "2rem", textAlign: "center", color: "var(--on-surface-variant)", fontWeight: 500, fontSize: "0.95rem" }}>
             {footer}
           </div>
+          <PublicLinks compact />
         </div>
       </section>
     </main>

@@ -6,11 +6,11 @@ jest.mock("./stacks/CookStack", () => ({ CookStack: () => null }));
 jest.mock("./stacks/ShoppingStack", () => ({ ShoppingStack: () => null }));
 jest.mock("../lib/i18n", () => ({ useT: () => (key: string) => key }));
 
-test("keeps Library primary and places Cook between Planner and Shopping", () => {
+test("keeps the four destinations in the editorial journey order", () => {
   expect(MAIN_TAB_DEFINITIONS).toEqual([
     { name: "Library", labelKey: "nav.library", active: "book", inactive: "book-outline" },
     { name: "Planner", labelKey: "nav.planner", active: "calendar", inactive: "calendar-outline" },
-    { name: "Cook", labelKey: "nav.cook", active: "restaurant", inactive: "restaurant-outline" },
     { name: "Shopping", labelKey: "nav.shopping", active: "cart", inactive: "cart-outline" },
+    { name: "Cook", labelKey: "nav.cook", active: "restaurant", inactive: "restaurant-outline" },
   ]);
 });

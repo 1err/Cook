@@ -48,4 +48,27 @@ describe("RecipeStepIllustration", () => {
     expect(container.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
     expect(RECIPE_ACTION_MESSAGE_KEYS[actionType]).toMatch(/^recipe\.tutorial\.action\./);
   });
+
+  it("renders inferred Chinese chop artwork without replacing the instruction label", () => {
+    render(
+      <RecipeStepIllustration actionType="other" title="将豆腐切成5毫米厚片备用" />,
+    );
+
+    const illustration = screen.getByRole("img", {
+      name: "将豆腐切成5毫米厚片备用 illustration",
+    });
+    expect(illustration).toHaveAttribute("data-action", "chop");
+    expect(illustration).toHaveAttribute("data-ingredient-variant", "tofu");
+  });
+
+  it("keeps decorative illustrations out of the accessibility tree", () => {
+    const { container } = render(
+      <RecipeStepIllustration actionType="mix" decorative title="Mix the filling" />,
+    );
+
+    const illustration = container.querySelector("svg");
+    expect(illustration).toHaveAttribute("aria-hidden", "true");
+    expect(illustration).not.toHaveAttribute("role");
+    expect(illustration?.querySelector("title")).toBeNull();
+  });
 });

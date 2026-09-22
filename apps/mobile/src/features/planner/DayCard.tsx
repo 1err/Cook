@@ -64,18 +64,20 @@ export function DayCard({
 const styles = StyleSheet.create({
   card: {
     marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    paddingVertical: spacing.md,
+    marginBottom: spacing.lg,
+    paddingVertical: spacing.lg,
   },
   todayCard: {
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: colors.sage,
   },
   header: {
     flexDirection: "row",
     alignItems: "baseline",
     paddingHorizontal: spacing.xs,
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
     gap: spacing.sm,
   },
   weekday: {
@@ -101,6 +103,6 @@ const styles = StyleSheet.create({
     marginLeft: "auto",
   },
   slotList: {
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
 });

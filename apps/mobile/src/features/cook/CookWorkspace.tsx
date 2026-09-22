@@ -182,14 +182,14 @@ export function CookWorkspace({ controller }: { controller: MobileCookingSession
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
-  content: { paddingTop: spacing.lg, paddingBottom: spacing["2xl"] },
-  title: { ...typography.title1, color: colors.ink, paddingHorizontal: spacing.lg },
-  recommendation: { gap: spacing.xs, margin: spacing.lg, padding: spacing.lg, backgroundColor: colors.successContainer, borderRadius: 16 },
+  content: { paddingTop: spacing.xl, paddingBottom: spacing["3xl"] },
+  title: { ...typography.title1, color: colors.ink, paddingHorizontal: spacing.lg, marginBottom: spacing.md },
+  recommendation: { gap: spacing.xs, marginHorizontal: spacing.lg, marginVertical: spacing.md, padding: spacing.md, backgroundColor: colors.successContainer, borderRadius: 12 },
   recommendationLabel: { ...typography.caption, color: colors.sage, fontWeight: "700" },
   recommendationText: { ...typography.headline, color: colors.ink },
   error: { ...typography.body, color: colors.error, marginHorizontal: spacing.lg },
   notice: { ...typography.subhead, color: colors.sage, marginHorizontal: spacing.lg, padding: spacing.md, backgroundColor: colors.successContainer, borderRadius: 12 },
-  controls: { gap: spacing.sm, paddingHorizontal: spacing.lg },
+  controls: { gap: spacing.sm, paddingHorizontal: spacing.lg, marginTop: spacing.xl, paddingTop: spacing.xl, borderTopWidth: 1, borderTopColor: colors.divider },
   preferenceRow: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
   preferenceLabel: { ...typography.body, color: colors.ink, flex: 1 },
   limitation: { ...typography.subhead, color: colors.mutedInk },

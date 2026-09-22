@@ -23,8 +23,8 @@ type MainTabDefinition = {
 export const MAIN_TAB_DEFINITIONS = [
   { name: "Library", labelKey: "nav.library", active: "book", inactive: "book-outline" },
   { name: "Planner", labelKey: "nav.planner", active: "calendar", inactive: "calendar-outline" },
-  { name: "Cook", labelKey: "nav.cook", active: "restaurant", inactive: "restaurant-outline" },
   { name: "Shopping", labelKey: "nav.shopping", active: "cart", inactive: "cart-outline" },
+  { name: "Cook", labelKey: "nav.cook", active: "restaurant", inactive: "restaurant-outline" },
 ] as const satisfies readonly MainTabDefinition[];
 
 const TAB_COMPONENTS = {
@@ -46,8 +46,9 @@ export function MainTabs() {
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.divider,
+          borderTopWidth: 1,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+        tabBarLabelStyle: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
         tabBarIcon: ({ color, size, focused }) => {
           const definition = MAIN_TAB_DEFINITIONS.find(({ name }) => name === route.name)!;
           return (

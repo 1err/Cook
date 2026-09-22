@@ -16,10 +16,21 @@ import { useT } from "../lib/i18n";
 import styles from "./CookPage.module.css";
 import { CookingTimer } from "./CookingTimer";
 
-function StepVisual({ step }: { step: CookingStep }) {
-  const [failed, setFailed] = useState(false);
-  if (step.image_url && !failed) {
-    return <img alt="" className={styles.focusVisual} onError={() => setFailed(true)} src={step.image_url} />;
+function StepVisual({ step, recipeImage }: { step: CookingStep; recipeImage?: string | null }) {
+  const [failedImages, setFailedImages] = useState<string[]>([]);
+  const images = [step.image_url, recipeImage]
+    .filter((source): source is string => Boolean(source))
+    .filter((source, index, candidates) => candidates.indexOf(source) === index);
+  const image = images.find((source) => !failedImages.includes(source));
+  if (image) {
+    return (
+      <img
+        alt=""
+        className={styles.focusVisual}
+        onError={() => setFailedImages((current) => current.includes(image) ? current : [...current, image])}
+        src={image}
+      />
+    );
   }
   return (
     <div className={styles.focusIllustration}>
@@ -72,10 +83,16 @@ export function FocusedCookingStep({
         </div>
         <span className={state === "needs_attention" ? styles.attentionBadge : styles.stepBadge}>{stateLabel}</span>
       </header>
+      <div className={styles.focusProgress}>
+        <span aria-hidden="true" className={styles.progressTrack}>
+          <span style={{ inlineSize: `${progress}%` }} />
+        </span>
+        <span>{t("cook.progress", { progress })}</span>
+      </div>
       <div className={styles.focusGrid}>
-        <StepVisual step={step} />
+        <StepVisual key={step.id} step={step} recipeImage={dish.thumbnail_url} />
         <div className={styles.stepBody}>
-          <p className={styles.stepText}>{step.text}</p>
+          <h3 className={styles.stepText}>{step.text}</h3>
           <p className={styles.stepMeta}>{formatRecipeStepMetadata(step, t)}</p>
           {showTimer ? <CookingTimer step={{ ...step, state }} /> : null}
           <div className={styles.stepActions}>
@@ -96,7 +113,6 @@ export function FocusedCookingStep({
           </div>
         </div>
       </div>
-      <p className={styles.progressLabel}>{t("cook.progress", { progress })}</p>
     </section>
   );
 }

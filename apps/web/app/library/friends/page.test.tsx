@@ -10,6 +10,9 @@ vi.mock("../../components/RequireAuth", () => ({
   RequireAuth: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock("../../lib/api", () => ({ apiFetch: mockApiFetch }));
+vi.mock("../../lib/editorialCopy", () => ({
+  useEditorialCopy: () => ({ "friends.tagline": "Find shared recipes" }),
+}));
 
 afterEach(cleanup);
 

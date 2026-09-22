@@ -18,6 +18,9 @@ vi.mock("../components/RequireAuth", () => ({
 }));
 
 vi.mock("../lib/api", () => ({ apiFetch: mockApiFetch }));
+vi.mock("../lib/editorialCopy", () => ({
+  useEditorialCopy: () => ({ "import.tagline": "Import recipes" }),
+}));
 vi.mock("../lib/i18n", () => ({
   useT: () => (key: string) => key,
 }));

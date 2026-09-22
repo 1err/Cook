@@ -99,6 +99,7 @@ export function LibraryListScreen({ navigation }: Props) {
   return (
     <FlatList
       data={data}
+      numColumns={2}
       keyExtractor={(item) => item.id}
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={data.length === 0 ? styles.emptyContent : styles.listContent}
@@ -107,6 +108,7 @@ export function LibraryListScreen({ navigation }: Props) {
       }
       ItemSeparatorComponent={() => <View style={styles.separator} />}
       ListFooterComponent={page.next ? <Button title={t("common.loadMoreRecipes")} disabled={page.loading} onPress={() => void page.more()} /> : null}
+      columnWrapperStyle={styles.columns}
       ListHeaderComponent={
         <View>
         <TextField placeholder="Search recipes" value={search} onChangeText={setSearch} />
@@ -163,7 +165,6 @@ export function LibraryListScreen({ navigation }: Props) {
                 </Text>
                 <RecipeListMeta recipe={item} />
               </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceVariant} />
             </Pressable>
           );
         }
@@ -187,6 +188,8 @@ export function LibraryListScreen({ navigation }: Props) {
                   title={owned ? "In your library" : "Add to library"}
                   onPress={() => void handleCopy(item.id)}
                   variant={owned ? "secondary" : "primary"}
+                  size="sm"
+                  fullWidth
                   loading={copyingId === item.id}
                   disabled={owned}
                 />
@@ -218,46 +221,42 @@ function SegmentPill({ label, active, onPress }: { label: string; active: boolea
 
 const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  listContent: { paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
+  listContent: { paddingTop: spacing.md, paddingBottom: spacing["2xl"], paddingHorizontal: spacing.lg },
   emptyContent: { flexGrow: 1, justifyContent: "center", paddingHorizontal: spacing.lg },
-  separator: { height: spacing.sm },
+  columns: { justifyContent: "space-between" },
+  separator: { height: spacing.md },
   segmentRow: {
     flexDirection: "row",
-    backgroundColor: colors.surfaceContainerLow,
-    borderRadius: radii.md,
-    padding: 4,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.divider,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+    marginBottom: spacing.lg,
+    gap: spacing.md,
   },
   segment: {
     flex: 1,
+    minHeight: 44,
     paddingVertical: spacing.sm,
     alignItems: "center",
-    borderRadius: radii.sm,
+    justifyContent: "center",
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
   },
-  segmentActive: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.divider },
+  segmentActive: { borderBottomColor: colors.terracotta },
   segmentPressed: { opacity: 0.85 },
   segmentLabel: { ...typography.headline, color: colors.onSurfaceVariant },
-  segmentLabelActive: { color: colors.onSurface },
+  segmentLabelActive: { color: colors.terracotta },
   card: {
-    flexDirection: "row",
-    alignItems: "center",
+    width: "48%",
+    overflow: "hidden",
     backgroundColor: colors.white,
     borderRadius: radii.lg,
-    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.divider,
-    shadowColor: colors.ink,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-    elevation: 1,
   },
   cardPressed: { opacity: 0.92 },
-  thumb: { width: 64, height: 64, borderRadius: radii.lg, backgroundColor: colors.primaryFixed },
+  thumb: { width: "100%", aspectRatio: 1, backgroundColor: colors.primaryFixed },
   thumbPlaceholder: { alignItems: "center", justifyContent: "center" },
-  cardBody: { flex: 1, marginHorizontal: spacing.md },
-  cardTitle: { ...typography.headline, color: colors.onSurface },
-  publicAction: { marginTop: spacing.sm, alignSelf: "flex-start" },
+  cardBody: { padding: spacing.md, gap: spacing.xs },
+  cardTitle: { ...typography.title3, color: colors.onSurface, lineHeight: 25 },
+  publicAction: { marginTop: spacing.sm },
 });

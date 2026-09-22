@@ -134,17 +134,17 @@ beforeEach(() => {
   mockReadSmartCart.mockResolvedValue({ selectedUrlByIngredient: {}, confirmedTokens: [] });
   mockWriteSmartCart.mockResolvedValue(undefined);
   mockClearSmartCart.mockResolvedValue(undefined);
-  mockCreateInstacartLink.mockResolvedValue({ url: "https://www.instacart.com/store/shopping_lists/123" });
   mockUseSmartShoppingList.mockReturnValue(smartResult());
   mockUseStoreProductsCache.mockReturnValue(productsResult());
   jest.spyOn(Linking, "openURL").mockResolvedValue(undefined);
 });
 
 afterEach(() => {
+  expect(mockCreateInstacartLink).not.toHaveBeenCalled();
   jest.restoreAllMocks();
 });
 
-test("Instacart exports original quantities before smart-list or Weee lookup", async () => {
+test("original shopping keeps smart-list preparation available without Instacart", async () => {
   const state = readyState();
   const original = {
     ...state,
@@ -159,21 +159,16 @@ test("Instacart exports original quantities before smart-list or Weee lookup", a
   mockUseSmartShoppingList.mockReturnValue(hook);
   mockUseStoreProductsCache.mockReturnValue(products);
   await render(screenElement());
-  const user = userEvent.setup();
-
+  expect(screen.queryByRole("button", { name: /instacart/i })).not.toBeOnTheScreen();
+  expect(screen.queryAllByText(/instacart/i)).toHaveLength(0);
   expect(mockCreateInstacartLink).not.toHaveBeenCalled();
-  await user.press(screen.getByRole("button", { name: "Shop on Instacart" }));
-  expect(mockCreateInstacartLink).toHaveBeenCalledWith(
-    { title: "shopping.instacartTitle", items: [{ name: "Rice", quantity: "200 g" }] },
-    { signal: expect.any(AbortSignal) },
-  );
   expect(hook.prepareSmartList).not.toHaveBeenCalled();
   expect(products.loadAll).not.toHaveBeenCalled();
   expect(products.togglePanel).not.toHaveBeenCalled();
   expect(screen.getByRole("button", { name: "Prepare smart shopping list" })).toBeEnabled();
 });
 
-test("Instacart uses visible unchecked smart items and leaves Weee selection and confirmations alone", async () => {
+test("smart shopping preserves Weee selection and confirmations without Instacart", async () => {
   const state = readyState();
   state.data.checked = new Set([1]);
   state.data.hidden = new Set([2]);
@@ -183,13 +178,14 @@ test("Instacart uses visible unchecked smart items and leaves Weee selection and
   const user = userEvent.setup();
   expect(await screen.findByRole("button", { name: "Review Weee cart · 1" })).toBeOnTheScreen();
 
-  await user.press(screen.getByRole("button", { name: "Shop on Instacart" }));
-  expect(mockCreateInstacartLink).toHaveBeenCalledWith(
-    { title: "shopping.instacartTitle", items: [{ name: "Rice", quantity: "1 bag" }] },
-    { signal: expect.any(AbortSignal) },
-  );
-  await user.press(screen.getByRole("button", { name: "Shop on Instacart" }));
-  expect(Linking.openURL).toHaveBeenCalledWith("https://www.instacart.com/store/shopping_lists/123");
+  expect(screen.queryByRole("button", { name: /instacart/i })).not.toBeOnTheScreen();
+  expect(screen.queryAllByText(/instacart/i)).toHaveLength(0);
+  await user.press(screen.getByRole("button", { name: "Review Weee cart · 1" }));
+  expect(screen.getByText("Next: Rice")).toBeOnTheScreen();
+  await user.press(screen.getByRole("button", { name: "Open next on Weee" }));
+  expect(Linking.openURL).toHaveBeenCalledWith(RICE_URL);
+  await user.press(screen.getByRole("button", { name: "Close Weee cart review" }));
+  expect(mockCreateInstacartLink).not.toHaveBeenCalled();
   expect(hook.toggleChecked).not.toHaveBeenCalled();
   expect(hook.hideItem).not.toHaveBeenCalled();
   expect(mockClearSmartCart).not.toHaveBeenCalled();
@@ -197,15 +193,48 @@ test("Instacart uses visible unchecked smart items and leaves Weee selection and
   expect(screen.getByRole("button", { name: "Load top picks from Weee" })).toBeOnTheScreen();
 });
 
-test.each(["stale", "refining", "route-week-changed"])("Instacart cannot export %s shopping data", async (scenario) => {
+test.each(["stale", "refining", "route-week-changed"])("%s shopping never exposes Instacart or creates a link", async (scenario) => {
   const state = readyState();
   state.data.smartListStale = scenario === "stale";
   state.refining = scenario === "refining";
   mockUseSmartShoppingList.mockReturnValue(smartResult(state));
   await render(screenElement(scenario === "route-week-changed" ? "2026-08-17" : "2026-08-10"));
-  expect(screen.getByRole("button", { name: "Shop on Instacart" })).toBeDisabled();
-  expect(screen.getByText("shopping.instacartRefresh")).toBeOnTheScreen();
+  expect(screen.queryByRole("button", { name: /instacart/i })).not.toBeOnTheScreen();
+  expect(screen.queryAllByText(/instacart/i)).toHaveLength(0);
   expect(mockCreateInstacartLink).not.toHaveBeenCalled();
+});
+
+test("all three Weee choices remain selectable and cart review follows the third then second choice", async () => {
+  const state = readyState();
+  state.data.refinedData = { ...refinedData, purchase_items: [refinedData.purchase_items[0]] };
+  mockUseSmartShoppingList.mockReturnValue(smartResult(state));
+  mockUseStoreProductsCache.mockReturnValue(productsResult({
+    products: { rice: [
+      { name: "First rice", price: "$1.00", image: "", url: RICE_URL },
+      { name: "Second rice", price: "$2.00", image: "", url: "https://www.sayweee.com/product/second-rice" },
+      { name: "Third rice", price: "$3.00", image: "", url: "https://www.sayweee.com/product/third-rice" },
+    ] },
+  }));
+  await render(screenElement());
+  const user = userEvent.setup();
+  expect(screen.getAllByRole("radio")).toHaveLength(3);
+
+  await user.press(screen.getByRole("radio", { name: "Choose Third rice for cart" }));
+  expect(screen.getByRole("radio", { name: "Third rice: Selected for cart" }))
+    .toHaveProp("accessibilityState", { selected: true });
+  await user.press(screen.getByRole("button", { name: "Review Weee cart · 1" }));
+  expect(screen.getByText("Estimated subtotal: $3.00")).toBeOnTheScreen();
+  await user.press(screen.getByRole("button", { name: "Open next on Weee" }));
+  expect(Linking.openURL).toHaveBeenLastCalledWith("https://www.sayweee.com/product/third-rice");
+  await user.press(screen.getByRole("button", { name: "Close Weee cart review" }));
+
+  await user.press(screen.getByRole("radio", { name: "Choose Second rice for cart" }));
+  expect(screen.getByRole("radio", { name: "Second rice: Selected for cart" }))
+    .toHaveProp("accessibilityState", { selected: true });
+  await user.press(screen.getByRole("button", { name: "Review Weee cart · 1" }));
+  expect(screen.getByText("Estimated subtotal: $2.00")).toBeOnTheScreen();
+  await user.press(screen.getByRole("button", { name: "Open next on Weee" }));
+  expect(Linking.openURL).toHaveBeenLastCalledWith("https://www.sayweee.com/product/second-rice");
 });
 
 test("derives authoritative product state by own-key and excludes checked or hidden rows", () => {

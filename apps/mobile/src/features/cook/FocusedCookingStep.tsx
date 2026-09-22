@@ -79,15 +79,15 @@ export function FocusedCookingStep({
 }
 
 const styles = StyleSheet.create({
-  card: { gap: spacing.md, margin: spacing.lg, padding: spacing.lg, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surface },
+  card: { gap: spacing.md, marginHorizontal: spacing.lg, marginTop: spacing.md, marginBottom: spacing.lg, padding: spacing.lg, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surface },
   kicker: { ...typography.caption, color: colors.terracotta, fontWeight: "700" },
-  title: { ...typography.title1, color: colors.ink },
+  title: { ...typography.title1, color: colors.ink, lineHeight: 36 },
   badge: { ...typography.footnote, color: colors.sage, fontWeight: "700", alignSelf: "flex-start" },
   attention: { color: colors.error },
   stepImage: { width: "100%", aspectRatio: 4 / 3, borderRadius: radii.md, backgroundColor: colors.subtleSurface },
-  instruction: { ...typography.title3, color: colors.ink, lineHeight: 30 },
+  instruction: { ...typography.title2, color: colors.ink, lineHeight: 31 },
   metadata: { ...typography.subhead, color: colors.mutedInk, lineHeight: 22 },
   body: { ...typography.body, color: colors.mutedInk },
-  actions: { gap: spacing.sm },
+  actions: { gap: spacing.sm, marginTop: spacing.sm },
   progress: { ...typography.footnote, color: colors.mutedInk, fontWeight: "700" },
 });

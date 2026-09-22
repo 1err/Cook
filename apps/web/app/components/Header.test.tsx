@@ -54,15 +54,15 @@ afterEach(() => {
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
 });
 
-test("keeps Library first and places Cook between Planner and Shopping", () => {
+test("orders navigation from Library and Planner to Shopping and Cook", () => {
   render(<Header />);
 
   const destinationLinks = screen.getByRole("navigation", { name: "Main" }).querySelectorAll("a");
   expect([...destinationLinks].map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
     ["Library", "/library"],
     ["Planner", "/planner"],
-    ["Cook", "/cook"],
     ["Shopping", "/shopping-list"],
+    ["Cook", "/cook"],
   ]);
   expect(screen.getByRole("link", { name: "Planner" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByRole("link", { name: "Add Recipe" })).toHaveAttribute(
@@ -95,7 +95,7 @@ test("moves settings, language, admin tools, and logout into the account menu", 
 });
 
 test("preserves sign-in and registration actions for unauthenticated routes", () => {
-  mockUsePathname.mockReturnValue("/");
+  mockUsePathname.mockReturnValue("/library");
   mockUseAuth.mockReturnValue({ user: null, loading: false, logout: vi.fn() });
 
   render(<Header />);
@@ -104,6 +104,14 @@ test("preserves sign-in and registration actions for unauthenticated routes", ()
   expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute("href", "/register");
   expect(screen.queryByRole("link", { name: "Add Recipe" })).not.toBeInTheDocument();
 });
+
+test.each(["/", "/about", "/privacy", "/terms", "/contact"])(
+  "leaves %s to public navigation without exposing workspace actions", (pathname) => {
+    mockUsePathname.mockReturnValue(pathname);
+    const { container } = render(<Header />);
+    expect(container).toBeEmptyDOMElement();
+  },
+);
 
 test("does not grant admin tools from an email address without the server role", async () => {
   mockUseAuth.mockReturnValue({

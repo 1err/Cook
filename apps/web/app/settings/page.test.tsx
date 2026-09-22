@@ -15,6 +15,9 @@ vi.mock("../components/RequireAuth", () => ({
 }));
 vi.mock("../lib/auth", () => ({ useAuth: mockUseAuth }));
 vi.mock("../lib/api", () => ({ webApiClient: { auth: { capabilities: async () => ({ email_verification: false }) } } }));
+vi.mock("../lib/editorialCopy", () => ({
+  useEditorialCopy: () => ({ "settings.tagline": "Settings" }),
+}));
 
 afterEach(cleanup);
 

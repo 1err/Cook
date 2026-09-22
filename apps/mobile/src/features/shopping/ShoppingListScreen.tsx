@@ -12,7 +12,6 @@ import type { CompositeScreenProps } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import {
-  buildInstacartItems,
   GROCERY_CATEGORY_ORDER,
   isSafeWeeeProductUrl,
   type GroceryCategory,
@@ -51,7 +50,6 @@ import {
 import { canonicalStoreProductKey } from "./storeProductIdentity";
 import { useT } from "../../lib/i18n";
 import { BasicShoppingList, basicShoppingItemKey } from "./BasicShoppingList";
-import { InstacartShoppingPanel } from "./InstacartShoppingPanel";
 
 type Props = CompositeScreenProps<
   NativeStackScreenProps<ShoppingStackParamList, "ShoppingList">,
@@ -341,23 +339,6 @@ export function ShoppingListScreen({ navigation, route }: Props) {
         kicker="Shopping for"
       />
 
-      <InstacartShoppingPanel
-        items={buildInstacartItems({
-          originalItems: data.items.filter(item => !basicChecked.has(basicShoppingItemKey(item))),
-          purchaseItems: data.refinedData?.purchase_items,
-          hidden: data.hidden,
-          checked: data.checked,
-        })}
-        listKey={JSON.stringify([
-          requestedWeekStart,
-          bounds.start,
-          data.refinedData ? "smart" : "original",
-          data.savedFingerprint,
-        ])}
-        disabled={refining || (data.refinedData != null && data.smartListStale)
-          || requestedWeekStart !== bounds.start}
-      />
-
       {!data.refinedData ? (
         <>
           <BasicShoppingList key={bounds.start} items={data.items} checked={basicChecked} onToggle={key => {
@@ -507,7 +488,7 @@ export function ShoppingListScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
-  content: { paddingBottom: spacing["2xl"] },
+  content: { paddingBottom: spacing["3xl"] },
   center: {
     flex: 1,
     alignItems: "center",
@@ -519,9 +500,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
-  smartHeaderTitle: { ...typography.title3, color: colors.onSurface },
+  smartHeaderTitle: { ...typography.title2, color: colors.onSurface },
   bulkLoadRow: {
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.md,

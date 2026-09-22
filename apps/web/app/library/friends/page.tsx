@@ -5,6 +5,7 @@ import { useState } from "react";
 import { PageHeader, PageShell } from "../../components/PageShell";
 import { RequireAuth } from "../../components/RequireAuth";
 import { apiFetch } from "../../lib/api";
+import { useEditorialCopy } from "../../lib/editorialCopy";
 import styles from "./Friends.module.css";
 
 type Result =
@@ -15,6 +16,7 @@ type Result =
   | { kind: "error"; message: string };
 
 function FriendsSearchPageContent() {
+  const editorialCopy = useEditorialCopy();
   const [email, setEmail] = useState("");
   const [result, setResult] = useState<Result>({ kind: "idle" });
 
@@ -50,7 +52,7 @@ function FriendsSearchPageContent() {
 
   return (
     <PageShell>
-      <PageHeader title="Find a friend" />
+      <PageHeader title="Find a friend" description={editorialCopy["friends.tagline"]} />
 
       <nav className={styles.tabs} aria-label="Library views">
         <Link href="/library">My recipes</Link>

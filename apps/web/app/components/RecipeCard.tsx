@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useT } from "../lib/i18n";
 import type { Recipe } from "../types";
 import { CATEGORY_LABELS } from "../lib/recipeCategories";
 import { getRecipeTags } from "../lib/recipeTags";
@@ -12,6 +13,7 @@ type RecipeCardProps = {
 };
 
 export function RecipeCard({ recipe, isHighlighted = false }: RecipeCardProps) {
+  const t = useT();
   const featuredTags = getRecipeTags(recipe).slice(0, 2);
 
   return (
@@ -30,6 +32,11 @@ export function RecipeCard({ recipe, isHighlighted = false }: RecipeCardProps) {
         <div className={styles.body}>
           <h2 className={`cw-display ${styles.title}`}>{recipe.title}</h2>
 
+          <div className={styles.metadata}>
+          {typeof recipe.total_time_minutes === "number" ? (
+            <p className={styles.time}>{recipe.total_time_minutes} {t("recipe.totalTime.minutesSuffix")}</p>
+          ) : null}
+
           {featuredTags.length ? (
             <div className={styles.tags} aria-label="Recipe tags">
               {featuredTags.map((tag) => (
@@ -39,6 +46,7 @@ export function RecipeCard({ recipe, isHighlighted = false }: RecipeCardProps) {
               ))}
             </div>
           ) : null}
+          </div>
         </div>
       </Link>
     </article>

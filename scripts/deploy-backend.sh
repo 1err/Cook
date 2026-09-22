@@ -131,6 +131,10 @@ jq --arg name "$CONTAINER_NAME" --arg image "$IMAGE" --slurpfile overrides "$REL
   (.containerDefinitions[] | select(.name == $name)) |= (
     .image = $image |
     .command = ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"] |
+    # ECS ignores image-only health checks. Readiness belongs to the load
+    # balancer; a shared database outage must not restart every API container.
+    .healthCheck = {command: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/health\", timeout=4)"], interval: 30, timeout: 5, retries: 3, startPeriod: 60} |
+    .stopTimeout = 120 |
     if ($env | length) > 0 then
       (.environment // []) as $existing |
       .environment = (

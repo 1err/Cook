@@ -16,6 +16,7 @@ export function CookScreen() {
   if (controller.status === "loading") {
     return (
       <div className={styles.centerState}>
+        <span className={styles.loadingMark} aria-hidden="true" />
         <p role="status">{t("common.loading")}</p>
       </div>
     );
@@ -24,12 +25,15 @@ export function CookScreen() {
   if (controller.status === "error") {
     return (
       <section className={styles.centerState}>
-        <p className={styles.eyebrow}>{t("nav.cook")}</p>
-        <h1>{t("cook.error.title")}</h1>
-        <p role="alert">{controller.error}</p>
-        <Button variant="secondary" onClick={() => void controller.refresh()}>
-          {t("common.refresh")}
-        </Button>
+        <div className={styles.errorPanel}>
+          <span className={`material-symbols-outlined ${styles.errorIcon}`} aria-hidden="true">skillet</span>
+          <p className={styles.eyebrow}>{t("nav.cook")}</p>
+          <h1>{t("cook.error.title")}</h1>
+          <p role="alert">{controller.error}</p>
+          <Button variant="secondary" onClick={() => void controller.refresh()}>
+            {t("common.refresh")}
+          </Button>
+        </div>
       </section>
     );
   }

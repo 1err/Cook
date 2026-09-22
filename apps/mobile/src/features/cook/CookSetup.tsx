@@ -180,9 +180,9 @@ export function CookSetup({
 
 const styles = StyleSheet.create({
   content: { gap: spacing.lg, paddingBottom: spacing["3xl"] },
-  title: { ...typography.title1, color: colors.ink, textAlign: "center" },
-  description: { ...typography.body, color: colors.mutedInk, textAlign: "center" },
-  panel: { gap: spacing.md, padding: spacing.lg, borderRadius: radii.lg, backgroundColor: colors.surface },
+  title: { ...typography.title1, color: colors.ink },
+  description: { ...typography.body, color: colors.mutedInk, lineHeight: 25 },
+  panel: { gap: spacing.md, padding: spacing.lg, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surface },
   emptyPlanned: { gap: spacing.md },
   choice: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
   checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: colors.divider },

@@ -8,7 +8,7 @@ import { useRecipePage } from "../lib/useRecipePage";
 import { apiFetch, webApiClient } from "../lib/api";
 import { userLocalStorage } from "../lib/userStorage";
 import { RequireAuth } from "../components/RequireAuth";
-import { PageShell } from "../components/PageShell";
+import { PageHeader, PageShell } from "../components/PageShell";
 import { useT } from "../lib/i18n";
 import { TagFilterPopover } from "../components/TagFilterPopover";
 import type { Recipe } from "../types";
@@ -27,6 +27,7 @@ import {
 } from "@cooking/shared";
 import { CATEGORY_LABELS, type LibraryFilterId } from "../lib/recipeCategories";
 import { getRecipeTags } from "../lib/recipeTags";
+import { useEditorialCopy } from "../lib/editorialCopy";
 import { PlannerRecipeRail } from "./components/PlannerRecipeRail";
 import { PlannerToolbar } from "./components/PlannerToolbar";
 import { PlannerWeekBoard } from "./components/PlannerWeekBoard";
@@ -68,6 +69,7 @@ function dayOfMonth(dateStr: string): number {
 function PlannerPageContent() {
   const router = useRouter();
   const t = useT();
+  const editorialCopy = useEditorialCopy();
   const searchParams = useSearchParams();
   const weekParam = searchParams.get("week");
   const { start, end, dates, weekParam: currentWeek } = getWeekBounds(weekParam);
@@ -525,26 +527,27 @@ function PlannerPageContent() {
 
   return (
     <PageShell className={styles.page}>
-      <div>
-        <PlannerToolbar
-          weekRange={formatWeekPlannerKicker(start, end)}
-          onPrevious={() => setWeek(prev)}
-          onNext={() => setWeek(next)}
-        />
-      </div>
+      <PageHeader title={t("planner.title")} description={editorialCopy["planner.tagline"]} />
 
       <div className={styles.workspace}>
         <PlannerRecipeRail
           controls={
             <>
               <h2 className="cw-display">{t("planner.savedRecipes")}</h2>
+              <p className="planner-editorial__sidebar-description">{t("planner.savedRecipesDesc")}</p>
               {recipeSourceControls}
             </>
           }
           recipes={railRecipeSourceList}
         />
 
-        <div className={styles.board}>
+        <div className={styles.boardArea}>
+          <PlannerToolbar
+            weekRange={formatWeekPlannerKicker(start, end)}
+            onPrevious={() => setWeek(prev)}
+            onNext={() => setWeek(next)}
+          />
+          <div className={styles.board}>
 
         {mutationError ? (
           <div role="status" className="planner-mutation-error">
@@ -674,6 +677,7 @@ function PlannerPageContent() {
             </div>
           </div>
         ) : null}
+          </div>
         </div>
       </div>
     </PageShell>

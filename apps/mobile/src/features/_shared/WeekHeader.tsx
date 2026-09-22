@@ -46,12 +46,12 @@ export function WeekHeader({
 const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
     alignItems: "center",
   },
   kicker: {
-    ...typography.footnote,
+    ...typography.subhead,
     color: colors.primary,
     fontWeight: "700",
     letterSpacing: 0.6,
@@ -67,16 +67,16 @@ const styles = StyleSheet.create({
   title: {
     ...typography.title2,
     color: colors.onSurface,
-    minWidth: 200,
+    flexShrink: 1,
     textAlign: "center",
   },
   todayHint: {
-    ...typography.caption,
+    ...typography.footnote,
     color: colors.onSurfaceVariant,
     marginTop: spacing.xs,
   },
   todayLink: {
-    ...typography.caption,
+    ...typography.footnote,
     color: colors.primary,
     fontWeight: "600",
     marginTop: spacing.xs,

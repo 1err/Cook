@@ -94,19 +94,19 @@ export function SmartListCard({
 const styles = StyleSheet.create({
   card: {
     marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.divider,
     marginBottom: spacing.xs,
   },
   title: { ...typography.title3, color: colors.onSurface, flex: 1 },
-  count: { ...typography.caption, color: colors.onSurfaceVariant, fontWeight: "600" },
+  count: { ...typography.footnote, color: colors.onSurfaceVariant, fontFamily: "Inter_600SemiBold" },
   body: {},
   alreadyHaveSection: {
     marginTop: spacing.sm,
@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.divider,
   },
   alreadyHaveLabel: {
-    ...typography.caption,
+    ...typography.footnote,
     color: colors.onSurfaceVariant,
     fontWeight: "600",
     textTransform: "uppercase",

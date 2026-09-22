@@ -31,7 +31,7 @@ vi.mock("../lib/api", () => ({
     get: async (id: string) => (await (await mockApiFetch("/recipes")).json()).find((r: any) => r.id === id),
   } },
 }));
-vi.mock("../lib/i18n", () => ({ useT: mockUseT }));
+vi.mock("../lib/i18n", () => ({ useT: mockUseT, useI18n: () => ({ language: "en" }) }));
 
 const messages: Record<string, string> = {
   "common.add": "Add",

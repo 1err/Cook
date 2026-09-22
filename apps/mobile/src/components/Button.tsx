@@ -11,7 +11,7 @@ import { colors, radii, spacing, typography } from "../theme";
 import { haptics } from "../lib/haptics";
 
 type Variant = "primary" | "secondary" | "ghost" | "destructive";
-type Size = "md" | "lg";
+type Size = "sm" | "md" | "lg";
 
 type ButtonProps = {
   title: string;
@@ -69,7 +69,7 @@ export function Button({
         ) : leadingIcon ? (
           <View style={styles.leading}>{leadingIcon}</View>
         ) : null}
-        <Text style={[styles.label, variantStyles[variant].label]}>{title}</Text>
+        <Text style={[styles.label, size === "sm" && styles.compactLabel, variantStyles[variant].label]}>{title}</Text>
       </View>
     </Pressable>
   );
@@ -85,12 +85,14 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center" },
   leading: { marginRight: spacing.sm },
   label: { ...typography.headline },
+  compactLabel: { ...typography.subhead, fontFamily: "Inter_600SemiBold", textAlign: "center" },
   fullWidth: { alignSelf: "stretch" },
   disabled: { opacity: 0.5 },
   pressed: { opacity: 0.85 },
 });
 
 const sizeStyles: Record<Size, ViewStyle> = {
+  sm: { paddingVertical: spacing.sm, paddingHorizontal: spacing.xs },
   md: { paddingVertical: spacing.md, paddingHorizontal: spacing.xl },
   lg: { paddingVertical: spacing.lg, paddingHorizontal: spacing["2xl"] },
 };

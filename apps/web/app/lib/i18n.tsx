@@ -2,6 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { MESSAGE_MAP, type Language } from "@cooking/shared";
+import { usePathname } from "next/navigation";
+import { isPublicPage } from "./publicRoutes";
 
 type Messages = Record<string, string>;
 export type { Language };
@@ -22,6 +24,8 @@ function interpolate(template: string, vars?: Record<string, string | number>): 
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<Language>("en");
+  const [languageLoaded, setLanguageLoaded] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
     try {
@@ -32,16 +36,21 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore storage failures
     }
+    setLanguageLoaded(true);
   }, []);
 
   useEffect(() => {
-    document.documentElement.lang = language;
+    document.documentElement.lang = pathname && isPublicPage(pathname) ? "en" : language;
+  }, [language, pathname]);
+
+  useEffect(() => {
+    if (!languageLoaded) return;
     try {
       localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
     } catch {
       // ignore storage failures
     }
-  }, [language]);
+  }, [language, languageLoaded]);
 
   const setLanguage = useCallback((nextLanguage: Language) => {
     setLanguageState(nextLanguage);

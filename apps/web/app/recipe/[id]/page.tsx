@@ -71,19 +71,7 @@ function RecipeDetailContent() {
       <article>
         <div className={styles.topbar}>
           <Link href="/library" className={styles.back}>← {t("nav.library")}</Link>
-          <div className={styles.actions}>
-            <RecipeCookAction recipe={recipe} />
-            <Link href="/planner">{t("recipe.mealPlanner")}</Link>
-            <Link href={`/library/${id}`}>{t("common.edit")}</Link>
-            <details className={styles.moreActions}>
-              <summary aria-label={t("common.moreActions")}>•••</summary>
-              <div className={styles.moreActionsMenu}>
-                <button type="button" onClick={handleDelete} disabled={deleting}>
-                  {deleting ? t("recipe.deleting") : t("common.delete")}
-                </button>
-              </div>
-            </details>
-          </div>
+
         </div>
 
         {error ? <p className={styles.error} role="alert">{error}</p> : null}
@@ -97,6 +85,17 @@ function RecipeDetailContent() {
             )}
           </div>
           <header className={styles.recipeHeader}>
+            <h1 className="cw-display">{recipe.title}</h1>
+            {recipe.description ? <p>{recipe.description}</p> : null}
+            <div className={styles.recipeMetadata}>
+            {typeof recipe.total_time_minutes === "number" ? (
+              <dl className={styles.meta}>
+                <div>
+                  <dt>{t("recipe.totalTime")}</dt>
+                  <dd>{recipe.total_time_minutes} {t("recipe.totalTime.minutesSuffix")}</dd>
+                </div>
+              </dl>
+            ) : null}
             {tags.length ? (
               <div className={styles.tags}>
                 {tags.map((tag) => (
@@ -104,16 +103,27 @@ function RecipeDetailContent() {
                 ))}
               </div>
             ) : null}
-            <h1 className="cw-display">{recipe.title}</h1>
-            {recipe.description ? <p>{recipe.description}</p> : null}
-            {typeof recipe.total_time_minutes === "number" ? (
-              <dl className={styles.meta}>
-                <div>
-                  <dt>{t("recipe.totalTime")}</dt>
-                  <dd>{recipe.total_time_minutes} min</dd>
-                </div>
-              </dl>
+            </div>
+          <div className={styles.actions}>
+            <RecipeCookAction recipe={recipe} />
+            <Link href="/planner">{t("recipe.mealPlanner")}</Link>
+          </div>
+          <div className={styles.utilityActions}>
+            <Link href={`/library/${id}`}>{t("common.edit")}</Link>
+            {isSafeExternalUrl(recipe.source_url) ? (
+              <a href={recipe.source_url} target="_blank" rel="noopener noreferrer">
+                {t("recipe.originalVideo")} ↗
+              </a>
             ) : null}
+            <details className={styles.moreActions}>
+              <summary aria-label={t("common.moreActions")}>•••</summary>
+              <div className={styles.moreActionsMenu}>
+                <button type="button" onClick={handleDelete} disabled={deleting}>
+                  {deleting ? t("recipe.deleting") : t("common.delete")}
+                </button>
+              </div>
+            </details>
+          </div>
           </header>
         </div>
 
@@ -153,11 +163,6 @@ function RecipeDetailContent() {
           </div>
         </div>
 
-        {isSafeExternalUrl(recipe.source_url) ? (
-          <a className={styles.source} href={recipe.source_url} target="_blank" rel="noopener noreferrer">
-            {t("recipe.originalVideo")} ↗
-          </a>
-        ) : null}
       </article>
     </PageShell>
   );

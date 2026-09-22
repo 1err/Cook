@@ -2,7 +2,7 @@ import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
 import { getCurrentCookingStep, getDishProgress, getEffectiveStepState, type CookingDish } from "@cooking/shared";
 import { useT } from "../../lib/i18n";
-import { colors, radii, spacing, typography } from "../../theme";
+import { colors, spacing, typography } from "../../theme";
 
 export function DishSwitcher({
   dishes,
@@ -45,9 +45,9 @@ export function DishSwitcher({
 }
 
 const styles = StyleSheet.create({
-  content: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
-  item: { minWidth: 150, minHeight: 64, justifyContent: "center", padding: spacing.md, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.surface },
-  selected: { borderColor: colors.terracotta, backgroundColor: colors.subtleSurface },
+  content: { gap: spacing.lg, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  item: { minWidth: 112, minHeight: 56, justifyContent: "center", paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderBottomWidth: 2, borderBottomColor: colors.divider },
+  selected: { borderBottomColor: colors.terracotta },
   title: { ...typography.headline, color: colors.ink },
   meta: { ...typography.caption, color: colors.mutedInk, marginTop: spacing.xs },
   attention: { color: colors.error, fontWeight: "700" },

@@ -1,0 +1,96 @@
+{
+  "base": "https://chef-world.com",
+  "checkedAt": "2026-09-22T04:08:58.960Z",
+  "results": [
+    {
+      "device": "desktop",
+      "route": "/",
+      "status": 200,
+      "overflow": false,
+      "accessibilityViolations": 0
+    },
+    {
+      "device": "desktop",
+      "route": "/about",
+      "status": 200,
+      "overflow": false,
+      "accessibilityViolations": 0
+    },
+    {
+      "device": "desktop",
+      "route": "/contact",
+      "status": 200,
+      "overflow": false,
+      "accessibilityViolations": 0
+    },
+    {
+      "device": "desktop",
+      "route": "/privacy",
+      "status": 200,
+      "overflow": false,
+      "accessibilityViolations": 0
+    },
+    {
+      "device": "desktop",
+      "route": "/terms",
+      "status": 200,
+      "overflow": false,
+      "accessibilityViolations": 0
+    },
+    {
+      "device": "desktop",
+      "appEntry": "sign-in",
+      "languagePreferencePreserved": true,
+      "productionAPI": true,
+      "browserErrors": 0
+    },
+    {
+      "device": "phone",
+      "route": "/",
+      "status": 200,
+      "overflow": false,
+      "accessibilityViolations": 0
+    },
+    {
+      "device": "phone",
+      "route": "/about",
+      "status": 200,
+      "overflow": false,
+      "accessibilityViolations": 0
+    },
+    {
+      "device": "phone",
+      "route": "/contact",
+      "status": 200,
+      "overflow": false,
+      "accessibilityViolations": 0
+    },
+    {
+      "device": "phone",
+      "route": "/privacy",
+      "status": 200,
+      "overflow": false,
+      "accessibilityViolations": 0
+    },
+    {
+      "device": "phone",
+      "route": "/terms",
+      "status": 200,
+      "overflow": false,
+      "accessibilityViolations": 0
+    },
+    {
+      "device": "phone",
+      "appEntry": "sign-in",
+      "languagePreferencePreserved": true,
+      "productionAPI": true,
+      "browserErrors": 0
+    },
+    {
+      "robots": 200,
+      "sitemap": 200,
+      "apiHealth": 200,
+      "www": "chef-world.com"
+    }
+  ]
+}

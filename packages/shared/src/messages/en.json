@@ -383,7 +383,7 @@
   "library.clearFilter": "Clear filter",
   "library.yourShelfReady": "Your shelf is ready",
   "library.publicShelfEmpty": "Public shelf is empty",
-  "library.importRecipePrompt": "Import a recipe from a link or transcript to see it here.",
+  "library.importRecipePrompt": "Create a recipe or import one from a link or text to see it here.",
   "library.tryAnotherFilter": "Try another filter or search term.",
   "library.publicShelfEmptyDesc": "Once curated recipes are published, they will appear here for every signed-in user.",
   "library.importRecipe": "Import recipe",

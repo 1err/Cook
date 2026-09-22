@@ -127,11 +127,11 @@ export function SmartListItem({
 
 const styles = StyleSheet.create({
   wrap: {
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.divider,
   },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 48 },
   checkbox: {
     width: 22,
     height: 22,
@@ -144,17 +144,18 @@ const styles = StyleSheet.create({
   },
   checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
   body: { flex: 1 },
-  name: { ...typography.body, color: colors.onSurface },
+  name: { ...typography.body, color: colors.onSurface, lineHeight: 23 },
   nameChecked: { textDecorationLine: "line-through", color: colors.onSurfaceVariant },
   sub: { ...typography.footnote, color: colors.onSurfaceVariant, marginTop: 2 },
-  menuBtn: { padding: 4, borderRadius: radii.sm },
+  menuBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radii.sm },
   toggle: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
-    paddingVertical: spacing.xs,
-    paddingLeft: 32,
+    minHeight: 44,
+    paddingVertical: spacing.sm,
+    paddingLeft: 34,
   },
-  toggleLabel: { ...typography.footnote, color: colors.primary, fontWeight: "600" },
+  toggleLabel: { ...typography.subhead, color: colors.primary, fontFamily: "Inter_600SemiBold" },
   pressed: { opacity: 0.85 },
 });

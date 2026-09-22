@@ -30,14 +30,18 @@ test("renders an accessible responsive authenticated shell", async ({ page }, te
         left: rect.left,
         right: window.innerWidth - rect.right,
         width: rect.width,
+        rootFont: parseFloat(getComputedStyle(document.documentElement).fontSize),
+        headerHeight: inner.parentElement!.getBoundingClientRect().height,
       };
     });
-    expect(geometry.width).toBe(1280);
+    expect(geometry.width).toBeCloseTo(1353.6, 0);
+    expect(geometry.rootFont).toBe(16);
+    expect(geometry.headerHeight).toBeGreaterThanOrEqual(80);
     expect(Math.abs(geometry.left - geometry.right)).toBeLessThanOrEqual(1);
   }
   await expect(page.getByRole("link", { name: "Add Recipe" })).toBeVisible();
   const navigationMenu = page.getByRole("button", { name: "Open navigation menu" });
-  if (testInfo.project.name === "desktop") {
+  if (testInfo.project.name !== "tablet") {
     await expect(navigationMenu).toBeHidden();
   } else {
     await expect(navigationMenu).toBeVisible();
@@ -46,10 +50,20 @@ test("renders an accessible responsive authenticated shell", async ({ page }, te
     const openHeaderHeight = await page.locator("header").evaluate((header) => header.getBoundingClientRect().height);
     expect(Math.abs(openHeaderHeight - closedHeaderHeight)).toBeLessThanOrEqual(1);
   }
+  if (testInfo.project.name === "phone") {
+    const navLayout = await page.getByRole("navigation", { name: "Main", exact: true }).evaluate((nav) => ({
+      bottom: nav.getBoundingClientRect().bottom,
+      position: getComputedStyle(nav).position,
+      viewportBottom: window.innerHeight,
+    }));
+    expect(navLayout.position).toBe("fixed");
+    expect(Math.abs(navLayout.bottom - navLayout.viewportBottom)).toBeLessThanOrEqual(1);
+  }
   await expect(page.getByRole("link", { name: "Library" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Planner" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Cook" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Shopping" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link")).toHaveText(["Library", "Planner", "Shopping", "Cook"]);
   const results = await new AxeBuilder({ page }).include("header").analyze();
   expect(results.violations).toEqual([]);
   await expect(page.locator("header")).toHaveScreenshot("authenticated-shell.png", {
@@ -65,7 +79,7 @@ test("closes the account menu with Escape and restores focus", async ({ page }) 
   await expect(account).toBeFocused();
 });
 
-test("uses the local sans family for the brand and page title", async ({ page }) => {
+test("uses the editorial serif family for the brand and page title", async ({ page }) => {
   const brand = page.locator('a[aria-label="Chef World"] span:last-child');
   const pageTitle = page.getByRole("heading", { level: 1 });
   await expect(brand).toHaveCount(1);
@@ -75,6 +89,6 @@ test("uses the local sans family for the brand and page title", async ({ page })
     pageTitle: await pageTitle.evaluate((element) => getComputedStyle(element).fontFamily),
   };
 
-  expect(fontFamilies.brand).toMatch(/^Inter/);
-  expect(fontFamilies.pageTitle).toMatch(/^Inter/);
+  expect(fontFamilies.brand).toMatch(/^"?Source Serif 4/);
+  expect(fontFamilies.pageTitle).toMatch(/^"?Source Serif 4/);
 });

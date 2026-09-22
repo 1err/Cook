@@ -1,7 +1,7 @@
 .tabs {
   display: flex;
   gap: 1.5rem;
-  margin-bottom: 1.75rem;
+  margin-bottom: 2.5rem;
   border-bottom: 1px solid var(--cw-color-divider);
 }
 
@@ -30,12 +30,8 @@
 }
 
 .searchPanel {
-  max-width: 47rem;
-  padding: clamp(1.25rem, 4vw, 2rem);
-  border: 1px solid var(--cw-color-divider);
-  border-radius: var(--cw-radius-card);
-  background: var(--cw-color-surface);
-  box-shadow: 0 12px 34px rgb(47 38 33 / 6%);
+  max-width: 43rem;
+  padding-bottom: clamp(2.5rem, 7vw, 5rem);
 }
 
 .searchForm label {
@@ -58,7 +54,7 @@
   padding: 0.7rem 0.8rem;
   border: 1px solid var(--cw-color-divider);
   border-radius: var(--cw-radius-field);
-  background: var(--cw-color-canvas);
+  background: var(--cw-color-surface);
   color: var(--cw-color-ink);
   font: inherit;
 }
@@ -89,16 +85,16 @@
   display: flex;
   align-items: center;
   gap: 0.9rem;
-  margin-top: 1.25rem;
-  padding: 0.9rem;
-  border: 1px solid var(--cw-color-divider);
-  border-radius: var(--cw-radius-field);
+  margin-top: 1.75rem;
+  padding: 1.15rem 0;
+  border-top: 1px solid var(--cw-color-divider);
+  border-bottom: 1px solid var(--cw-color-divider);
   color: inherit;
   text-decoration: none;
 }
 
 .resultCard:hover {
-  border-color: var(--cw-color-action);
+  color: var(--cw-color-action);
 }
 
 .avatar {
@@ -137,9 +133,9 @@
 
 .notice {
   margin-top: 1.25rem;
-  padding: 1rem;
+  padding: 1rem 0 1rem 1rem;
   border-left: 3px solid var(--cw-color-sage);
-  background: color-mix(in srgb, var(--cw-color-sage) 8%, var(--cw-color-surface));
+  background: transparent;
 }
 
 .notice p {
@@ -157,8 +153,9 @@
   display: grid;
   margin: 1.5rem 0 0;
   padding: 0;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: clamp(1.25rem, 2.5vw, 2rem);
+  row-gap: 2.75rem;
   list-style: none;
 }
 
@@ -166,11 +163,6 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--cw-color-divider);
-  border-radius: var(--cw-radius-card);
-  background: var(--cw-color-surface);
-  box-shadow: 0 8px 24px rgb(47 38 33 / 5%);
 }
 
 .recipeLink {
@@ -184,6 +176,7 @@
   display: grid;
   overflow: hidden;
   aspect-ratio: 4 / 3;
+  border-radius: var(--cw-radius-card);
   place-items: center;
   background: var(--cw-color-subtle-surface);
   color: var(--cw-color-action);
@@ -196,15 +189,15 @@
 }
 
 .recipeBody {
-  min-height: 8.8rem;
-  padding: 1rem;
+  min-height: 7.8rem;
+  padding: 1rem 0 0;
 }
 
 .recipeBody h2 {
   display: -webkit-box;
   overflow: hidden;
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.45rem;
   line-height: 1.18;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -235,16 +228,18 @@
 }
 
 .recipeAction {
-  padding: 0 1rem 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--cw-color-divider);
 }
 
 .recipeAction button {
-  width: 100%;
+  width: auto;
   min-height: 2.5rem;
-  border: 1px solid var(--cw-color-action);
+  padding: 0 0.9rem;
+  border: 1px solid var(--cw-color-divider);
   border-radius: var(--cw-radius-control);
-  background: var(--cw-color-action);
-  color: var(--cw-color-on-action);
+  background: transparent;
+  color: var(--cw-color-action);
   cursor: pointer;
   font: inherit;
   font-size: 0.82rem;
@@ -253,7 +248,7 @@
 
 .recipeAction button:disabled {
   border-color: var(--cw-color-divider);
-  background: var(--cw-color-subtle-surface);
+  background: transparent;
   color: var(--cw-color-muted-ink);
   cursor: default;
 }
@@ -261,7 +256,7 @@
 .friendHeader {
   display: grid;
   gap: 0.55rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .backLink {
@@ -279,7 +274,7 @@
 
 @media (max-width: 980px) {
   .recipeGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -300,5 +295,22 @@
 
   .open {
     display: none;
+  }
+
+  .recipeGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.75rem 0.85rem;
+  }
+
+  .recipeBody h2 {
+    font-size: 1.2rem;
+  }
+
+  .recipeBody {
+    min-height: 7rem;
+  }
+
+  .recipeAction button {
+    width: 100%;
   }
 }

@@ -100,6 +100,7 @@ test("opens management for four or more recipes without stretching the meal cell
   });
   expect(within(recipeList).getByRole("button", { name: "Open One for dinner on 2026-08-10" })).toBeVisible();
   expect(within(recipeList).getByRole("button", { name: "Open Two for dinner on 2026-08-10" })).toBeVisible();
+  expect(within(recipeList).getByRole("button", { name: "Open Three for dinner on 2026-08-10" })).toBeVisible();
   expect(within(recipeList).queryByRole("button", { name: "Open Four for dinner on 2026-08-10" })).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", {
     name: "View all 4 planned recipes for dinner on 2026-08-10",

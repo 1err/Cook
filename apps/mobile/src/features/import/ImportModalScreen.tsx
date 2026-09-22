@@ -241,7 +241,7 @@ export function ImportModalScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingBottom: spacing["3xl"] },
+  content: { padding: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing["3xl"] },
   errorWrap: { marginTop: spacing.md },
-  actions: { marginTop: spacing.lg },
+  actions: { marginTop: spacing.xl },
 });
