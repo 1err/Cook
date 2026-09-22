@@ -5,7 +5,7 @@ import LoginPage from "../login/page";
 import RegisterPage from "../register/page";
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }), usePathname: () => window.location.pathname }));
 vi.mock("./api", () => ({ apiFetch: async () => new Response("{}") }));
 vi.mock("./auth", () => ({ useAuth: () => ({ refreshUser: async () => {} }) }));
 vi.mock("./i18n", () => ({ useT: () => (key: string) => key, useI18n: () => ({ language: "en", setLanguage: vi.fn(), t: (key: string) => key }) }));

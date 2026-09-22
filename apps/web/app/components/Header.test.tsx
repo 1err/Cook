@@ -95,7 +95,7 @@ test("moves settings, language, admin tools, and logout into the account menu", 
 });
 
 test("preserves sign-in and registration actions for unauthenticated routes", () => {
-  mockUsePathname.mockReturnValue("/");
+  mockUsePathname.mockReturnValue("/library");
   mockUseAuth.mockReturnValue({ user: null, loading: false, logout: vi.fn() });
 
   render(<Header />);
@@ -104,6 +104,14 @@ test("preserves sign-in and registration actions for unauthenticated routes", ()
   expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute("href", "/register");
   expect(screen.queryByRole("link", { name: "Add Recipe" })).not.toBeInTheDocument();
 });
+
+test.each(["/", "/about", "/privacy", "/terms", "/contact"])(
+  "leaves %s to public navigation without exposing workspace actions", (pathname) => {
+    mockUsePathname.mockReturnValue(pathname);
+    const { container } = render(<Header />);
+    expect(container).toBeEmptyDOMElement();
+  },
+);
 
 test("does not grant admin tools from an email address without the server role", async () => {
   mockUseAuth.mockReturnValue({

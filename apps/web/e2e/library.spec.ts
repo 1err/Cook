@@ -8,12 +8,13 @@ function thumbnail(width: number, height: number, color: string) {
 }
 
 const recipes = [
-  ["Hot pot chicken", 500, 680, "#a85136"],
-  ["Steamed beef", 640, 360, "#7d8a58"],
-  ["Eggplant clay pot", 620, 420, "#c17c4f"],
-  ["Tomato beef brisket", 540, 540, "#a94731"],
-  ["Braised beef", 640, 400, "#8a553c"],
-  ["Mapo tofu", 560, 700, "#b2442e"],
+  ["Aubergine clay pot", 640, 350, "#a85136"],
+  ["Braised pork", 640, 400, "#7d8a58"],
+  ["Chicken stew", 640, 450, "#c17c4f"],
+  ["Dumplings", 640, 850, "#a94731"],
+  ["Egg fried rice", 640, 750, "#8a553c"],
+  ["Five-spice soy-braised beef", 640, 160, "#87564a"],
+  ["Mapo tofu", 640, 500, "#b2442e"],
 ].map(([title, width, height, color], index) => ({
   id: `recipe-${index + 1}`,
   title,
@@ -65,6 +66,31 @@ async function installFixtures(page: Page) {
   await page.route("**/recipes", (route) => fulfillJson(route, recipes));
 }
 
+async function expectWaterfall(page: Page, titles: string[], columnCount: number) {
+  const cards = page.getByRole("list").getByRole("listitem");
+  await expect(cards).toHaveCount(titles.length);
+  await expect.poll(async () => cards.evaluateAll((items) => items.every((item) =>
+    Array.from(item.querySelectorAll("img")).every((image) => image.complete),
+  ))).toBe(true);
+
+  await expect(async () => {
+    const metrics = await cards.evaluateAll((items) => items.map((item) => {
+      const box = item.getBoundingClientRect();
+      return { title: item.querySelector("h2")?.textContent, x: box.x, y: box.y, bottom: box.bottom };
+    }));
+    const columns = [...new Set(metrics.map(({ x }) => Math.round(x)))].sort((a, b) => a - b);
+    expect(columns).toHaveLength(Math.min(columnCount, titles.length));
+    const nextTop = columns.map(() => Math.min(...metrics.map(({ y }) => y)));
+    for (const title of titles) {
+      const card = metrics.find((item) => item.title === title)!;
+      const column = nextTop.indexOf(Math.min(...nextTop));
+      expect(Math.abs(card.x - columns[column]), `${title} should fill the shortest column`).toBeLessThan(1);
+      expect(Math.abs(card.y - nextTop[column]), `${title} should sit just below the previous card`).toBeLessThan(1);
+      nextTop[column] = card.bottom + 20;
+    }
+  }).toPass({ timeout: 5000 });
+}
+
 test.beforeEach(async ({ page }) => {
   await installFixtures(page);
   await page.goto("/library");
@@ -72,26 +98,17 @@ test.beforeEach(async ({ page }) => {
 
 test("uses a compact responsive waterfall for personal recipes", async ({ page }, testInfo) => {
   const expectedColumns = testInfo.project.name === "desktop" ? 3 : testInfo.project.name === "tablet" ? 2 : 1;
-  const expectedTitles = testInfo.project.name === "desktop"
-    ? [
-        ["Braised beef", "Mapo tofu"],
-        ["Eggplant clay pot", "Steamed beef"],
-        ["Hot pot chicken", "Tomato beef brisket"],
-      ]
-    : testInfo.project.name === "tablet"
-      ? [
-          ["Braised beef", "Hot pot chicken", "Steamed beef"],
-          ["Eggplant clay pot", "Mapo tofu", "Tomato beef brisket"],
-        ]
-      : [["Braised beef", "Eggplant clay pot", "Hot pot chicken", "Mapo tofu", "Steamed beef", "Tomato beef brisket"]];
   const grid = page.getByRole("list");
-  await expect(grid.getByRole("listitem")).toHaveCount(recipes.length);
-  const columns = grid.locator("[data-library-column]");
-  await expect(columns).toHaveCount(expectedColumns);
-  const columnTitles = await columns.evaluateAll((items) =>
-    items.map((item) => Array.from(item.querySelectorAll("h2"), (heading) => heading.textContent)),
-  );
-  expect(columnTitles).toEqual(expectedTitles);
+  await expectWaterfall(page, recipes.map(({ title }) => String(title)), expectedColumns);
+
+  if (expectedColumns === 3) {
+    const beef = await grid.getByRole("listitem").filter({ hasText: "Five-spice soy-braised beef" }).boundingBox();
+    const tofu = await grid.getByRole("listitem").filter({ hasText: "Mapo tofu" }).boundingBox();
+    const right = await grid.getByRole("listitem").filter({ hasText: "Chicken stew" }).boundingBox();
+    expect(tofu!.x).toBeCloseTo(right!.x, 0);
+    expect(tofu!.x).toBeCloseTo(beef!.x, 0);
+    expect(tofu!.y).toBeCloseTo(beef!.y + beef!.height + 20, 0);
+  }
 
   const cardMetrics = await grid.getByRole("listitem").evaluateAll((cards) =>
     cards.map((card) => {
@@ -116,19 +133,8 @@ test("uses the same natural waterfall rhythm for the public library", async ({ p
   await page.getByRole("tab", { name: "Public library" }).click();
 
   const expectedColumns = testInfo.project.name === "desktop" ? 3 : testInfo.project.name === "tablet" ? 2 : 1;
-  const expectedTitles = testInfo.project.name === "desktop"
-    ? [["Clay pot rice", "Scallion noodles"], ["Crispy tofu"], ["Red-braised pork"]]
-    : testInfo.project.name === "tablet"
-      ? [["Clay pot rice", "Red-braised pork"], ["Crispy tofu", "Scallion noodles"]]
-      : [["Clay pot rice", "Crispy tofu", "Red-braised pork", "Scallion noodles"]];
   const grid = page.getByRole("list");
-  await expect(grid.getByRole("listitem")).toHaveCount(publicRecipes.length);
-  const columns = grid.locator("[data-library-column]");
-  await expect(columns).toHaveCount(expectedColumns);
-  const columnTitles = await columns.evaluateAll((items) =>
-    items.map((item) => Array.from(item.querySelectorAll("h2"), (heading) => heading.textContent)),
-  );
-  expect(columnTitles).toEqual(expectedTitles);
+  await expectWaterfall(page, ["Clay pot rice", "Crispy tofu", "Red-braised pork", "Scallion noodles"], expectedColumns);
   await expect(grid.getByText(/Hidden public ingredient/)).toHaveCount(0);
 
   const metrics = await grid.getByRole("listitem").evaluateAll((cards) =>
@@ -151,4 +157,62 @@ test("uses the same natural waterfall rhythm for the public library", async ({ p
       fullPage: true,
     });
   }
+});
+
+test("reflows the waterfall when an image finishes loading", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "One desktop run exercises delayed image sizing.");
+  let releaseImage!: () => void;
+  const imageReady = new Promise<void>((resolve) => { releaseImage = resolve; });
+  await page.route("**/late-library-thumbnail.svg", async (route) => {
+    await imageReady;
+    await route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="1600"><rect width="640" height="1600" fill="#87564a"/></svg>',
+    });
+  });
+  await page.route("**/recipes", (route) => fulfillJson(route, recipes.map((recipe, index) =>
+    index === 5 ? { ...recipe, thumbnail_url: "/late-library-thumbnail.svg" } : recipe,
+  )));
+  await page.goto("/library", { waitUntil: "domcontentloaded" });
+  const cards = page.getByRole("list").getByRole("listitem");
+  await expect(cards).toHaveCount(7);
+  const tofu = cards.filter({ hasText: "Mapo tofu" });
+  try {
+    await expect(async () => {
+      const tofuBox = await tofu.boundingBox();
+      const rightBox = await cards.filter({ hasText: "Chicken stew" }).boundingBox();
+      expect(tofuBox!.x).toBeCloseTo(rightBox!.x, 0);
+    }).toPass({ timeout: 5000 });
+    const before = await tofu.boundingBox();
+    releaseImage();
+    await expectWaterfall(page, recipes.map(({ title }) => String(title)), 3);
+    const after = await tofu.boundingBox();
+    expect(after!.x).toBeLessThan(before!.x);
+  } finally {
+    releaseImage();
+  }
+});
+
+test("reflows between three, two, and one columns without changing reading order", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "One page exercises each responsive breakpoint.");
+  const titles = recipes.map(({ title }) => String(title));
+  for (const [width, columns] of [[1440, 3], [820, 2], [390, 1], [1440, 3]]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await expectWaterfall(page, titles, columns);
+    await expect(page.getByRole("list").getByRole("heading", { level: 2 })).toHaveText(titles);
+  }
+});
+
+test("reflows matching recipes after search and tag filtering", async ({ page }, testInfo) => {
+  const columns = testInfo.project.name === "desktop" ? 3 : testInfo.project.name === "tablet" ? 2 : 1;
+  const search = page.getByRole("searchbox");
+  await search.fill("braised");
+  await expectWaterfall(page, ["Braised pork", "Five-spice soy-braised beef"], columns);
+  await search.fill("nothing matches this recipe");
+  await expect(page.getByRole("list")).toHaveCount(0);
+  await search.fill("");
+  await page.getByRole("button", { name: "Filter recipes" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Weeknight", exact: true }).click();
+  await search.click();
+  await expectWaterfall(page, ["Braised pork", "Dumplings", "Five-spice soy-braised beef"], columns);
 });

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { isAdminUser } from "../lib/admin";
+import { isPublicPage } from "../lib/publicRoutes";
 import { useAuth } from "../lib/auth";
 import { useI18n } from "../lib/i18n";
 import { AccountMenu } from "./AccountMenu";
@@ -29,7 +30,7 @@ export function Header() {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  if (pathname === "/login" || pathname === "/register") {
+  if (isPublicPage(pathname) || pathname === "/login" || pathname === "/register") {
     return null;
   }
 

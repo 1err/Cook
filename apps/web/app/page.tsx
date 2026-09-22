@@ -1,29 +1,12 @@
-"use client";
+import { HomePage } from "./public-site/HomePage";
+import { publicMetadata } from "./public-site/metadata";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "./lib/auth";
+export const metadata = publicMetadata(
+  "Chef World — A little closer to home",
+  "Save recipes, plan meals, simplify grocery shopping, and cook with step-by-step guidance. Chef World brings it all together.",
+  "/",
+);
 
 export default function Home() {
-  const router = useRouter();
-  const { user, loading } = useAuth();
-
-  useEffect(() => {
-    if (loading) return;
-    if (user) {
-      router.replace("/library");
-    } else {
-      router.replace("/login");
-    }
-  }, [user, loading, router]);
-
-  if (loading) {
-    return (
-      <div style={{ padding: "var(--space-32)", color: "var(--muted)", textAlign: "center" }}>
-        Opening your workspace…
-      </div>
-    );
-  }
-
-  return null;
+  return <HomePage />;
 }
