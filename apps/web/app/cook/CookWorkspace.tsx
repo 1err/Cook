@@ -11,9 +11,11 @@ import type { CookingSessionController } from "./useCookingSession";
 import { AddDishDialog } from "./AddDishDialog";
 import { useCookingAlerts } from "./useCookingAlerts";
 import { useScreenWake } from "./useScreenWake";
+import { useEditorialCopy } from "../lib/editorialCopy";
 
 export function CookWorkspace({ controller }: { controller: CookingSessionController }) {
   const t = useT();
+  const editorialCopy = useEditorialCopy();
   const [adding, setAdding] = useState(false);
   const [undoTarget, setUndoTarget] = useState<{ dishId: string; stepId: string } | null>(null);
   const session = controller.session;
@@ -120,68 +122,75 @@ export function CookWorkspace({ controller }: { controller: CookingSessionContro
         </aside>
       ) : null}
       <footer className={styles.sessionControls}>
-        <label className={styles.preferenceControl}>
-          <input checked={alerts.enabled} onChange={(event) => void alerts.setAlertsEnabled(event.target.checked)} type="checkbox" />
-          <span>{t("cook.alerts.enable")}</span>
-        </label>
-        <label className={styles.preferenceControl}>
-          <input
-            checked={controller.preferences.sound}
-            onChange={(event) => controller.updatePreferences({ sound: event.target.checked })}
-            type="checkbox"
-          />
-          <span>{t("cook.alerts.sound")}</span>
-        </label>
-        <label className={styles.preferenceControl}>
-          <input
-            checked={controller.preferences.vibration}
-            onChange={(event) => controller.updatePreferences({ vibration: event.target.checked })}
-            type="checkbox"
-          />
-          <span>{t("cook.alerts.vibration")}</span>
-        </label>
-        <label className={styles.preferenceControl}>
-          <input
-            checked={controller.preferences.keep_awake}
-            onChange={(event) => controller.updatePreferences({ keep_awake: event.target.checked })}
-            type="checkbox"
-          />
-          <span>{t("cook.wake.enable")}</span>
-        </label>
-        {alerts.limitation ? <p className={styles.limitation}>{alerts.limitation}</p> : null}
-        <p className={styles.limitation}>{t("cook.alerts.browserOpen")}</p>
-        {wake.unsupported && controller.preferences.keep_awake ? <p className={styles.limitation}>{t("cook.wake.unsupported")}</p> : null}
-        <Button disabled={controller.sessionBusy} onClick={() => setAdding(true)} variant="secondary">
-          {t("cook.control.addDish")}
-        </Button>
-        {focusedDish ? (
+        <details className={styles.preferencePanel}>
+          <summary>{editorialCopy["cook.settings"]}</summary>
+          <div className={styles.preferenceGrid}>
+            <label className={styles.preferenceControl}>
+              <input checked={alerts.enabled} onChange={(event) => void alerts.setAlertsEnabled(event.target.checked)} type="checkbox" />
+              <span>{t("cook.alerts.enable")}</span>
+            </label>
+            <label className={styles.preferenceControl}>
+              <input
+                checked={controller.preferences.sound}
+                onChange={(event) => controller.updatePreferences({ sound: event.target.checked })}
+                type="checkbox"
+              />
+              <span>{t("cook.alerts.sound")}</span>
+            </label>
+            <label className={styles.preferenceControl}>
+              <input
+                checked={controller.preferences.vibration}
+                onChange={(event) => controller.updatePreferences({ vibration: event.target.checked })}
+                type="checkbox"
+              />
+              <span>{t("cook.alerts.vibration")}</span>
+            </label>
+            <label className={styles.preferenceControl}>
+              <input
+                checked={controller.preferences.keep_awake}
+                onChange={(event) => controller.updatePreferences({ keep_awake: event.target.checked })}
+                type="checkbox"
+              />
+              <span>{t("cook.wake.enable")}</span>
+            </label>
+            {alerts.limitation ? <p className={styles.limitation}>{alerts.limitation}</p> : null}
+            <p className={styles.limitation}>{t("cook.alerts.browserOpen")}</p>
+            {wake.unsupported && controller.preferences.keep_awake ? <p className={styles.limitation}>{t("cook.wake.unsupported")}</p> : null}
+          </div>
+        </details>
+        <div className={styles.sessionActions}>
+          <Button disabled={controller.sessionBusy} onClick={() => setAdding(true)} variant="secondary">
+            {t("cook.control.addDish")}
+          </Button>
+          {focusedDish ? (
+            <Button
+              disabled={controller.sessionBusy}
+              onClick={() => {
+                if (window.confirm(t("cook.confirm.removeDish", { dish: focusedDish.title }))) {
+                  void controller.removeDish(focusedDish.id);
+                }
+              }}
+              variant="ghost"
+            >
+              {t("cook.control.removeDish", { dish: focusedDish.title })}
+            </Button>
+          ) : null}
+          <Button
+            disabled={controller.sessionBusy || !isCookingSessionComplete(session)}
+            onClick={() => void controller.finishSession()}
+          >
+            {t("cook.control.finish")}
+          </Button>
           <Button
             disabled={controller.sessionBusy}
             onClick={() => {
-              if (window.confirm(t("cook.confirm.removeDish", { dish: focusedDish.title }))) {
-                void controller.removeDish(focusedDish.id);
-              }
+              if (window.confirm(t("cook.confirm.discard"))) void controller.discardSession();
             }}
-            variant="ghost"
+            variant="destructive"
           >
-            {t("cook.control.removeDish", { dish: focusedDish.title })}
+            {t("cook.control.discard")}
           </Button>
-        ) : null}
-        <Button
-          disabled={controller.sessionBusy || !isCookingSessionComplete(session)}
-          onClick={() => void controller.finishSession()}
-        >
-          {t("cook.control.finish")}
-        </Button>
-        <Button
-          disabled={controller.sessionBusy}
-          onClick={() => {
-            if (window.confirm(t("cook.confirm.discard"))) void controller.discardSession();
-          }}
-          variant="destructive"
-        >
-          {t("cook.control.discard")}
-        </Button>
+        </div>
       </footer>
       {adding ? (
         <AddDishDialog

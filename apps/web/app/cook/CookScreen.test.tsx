@@ -18,7 +18,7 @@ vi.mock("./CookSetup", () => ({
     </section>
   ),
 }));
-vi.mock("../lib/i18n", () => ({ useT: mockUseT }));
+vi.mock("../lib/i18n", () => ({ useT: mockUseT, useI18n: () => ({ language: "en" }) }));
 
 const messages: Record<string, string> = {
   "common.loading": "Loading...",

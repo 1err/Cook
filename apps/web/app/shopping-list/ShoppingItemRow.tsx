@@ -58,6 +58,14 @@ export function ShoppingItemRow({
             {suggestedPurchase ? <small>{suggestedPurchase}</small> : null}
           </span>
         </label>
+        <button
+          type="button"
+          className={styles.productToggle}
+          onClick={onToggleProducts}
+          disabled={productsPending}
+        >
+          {productsOpen ? t("shopping.hideProducts") : t("shopping.viewProducts")}
+        </button>
         <div className={styles.itemMenu} data-shopping-item-menu>
           <button type="button" aria-label={`${t("shopping.more")}: ${name}`} onClick={onToggleMenu}>•••</button>
           {menuOpen ? (
@@ -67,15 +75,6 @@ export function ShoppingItemRow({
           ) : null}
         </div>
       </div>
-
-      <button
-        type="button"
-        className={styles.productToggle}
-        onClick={onToggleProducts}
-        disabled={productsPending}
-      >
-        {productsOpen ? t("shopping.hideProducts") : t("shopping.viewProducts")}
-      </button>
 
       {productsOpen ? (
         <ProductPicks

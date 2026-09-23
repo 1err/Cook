@@ -4,10 +4,10 @@
 
 .trigger {
   align-items: center;
-  background: var(--cw-color-ink);
-  border: 0;
+  background: var(--cw-color-subtle-surface);
+  border: 1px solid var(--cw-color-divider);
   border-radius: var(--cw-radius-round);
-  color: var(--cw-color-on-action);
+  color: var(--cw-color-ink);
   cursor: pointer;
   display: inline-flex;
   font-family: Inter, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
@@ -20,7 +20,8 @@
 
 .trigger:hover,
 .trigger[aria-expanded="true"] {
-  background: var(--cw-color-action);
+  background: var(--cw-color-surface);
+  border-color: var(--cw-color-action);
 }
 
 .panel {

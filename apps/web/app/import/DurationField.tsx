@@ -88,7 +88,7 @@ export function DurationField({
   };
 
   return (
-    <div>
+    <div className={styles.durationEditor}>
       <div className={styles.durationField} role="group" aria-label={ariaLabel}>
         <input
           type="number"

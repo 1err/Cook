@@ -6,9 +6,10 @@ import Link from "next/link";
 import { apiFetch } from "../lib/api";
 import { userLocalStorage } from "../lib/userStorage";
 import { RequireAuth } from "../components/RequireAuth";
-import { PageShell } from "../components/PageShell";
+import { PageHeader, PageShell } from "../components/PageShell";
 import { useT } from "../lib/i18n";
 import { TagFilterPopover } from "../components/TagFilterPopover";
+import { Icon } from "../components/ui/Icon";
 import type { Recipe } from "../types";
 import {
   MEAL_PLAN_SLOTS,
@@ -25,6 +26,7 @@ import {
 } from "@cooking/shared";
 import { CATEGORY_LABELS, type LibraryFilterId } from "../lib/recipeCategories";
 import { getRecipeTags } from "../lib/recipeTags";
+import { useEditorialCopy } from "../lib/editorialCopy";
 import { PlannerRecipeRail } from "./components/PlannerRecipeRail";
 import { PlannerToolbar } from "./components/PlannerToolbar";
 import { PlannerWeekBoard } from "./components/PlannerWeekBoard";
@@ -64,6 +66,7 @@ function dayOfMonth(dateStr: string): number {
 function PlannerPageContent() {
   const router = useRouter();
   const t = useT();
+  const editorialCopy = useEditorialCopy();
   const searchParams = useSearchParams();
   const weekParam = searchParams.get("week");
   const { start, end, dates, weekParam: currentWeek } = getWeekBounds(weekParam);
@@ -406,7 +409,7 @@ function PlannerPageContent() {
   const recipeSourceControls = (
     <>
       <div className="planner-editorial__search">
-        <span className="material-symbols-outlined" aria-hidden>search</span>
+        <span aria-hidden="true"><Icon name="search" size={16} /></span>
         <input
           type="search"
           placeholder={t("planner.searchLibrary")}
@@ -499,13 +502,7 @@ function PlannerPageContent() {
 
   return (
     <PageShell className={styles.page}>
-      <div>
-        <PlannerToolbar
-          weekRange={formatWeekPlannerKicker(start, end)}
-          onPrevious={() => setWeek(prev)}
-          onNext={() => setWeek(next)}
-        />
-      </div>
+      <PageHeader title={t("planner.title")} description={editorialCopy["planner.tagline"]} />
 
       <div className={styles.workspace}>
         <PlannerRecipeRail
@@ -518,7 +515,13 @@ function PlannerPageContent() {
           recipes={railRecipeSourceList}
         />
 
-        <div className={styles.board}>
+        <div className={styles.boardArea}>
+          <PlannerToolbar
+            weekRange={formatWeekPlannerKicker(start, end)}
+            onPrevious={() => setWeek(prev)}
+            onNext={() => setWeek(next)}
+          />
+          <div className={styles.board}>
 
         {mutationError ? (
           <div role="status" className="planner-mutation-error">
@@ -593,7 +596,7 @@ function PlannerPageContent() {
                   onClick={closeRecipePicker}
                   aria-label={t("planner.closeRecipePicker")}
                 >
-                  <span className="material-symbols-outlined" aria-hidden="true">close</span>
+                  <Icon name="close" size={24} />
                   <span className="planner-mobile-picker__close-label">
                     {t("planner.closeRecipePicker")}
                   </span>
@@ -626,7 +629,7 @@ function PlannerPageContent() {
                             date: slotPicker.date,
                           })}
                         >
-                          <span className="material-symbols-outlined" aria-hidden="true">close</span>
+                          <Icon name="close" size={24} />
                         </button>
                       </div>
                     )) : (
@@ -639,7 +642,7 @@ function PlannerPageContent() {
                       className="planner-slot-manager__add font-headline"
                       onClick={() => setSlotPicker((current) => current ? { ...current, mode: "add" } : null)}
                     >
-                      <span className="material-symbols-outlined" aria-hidden="true">add</span>
+                      <Icon name="add" size={24} />
                       {t("planner.addRecipe")}
                     </button>
                   </div>
@@ -648,6 +651,7 @@ function PlannerPageContent() {
             </div>
           </div>
         ) : null}
+          </div>
         </div>
       </div>
     </PageShell>

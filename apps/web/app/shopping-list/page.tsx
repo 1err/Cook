@@ -9,11 +9,11 @@ import { userLocalStorage, userSessionStorage } from "../lib/userStorage";
 import { RequireAuth } from "../components/RequireAuth";
 import { PageHeader, PageShell } from "../components/PageShell";
 import { useI18n, useT } from "../lib/i18n";
+import { useEditorialCopy } from "../lib/editorialCopy";
 import type { Recipe } from "../types";
 import {
   GROCERY_CATEGORY_ORDER,
   buildCartAssistantDraft,
-  buildInstacartItems,
   buildWeekMealPlanFingerprint,
   formatWeekRangeDisplay,
   getDisplayCategory,
@@ -29,7 +29,6 @@ import {
 import { ShoppingCategorySection } from "./ShoppingCategorySection";
 import { ShoppingSmartBar } from "./ShoppingSmartBar";
 import { CartAssistantDialog } from "./CartAssistantDialog";
-import { InstacartShoppingPanel } from "./InstacartShoppingPanel";
 import styles from "./ShoppingList.module.css";
 import {
   buildVisualProductQueue,
@@ -47,9 +46,15 @@ import {
   cartAssistantStorageKey,
   parseCartAssistantStored,
 } from "./cartAssistantStorage";
+import {
+  buildPlannedMealRows,
+  formatMealOccurrence,
+  formatPlannedMealSchedule,
+} from "./plannedMeals";
 
 const SMART_SHOPPING_LIST_PREFIX = "smartShoppingList";
 const SMART_SHOPPING_PRODUCTS_PREFIX = "smartShoppingProducts";
+const SHOPPING_QUANTITY_VERSION = 1;
 const MAX_SAFE_TIMER_DELAY_MS = 2_147_483_647;
 
 function smartListStorageKey(weekStart: string) {
@@ -82,54 +87,12 @@ function removeSessionStorage(key: string) {
 
 const suppressedCartHydrationKeys = new Set<string>();
 
-const SLOT_ORDER = ["breakfast", "lunch", "dinner"] as const;
-type PlanSlot = (typeof SLOT_ORDER)[number];
-const DOW_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
 const PREVIEW_MEAL_ROWS = 4;
 
 const SHOPPING_PRIMARY_CATEGORIES: GroceryCategory[] = ["Pantry & Dry Goods"];
 const SHOPPING_SECONDARY_CATEGORIES = GROCERY_CATEGORY_ORDER.filter(
   (cat) => !SHOPPING_PRIMARY_CATEGORIES.includes(cat)
 ) as GroceryCategory[];
-
-function buildPlannedMealRows(
-  plans: MealPlanDay[],
-  recipes: Record<string, Recipe | undefined>,
-  weekMondayYmd: string,
-): { recipeId: string; title: string; slot: PlanSlot; dayShort: string; date: string }[] {
-  const { dates: weekDates } = getWeekBounds(weekMondayYmd);
-  const dowByDate = new Map(weekDates.map((d, i) => [d, DOW_SHORT[i]]));
-  const rows: { recipeId: string; title: string; slot: PlanSlot; dayShort: string; date: string }[] = [];
-  for (const p of plans) {
-    const dayShort = dowByDate.get(p.date) ?? "";
-    if (!dayShort) continue;
-    for (const slot of SLOT_ORDER) {
-      for (const rid of p[slot] ?? []) {
-        if (!rid?.trim()) continue;
-        const rec = recipes[rid];
-        const title = rec?.title?.trim();
-        if (!title) continue;
-        rows.push({
-          recipeId: rid,
-          title,
-          slot,
-          dayShort,
-          date: p.date,
-        });
-      }
-    }
-  }
-  rows.sort((a, b) => {
-    if (a.date !== b.date) return a.date.localeCompare(b.date);
-    return SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot);
-  });
-  return rows;
-}
-
-function slotLabel(slot: PlanSlot): string {
-  return slot.charAt(0).toUpperCase() + slot.slice(1);
-}
 
 interface ShoppingListItem {
   name: string;
@@ -146,6 +109,8 @@ interface RefineResponse {
   remove: string[];
   likely_pantry: { name: string; reason: string }[];
   purchase_items: PurchaseItem[];
+  // Client cache marker: old lists remain usable, but need fresh backend totals.
+  _quantityVersion?: number;
 }
 
 interface SmartStored extends RefineResponse {
@@ -217,6 +182,7 @@ function confirmationIngredientKey(token: string): string | null {
 function ShoppingListPageContent() {
   const router = useRouter();
   const { language } = useI18n();
+  const editorialCopy = useEditorialCopy();
   const t = useT();
   const searchParams = useSearchParams();
   const weekParam = searchParams.get("week");
@@ -904,7 +870,7 @@ function ShoppingListPageContent() {
         }),
       });
       if (!res.ok) throw new Error("Refine failed");
-      const data: RefineResponse = await res.json();
+      const data: RefineResponse = { ...await res.json(), _quantityVersion: SHOPPING_QUANTITY_VERSION };
       if (!isCurrentRefine()) return;
       setRefinedData(data);
       setSmartWeekStart(start);
@@ -1094,15 +1060,55 @@ function ShoppingListPageContent() {
   const smartItemCount = visiblePurchaseItems.filter((r) => !smartChecked.has(r.origIndex)).length;
   const mealRowsVisible = planMealsExpanded ? planRows : planRows.slice(0, PREVIEW_MEAL_ROWS);
   const moreMealsCount = Math.max(0, planRows.length - PREVIEW_MEAL_ROWS);
+  const plannedMealCount = planRows.reduce((count, row) => count + row.occurrences.length, 0);
   const weekRangeLabel = formatWeekRangeDisplay(start, end);
   const hasPlannedMeals = planRows.length > 0;
   const canPrepareSmart = items.length > 0 && !refining;
 
   const orderedCategories = [...SHOPPING_PRIMARY_CATEGORIES, ...SHOPPING_SECONDARY_CATEGORIES];
 
+  const plannedMealsPanel = (
+    <section className={styles.plannedMeals} aria-labelledby="shopping-planned-meals-title">
+      <header>
+        <div>
+          <span className={styles.contextLabel}>{editorialCopy["shopping.thisWeek"]}</span>
+          <h2 className="cw-display" id="shopping-planned-meals-title">Planned meals</h2>
+        </div>
+        <span>
+          {planRows.length} {planRows.length === 1 ? "recipe" : "recipes"}
+          {plannedMealCount !== planRows.length ? ` · ${plannedMealCount} meals` : ""}
+        </span>
+      </header>
+      {hasPlannedMeals ? (
+        <div className={styles.mealList}>
+          {mealRowsVisible.map((row) => (
+            <Link key={row.recipeId} href={`/recipe/${row.recipeId}`}>
+              {row.thumbnailUrl ? (
+                <span className={styles.mealThumbnail} aria-hidden>
+                  <img src={row.thumbnailUrl} alt="" loading="lazy" />
+                </span>
+              ) : null}
+              <span className={styles.mealCopy}>
+                <strong>{row.title}</strong>
+                <span aria-label={row.occurrences.map(formatMealOccurrence).join(", ")}>
+                  {formatPlannedMealSchedule(row)}
+                </span>
+              </span>
+            </Link>
+          ))}
+          {moreMealsCount > 0 ? (
+            <button type="button" onClick={() => setPlanMealsExpanded((expanded) => !expanded)}>
+              {planMealsExpanded ? "Show less" : `+ ${moreMealsCount} more`}
+            </button>
+          ) : null}
+        </div>
+      ) : <p>No recipe slots filled for this range yet.</p>}
+    </section>
+  );
+
   return (
-    <PageShell>
-      <PageHeader title={t("shopping.title")} />
+    <PageShell className={styles.page}>
+      <PageHeader title={t("shopping.title")} description={editorialCopy["shopping.tagline"]} />
 
       <section className={styles.weekBar} aria-label="Week range">
         <div>
@@ -1116,19 +1122,36 @@ function ShoppingListPageContent() {
         </div>
       </section>
 
-      <InstacartShoppingPanel
-        title={`${t("shopping.title")} · ${weekRangeLabel}`}
-        listKey={`${start}:${activeRefinedData ? "smart" : "original"}`}
-        items={buildInstacartItems({
-          originalItems: items,
-          purchaseItems: activeRefinedData?.purchase_items,
-          hidden: smartHidden,
-          checked: smartChecked,
-        })}
-        disabled={refining}
-        stale={Boolean(activeRefinedData && smartListStale)}
-      />
+      {activeRefinedData ? (
+        <ShoppingSmartBar
+          itemCount={smartItemCount}
+          totalCount={visiblePurchaseItems.length}
+          stale={smartListStale || activeRefinedData._quantityVersion !== SHOPPING_QUANTITY_VERSION}
+          refining={refining}
+          copied={copied}
+          bulkLoading={bulkLoadingProducts}
+          bulkProgress={bulkLoadProgress}
+          cartReadyCount={cartDraft.summary.readyCount}
+          loadButtonRef={cartLoadProductsRef}
+          reviewButtonRef={cartReviewTriggerRef}
+          onBack={handleBackToOriginalList}
+          onRefresh={() => void handlePrepareSmartList()}
+          onCopy={handleCopyList}
+          onLoadProducts={() => void handleLoadAllProducts()}
+          onReviewCart={() => setCartDialogOpen(true)}
+        />
+      ) : null}
 
+      <section
+        className={`${styles.workspace}${activeRefinedData ? ` ${styles.smartWorkspace}` : ""}`}
+        aria-label={activeRefinedData ? undefined : "Prepare smart shopping list"}
+      >
+        {!activeRefinedData ? (
+          <aside className={styles.retailerColumn}>
+            {plannedMealsPanel}
+          </aside>
+        ) : null}
+        <div className={styles.listColumn}>
       {!hasPlannedMeals && items.length === 0 ? (
         <div className={styles.empty}>
           <strong>{t("shopping.noMealsPlanned")}</strong>
@@ -1136,23 +1159,6 @@ function ShoppingListPageContent() {
         </div>
       ) : activeRefinedData ? (
         <>
-          <ShoppingSmartBar
-            itemCount={smartItemCount}
-            stale={smartListStale}
-            refining={refining}
-            copied={copied}
-            bulkLoading={bulkLoadingProducts}
-            bulkProgress={bulkLoadProgress}
-            cartReadyCount={cartDraft.summary.readyCount}
-            loadButtonRef={cartLoadProductsRef}
-            reviewButtonRef={cartReviewTriggerRef}
-            onBack={handleBackToOriginalList}
-            onRefresh={() => void handlePrepareSmartList()}
-            onCopy={handleCopyList}
-            onLoadProducts={() => void handleLoadAllProducts()}
-            onReviewCart={() => setCartDialogOpen(true)}
-          />
-
           <div className={styles.categoryGrid}>
             {orderedCategories.map((category) => {
               const rows = purchaseByCategory.get(category);
@@ -1204,30 +1210,8 @@ function ShoppingListPageContent() {
           ) : null}
         </>
       ) : (
-        <section className={styles.preparePanel} aria-label="Prepare smart shopping list">
-          <div className={styles.plannedMeals}>
-            <header>
-              <h2 className="cw-display">Planned meals</h2>
-              <span>{planRows.length} {planRows.length === 1 ? "recipe" : "recipes"}</span>
-            </header>
-            {hasPlannedMeals ? (
-              <div className={styles.mealList}>
-                {mealRowsVisible.map((row, index) => (
-                  <Link key={`${row.date}-${row.slot}-${row.recipeId}-${index}`} href={`/recipe/${row.recipeId}`}>
-                    <strong>{row.title}</strong>
-                    <span>{row.dayShort} · {slotLabel(row.slot)}</span>
-                  </Link>
-                ))}
-                {moreMealsCount > 0 ? (
-                  <button type="button" onClick={() => setPlanMealsExpanded((expanded) => !expanded)}>
-                    {planMealsExpanded ? "Show less" : `+ ${moreMealsCount} more`}
-                  </button>
-                ) : null}
-              </div>
-            ) : <p>No recipe slots filled for this range yet.</p>}
-          </div>
-
-          <aside className={styles.prepareAction}>
+          <section className={styles.prepareAction}>
+            <span className={styles.contextLabel}>{editorialCopy["shopping.originalList"]}</span>
             <h2 className="cw-display">Prepare smart list</h2>
             <dl>
               <div><dt>Recipes</dt><dd>{planRows.length}</dd></div>
@@ -1237,9 +1221,10 @@ function ShoppingListPageContent() {
             <button type="button" onClick={() => void handlePrepareSmartList()} disabled={!canPrepareSmart}>
               {refining ? "Preparing…" : "Prepare smart shopping list"}
             </button>
-          </aside>
-        </section>
+          </section>
       )}
+        </div>
+      </section>
     </PageShell>
   );
 }

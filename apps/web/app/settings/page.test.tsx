@@ -13,6 +13,9 @@ vi.mock("../components/RequireAuth", () => ({
   RequireAuth: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock("../lib/auth", () => ({ useAuth: mockUseAuth }));
+vi.mock("../lib/editorialCopy", () => ({
+  useEditorialCopy: () => ({ "settings.tagline": "Settings" }),
+}));
 
 afterEach(cleanup);
 

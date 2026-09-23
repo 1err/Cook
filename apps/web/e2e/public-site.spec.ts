@@ -94,12 +94,18 @@ test("public content works without the backend and without JavaScript", async ({
   }
 });
 
-test("private workspace still requires sign-in and auth pages expose public policies", async ({ page }) => {
+test("private workspace requires sign-in and auth pages retain the original photo and public policies", async ({ page }) => {
   await expiredSession(page);
   await page.goto("/library");
   await expect(page).toHaveURL(/\/login\?redirect=%2Flibrary/);
   for (const path of ["/login", "/register"]) {
     await page.goto(path);
+    const heroPhoto = page.locator(".auth-hero__img");
+    await expect(heroPhoto).toHaveAttribute("src", "/brand/login-original.jpg");
+    await expect.poll(() => heroPhoto.evaluate((element) => {
+      const image = element as HTMLImageElement;
+      return image.complete && image.naturalWidth > 0;
+    })).toBe(true);
     await expect(page.getByRole("link", { name: "Privacy", exact: true })).toHaveAttribute("href", "/privacy");
     await expect(page.getByRole("link", { name: "Terms", exact: true })).toHaveAttribute("href", "/terms");
     await expect(page.getByRole("link", { name: "Contact", exact: true })).toHaveAttribute("href", "/contact");

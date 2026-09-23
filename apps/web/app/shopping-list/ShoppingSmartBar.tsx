@@ -7,6 +7,7 @@ import styles from "./ShoppingList.module.css";
 
 type ShoppingSmartBarProps = {
   itemCount: number;
+  totalCount: number;
   stale: boolean;
   refining: boolean;
   copied: boolean;
@@ -24,6 +25,7 @@ type ShoppingSmartBarProps = {
 
 export function ShoppingSmartBar({
   itemCount,
+  totalCount,
   stale,
   refining,
   copied,
@@ -39,13 +41,21 @@ export function ShoppingSmartBar({
   onReviewCart,
 }: ShoppingSmartBarProps) {
   const t = useT();
+  const checkedCount = Math.max(0, totalCount - itemCount);
+  const progress = totalCount > 0 ? (checkedCount / totalCount) * 100 : 0;
 
   return (
     <section className={styles.smartBar} aria-label="Smart shopping list controls">
-      <div className={styles.smartSummary}>
-        <span>{t("shopping.smartMode")}</span>
-        <strong>{itemCount}</strong>
-        <small>{t("shopping.toBuy")}</small>
+      <div className={styles.smartOverview}>
+        <div className={styles.smartSummary}>
+          <span>{t("shopping.smartMode")}</span>
+          <strong>{itemCount}</strong>
+          <small>{t("shopping.toBuy")}</small>
+        </div>
+        <div className={styles.progressTrack} aria-hidden="true">
+          <span style={{ width: `${progress}%` }} />
+        </div>
+        <small className={styles.progressLabel}>{checkedCount} / {totalCount}</small>
       </div>
       <div className={styles.smartActions}>
         {stale ? (

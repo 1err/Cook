@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   formatRecipeStepMetadata,
-  RECIPE_ACTION_MESSAGE_KEYS,
   type RecipeActionType,
 } from "@cooking/shared";
 import { RecipeStepIllustration } from "../../components/RecipeStepIllustration";
@@ -38,7 +37,7 @@ function StepVisual({ index, step }: StepVisualProps) {
       <RecipeStepIllustration
         actionType={actionType}
         decorative
-        title={t(RECIPE_ACTION_MESSAGE_KEYS[actionType])}
+        title={step.text}
       />
     </div>
   );

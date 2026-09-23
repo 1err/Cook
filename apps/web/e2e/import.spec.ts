@@ -69,7 +69,7 @@ async function installImportFixtures(page: Page) {
       });
       return;
     }
-    if (pathname === "/recipes/parse/link" && request.method() === "POST") {
+    if ((pathname === "/recipes/parse/link" || pathname === "/recipes/parse/transcript") && request.method() === "POST") {
       await fulfillJson(route, draftRecipe);
       return;
     }
@@ -96,6 +96,12 @@ test.beforeEach(async ({ page }) => {
 
 test("imports a TikTok link, then saves the streamlined Review draft", async ({ page }, testInfo) => {
   await expect(page.getByRole("heading", { name: "Import recipe" })).toBeVisible();
+  const sourcePanel = await page.locator("main form").evaluate((form) => {
+    const rect = form.getBoundingClientRect();
+    return { width: rect.width, center: rect.x + rect.width / 2, viewport: window.innerWidth };
+  });
+  expect(sourcePanel.width).toBeLessThanOrEqual(720);
+  expect(Math.abs(sourcePanel.center - sourcePanel.viewport / 2)).toBeLessThanOrEqual(1);
   await expect(page.getByLabel("Title (optional)")).toHaveCount(0);
   await page.getByRole("button", { name: "Optional details" }).click();
   await expect(page.getByLabel("Title (optional)")).toBeVisible();
@@ -116,8 +122,15 @@ test("imports a TikTok link, then saves the streamlined Review draft", async ({ 
   await expect(page.getByPlaceholder(/Notes/i)).toHaveCount(0);
   await expect(page.getByText(/Add image/i)).toHaveCount(0);
   await expect(page.getByText(/Errors stay local/i)).toHaveCount(0);
-  await expect(page.getByLabel("Ingredient 1 amount")).toHaveValue("1 block");
+  await expect(page.getByLabel("Original amount 1")).toHaveValue("1 block");
   await expect(page.getByLabel("Ingredient 1", { exact: true })).toHaveValue("Firm tofu");
+  const conversion = page.getByLabel("Amount in g / ml 1", { exact: true });
+  await expect(conversion).toHaveValue("400 g");
+  await expect(conversion).toHaveAccessibleDescription("Optional conversion, e.g. 400 g or 250 ml.");
+  await conversion.fill("450 g");
+  await page.getByText("Edit tags", { exact: true }).click();
+  await page.getByRole("button", { name: "Quick", exact: true }).click();
+  await page.getByText("Edit tags", { exact: true }).click();
   await expect(page.getByText("AI estimated", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Passive" }).first()).toHaveAttribute(
     "aria-pressed",
@@ -145,6 +158,11 @@ test("imports a TikTok link, then saves the streamlined Review draft", async ({ 
   );
   await page.getByRole("button", { name: "Save recipe" }).click();
   const saved = (await saveRequest).postDataJSON();
+  expect(saved.ingredients).toEqual([
+    { ...draftRecipe.ingredients[0], metric_quantity: "450 g" },
+    draftRecipe.ingredients[1],
+  ]);
+  expect(saved.library_tags).toEqual([...draftRecipe.library_tags, "quick"]);
   expect(saved.steps).toEqual([
     {
       id: "66ccce3a-1274-4ea2-a99b-ff092f3761d1",
@@ -181,4 +199,30 @@ test("sends YouTube links to the link parser", async ({ page }) => {
     url: "https://www.youtube.com/watch?v=recipe",
   });
   await expect(page.getByRole("heading", { name: "Review recipe" })).toBeVisible();
+});
+
+test("keeps pasted text and optional metadata when returning from review", async ({ page }) => {
+  await page.getByRole("tab", { name: "Paste recipe text" }).click();
+  await page.getByLabel("Recipe text", { exact: true }).fill("Sear one block of tofu, then simmer with soy sauce.");
+  await page.getByRole("button", { name: "Optional details" }).click();
+  await page.getByLabel("Title (optional)").fill("My tofu braise");
+  await page.getByLabel("Notes (optional)").fill("Use firm tofu.");
+  await page.getByRole("button", { name: "Quick", exact: true }).click();
+  const parseRequest = page.waitForRequest(
+    (request) => request.method() === "POST" && new URL(request.url()).pathname === "/recipes/parse/transcript",
+  );
+  await page.getByRole("button", { name: "Create draft" }).click();
+  expect((await parseRequest).postDataJSON()).toEqual({
+    transcript: "Sear one block of tofu, then simmer with soy sauce.",
+    title: "My tofu braise",
+    notes: "Use firm tofu.",
+    library_tags: ["quick"],
+  });
+  await page.getByRole("button", { name: "Back to source" }).click();
+  await expect(page.getByRole("tab", { name: "Paste recipe text" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("Recipe text", { exact: true })).toHaveValue("Sear one block of tofu, then simmer with soy sauce.");
+  await page.getByRole("button", { name: "Optional details" }).click();
+  await expect(page.getByLabel("Title (optional)")).toHaveValue("My tofu braise");
+  await expect(page.getByLabel("Notes (optional)")).toHaveValue("Use firm tofu.");
+  await expect(page.getByRole("button", { name: "Quick", exact: true })).toHaveAttribute("aria-pressed", "true");
 });

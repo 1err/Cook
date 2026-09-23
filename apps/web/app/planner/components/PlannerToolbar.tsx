@@ -13,10 +13,7 @@ export function PlannerToolbar({ weekRange, onPrevious, onNext }: PlannerToolbar
 
   return (
     <section className="planner-toolbar">
-      <div>
-        <span>{weekRange}</span>
-        <h1 className="cw-display">{t("planner.title")}</h1>
-      </div>
+      <strong>{weekRange}</strong>
       <div className="planner-toolbar__actions">
         <button type="button" onClick={onPrevious} aria-label={t("common.previous")}>←</button>
         <button type="button" onClick={onNext} aria-label={t("common.next")}>→</button>

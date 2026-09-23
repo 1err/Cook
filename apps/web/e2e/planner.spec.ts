@@ -107,18 +107,41 @@ async function installPlannerFixtures(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (route) => route.abort());
   await installPlannerFixtures(page);
   await page.goto("/planner?week=2026-08-10");
 });
 
-test("renders a day-by-meal matrix with compact multi-recipe states", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Desktop matrix geometry is verified once.");
+test("keeps Planner pictograms and picker controls usable without external icon fonts", async ({ page }) => {
+  await expect(page.getByRole("heading", { name: "Weekly planner" })).toBeVisible();
+  await expect(page.getByText(/^(search|filter_alt|expand_more|close|add)$/)).toHaveCount(0);
+  const emptySlot = page.getByRole("button", { name: "Choose a recipe for dinner on 2026-08-11" });
+  await expect(emptySlot.locator("svg")).toBeVisible();
+  await emptySlot.click();
+
+  const picker = page.getByRole("dialog", { name: "Choose recipe for meal slot" });
+  await expect(picker).toBeVisible();
+  await expect(picker.getByText(/^(search|filter_alt|expand_more|close|add)$/)).toHaveCount(0);
+  await picker.getByRole("button", { name: "Filter planner recipes by tag" }).click();
+  await expect(picker.getByRole("dialog", { name: "Filter planner recipes by tag" })).toBeVisible();
+  await picker.getByRole("button", { name: "Weeknight", exact: true }).click();
+  await expect(picker.getByRole("button", { name: "Clear filter" })).toBeVisible();
+  await picker.getByRole("button", { name: "Close recipe picker" }).last().click();
+  await expect(picker).toBeHidden();
+});
+
+test("renders a readable day-card week beside a compact recipe rail", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Desktop day-card geometry is verified once.");
 
   await expect(page.getByRole("heading", { name: "Recipe Library" })).toBeVisible();
-  await expect(page.getByRole("table", { name: "Weekly meal plan" })).toBeVisible();
-  await expect(page.getByTestId("planner-day-row")).toHaveCount(7);
+  await expect(page.getByRole("region", { name: "Meal planner" })).toBeVisible();
+  await expect(page.getByTestId("planner-day-card")).toHaveCount(7);
   await expect(page.getByTestId("planner-meal-slot")).toHaveCount(21);
-  await expect(page.getByRole("columnheader", { name: "Breakfast" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Mon 10" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sun 16" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Breakfast" })).toHaveCount(7);
+  await expect(page.getByRole("heading", { name: "Lunch" })).toHaveCount(7);
+  await expect(page.getByRole("heading", { name: "Dinner" })).toHaveCount(7);
 
   for (const [slotIndex, layout] of [
     ["0", "one"],
@@ -141,44 +164,82 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
   ).toBeVisible();
   await expect(overflowSlot.getByRole("button", { name: /Open Recipe 07/ })).toBeVisible();
   await expect(overflowSlot.getByRole("button", { name: /Open Recipe 08/ })).toBeVisible();
-  await expect(overflowSlot.getByRole("button", { name: /Open Recipe 09/ })).toHaveCount(0);
+  await expect(overflowSlot.getByRole("button", { name: /Open Recipe 09/ })).toBeVisible();
+  await expect(overflowSlot.getByRole("button", { name: /Open Recipe 10/ })).toHaveCount(0);
 
   const workspaceMetrics = await page.locator("main").evaluate((main) => {
     const rail = main.querySelector<HTMLElement>(".planner-editorial__sidebar")!;
-    const matrix = main.querySelector<HTMLElement>(".planner-matrix")!;
-    const board = matrix.parentElement!;
+    const week = main.querySelector<HTMLElement>(".planner-week-grid")!;
+    const dayCards = Array.from(week.querySelectorAll<HTMLElement>(".planner-day-card"));
+    const railThumbnail = rail.querySelector<HTMLElement>(".planner-drag-card__thumb")!;
     const mainRect = main.getBoundingClientRect();
+    const dayRows = dayCards.map((card) => {
+      const cardRect = card.getBoundingClientRect();
+      const headerRect = card.querySelector<HTMLElement>(".planner-day-card__header")!.getBoundingClientRect();
+      const meals = card.querySelector<HTMLElement>(".planner-day-card__meals")!;
+      const mealsRect = meals.getBoundingClientRect();
+      const mealRects = Array.from(
+        meals.querySelectorAll<HTMLElement>(":scope > .planner-day-card__meal"),
+        (meal) => meal.getBoundingClientRect(),
+      );
+      return {
+        bottom: cardRect.bottom,
+        headerLeftOfMeals: headerRect.right <= mealsRect.left + 1,
+        headerWidth: headerRect.width,
+        mealColumns: getComputedStyle(meals).gridTemplateColumns.split(" ").length,
+        mealLefts: mealRects.map((rect) => rect.left),
+        mealTopSpread: Math.max(...mealRects.map((rect) => rect.top)) - Math.min(...mealRects.map((rect) => rect.top)),
+        overflows: card.scrollWidth > card.clientWidth,
+        top: cardRect.top,
+      };
+    });
     return {
-      documentHeight: document.documentElement.scrollHeight,
+      boardAreaWidth: week.parentElement!.parentElement!.getBoundingClientRect().width,
+      cardColumns: getComputedStyle(week).gridTemplateColumns.split(" ").length,
+      clippedDayCards: dayCards.filter((card) => card.scrollHeight > card.clientHeight).length,
+      dayRows,
       documentWidth: document.documentElement.scrollWidth,
       leftGutter: mainRect.left,
-      matrixBottom: matrix.getBoundingClientRect().bottom,
-      railBottom: rail.getBoundingClientRect().bottom,
       railWidth: rail.getBoundingClientRect().width,
-      railColumns: getComputedStyle(rail.querySelector<HTMLElement>(".planner-editorial__sidebar-scroll")!).gridTemplateColumns.split(" ").length,
-      dayRowHeight: matrix.querySelector<HTMLElement>(".planner-matrix__row")!.getBoundingClientRect().height,
+      railDisplay: getComputedStyle(rail.querySelector<HTMLElement>(".planner-editorial__sidebar-scroll")!).display,
+      railThumbnailHeight: railThumbnail.getBoundingClientRect().height,
+      railThumbnailWidth: railThumbnail.getBoundingClientRect().width,
       rightGutter: window.innerWidth - mainRect.right,
       viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-      boardBottom: board.getBoundingClientRect().bottom,
-      viewportBottomGap: window.innerHeight - board.getBoundingClientRect().bottom,
+      weekWidth: week.getBoundingClientRect().width,
+      workspaceColumns: getComputedStyle(rail.parentElement!).gridTemplateColumns,
+      workspaceWidth: rail.parentElement!.getBoundingClientRect().width,
     };
   });
-  expect(workspaceMetrics.documentHeight).toBeLessThanOrEqual(workspaceMetrics.viewportHeight);
   expect(workspaceMetrics.documentWidth).toBeLessThanOrEqual(workspaceMetrics.viewportWidth);
-  expect(workspaceMetrics.railWidth, JSON.stringify(workspaceMetrics)).toBeGreaterThanOrEqual(450);
-  expect(workspaceMetrics.railWidth, JSON.stringify(workspaceMetrics)).toBeLessThanOrEqual(480);
-  expect(workspaceMetrics.railColumns).toBe(2);
-  expect(workspaceMetrics.dayRowHeight, JSON.stringify(workspaceMetrics)).toBeGreaterThanOrEqual(100);
-  expect(workspaceMetrics.dayRowHeight, JSON.stringify(workspaceMetrics)).toBeLessThanOrEqual(112);
-  expect(Math.abs(workspaceMetrics.leftGutter - workspaceMetrics.rightGutter)).toBeLessThanOrEqual(1);
+  expect(workspaceMetrics.railWidth, JSON.stringify(workspaceMetrics)).toBeGreaterThanOrEqual(220);
+  expect(workspaceMetrics.railWidth, JSON.stringify(workspaceMetrics)).toBeLessThanOrEqual(270);
+  expect(workspaceMetrics.railDisplay).toBe("flex");
+  expect(workspaceMetrics.railThumbnailWidth).toBeCloseTo(64, 0);
+  expect(workspaceMetrics.railThumbnailHeight).toBeCloseTo(52, 0);
+  expect(workspaceMetrics.cardColumns).toBe(1);
+  expect(workspaceMetrics.clippedDayCards).toBe(0);
   expect(
-    Math.max(
-      Math.abs(workspaceMetrics.matrixBottom - workspaceMetrics.railBottom),
-      Math.abs(workspaceMetrics.boardBottom - workspaceMetrics.railBottom),
+    workspaceMetrics.dayRows.every((row, index, rows) => index === 0 || row.top > rows[index - 1].bottom),
+    JSON.stringify(workspaceMetrics.dayRows),
+  ).toBe(true);
+  expect(workspaceMetrics.dayRows.every((row) => row.headerLeftOfMeals)).toBe(true);
+  expect(workspaceMetrics.dayRows.every((row) => row.headerWidth >= 60 && row.headerWidth <= 72)).toBe(true);
+  expect(workspaceMetrics.dayRows.every((row) => row.mealColumns === 3)).toBe(true);
+  expect(workspaceMetrics.dayRows.every((row) => row.mealTopSpread <= 1)).toBe(true);
+  expect(
+    workspaceMetrics.dayRows.every(
+      (row) => row.mealLefts[0] < row.mealLefts[1] && row.mealLefts[1] < row.mealLefts[2],
     ),
-    JSON.stringify(workspaceMetrics),
-  ).toBeLessThanOrEqual(1);
+  ).toBe(true);
+  expect(workspaceMetrics.dayRows.every((row) => !row.overflows)).toBe(true);
+  expect(Math.abs(workspaceMetrics.leftGutter - workspaceMetrics.rightGutter)).toBeLessThanOrEqual(1);
+
+  expect(
+    await page.locator(".planner-day-card__header h2").evaluateAll((headings) =>
+      headings.map((heading) => heading.getAttribute("aria-label")),
+    ),
+  ).toEqual(["Mon 10", "Tue 11", "Wed 12", "Thu 13", "Fri 14", "Sat 15", "Sun 16"]);
   const mealCardMetrics = await page
     .getByRole("button", { name: /Open Recipe 01/ })
     .evaluate((card) => {
@@ -188,24 +249,31 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
       return {
         bodyWidth: body.getBoundingClientRect().width,
         cardWidth: card.getBoundingClientRect().width,
+        cardHeight: card.getBoundingClientRect().height,
         columns: getComputedStyle(card).gridTemplateColumns,
+        dayCardWidth: card.closest<HTMLElement>(".planner-day-card")!.getBoundingClientRect().width,
         imageDisplay: getComputedStyle(image).display,
+        imageHeight: image.getBoundingClientRect().height,
         imageWidth: image.getBoundingClientRect().width,
+        recipeRowWidth: card.closest<HTMLElement>(".planner-slot-recipe")!.getBoundingClientRect().width,
+        slotWidth: card.closest<HTMLElement>("[data-testid='planner-meal-slot']")!.getBoundingClientRect().width,
         titleVisibleRatio: title.clientWidth / title.scrollWidth,
         titleWidth: title.getBoundingClientRect().width,
         titleWhiteSpace: getComputedStyle(title).whiteSpace,
         titleFontSize: parseFloat(getComputedStyle(title).fontSize),
       };
     });
-  expect(mealCardMetrics.imageWidth, JSON.stringify(mealCardMetrics)).toBeGreaterThanOrEqual(65);
-  expect(mealCardMetrics.imageWidth, JSON.stringify(mealCardMetrics)).toBeLessThanOrEqual(67);
-  expect(mealCardMetrics.cardWidth, JSON.stringify(mealCardMetrics)).toBeGreaterThanOrEqual(209);
-  expect(mealCardMetrics.cardWidth, JSON.stringify(mealCardMetrics)).toBeLessThanOrEqual(245);
-  expect(mealCardMetrics.titleVisibleRatio, JSON.stringify(mealCardMetrics)).toBeGreaterThan(0.5);
-  expect(mealCardMetrics.titleFontSize).toBeGreaterThanOrEqual(11);
-  expect(mealCardMetrics.titleWhiteSpace).toBe("nowrap");
-  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeGreaterThanOrEqual(8);
-  expect(workspaceMetrics.viewportBottomGap, JSON.stringify(workspaceMetrics)).toBeLessThanOrEqual(64);
+  expect(mealCardMetrics.imageDisplay).toBe("block");
+  expect(mealCardMetrics.imageWidth).toBeCloseTo(56, 0);
+  expect(mealCardMetrics.imageHeight).toBeCloseTo(46, 0);
+  expect(mealCardMetrics.cardHeight).toBeGreaterThanOrEqual(46);
+  expect(
+    mealCardMetrics.bodyWidth,
+    JSON.stringify({ workspaceMetrics, mealCardMetrics }),
+  ).toBeGreaterThanOrEqual(100);
+  expect(mealCardMetrics.titleVisibleRatio, JSON.stringify(mealCardMetrics)).toBeGreaterThan(0.9);
+  expect(mealCardMetrics.titleFontSize).toBeGreaterThanOrEqual(14);
+  expect(mealCardMetrics.titleWhiteSpace).toBe("normal");
 
   await expect(page).toHaveScreenshot("planner-matrix.png", {
     animations: "disabled",
@@ -213,82 +281,144 @@ test("renders a day-by-meal matrix with compact multi-recipe states", async ({ p
   });
 });
 
-test("keeps every planner tag fully inside the recipe rail", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Desktop tag geometry is verified once.");
+test("anchors the recipe tag popover to the viewport with readable two-column options", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Desktop rail anchoring is verified once.");
 
-  await page.getByRole("button", { name: "Filter planner recipes by tag" }).click();
+  const rail = page.locator(".planner-editorial__sidebar");
+  const trigger = rail.getByRole("button", { name: "Filter planner recipes by tag" });
+  await expect(trigger).toHaveAccessibleDescription("All tags");
+  await trigger.click();
   const panel = page.getByRole("dialog", { name: "Filter planner recipes by tag" });
   await expect(panel).toBeVisible();
+  await expect(panel.getByText("Filter recipes", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Done" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "All tags", exact: true })).toHaveAttribute("aria-pressed", "true");
 
   const tagMetrics = await panel.evaluate((element) => {
     const panelRect = element.getBoundingClientRect();
     const railRect = element.closest<HTMLElement>(".planner-editorial__sidebar")!.getBoundingClientRect();
     const options = Array.from(element.querySelectorAll<HTMLElement>(".tag-filter-popover__option"));
+    const optionGroups = Array.from(element.querySelectorAll<HTMLElement>(".tag-filter-popover__group-options"));
+    const scrollBody = element.querySelector<HTMLElement>("[class*='scrollBody']")!;
     return {
+      bottom: panelRect.bottom,
+      groupColumns: optionGroups.map((group) => getComputedStyle(group).gridTemplateColumns.split(" ").length),
+      left: panelRect.left,
+      panelPosition: getComputedStyle(element).position,
       panelRight: panelRect.right,
       railRight: railRect.right,
       panelScrollWidth: element.scrollWidth,
       panelClientWidth: element.clientWidth,
+      scrollBodyOverflow: getComputedStyle(scrollBody).overflowY,
+      top: panelRect.top,
+      viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
+      width: panelRect.width,
       clippedLabels: options
         .filter((option) => {
           const optionRect = option.getBoundingClientRect();
-          return optionRect.left < panelRect.left || optionRect.right > railRect.right || option.scrollWidth > option.clientWidth;
+          return optionRect.left < panelRect.left || optionRect.right > panelRect.right || option.scrollWidth > option.clientWidth;
         })
         .map((option) => option.textContent?.trim()),
     };
   });
 
-  expect(tagMetrics.panelRight, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(tagMetrics.railRight);
+  expect(tagMetrics.panelPosition).toBe("fixed");
+  expect(tagMetrics.width, JSON.stringify(tagMetrics)).toBeCloseTo(360, 0);
+  expect(tagMetrics.left, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(16);
+  expect(tagMetrics.panelRight, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(tagMetrics.viewportWidth - 16);
+  expect(tagMetrics.top, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(16);
+  expect(tagMetrics.bottom, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(tagMetrics.viewportHeight - 12);
+  expect(tagMetrics.panelRight, JSON.stringify(tagMetrics)).toBeGreaterThan(tagMetrics.railRight);
   expect(tagMetrics.panelScrollWidth, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(tagMetrics.panelClientWidth);
+  expect(tagMetrics.scrollBodyOverflow).toBe("auto");
+  expect(tagMetrics.groupColumns.every((columns) => columns === 2)).toBe(true);
   expect(tagMetrics.clippedLabels).toEqual([]);
+
+  await panel.getByRole("button", { name: "Weeknight", exact: true }).click();
+  await expect(panel).toBeHidden();
+  await expect(trigger).toContainText("Weeknight");
+  await expect(trigger).toHaveAccessibleDescription("Weeknight");
+  const clearFilter = rail.getByRole("button", { name: "Clear filter" });
+  await expect(clearFilter).toBeVisible();
+  await trigger.click();
+  const reopenedPanel = page.getByRole("dialog", { name: "Filter planner recipes by tag" });
+  await expect(reopenedPanel.getByRole("button", { name: "All tags", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(reopenedPanel.getByRole("button", { name: "Weeknight", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const done = reopenedPanel.getByRole("button", { name: "Done" });
+  await done.focus();
+  await page.keyboard.press("Tab");
+  await expect(reopenedPanel).toBeHidden();
+  await expect(clearFilter).toBeFocused();
+
+  await trigger.click();
+  await page.getByRole("dialog", { name: "Filter planner recipes by tag" }).getByRole("button", { name: "Done" }).click();
+  await expect(trigger).toBeFocused();
 });
 
-test("uses the picker width for its tag menu and separates the first tag group", async (
-  { page },
-  testInfo,
-) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "Desktop picker geometry is verified once.",
-  );
+test("closes an open rail filter when its trigger hides at the responsive breakpoint", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "The desktop rail owns this breakpoint transition.");
 
+  const rail = page.locator(".planner-editorial__sidebar");
+  const trigger = rail.getByRole("button", { name: "Filter planner recipes by tag" });
+  await trigger.click();
+  const panel = page.getByRole("dialog", { name: "Filter planner recipes by tag" });
+  await expect(panel).toBeVisible();
+
+  await page.setViewportSize({ width: 700, height: 800 });
+  await expect(rail).toBeHidden();
+  await expect(panel).toBeHidden();
+});
+
+test("keeps the nested picker open when Escape closes its clamped tag popover", async ({ page }) => {
   await page.getByRole("button", { name: "Choose a recipe for breakfast on 2026-08-12" }).click();
   const picker = page.getByRole("dialog", { name: "Choose recipe for meal slot" });
-  await picker.getByRole("button", { name: "Filter planner recipes by tag" }).click();
+  const trigger = picker.getByRole("button", { name: "Filter planner recipes by tag" });
+  await trigger.click();
   const panel = picker.getByRole("dialog", { name: "Filter planner recipes by tag" });
   await expect(panel).toBeVisible();
 
   const tagMetrics = await panel.evaluate((element) => {
     const panelRect = element.getBoundingClientRect();
-    const sheetRect = element
-      .closest<HTMLElement>(".planner-mobile-picker__sheet")!
-      .getBoundingClientRect();
-    const allOptionRect = element
-      .querySelector<HTMLElement>(":scope > .tag-filter-popover__option")!
-      .getBoundingClientRect();
-    const firstGroupTitleRect = element
-      .querySelector<HTMLElement>(".tag-filter-popover__group-title")!
-      .getBoundingClientRect();
     const options = Array.from(element.querySelectorAll<HTMLElement>(".tag-filter-popover__option"));
     return {
+      bottom: panelRect.bottom,
       clippedLabels: options
         .filter((option) => option.scrollWidth > option.clientWidth)
         .map((option) => option.textContent?.trim()),
-      firstGroupGap: firstGroupTitleRect.top - allOptionRect.bottom,
+      isNestedInPicker: Boolean(element.closest(".planner-mobile-picker__sheet")),
       panelLeft: panelRect.left,
       panelRight: panelRect.right,
       panelWidth: panelRect.width,
-      sheetLeft: sheetRect.left,
-      sheetRight: sheetRect.right,
+      top: panelRect.top,
+      viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
     };
   });
 
-  expect(tagMetrics.panelWidth, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(600);
-  expect(tagMetrics.panelLeft, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(tagMetrics.sheetLeft);
-  expect(tagMetrics.panelRight, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(tagMetrics.sheetRight);
-  expect(tagMetrics.firstGroupGap, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(18);
-  expect(tagMetrics.firstGroupGap, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(32);
+  expect(tagMetrics.isNestedInPicker).toBe(true);
+  expect(tagMetrics.panelWidth, JSON.stringify(tagMetrics)).toBeCloseTo(Math.min(360, tagMetrics.viewportWidth - 32), 0);
+  expect(tagMetrics.panelLeft, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(16);
+  expect(tagMetrics.panelRight, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(tagMetrics.viewportWidth - 16);
+  expect(tagMetrics.top, JSON.stringify(tagMetrics)).toBeGreaterThanOrEqual(16);
+  expect(tagMetrics.bottom, JSON.stringify(tagMetrics)).toBeLessThanOrEqual(tagMetrics.viewportHeight - 12);
   expect(tagMetrics.clippedLabels).toEqual([]);
+
+  const viewport = page.viewportSize()!;
+  await page.setViewportSize({ width: viewport.width, height: 260 });
+  await expect.poll(async () => panel.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return (
+      rect.top >= 16 &&
+      rect.bottom <= window.innerHeight - 16 &&
+      parseFloat(element.style.maxHeight) <= window.innerHeight - 32
+    );
+  })).toBe(true);
+
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+  await expect(picker).toBeVisible();
+  await expect(trigger).toBeFocused();
 });
 
 test("preserves picker, remove, drag, and open interactions", async ({ page }, testInfo) => {
@@ -345,18 +475,58 @@ test("preserves picker, remove, drag, and open interactions", async ({ page }, t
   await expect(page).toHaveURL(/\/recipe\/recipe-02$/);
 });
 
-test("stacks the matrix and keeps the picker usable on phone and tablet", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === "desktop", "Responsive stacking runs in phone and tablet projects.");
+test("uses responsive day cards and keeps the picker usable on phone and tablet", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "desktop", "Responsive day cards run in phone and tablet projects.");
 
-  await expect(page.getByTestId("planner-day-row")).toHaveCount(7);
+  await expect(page.getByTestId("planner-day-card")).toHaveCount(7);
   await expect(page.getByTestId("planner-meal-slot")).toHaveCount(21);
   await expect(page.locator(".planner-editorial__sidebar")).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-  const firstRow = page.getByTestId("planner-day-row").first();
-  expect(
-    await firstRow.evaluate((row) => getComputedStyle(row).gridTemplateColumns.split(" ").length),
-  ).toBe(1);
+  const responsiveLayout = await page.locator(".planner-week-grid").evaluate((week) => {
+    const card = week.querySelector<HTMLElement>(".planner-day-card")!;
+    const cardRect = card.getBoundingClientRect();
+    const headerRect = card.querySelector<HTMLElement>(".planner-day-card__header")!.getBoundingClientRect();
+    const meals = card.querySelector<HTMLElement>(".planner-day-card__meals")!;
+    const mealsRect = meals.getBoundingClientRect();
+    const mealRects = Array.from(
+      meals.querySelectorAll<HTMLElement>(":scope > .planner-day-card__meal"),
+      (meal) => meal.getBoundingClientRect(),
+    );
+    const recipeBody = card.querySelector<HTMLElement>(".planner-meal-card__body")!;
+    const recipeTitle = card.querySelector<HTMLElement>(".planner-meal-card__title")!;
+    return {
+      cardColumns: getComputedStyle(week).gridTemplateColumns.split(" ").length,
+      cardOverflows: card.scrollWidth > card.clientWidth,
+      headerAboveMeals: headerRect.bottom <= mealsRect.top + 1,
+      headerLeftOfMeals: headerRect.right <= mealsRect.left + 1,
+      mealColumns: getComputedStyle(meals).gridTemplateColumns.split(" ").length,
+      mealLeftSpread: Math.max(...mealRects.map((rect) => rect.left)) - Math.min(...mealRects.map((rect) => rect.left)),
+      mealTopSpread: Math.max(...mealRects.map((rect) => rect.top)) - Math.min(...mealRects.map((rect) => rect.top)),
+      mealsStayInsideCard: mealRects.every((rect) => rect.left >= cardRect.left && rect.right <= cardRect.right + 1),
+      recipeBodyWidth: recipeBody.getBoundingClientRect().width,
+      recipeTitleFontSize: parseFloat(getComputedStyle(recipeTitle).fontSize),
+      recipeTitleOverflowsHorizontally: recipeTitle.scrollWidth > recipeTitle.clientWidth,
+    };
+  });
+  expect(responsiveLayout.cardColumns).toBe(1);
+  expect(responsiveLayout.cardOverflows).toBe(false);
+  expect(responsiveLayout.mealsStayInsideCard).toBe(true);
+  expect(responsiveLayout.recipeBodyWidth, JSON.stringify(responsiveLayout)).toBeGreaterThanOrEqual(100);
+  expect(responsiveLayout.recipeTitleFontSize).toBeGreaterThanOrEqual(14);
+  expect(responsiveLayout.recipeTitleOverflowsHorizontally).toBe(false);
+  if (testInfo.project.name === "phone") {
+    expect(responsiveLayout.headerAboveMeals, JSON.stringify(responsiveLayout)).toBe(true);
+    expect(responsiveLayout.mealColumns).toBe(1);
+    expect(responsiveLayout.mealTopSpread, JSON.stringify(responsiveLayout)).toBeGreaterThan(0);
+    expect(responsiveLayout.mealLeftSpread).toBeLessThanOrEqual(1);
+  } else {
+    expect(responsiveLayout.headerAboveMeals, JSON.stringify(responsiveLayout)).toBe(true);
+    expect(responsiveLayout.mealColumns).toBe(3);
+    expect(responsiveLayout.mealTopSpread).toBeLessThanOrEqual(1);
+    expect(responsiveLayout.mealLeftSpread, JSON.stringify(responsiveLayout)).toBeGreaterThan(0);
+  }
+  await expect(page.getByRole("heading", { name: "Mon 10" })).toBeVisible();
 
   await page.getByRole("button", { name: "Choose a recipe for breakfast on 2026-08-12" }).click();
   const picker = page.getByRole("dialog", { name: "Choose recipe for meal slot" });
@@ -368,36 +538,79 @@ test("stacks the matrix and keeps the picker usable on phone and tablet", async 
   expect(pickerLayout).toEqual({ display: "flex", flexDirection: "column" });
 });
 
-test("switches from stacked rows to the full matrix at the actual breakpoint", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "The exact breakpoint is verified once.");
+test("switches day-row internals at the phone breakpoint", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "The day-row breakpoint is verified once.");
 
-  await page.setViewportSize({ width: 900, height: 800 });
-  await expect(page.locator(".planner-editorial__sidebar")).toBeHidden();
-  expect(
-    await page.getByTestId("planner-day-row").first().evaluate((row) =>
-      getComputedStyle(row).gridTemplateColumns.split(" ").length,
-    ),
-  ).toBe(1);
-
-  await page.setViewportSize({ width: 901, height: 800 });
-  await expect(page.locator(".planner-editorial__sidebar")).toBeVisible();
-  expect(
-    await page.getByTestId("planner-day-row").first().evaluate((row) =>
-      getComputedStyle(row).gridTemplateColumns.split(" ").length,
-    ),
-  ).toBe(4);
-  const layout = await page.locator(".planner-editorial__sidebar").evaluate((rail) => {
-    const board = rail.parentElement!.querySelector<HTMLElement>(".planner-matrix")!;
+  const readLayout = () => page.locator(".planner-week-grid").evaluate((week) => {
+    const card = week.querySelector<HTMLElement>(".planner-day-card")!;
+    const headerRect = card.querySelector<HTMLElement>(".planner-day-card__header")!.getBoundingClientRect();
+    const meals = card.querySelector<HTMLElement>(".planner-day-card__meals")!;
+    const mealsRect = meals.getBoundingClientRect();
+    const mealRects = Array.from(
+      meals.querySelectorAll<HTMLElement>(":scope > .planner-day-card__meal"),
+      (meal) => meal.getBoundingClientRect(),
+    );
     return {
-      railRight: rail.getBoundingClientRect().right,
-      boardLeft: board.getBoundingClientRect().left,
-      railColumns: getComputedStyle(rail.querySelector<HTMLElement>(".planner-editorial__sidebar-scroll")!).gridTemplateColumns.split(" ").length,
+      cardColumns: getComputedStyle(week).gridTemplateColumns.split(" ").length,
+      dayCardOverflows: card.scrollWidth > card.clientWidth,
+      headerAboveMeals: headerRect.bottom <= mealsRect.top + 1,
+      headerLeftOfMeals: headerRect.right <= mealsRect.left + 1,
+      mealColumns: getComputedStyle(meals).gridTemplateColumns.split(" ").length,
+      mealTopSpread: Math.max(...mealRects.map((rect) => rect.top)) - Math.min(...mealRects.map((rect) => rect.top)),
       pageOverflows: document.documentElement.scrollWidth > window.innerWidth,
     };
   });
-  expect(layout.railRight).toBeLessThan(layout.boardLeft);
-  expect(layout.railColumns).toBe(1);
-  expect(layout.pageOverflows).toBe(false);
+
+  await page.setViewportSize({ width: 700, height: 800 });
+  await expect(page.locator(".planner-editorial__sidebar")).toBeHidden();
+  const phoneLayout = await readLayout();
+  expect(phoneLayout.cardColumns).toBe(1);
+  expect(phoneLayout.headerAboveMeals, JSON.stringify(phoneLayout)).toBe(true);
+  expect(phoneLayout.mealColumns).toBe(1);
+  expect(phoneLayout.mealTopSpread, JSON.stringify(phoneLayout)).toBeGreaterThan(0);
+  expect(phoneLayout.dayCardOverflows).toBe(false);
+  expect(phoneLayout.pageOverflows).toBe(false);
+
+  await page.setViewportSize({ width: 701, height: 800 });
+  await expect(page.locator(".planner-editorial__sidebar")).toBeHidden();
+  const tabletLayout = await readLayout();
+  expect(tabletLayout.cardColumns).toBe(1);
+  expect(tabletLayout.headerAboveMeals, JSON.stringify(tabletLayout)).toBe(true);
+  expect(tabletLayout.mealColumns).toBe(3);
+  expect(tabletLayout.mealTopSpread).toBeLessThanOrEqual(1);
+  expect(tabletLayout.dayCardOverflows).toBe(false);
+  expect(tabletLayout.pageOverflows).toBe(false);
+
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await expect(page.locator(".planner-editorial__sidebar")).toBeHidden();
+  const wideTabletLayout = await readLayout();
+  expect(wideTabletLayout.cardColumns).toBe(1);
+  expect(wideTabletLayout.headerAboveMeals, JSON.stringify(wideTabletLayout)).toBe(true);
+  expect(wideTabletLayout.mealColumns).toBe(3);
+  expect(wideTabletLayout.mealTopSpread).toBeLessThanOrEqual(1);
+  expect(wideTabletLayout.dayCardOverflows).toBe(false);
+  expect(wideTabletLayout.pageOverflows).toBe(false);
+
+  await page.setViewportSize({ width: 1101, height: 800 });
+  await expect(page.locator(".planner-editorial__sidebar")).toBeVisible();
+  const desktopLayout = await readLayout();
+  expect(desktopLayout.cardColumns).toBe(1);
+  expect(desktopLayout.headerLeftOfMeals, JSON.stringify(desktopLayout)).toBe(true);
+  expect(desktopLayout.mealColumns).toBe(3);
+  expect(desktopLayout.mealTopSpread).toBeLessThanOrEqual(1);
+  expect(desktopLayout.dayCardOverflows).toBe(false);
+  expect(desktopLayout.pageOverflows).toBe(false);
+
+  const railLayout = await page.locator(".planner-editorial__sidebar").evaluate((rail) => {
+    const board = rail.parentElement!.querySelector<HTMLElement>(".planner-week-grid")!;
+    return {
+      railRight: rail.getBoundingClientRect().right,
+      boardLeft: board.getBoundingClientRect().left,
+      railDisplay: getComputedStyle(rail.querySelector<HTMLElement>(".planner-editorial__sidebar-scroll")!).display,
+    };
+  });
+  expect(railLayout.railRight).toBeLessThan(railLayout.boardLeft);
+  expect(railLayout.railDisplay).toBe("flex");
 });
 
 test("keeps the Chinese overflow action inside its meal cell", async ({ page }, testInfo) => {

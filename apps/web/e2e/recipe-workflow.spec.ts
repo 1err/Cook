@@ -71,7 +71,7 @@ test.beforeEach(async ({ page }) => {
   await installFixtures(page);
 });
 
-test("keeps the recipe detail hero compact, top-aligned, and responsive", async ({ page }, testInfo) => {
+test("keeps the editorial recipe hero readable and responsive", async ({ page }, testInfo) => {
   await page.goto(`/recipe/${recipe.id}`);
 
   const title = page.getByRole("heading", { level: 1, name: recipe.title });
@@ -88,8 +88,8 @@ test("keeps the recipe detail hero compact, top-aligned, and responsive", async 
     };
   });
 
-  expect(layout.fontSize).toBeLessThanOrEqual(testInfo.project.name === "desktop" ? 56 : 44);
-  expect(layout.justifyContent).toBe("flex-start");
+  expect(layout.fontSize).toBeLessThanOrEqual(testInfo.project.name === "desktop" ? 64 : 44);
+  expect(layout.justifyContent).toBe("center");
   expect(layout.viewportOverflow).toBeLessThanOrEqual(1);
 
   if (testInfo.project.name === "desktop") {

@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
 import { useT } from "../lib/i18n";
+import { useEditorialCopy } from "../lib/editorialCopy";
 import { RecipeCard } from "../components/RecipeCard";
 import { PageHeader, PageShell } from "../components/PageShell";
 import { CATEGORY_LABELS, type LibraryFilterId, type RecipeTagSlug } from "../lib/recipeCategories";
@@ -25,9 +26,10 @@ function LibraryPageContent() {
   const [mineFilters, setMineFilters] = useState<RecipeTagSlug[]>([]);
   const [publicFilter, setPublicFilter] = useState<LibraryFilterId>("all");
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<"mine" | "public">("mine");
+  const [view, setView] = useState<"mine" | "public">(searchParams.get("view") === "public" ? "public" : "mine");
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const t = useT();
+  const copy = useEditorialCopy();
 
   useEffect(() => {
     let active = true;
@@ -123,7 +125,7 @@ function LibraryPageContent() {
 
   return (
     <>
-      <PageHeader title={t("library.title")} />
+      <PageHeader title={t("library.title")} description={copy["library.tagline"]} />
 
       <div className={styles.tabs} role="tablist" aria-label={t("library.views")}>
         <button
@@ -145,7 +147,7 @@ function LibraryPageContent() {
           {t("library.publicLibrary")}
         </button>
         <Link href="/library/friends" role="tab" aria-selected={false} className={styles.tab}>
-          Friends
+          {copy["library.friends"]}
         </Link>
       </div>
 
@@ -196,6 +198,13 @@ function LibraryPageContent() {
                 ? t("library.publicShelfEmpty")
                 : t("common.noMatches")}
           </p>
+          <span className={styles.emptyDescription}>
+            {view === "mine" && recipes.length === 0
+              ? t("library.importRecipePrompt")
+              : activeList.length === 0 && (view === "mine" ? recipes.length : publicRecipes.length) > 0
+                ? t("library.tryAnotherFilter")
+                : t("library.publicShelfEmptyDesc")}
+          </span>
           {view === "mine" && recipes.length === 0 ? (
             <Link href="/import">{t("library.importRecipe")} →</Link>
           ) : null}
@@ -226,7 +235,8 @@ function LibraryPageContent() {
                 </div>
                 <div className={styles.publicBody}>
                   <h2 className="cw-display">{recipe.title}</h2>
-                  {recipe.total_time_minutes ? <p>{recipe.total_time_minutes} min</p> : null}
+                  <div className={styles.metadata}>
+                  {recipe.total_time_minutes ? <p>{recipe.total_time_minutes} {t("recipe.totalTime.minutesSuffix")}</p> : null}
                   {tags.length ? (
                     <div className={styles.publicTags}>
                       {tags.map((tag) => (
@@ -234,6 +244,7 @@ function LibraryPageContent() {
                       ))}
                     </div>
                   ) : null}
+                  </div>
                   <button
                     type="button"
                     className={styles.addButton}

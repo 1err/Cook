@@ -1,12 +1,14 @@
 """
-Generate a structured grocery shopping list from aggregated ingredients using LLM.
+Organize a grocery list with LLM name/category cleanup and exact quantity totals.
 """
 import json
 import logging
 import re
+from collections import Counter
 from typing import Any
 
 from app.core.llm import complete_chat, get_openai_client
+from app.services.shopping_service import aggregate_ingredients
 
 logger = logging.getLogger(__name__)
 
@@ -37,21 +39,30 @@ def _normalize_grocery_category(raw: str | None) -> str:
 
 def _build_system_prompt() -> str:
     return """You are generating a grocery shopping list for a week of cooking.
-These ingredients come from multiple recipes and have already been aggregated.
+These ingredients come from multiple recipes. Their exact quantities have already
+been aggregated deterministically; the supplied quantity is authoritative.
 
 Your task is to generate a clean, practical shopping list a real person would use.
 
 Rules:
 1) Do NOT remove any ingredients.
 2) Do NOT ignore pantry items (salt, oil, sugar, sauces, spices, etc.).
-3) Every input ingredient MUST appear in output purchase_items.
+3) Every input ingredient MUST appear exactly once in output purchase_items.
+   Set source_name to the exact input name so the result can be matched safely.
+   Do not merge different input ingredients or add ingredients.
 4) Normalize ingredient names into clear grocery items.
 5) Preserve the input ingredient language:
    - If the input ingredient name is Chinese, output a Chinese-only name.
    - If the input ingredient name is English, output an English-only name.
    - Never mix Chinese and English in the same item name.
    - Never add translations in parentheses.
-6) Convert quantities into realistic purchase units.
+6) Quantities are attached by the application. Do not return quantity fields.
+   Do not invent purchase amounts, pack sizes, or numeric values for "as needed",
+   "to taste", "适量", "少许", or other uncertain quantities.
+   Do not convert between mass, volume, and item counts without an explicit
+   equivalence in the source. Separate incompatible quantities remain separate.
+   Parentheses may describe an equivalent measure, not another amount to add.
+   Never count the same quantity twice or repeat an equivalent parenthetical amount.
 7) Assign EVERY item to exactly one grocery category from:
    Produce, Dairy, Meat & Seafood, Pantry & Dry Goods, Frozen, Bakery, Other
 
@@ -72,7 +83,7 @@ Do not include prose outside JSON.
 JSON format:
 {
   "purchase_items": [
-    { "name": string, "suggested_purchase": string, "grocery_category": string }
+    { "source_name": string, "name": string, "grocery_category": string }
   ]
 }
 
@@ -89,6 +100,19 @@ def _build_user_prompt(items: list[dict[str, str]]) -> str:
         "Input ingredients JSON:\n"
         f"{json.dumps(payload, ensure_ascii=False)}"
     )
+
+
+def _aggregate_input_items(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Normalize at the API boundary too: clients can send unaggregated inputs."""
+    ingredients = [
+        (name, (item.get("quantity") or "").strip())
+        for item in items
+        if (name := (item.get("name") or "").strip())
+    ]
+    return [
+        {"name": item.name, "quantity": item.total_quantity}
+        for item in aggregate_ingredients(ingredients)
+    ]
 
 
 def _fallback_result(items: list[dict[str, str]]) -> dict[str, Any]:
@@ -175,29 +199,68 @@ def _parse_llm_refine_response(raw: str, fallback_items: list[dict[str, str]]) -
     purchase_items = data.get("purchase_items")
     if not isinstance(purchase_items, list):
         return _fallback_result(fallback_items)
-    purchase_out: list[dict[str, str]] = []
+    # A source reference allows name cleanup without losing ingredients. Legacy
+    # responses without source_name can still match an unambiguous input name.
+    input_by_name = {item["name"].casefold(): item for item in fallback_items}
+    input_names_by_match: dict[str, list[str]] = {}
+    for name in input_by_name:
+        input_names_by_match.setdefault(_normalize_name_for_match(name), []).append(name)
+    refined_by_name: dict[str, dict[str, str]] = {}
     for x in purchase_items:
         if not isinstance(x, dict):
             continue
-        nm = _normalize_purchase_item_name(str(x.get("name", "")).strip(), language_by_name)
+        raw_name = x.get("name")
+        if not isinstance(raw_name, str):
+            continue
+        nm = _normalize_purchase_item_name(raw_name.strip(), language_by_name)
         if not nm:
             continue
-        sp = str(x.get("suggested_purchase", "")).strip() or nm
+        source_name = x.get("source_name", nm)
+        if not isinstance(source_name, str):
+            continue
+        source_key = source_name.strip().casefold()
+        if source_key not in input_by_name:
+            matches = input_names_by_match.get(_normalize_name_for_match(source_key), [])
+            if len(matches) != 1:
+                continue
+            source_key = matches[0]
+        if source_key in refined_by_name:
+            continue
+        original = input_by_name[source_key]
+        if _contains_cjk(original["name"]) != _contains_cjk(nm) or (
+            _contains_cjk(original["name"]) and _contains_latin(nm)
+        ):
+            nm = original["name"]
         gc = x.get("grocery_category")
-        purchase_out.append(
-            {
-                "name": nm,
-                "suggested_purchase": sp,
-                "grocery_category": _normalize_grocery_category(str(gc).strip() if gc is not None else None),
-            }
-        )
-    if not purchase_out:
-        return _fallback_result(fallback_items)
+        refined_by_name[source_key] = {
+            "name": nm,
+            # The model organizes the list; deterministic arithmetic owns totals.
+            "suggested_purchase": original["quantity"] or nm,
+            "grocery_category": _normalize_grocery_category(gc if isinstance(gc, str) else None),
+        }
+    purchase_out = [
+        refined_by_name.get(item["name"].casefold(), fallback)
+        for item, fallback in zip(fallback_items, _fallback_result(fallback_items)["purchase_items"])
+    ]
+    # Keep every ingredient individually addressable by clients. Reserve each
+    # source name first so restoring a duplicate cannot collide with another
+    # model rename (for example pepper renamed to "salt (fine)").
+    for source, purchase in zip(fallback_items, purchase_out):
+        output_key = purchase["name"].casefold()
+        if output_key in input_by_name and output_key != source["name"].casefold():
+            purchase["name"] = source["name"]
+            purchase["suggested_purchase"] = source["quantity"] or source["name"]
+    name_counts = Counter(purchase["name"].casefold() for purchase in purchase_out)
+    for source, purchase in zip(fallback_items, purchase_out):
+        if name_counts[purchase["name"].casefold()] > 1:
+            purchase["name"] = source["name"]
+            purchase["suggested_purchase"] = source["quantity"] or source["name"]
     return {"purchase_items": purchase_out}
 
 
 async def refine_shopping_list(items: list[dict[str, str]]) -> dict[str, Any]:
     """Return ``{ "purchase_items": [...] }`` from aggregated ingredients."""
+    items = _aggregate_input_items(items)
     if not items:
         return {"purchase_items": []}
 
@@ -217,7 +280,7 @@ async def refine_shopping_list(items: list[dict[str, str]]) -> dict[str, Any]:
             ],
         )
     except Exception as e:
-        logger.warning("Shopping refinement using original ingredients error_type=%s", type(e).__name__)
+        logger.warning("Shopping refinement using normalized ingredients error_type=%s", type(e).__name__)
         return _fallback_result(items)
 
     return _parse_llm_refine_response(raw, items)

@@ -81,6 +81,19 @@ describe("RecipeTutorial", () => {
     expect(screen.getByText("Chop the scallions.").closest("li")?.querySelector("svg")).not.toBeNull();
   });
 
+  it("uses the instruction text to illustrate a legacy step without action metadata", () => {
+    const legacyStep = {
+      ...recipe.steps![1],
+      action_type: "other" as const,
+      text: "将茄子切成滚刀块备用",
+    };
+    render(<RecipeTutorial recipe={{ ...recipe, steps: [legacyStep] }} />);
+
+    const illustration = screen.getByText(legacyStep.text).closest("li")?.querySelector("svg");
+    expect(illustration).toHaveAttribute("data-action", "chop");
+    expect(illustration).toHaveAttribute("data-ingredient-variant", "vegetable");
+  });
+
   it("keeps the tutorial section actionable when there are no steps", () => {
     render(<RecipeTutorial recipe={{ ...recipe, steps: [] }} />);
 

@@ -21,7 +21,7 @@ vi.mock("../components/RequireAuth", () => ({
 }));
 
 vi.mock("../lib/api", () => ({ apiFetch: mockApiFetch }));
-vi.mock("../lib/i18n", () => ({ useT: mockUseT }));
+vi.mock("../lib/i18n", () => ({ useT: mockUseT, useI18n: () => ({ language: "en" }) }));
 
 const messages: Record<string, string> = {
   "common.add": "Add",
@@ -159,6 +159,18 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+test("renders Planner controls without exposing icon-font names", async () => {
+  render(<PlannerPage />);
+  await screen.findByRole("heading", { name: "Weekly planner" });
+  expect(screen.queryAllByText(/^(search|filter_alt|expand_more|close|add)$/)).toHaveLength(0);
+
+  fireEvent.click(screen.getByRole("button", { name: "Choose a recipe for dinner on 2026-08-10" }));
+  const picker = await screen.findByRole("dialog", { name: "Choose recipe for meal slot" });
+  expect(within(picker).queryAllByText(/^(search|filter_alt|expand_more|close|add)$/)).toHaveLength(0);
+  fireEvent.click(within(picker).getAllByRole("button", { name: "Close recipe picker" })[1]);
+  expect(screen.queryByRole("dialog", { name: "Choose recipe for meal slot" })).not.toBeInTheDocument();
+});
 
 test("omits the sidebar New recipe footer action", async () => {
   render(<PlannerPage />);

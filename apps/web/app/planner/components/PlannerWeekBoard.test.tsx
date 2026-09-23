@@ -4,7 +4,7 @@ import { emptyMealPlanSlots } from "@cooking/shared";
 import { I18nProvider } from "../../lib/i18n";
 import { PlannerWeekBoard } from "./PlannerWeekBoard";
 
-test("renders seven day rows beneath three meal columns", () => {
+test("renders seven day cards with three meal sections each", () => {
   const dates = Array.from({ length: 7 }, (_, index) => `2026-08-${String(10 + index).padStart(2, "0")}`);
   const planByDate = Object.fromEntries(dates.map((date) => [date, emptyMealPlanSlots()]));
   render(
@@ -25,13 +25,14 @@ test("renders seven day rows beneath three meal columns", () => {
       />
     </I18nProvider>,
   );
-  expect(screen.getByText("Mon")).toBeVisible();
-  expect(screen.getByText("Sun")).toBeVisible();
-  expect(screen.getAllByTestId("planner-day-row")).toHaveLength(7);
+  expect(screen.getByRole("heading", { name: "Mon 10" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Sun 16" })).toBeVisible();
+  expect(screen.getByRole("region", { name: "Meal planner" })).toBeVisible();
+  expect(screen.getAllByTestId("planner-day-card")).toHaveLength(7);
   expect(screen.getAllByTestId("planner-meal-slot")).toHaveLength(21);
-  expect(screen.getByRole("columnheader", { name: "Breakfast" })).toBeVisible();
-  expect(screen.getByRole("columnheader", { name: "Lunch" })).toBeVisible();
-  expect(screen.getByRole("columnheader", { name: "Dinner" })).toBeVisible();
+  expect(screen.getAllByRole("heading", { name: "Breakfast" })).toHaveLength(7);
+  expect(screen.getAllByRole("heading", { name: "Lunch" })).toHaveLength(7);
+  expect(screen.getAllByRole("heading", { name: "Dinner" })).toHaveLength(7);
   expect(
     screen.getByRole("button", { name: "Choose a recipe for breakfast on 2026-08-10" }),
   ).toBeVisible();

@@ -1,22 +1,49 @@
 .illustration {
   display: block;
   overflow: visible;
-  color: var(--cw-color-action);
+  color: var(--cw-color-ink);
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 1.8;
+  stroke-width: 1.75;
+  filter: drop-shadow(0 5px 8px color-mix(in srgb, var(--cw-color-ink) 10%, transparent));
 }
 
-.accent {
-  fill: var(--cw-color-action);
+.illustration path,
+.illustration circle,
+.illustration line,
+.illustration rect {
+  vector-effect: non-scaling-stroke;
 }
 
-.ink {
-  fill: var(--cw-color-ink);
+.halo {
+  fill: color-mix(in srgb, var(--cw-color-surface) 78%, #f3dfb1);
+  stroke: color-mix(in srgb, var(--cw-color-action) 16%, transparent);
+  stroke-width: 1.25;
 }
 
-.surface {
-  fill: var(--cw-color-surface);
+.haloInset {
+  fill: color-mix(in srgb, var(--cw-color-surface) 91%, #f7e9c8);
+  stroke: none;
+}
+
+.terracottaFill { fill: color-mix(in srgb, var(--cw-color-action) 82%, #c96e4e); }
+.sageFill { fill: color-mix(in srgb, var(--cw-color-action) 24%, #9bab86); }
+.sageDarkFill { fill: color-mix(in srgb, var(--cw-color-ink) 32%, #718163); }
+.butterFill { fill: color-mix(in srgb, var(--cw-color-surface) 34%, #edcf7d); }
+.creamFill { fill: color-mix(in srgb, var(--cw-color-surface) 90%, #fff7e6); }
+.inkFill { fill: color-mix(in srgb, var(--cw-color-ink) 87%, #3e453c); }
+.boardFill { fill: color-mix(in srgb, var(--cw-color-surface) 30%, #d8ae79); }
+.knifeFill { fill: color-mix(in srgb, var(--cw-color-surface) 63%, #c9d0c8); }
+.knifeHandle { fill: color-mix(in srgb, var(--cw-color-ink) 74%, #7c5b45); }
+.surfaceDot { fill: var(--cw-color-surface); }
+.waterFill { fill: color-mix(in srgb, var(--cw-color-surface) 42%, #9ebfc0); }
+.accentStroke { stroke: color-mix(in srgb, var(--cw-color-action) 84%, #c96e4e); }
+.creamStroke { stroke: color-mix(in srgb, var(--cw-color-surface) 92%, #fff7e6); }
+.waterStroke { stroke: color-mix(in srgb, var(--cw-color-ink) 30%, #7aa6aa); }
+
+.steam {
+  stroke: color-mix(in srgb, var(--cw-color-ink) 46%, #9bab86);
+  stroke-width: 2;
 }

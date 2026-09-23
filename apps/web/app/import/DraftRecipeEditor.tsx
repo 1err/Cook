@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "../components/ui/Icon";
 import { apiFetch } from "../lib/api";
 import { useT } from "../lib/i18n";
 import { RECIPE_TAG_GROUPS, type RecipeTagSlug } from "../lib/recipeCategories";
@@ -50,7 +51,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
     });
   }
 
-  function updateDraftIngredient(index: number, field: "quantity" | "name", value: string) {
+  function updateDraftIngredient(index: number, field: "quantity" | "name" | "metric_quantity", value: string) {
     const nextIngredients = [...draft.ingredients];
     if (!nextIngredients[index]) return;
     nextIngredients[index] = { ...nextIngredients[index], [field]: value };
@@ -91,11 +92,14 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
   return (
     <div className={styles.review} aria-busy={saving || undefined}>
       <div className={styles.reviewBackRow}>
-        <button type="button" aria-label="Back to source" onClick={onBack} disabled={saving}>← Back to source</button>
+        <button type="button" aria-label={t("import.backToSource")} onClick={onBack} disabled={saving}>← {t("import.backToSource")}</button>
       </div>
 
       <header className={styles.reviewHeader}>
-        <h1 className="cw-display">Review recipe</h1>
+        <div>
+          <h1 className="cw-display">{t("import.reviewRecipe")}</h1>
+          <p>{t("import.reviewPersonalize")}</p>
+        </div>
         <button
           type="button"
           className={styles.saveButton}
@@ -110,9 +114,8 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
 
       <div className={styles.reviewColumns}>
         <aside className={styles.overviewColumn}>
-          <div className={styles.reviewImage}>
-            {draft.thumbnail_url ? <img src={draft.thumbnail_url} alt="" /> : <span className="cw-display">CW</span>}
-          </div>
+          <h2 className={styles.overviewHeading}>{t("import.recipeDetails")}</h2>
+          {draft.thumbnail_url ? <div className={styles.reviewImage}><img src={draft.thumbnail_url} alt="" /></div> : null}
 
           <div className={styles.field}>
             <label htmlFor="draft-title">{t("recipe.recipeTitle")}</label>
@@ -158,53 +161,84 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
             </div>
           </div>
 
-          <fieldset className={styles.tagPicker} disabled={saving}>
-            <legend>{t("common.tags")}</legend>
-            {RECIPE_TAG_GROUPS.map((group) => (
-              <div key={group.id}>
-                <p>{group.label}</p>
-                <div>
-                  {group.tags.map((tag) => (
-                    <button
-                      key={tag.id}
-                      type="button"
-                      aria-pressed={draftTags.includes(tag.id)}
-                      onClick={() => toggleDraftTag(tag.id)}
-                    >
-                      {tag.label}
-                    </button>
-                  ))}
-                </div>
+          <div className={styles.reviewTags}>
+            <p>{t("common.tags")}</p>
+            {draftTags.length > 0 ? (
+              <div className={styles.selectedTags}>
+                {RECIPE_TAG_GROUPS.flatMap((group) => group.tags)
+                  .filter((tag) => draftTags.includes(tag.id))
+                  .map((tag) => <span key={tag.id}>{tag.label}</span>)}
               </div>
-            ))}
-          </fieldset>
+            ) : null}
+            <details>
+              <summary>{t("import.editTags")}</summary>
+              <fieldset className={styles.tagPicker} aria-label={t("common.tags")} disabled={saving}>
+                {RECIPE_TAG_GROUPS.map((group) => (
+                  <div key={group.id}>
+                    <p>{group.label}</p>
+                    <div>
+                      {group.tags.map((tag) => (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          aria-pressed={draftTags.includes(tag.id)}
+                          onClick={() => toggleDraftTag(tag.id)}
+                        >
+                          {tag.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </fieldset>
+            </details>
+          </div>
         </aside>
 
         <div className={styles.contentColumn}>
           <section className={styles.editorSection}>
             <div className={styles.sectionHeader}>
               <h2 className="cw-display">{t("common.ingredients")}</h2>
-              <button type="button" onClick={addDraftIngredient} disabled={saving}>+ {t("common.add")}</button>
+              <button type="button" onClick={addDraftIngredient} disabled={saving}><Icon name="add" size={16} /> {t("common.add")}</button>
             </div>
+            <p className={styles.conversionHint} id="draft-conversion-help">{t("recipe.metricQtyHelp")}</p>
             <div className={styles.ingredientRows}>
               {draft.ingredients.map((ingredient, index) => (
                 <div key={`${draft.id}-${index}`} className={styles.ingredientRow}>
-                  <input
-                    type="text"
-                    aria-label={`Ingredient ${index + 1} amount`}
-                    placeholder={t("recipe.qty")}
-                    value={ingredient.quantity}
-                    onChange={(event) => updateDraftIngredient(index, "quantity", event.target.value)}
-                    disabled={saving}
-                  />
-                  <input
-                    type="text"
-                    aria-label={`Ingredient ${index + 1}`}
-                    placeholder={t("recipe.ingredient")}
-                    value={ingredient.name}
-                    onChange={(event) => updateDraftIngredient(index, "name", event.target.value)}
-                    disabled={saving}
-                  />
+                  <label>
+                    <span>{t("recipe.originalAmount")}</span>
+                    <input
+                      type="text"
+                      aria-label={`${t("recipe.originalAmount")} ${index + 1}`}
+                      placeholder={t("recipe.originalAmount")}
+                      value={ingredient.quantity}
+                      onChange={(event) => updateDraftIngredient(index, "quantity", event.target.value)}
+                      disabled={saving}
+                    />
+                  </label>
+                  <label>
+                    <span>{t("recipe.ingredient")}</span>
+                    <input
+                      type="text"
+                      aria-label={`${t("recipe.ingredient")} ${index + 1}`}
+                      placeholder={t("recipe.ingredient")}
+                      value={ingredient.name}
+                      onChange={(event) => updateDraftIngredient(index, "name", event.target.value)}
+                      disabled={saving}
+                    />
+                  </label>
+                  <label className={styles.conversionField}>
+                    <span>{t("recipe.metricQty")}</span>
+                    <input
+                      type="text"
+                      aria-label={`${t("recipe.metricQty")} ${index + 1}`}
+                      aria-describedby="draft-conversion-help"
+                      placeholder="—"
+                      value={ingredient.metric_quantity ?? ""}
+                      onChange={(event) => updateDraftIngredient(index, "metric_quantity", event.target.value)}
+                      disabled={saving}
+                    />
+                  </label>
                   <button
                     type="button"
                     className={styles.removeButton}
@@ -212,7 +246,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
                     aria-label={t("recipe.removeIngredient")}
                     disabled={saving}
                   >
-                    ×
+                    <Icon name="close" size={16} />
                   </button>
                 </div>
               ))}

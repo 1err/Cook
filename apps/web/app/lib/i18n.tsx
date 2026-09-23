@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { MESSAGE_MAP, type Language } from "@cooking/shared";
+import { MESSAGE_MAP, type Language } from "../../../../packages/shared/src/i18n";
 import { usePathname } from "next/navigation";
 import { isPublicPage } from "./publicRoutes";
 

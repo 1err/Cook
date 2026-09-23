@@ -10,7 +10,7 @@
 .inner {
   align-items: center;
   display: flex;
-  gap: var(--cw-space-6);
+  gap: clamp(1.25rem, 2.4vw, 2.5rem);
   margin: 0 auto;
   max-width: none;
   min-height: calc(var(--app-header-height) - var(--app-header-divider-height));
@@ -33,14 +33,14 @@
 }
 
 .brandMark {
-  height: 38px;
+  height: 32px;
   object-fit: contain;
-  width: 38px;
+  width: 32px;
 }
 
 .brandName {
-  font-family: Inter, "SF Pro Display", "PingFang SC", system-ui, sans-serif;
-  font-size: 1.3rem;
+  font-family: var(--cw-font-display);
+  font-size: 1.55rem;
   font-weight: 700;
   letter-spacing: -0.035em;
   line-height: 1;
@@ -51,7 +51,7 @@
   align-items: stretch;
   align-self: stretch;
   display: flex;
-  gap: var(--cw-space-6);
+  gap: clamp(1.25rem, 2.4vw, 2.5rem);
 }
 
 .navLink {
@@ -59,7 +59,7 @@
   color: var(--cw-color-muted-ink);
   display: inline-flex;
   font-family: Inter, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   font-weight: 600;
   position: relative;
   text-decoration: none;
@@ -97,6 +97,7 @@
 }
 
 .addRecipe {
+  font-size: 0.875rem;
   white-space: nowrap;
 }
 
@@ -186,18 +187,47 @@ button.menuButton {
   }
 }
 
-@media (min-width: 1024px) {
-  .header {
-    --cw-account-size: 36px;
+/* The same four routes stay within thumb reach on phones. */
+.navIcon { display: none; }
+@media (max-width: 640px) {
+  .inner { grid-template-columns: minmax(0, 1fr) auto; }
+  .actions { grid-column: 2; }
+  button.menuButton { display: none; }
+  .brandName { display: inline; font-size: 1.2rem; }
+  .brandMark { width: 30px; height: 30px; }
+  .nav, .navOpen {
+    position: fixed;
+    top: auto; bottom: 0; left: 0; right: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+    padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
+    border: 0;
+    border-top: 1px solid var(--cw-color-divider);
+    border-radius: 0;
+    background: var(--cw-color-canvas);
+    box-shadow: 0 -4px 16px rgb(47 38 33 / 3%);
   }
+  .navLink { min-height: 56px; padding: 4px; flex-direction: column; justify-content: center; gap: 4px; font-size: 0.75rem; font-weight: 500; }
+  .navIcon { display: block; }
+  .navLinkActive { color: var(--cw-color-action); }
+  .navLinkActive::after { display: none; }
+}
+@media (max-width: 380px) {
+  .brandName { font-size: 1.05rem; }
+  .inner { gap: 4px; }
+  .brand { gap: 4px; }
+  .addRecipe { padding-inline: 8px; }
+}
 
-  .brandMark {
-    width: 32px;
-    height: 32px;
-  }
-
-  .accountSkeleton {
-    width: 36px;
-    height: 36px;
-  }
+@media (min-width: 841px) {
+  .inner { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); padding-block: 6px; }
+  .nav { gap: clamp(1.25rem, 2.4vw, 2.4rem); }
+  .navLink { font-size: 0.8125rem; }
+  .actions { --cw-account-size: 36px; justify-self: end; }
+  .brand { justify-self: start; }
+  .brandMark { width: 26px; height: 26px; }
+  .brandName { font-size: 1.25rem; }
+  .addRecipe { min-height: 36px; padding: 0.45rem 0.75rem; font-size: 0.8125rem; }
+  .accountSkeleton { width: 36px; height: 36px; }
 }

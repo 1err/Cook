@@ -151,9 +151,17 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
           </div>
           {plannedSelection.length ? (
             <ul className={styles.selectionList}>
-              {plannedSelection.map((recipeId) => (
-                <li key={recipeId}>{recipes.find((recipe) => recipe.id === recipeId)?.title ?? recipeId}</li>
-              ))}
+              {plannedSelection.map((recipeId) => {
+                const recipe = recipes.find((item) => item.id === recipeId);
+                return (
+                  <li key={recipeId} className={styles.plannedRecipe}>
+                    <span className={styles.recipeThumb}>
+                      {recipe?.thumbnail_url ? <img alt="" src={recipe.thumbnail_url} /> : null}
+                    </span>
+                    <strong>{recipe?.title ?? recipeId}</strong>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <div>
@@ -178,16 +186,22 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
             {filteredRecipes.map((recipe) =>
               recipe.steps?.length ? (
                 <label key={recipe.id} className={styles.recipeChoice}>
+                  <span className={styles.recipeThumb}>
+                    {recipe.thumbnail_url ? <img alt="" src={recipe.thumbnail_url} /> : null}
+                  </span>
+                  <span className={styles.recipeChoiceTitle}>{recipe.title}</span>
                   <input
                     type="checkbox"
                     checked={manualSelection.includes(recipe.id)}
                     onChange={() => toggleRecipe(recipe.id)}
                   />
-                  <span>{recipe.title}</span>
                 </label>
               ) : (
                 <div key={recipe.id} className={styles.recipeChoice}>
-                  <span>{recipe.title}</span>
+                  <span className={styles.recipeThumb}>
+                    {recipe.thumbnail_url ? <img alt="" src={recipe.thumbnail_url} /> : null}
+                  </span>
+                  <span className={styles.recipeChoiceTitle}>{recipe.title}</span>
                   <Link
                     aria-label={`${t("cook.setup.editTutorial")} ${recipe.title}`}
                     href={`/recipe/${encodeURIComponent(recipe.id)}/tutorial/edit`}
@@ -202,9 +216,11 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
       )}
 
       {error ? <p role="alert" className={styles.error}>{error}</p> : null}
-      <Button disabled={selected.length === 0} loading={submitting} onClick={() => void start()}>
-        {t("cook.setup.startCount", { count: selected.length })}
-      </Button>
+      <div className={styles.setupAction}>
+        <Button disabled={selected.length === 0} loading={submitting} onClick={() => void start()}>
+          {t("cook.setup.startCount", { count: selected.length })}
+        </Button>
+      </div>
 
       {conflict ? (
         <div className={styles.dialogBackdrop}>

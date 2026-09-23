@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PageHeader, PageShell } from "../components/PageShell";
+import { PageShell } from "../components/PageShell";
 import { RequireAuth } from "../components/RequireAuth";
 import { apiFetch } from "../lib/api";
+import { useEditorialCopy } from "../lib/editorialCopy";
 import { useT } from "../lib/i18n";
 import type { Recipe } from "../types";
 import { DraftRecipeEditor } from "./DraftRecipeEditor";
 import { ImportSourceStep, type ImportSourceValues } from "./ImportSourceStep";
+import styles from "./ImportFlow.module.css";
 
 async function readErrorMessage(response: Response, fallback: string): Promise<string> {
   try {
@@ -40,6 +42,7 @@ const INITIAL_VALUES: ImportSourceValues = {
 export default function ImportPage() {
   const router = useRouter();
   const t = useT();
+  const editorialCopy = useEditorialCopy();
   const [values, setValues] = useState<ImportSourceValues>(INITIAL_VALUES);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,7 +94,10 @@ export default function ImportPage() {
           />
         ) : (
           <>
-            <PageHeader title="Import recipe" />
+            <header className={styles.sourceHeader}>
+              <h1>{t("import.importRecipe")}</h1>
+              <p>{editorialCopy["import.tagline"]}</p>
+            </header>
             <ImportSourceStep
               values={values}
               parsing={loading}

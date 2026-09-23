@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "../components/ui/Icon";
+import { useT } from "../lib/i18n";
 import { RECIPE_TAG_GROUPS, type RecipeTagSlug } from "../lib/recipeCategories";
 import styles from "./ImportFlow.module.css";
 
@@ -28,6 +30,7 @@ export function ImportSourceStep({
   onChange,
   onSubmit,
 }: ImportSourceStepProps) {
+  const t = useT();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const canSubmit =
     values.mode === "link" ? values.url.trim().length > 0 : values.transcript.trim().length > 0;
@@ -111,7 +114,7 @@ export function ImportSourceStep({
         onClick={() => setDetailsOpen((open) => !open)}
         disabled={parsing}
       >
-        Optional details <span aria-hidden>{detailsOpen ? "−" : "+"}</span>
+        Optional details <Icon name={detailsOpen ? "chevronDown" : "add"} size={18} />
       </button>
 
       {detailsOpen ? (
@@ -167,6 +170,7 @@ export function ImportSourceStep({
           {parsing ? "Creating draft…" : "Create draft"}
         </button>
       </div>
+      <p className={styles.sourceHint}>{t("import.sourceReviewHint")}</p>
     </form>
   );
 }

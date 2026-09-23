@@ -1,12 +1,11 @@
 .panel {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
-  margin-bottom: 1.25rem;
-  padding: 1.15rem 1.25rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
+  padding: 1.3rem;
   border: 1px solid var(--cw-color-divider);
-  border-radius: var(--cw-radius-field);
+  border-radius: 12px;
   background: var(--cw-color-surface);
 }
 
@@ -15,10 +14,12 @@
 }
 
 .copy h2 {
-  margin: 0 0 0.4rem;
+  margin: 0 0 0.45rem;
   color: var(--cw-color-ink);
-  font-size: 1.05rem;
-  font-weight: 750;
+  font-family: var(--cw-font-display, Georgia, serif);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .copy p,
@@ -26,40 +27,41 @@
 .error {
   margin: 0;
   color: var(--cw-color-muted-ink);
-  font-size: 0.8rem;
+  font-size: 0.875rem;
   line-height: 1.5;
 }
 
 .copy .review {
-  margin-top: 0.25rem;
-  font-size: 0.74rem;
+  margin-top: 0.6rem;
+  font-size: 0.82rem;
 }
 
 .actions {
   display: grid;
-  flex: 0 0 auto;
-  justify-items: start;
-  gap: 0.5rem;
-  max-width: 20rem;
+  justify-items: stretch;
+  gap: 0.65rem;
+  min-width: 0;
 }
 
 .button {
   display: inline-flex;
   min-height: 46px;
+  width: 100%;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 0 18px;
-  border: 0;
-  border-radius: 29.5px;
-  background: #003d29;
-  color: #faf1e5;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--cw-color-action);
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-surface);
+  color: var(--cw-color-action);
   cursor: pointer;
   font: inherit;
   font-size: 0.875rem;
   font-weight: 650;
   line-height: 1.3;
   text-decoration: none;
+  text-align: center;
 }
 
 .button img {
@@ -76,7 +78,8 @@
 .button:hover,
 .button:focus-visible,
 .button:visited {
-  color: #faf1e5;
+  color: var(--cw-color-action);
+  background: color-mix(in srgb, var(--cw-color-action) 5%, var(--cw-color-surface));
 }
 
 .button:focus-visible {
@@ -90,12 +93,10 @@
 
 @media (max-width: 680px) {
   .panel {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0.9rem;
+    padding: 1rem;
   }
 
   .actions {
-    max-width: 100%;
+    width: 100%;
   }
 }

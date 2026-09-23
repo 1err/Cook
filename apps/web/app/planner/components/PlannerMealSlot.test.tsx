@@ -62,6 +62,15 @@ test("renders three compact recipes directly without an overflow trigger or dial
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
+test("renders add and remove pictograms without icon-font names", () => {
+  const view = renderSlot(<PlannerMealSlot {...slotProps()} />);
+  expect(screen.queryAllByText("close", { exact: true })).toHaveLength(0);
+
+  view.rerender(<I18nProvider><PlannerMealSlot {...slotProps()} recipeIds={[]} /></I18nProvider>);
+  expect(screen.queryByText("add", { exact: true })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Choose a recipe for dinner on 2026-08-10" })).toBeVisible();
+});
+
 test("marks one recipe with the one-row layout and exposes its complete title", () => {
   renderSlot(<PlannerMealSlot {...slotProps()} recipeIds={["r1"]} />);
 
@@ -100,6 +109,7 @@ test("opens management for four or more recipes without stretching the meal cell
   });
   expect(within(recipeList).getByRole("button", { name: "Open One for dinner on 2026-08-10" })).toBeVisible();
   expect(within(recipeList).getByRole("button", { name: "Open Two for dinner on 2026-08-10" })).toBeVisible();
+  expect(within(recipeList).getByRole("button", { name: "Open Three for dinner on 2026-08-10" })).toBeVisible();
   expect(within(recipeList).queryByRole("button", { name: "Open Four for dinner on 2026-08-10" })).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", {
     name: "View all 4 planned recipes for dinner on 2026-08-10",

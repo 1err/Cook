@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "../components/ui/Button";
+import { Icon } from "../components/ui/Icon";
 import { useT } from "../lib/i18n";
 import styles from "./CookPage.module.css";
 import { useCookingSession } from "./useCookingSession";
@@ -16,6 +17,7 @@ export function CookScreen() {
   if (controller.status === "loading") {
     return (
       <div className={styles.centerState}>
+        <span className={styles.loadingMark} aria-hidden="true" />
         <p role="status">{t("common.loading")}</p>
       </div>
     );
@@ -24,12 +26,15 @@ export function CookScreen() {
   if (controller.status === "error") {
     return (
       <section className={styles.centerState}>
-        <p className={styles.eyebrow}>{t("nav.cook")}</p>
-        <h1>{t("cook.error.title")}</h1>
-        <p role="alert">{controller.error}</p>
-        <Button variant="secondary" onClick={() => void controller.refresh()}>
-          {t("common.refresh")}
-        </Button>
+        <div className={styles.errorPanel}>
+          <Icon name="chef" size={36} className={styles.errorIcon} />
+          <p className={styles.eyebrow}>{t("nav.cook")}</p>
+          <h1>{t("cook.error.title")}</h1>
+          <p role="alert">{controller.error}</p>
+          <Button variant="secondary" onClick={() => void controller.refresh()}>
+            {t("common.refresh")}
+          </Button>
+        </div>
       </section>
     );
   }

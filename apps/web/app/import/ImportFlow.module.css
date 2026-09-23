@@ -1,10 +1,34 @@
+.sourceHeader {
+  max-width: 48rem;
+  margin: 0.75rem auto 1.75rem;
+  text-align: center;
+}
+
+.sourceHeader h1 {
+  margin: 0;
+  color: var(--cw-color-ink);
+  font-family: var(--cw-font-display);
+  font-size: clamp(2.25rem, 4vw, 3rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.12;
+}
+
+.sourceHeader p {
+  margin: 0.8rem 0 0;
+  color: var(--cw-color-muted-ink);
+  font-family: var(--cw-font-display);
+  font-size: clamp(1rem, 1.6vw, 1.2rem);
+  line-height: 1.5;
+}
+
 .sourcePanel {
-  max-width: 52rem;
-  padding: clamp(1.25rem, 4vw, 2rem);
+  max-width: 45rem;
+  margin: 0 auto 2rem;
+  padding: clamp(1.25rem, 3vw, 1.75rem);
   border: 1px solid var(--cw-color-divider);
-  border-radius: var(--cw-radius-card);
+  border-radius: 12px;
   background: var(--cw-color-surface);
-  box-shadow: 0 12px 34px rgb(47 38 33 / 6%);
 }
 
 .sourceTabs {
@@ -16,23 +40,24 @@
 
 .sourceTabs button {
   position: relative;
-  padding: 0 1.2rem 0.8rem 0;
+  flex: 1;
+  padding: 0.55rem 0.5rem 0.9rem;
   border: 0;
   background: transparent;
   color: var(--cw-color-muted-ink);
   cursor: pointer;
   font: inherit;
   font-size: 0.88rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .sourceTabs button[aria-selected="true"] {
-  color: var(--cw-color-ink);
+  color: var(--cw-color-action);
 }
 
 .sourceTabs button[aria-selected="true"]::after {
   position: absolute;
-  right: 1.2rem;
+  right: 0;
   bottom: -1px;
   left: 0;
   height: 2px;
@@ -48,21 +73,23 @@
 .field label,
 .tagPicker legend {
   color: var(--cw-color-ink);
-  font-size: 0.8rem;
-  font-weight: 750;
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
 .field input,
 .field textarea {
   width: 100%;
   min-width: 0;
-  padding: 0.8rem 0.9rem;
+  min-height: 2.75rem;
+  padding: 0.65rem 0.75rem;
   border: 1px solid var(--cw-color-divider);
   border-radius: var(--cw-radius-field);
   outline: 0;
-  background: var(--cw-color-canvas);
+  background: var(--cw-color-surface);
   color: var(--cw-color-ink);
   font: inherit;
+  font-size: 0.875rem;
   line-height: 1.5;
   resize: vertical;
 }
@@ -74,7 +101,8 @@
 
 .field small {
   color: var(--cw-color-muted-ink);
-  font-size: 0.78rem;
+  font-size: 0.8125rem;
+  line-height: 1.55;
 }
 
 .optionalToggle {
@@ -82,17 +110,17 @@
   width: 100%;
   align-items: center;
   justify-content: space-between;
-  margin-top: 1.25rem;
-  padding: 0.9rem 0;
-  border: 0;
-  border-top: 1px solid var(--cw-color-divider);
-  border-bottom: 1px solid var(--cw-color-divider);
+  margin-top: 1.5rem;
+  min-height: 2.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-field);
   background: transparent;
   color: var(--cw-color-ink);
   cursor: pointer;
   font: inherit;
   font-size: 0.85rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .optionalDetails {
@@ -112,8 +140,8 @@
 .tagPicker p {
   margin: 0 0 0.45rem;
   color: var(--cw-color-muted-ink);
-  font-size: 0.7rem;
-  font-weight: 750;
+  font-size: 0.8125rem;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -143,9 +171,16 @@
 }
 
 .sourceActions {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
   margin-top: 1.5rem;
+}
+
+.sourceHint {
+  margin: 0.8rem 0 0;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .sourceActions button,
@@ -158,7 +193,8 @@
   color: var(--cw-color-on-action);
   cursor: pointer;
   font: inherit;
-  font-weight: 750;
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
 .sourceActions button:disabled,
@@ -175,6 +211,8 @@
 
 .review {
   min-width: 0;
+  max-width: 72rem;
+  margin-inline: auto;
 }
 
 .reviewBackRow {
@@ -189,7 +227,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.84rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .reviewHeader {
@@ -197,7 +235,9 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1.75rem;
+  margin-bottom: 1.5rem;
+  padding: 0.4rem 0 1rem;
+  border-bottom: 1px solid var(--cw-color-divider);
   position: sticky;
   top: var(--app-header-height);
   z-index: 20;
@@ -207,41 +247,109 @@
 .reviewHeader h1 {
   margin: 0;
   color: var(--cw-color-ink);
-  font-size: clamp(2rem, 4vw, 3rem);
+  font-family: var(--cw-font-display);
+  font-size: clamp(2rem, 4vw, 2.75rem);
   font-weight: 600;
   letter-spacing: -0.035em;
-  line-height: 1;
+  line-height: 1.15;
+}
+
+.reviewHeader p {
+  margin: 0.5rem 0 0;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 .reviewColumns {
   display: grid;
   align-items: start;
-  gap: 1.5rem;
-  grid-template-columns: minmax(18rem, 0.78fr) minmax(0, 1.42fr);
+  gap: 1rem;
+  grid-template-columns: 18rem minmax(0, 1fr);
 }
 
 .overviewColumn,
 .contentColumn {
   display: grid;
   min-width: 0;
-  gap: 1.25rem;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: 10px;
+  background: var(--cw-color-surface);
 }
 
-.overviewColumn,
+.overviewColumn {
+  align-content: start;
+}
+
+.overviewHeading {
+  margin: 0;
+  font-family: var(--cw-font-display);
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.reviewTags {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--cw-color-divider);
+}
+
+.reviewTags > p {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.selectedTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.selectedTags span {
+  padding: 0.4rem 0.6rem;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--cw-color-action) 9%, var(--cw-color-surface));
+  color: var(--cw-color-action);
+  font-size: 0.75rem;
+}
+
+.reviewTags summary {
+  width: fit-content;
+  padding-block: 0.6rem;
+  color: var(--cw-color-action);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.reviewTags .tagPicker {
+  margin-top: 0.75rem;
+}
+
+.contentColumn > :last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
 .editorSection,
 .contentColumn :global(.string-list-editor) {
-  padding: 1.25rem;
-  border: 1px solid var(--cw-color-divider);
-  border-radius: var(--cw-radius-card);
-  background: var(--cw-color-surface);
+  padding: 0 0 2rem;
+  border: 0;
+  border-bottom: 1px solid var(--cw-color-divider);
+  border-radius: 0;
+  background: transparent;
 }
 
 .reviewImage {
   display: grid;
   overflow: hidden;
   aspect-ratio: 4 / 3;
-  margin-bottom: 0.25rem;
-  border-radius: var(--cw-radius-field);
+  margin-bottom: 0.5rem;
+  border-radius: var(--cw-radius-card);
   place-items: center;
   background: var(--cw-color-subtle-surface);
   color: var(--cw-color-action);
@@ -266,7 +374,8 @@
 
 .timeField span {
   display: flex;
-  min-height: 3rem;
+  align-self: stretch;
+  min-height: 2.75rem;
   align-items: center;
   padding: 0 0.85rem;
   border: 1px solid var(--cw-color-divider);
@@ -274,7 +383,7 @@
   border-radius: 0 var(--cw-radius-field) var(--cw-radius-field) 0;
   background: var(--cw-color-subtle-surface);
   color: var(--cw-color-muted-ink);
-  font-size: 0.78rem;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 
@@ -291,38 +400,67 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
 }
 
 .sectionHeader h2 {
   margin: 0;
+  font-family: var(--cw-font-display);
   font-size: 1.55rem;
   font-weight: 600;
 }
 
 .sectionHeader button,
 .contentColumn :global(.add-row-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
   min-height: 2.75rem;
   padding: 0.4rem 0.55rem;
-  border: 0;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
   background: transparent;
   color: var(--cw-color-action);
   cursor: pointer;
   font: inherit;
-  font-size: 0.78rem;
-  font-weight: 750;
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
 .ingredientRows {
   display: grid;
-  gap: 0.65rem;
+  gap: 0;
+}
+
+.conversionHint {
+  margin: -0.35rem 0 0.75rem;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.8125rem;
+  line-height: 1.5;
 }
 
 .ingredientRow {
   display: grid;
-  align-items: center;
+  align-items: end;
   gap: 0.55rem;
-  grid-template-columns: minmax(7.5rem, 0.38fr) minmax(0, 1fr) 2rem;
+  padding: 0.7rem 0;
+  grid-template-columns: minmax(6.5rem, 0.6fr) minmax(0, 1fr) minmax(8.5rem, 0.8fr) 2.75rem;
+}
+
+.ingredientRow label {
+  display: grid;
+  min-width: 0;
+  gap: 0.5rem;
+}
+
+.ingredientRow label > span {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.ingredientRow:not(:first-child) label > span {
+  display: none;
 }
 
 .ingredientRow input,
@@ -337,6 +475,8 @@
   background: var(--cw-color-canvas);
   color: var(--cw-color-ink);
   font: inherit;
+  font-size: 0.875rem;
+  min-height: 2.75rem;
 }
 
 .ingredientRow input:focus,
@@ -363,7 +503,7 @@
 
 .stepRows {
   display: grid;
-  gap: 1rem;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -372,7 +512,9 @@
 .stepRows > li {
   display: grid;
   align-items: start;
-  gap: 0.75rem;
+  gap: 0.9rem;
+  padding: 1rem 0;
+  border-top: 1px solid var(--cw-color-divider);
   grid-template-columns: 2rem minmax(0, 1fr) auto;
 }
 
@@ -391,6 +533,32 @@
 .stepBody {
   display: grid;
   gap: 0.6rem;
+}
+
+.review .stepRows > li {
+  gap: 0.75rem;
+}
+
+.review .rowActions {
+  gap: 0;
+}
+
+.review .stepMetadata {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0;
+  background: transparent;
+}
+
+.review .stepMetadataField,
+.review .durationEditor {
+  grid-column: 1 / -1;
+}
+
+.review .attentionControl button,
+.review .actionControl select {
+  min-width: 0;
+  padding-inline: 0.5rem;
+  font-size: 0.8125rem;
 }
 
 .stepBody textarea {
@@ -420,7 +588,7 @@
   border-radius: var(--cw-radius-round);
   background: var(--cw-color-surface);
   color: var(--cw-color-action);
-  font-size: 0.7rem;
+  font-size: 0.8125rem;
 }
 
 .durationField {
@@ -561,7 +729,7 @@
 .contentColumn :global(.string-list-editor summary) {
   color: var(--cw-color-ink);
   cursor: pointer;
-  font-family: var(--cw-type-display-family), var(--cw-type-display-fallback);
+  font-family: var(--cw-font-display);
   font-size: 1.2rem;
   font-weight: 600;
 }
@@ -591,24 +759,87 @@
     flex-direction: column;
   }
 
+  .overviewColumn {
+    max-width: none;
+  }
+
   .saveButton {
     width: 100%;
   }
 }
 
 @media (max-width: 540px) {
-  .ingredientRow {
-    align-items: start;
-    grid-template-columns: 1fr 2rem;
+  .sourceHeader {
+    margin-top: 0.25rem;
+    margin-bottom: 1.25rem;
   }
 
-  .ingredientRow input:nth-child(2) {
-    grid-column: 1;
+  .sourcePanel {
+    max-width: none;
+    padding: 1rem;
+  }
+
+  .sourceHeader h1 {
+    font-size: 2.25rem;
+  }
+
+  .overviewColumn,
+  .contentColumn {
+    padding: 1rem;
+  }
+
+  .reviewImage {
+    max-height: 13rem;
+    aspect-ratio: auto;
+  }
+
+  .reviewHeader {
+    align-items: center;
+    flex-direction: row;
+    gap: 0.75rem;
+    padding-block: 0.65rem;
+  }
+
+  .reviewHeader > div {
+    min-width: 0;
+  }
+
+  .reviewHeader h1 {
+    font-size: 1.65rem;
+  }
+
+  .reviewHeader p {
+    margin-top: 0.3rem;
+    font-size: 0.75rem;
+  }
+
+  .reviewHeader .saveButton {
+    flex: 0 0 auto;
+    width: auto;
+    padding-inline: 0.8rem;
+  }
+
+  .ingredientRow {
+    grid-template-columns: minmax(5rem, 0.65fr) minmax(0, 1fr) 2.75rem;
+    padding-block: 1rem;
+    border-top: 1px solid var(--cw-color-divider);
+  }
+
+  .ingredientRow:not(:first-child) label > span {
+    display: block;
+  }
+
+  .ingredientRow .conversionField {
+    grid-column: 1 / 3;
+  }
+
+  .ingredientRow .conversionField input {
+    max-width: 12rem;
   }
 
   .ingredientRow .removeButton {
-    grid-row: 1 / span 2;
-    grid-column: 2;
+    grid-row: 1;
+    grid-column: 3;
   }
 
   .stepRows > li {
@@ -618,4 +849,22 @@
   .rowActions {
     grid-column: 2;
   }
+
+  .review .stepMetadata {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .field input,
+  .field textarea,
+  .ingredientRow input,
+  .stepBody textarea,
+  .contentColumn :global(.string-row input),
+  .review .actionControl select {
+    font-size: 1rem;
+  }
+}
+
+.sourceTabs button,
+.tagPicker button {
+  min-height: 44px;
 }

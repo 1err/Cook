@@ -1,26 +1,28 @@
 .section {
   display: flex;
-  max-width: 48rem;
+  max-width: 56rem;
   align-items: center;
   justify-content: space-between;
   gap: 2rem;
-  padding: 1.25rem;
-  border: 1px solid var(--cw-color-divider);
-  border-radius: var(--cw-radius-card);
-  background: var(--cw-color-surface);
+  padding: clamp(1.5rem, 4vw, 2.5rem) 0;
+  border-top: 1px solid var(--cw-color-divider);
+  border-bottom: 1px solid var(--cw-color-divider);
 }
 
 .copy h2 {
   margin: 0;
   color: var(--cw-color-ink);
-  font-size: 1rem;
+  font-family: var(--cw-font-display);
+  font-size: clamp(1.6rem, 3vw, 2rem);
+  font-weight: 600;
 }
 
 .copy p {
+  max-width: 34rem;
   margin: 0.4rem 0 0;
   color: var(--cw-color-muted-ink);
-  font-size: 0.88rem;
-  line-height: 1.45;
+  font-size: 0.95rem;
+  line-height: 1.6;
 }
 
 .switch {
@@ -80,12 +82,12 @@
 .state {
   min-width: 3.2rem;
   color: var(--cw-color-muted-ink);
-  font-size: 0.82rem;
+  font-size: 0.875rem;
   font-weight: 750;
 }
 
 .error {
-  max-width: 48rem;
+  max-width: 56rem;
   margin: 1rem 0 0;
   color: var(--cw-color-error);
 }
@@ -94,6 +96,14 @@
   .section {
     align-items: flex-start;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 1.5rem;
   }
+
+  .switch {
+    width: 100%;
+  }
+}
+
+.switch {
+  min-height: 44px;
 }

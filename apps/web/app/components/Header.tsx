@@ -11,12 +11,13 @@ import { AccountMenu } from "./AccountMenu";
 import styles from "./Header.module.css";
 import { ActionLink } from "./ui/Button";
 import { IconButton } from "./ui/IconButton";
+import { Icon } from "./ui/Icon";
 
 const PRIMARY_LINKS = [
-  { href: "/library", key: "nav.library" },
-  { href: "/planner", key: "nav.planner" },
-  { href: "/shopping-list", key: "nav.shopping" },
-  { href: "/cook", key: "nav.cook" },
+  { href: "/library", key: "nav.library", icon: "book" },
+  { href: "/planner", key: "nav.planner", icon: "calendar" },
+  { href: "/shopping-list", key: "nav.shopping", icon: "shopping" },
+  { href: "/cook", key: "nav.cook", icon: "chef" },
 ] as const;
 
 export function Header() {
@@ -86,6 +87,7 @@ export function Header() {
                   key={link.href}
                   onClick={() => setMobileMenuOpen(false)}
                 >
+                  <Icon className={styles.navIcon} name={link.icon} size={22} />
                   {t(link.key)}
                 </Link>
               );

@@ -10,7 +10,7 @@ const { mockRecipesList, mockUseT } = vi.hoisted(() => ({
   mockUseT: vi.fn(),
 }));
 vi.mock("../lib/api", () => ({ webApiClient: { recipes: { list: mockRecipesList } } }));
-vi.mock("../lib/i18n", () => ({ useT: mockUseT }));
+vi.mock("../lib/i18n", () => ({ useT: mockUseT, useI18n: () => ({ language: "en" }) }));
 
 const messages: Record<string, string> = {
   "cook.active.eyebrow": "Cooking now",
@@ -161,7 +161,8 @@ test("shows hands-on work without a countdown and advances explicitly", async ()
   const user = userEvent.setup();
   render(<CookWorkspace controller={current} />);
 
-  expect(screen.getByRole("heading", { name: "Mapo tofu" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Chop the tofu" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Focus Mapo tofu" })).toBeVisible();
   expect(screen.queryByRole("timer")).not.toBeInTheDocument();
   expect(screen.getByText("About 2 min · From recipe · Hands-on")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "Complete step" }));

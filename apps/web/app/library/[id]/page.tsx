@@ -206,10 +206,11 @@ function RecipeEditContent() {
 
   return (
     <div className={styles.editor}>
-      <Link href="/library" className={styles.back}>← {t("nav.library")}</Link>
-
       <header className={styles.pageHeader}>
-        <h1>{t("recipe.editRecipeTitle")}</h1>
+        <div className={styles.pageHeading}>
+          <Link href="/library" className={styles.back}>← {t("nav.library")}</Link>
+          <h1>{t("recipe.editRecipeTitle")}</h1>
+        </div>
         <div className={styles.headerActions}>
           <button type="button" className={styles.cancelButton} onClick={() => router.push("/library")}>
             {t("common.cancel")}
@@ -227,8 +228,17 @@ function RecipeEditContent() {
 
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
 
-      <div className={styles.workflow}>
-        <section className={styles.section}>
+      <div className={styles.editorLayout}>
+        <nav className={styles.sectionNav} aria-label="Recipe editor sections">
+          <a href="#recipe-basics"><span>01</span>{t("recipe.basicDetails")}</a>
+          <a href="#recipe-ingredients"><span>02</span>{t("common.ingredients")}</a>
+          <a href="#recipe-steps"><span>03</span>{t("recipe.steps")}</a>
+          <a href="#recipe-more"><span>04</span>{t("recipe.moreDetails")}</a>
+          <a href="#recipe-sharing"><span>05</span>{t("recipe.sharingAndSource")}</a>
+        </nav>
+
+        <div className={styles.workflow}>
+        <section className={styles.section} id="recipe-basics">
           <div className={styles.sectionHeader}>
             <h2>{t("recipe.basicDetails")}</h2>
           </div>
@@ -300,26 +310,28 @@ function RecipeEditContent() {
               >
                 {uploadingImage ? t("recipe.uploading") : t("common.upload")}
               </button>
-              <label className={styles.field}>
-                <span>{t("recipe.imageUrl")}</span>
+              <details className={styles.imageUrlDisclosure}>
+                <summary>{t("recipe.imageUrl")}</summary>
                 <input
                   type="url"
+                  aria-label={t("recipe.imageUrl")}
                   value={thumbnailUrl}
                   onChange={(event) => setThumbnailUrl(event.target.value)}
                   placeholder="https://…"
                 />
-              </label>
+              </details>
             </div>
           </div>
         </section>
 
-        <section className={styles.section}>
+        <section className={styles.section} id="recipe-ingredients">
           <div className={styles.sectionHeader}>
             <h2>{t("common.ingredients")}</h2>
             <button type="button" className={styles.textButton} onClick={addIngredient}>
               + {t("common.add")}
             </button>
           </div>
+          <p id="recipe-conversion-help" className={styles.selectionSummary}>{t("recipe.metricQtyHelp")}</p>
           <div className={styles.ingredientLabels} aria-hidden>
             <span>{t("recipe.ingredient")}</span>
             <span>{t("recipe.originalAmount")}</span>
@@ -348,6 +360,7 @@ function RecipeEditContent() {
                   onChange={(event) => updateIngredient(index, "metric_quantity", event.target.value)}
                   placeholder={t("recipe.metricQty")}
                   aria-label={`${t("recipe.metricQty")} ${index + 1}`}
+                  aria-describedby="recipe-conversion-help"
                 />
                 <button
                   type="button"
@@ -362,7 +375,7 @@ function RecipeEditContent() {
           </ul>
         </section>
 
-        <div className={`${styles.section} ${styles.stepsSection}`}>
+        <div className={`${styles.section} ${styles.stepsSection}`} id="recipe-steps">
           <StepListEditor
             steps={steps}
             onChange={setSteps}
@@ -371,7 +384,7 @@ function RecipeEditContent() {
           />
         </div>
 
-        <section className={`${styles.section} ${styles.moreSection}`}>
+        <section className={`${styles.section} ${styles.moreSection}`} id="recipe-more">
           <div className={styles.sectionHeader}>
             <h2>{t("recipe.moreDetails")}</h2>
           </div>
@@ -427,7 +440,7 @@ function RecipeEditContent() {
           </div>
         </section>
 
-        <section className={styles.section}>
+        <section className={styles.section} id="recipe-sharing">
           <div className={styles.sectionHeader}>
             <h2>{t("recipe.sharingAndSource")}</h2>
           </div>
@@ -469,6 +482,7 @@ function RecipeEditContent() {
             {deleting ? t("recipe.deleting") : t("common.delete")}
           </button>
         </section>
+        </div>
       </div>
     </div>
   );
