@@ -1,7 +1,7 @@
 {
   "shopping.basicList": "Grocery checklist",
   "shopping.basicDescription": "Ready from your planned recipes. Smart refinement is optional.",
-  "shopping.previewUnavailable": "Meal preview is unavailable. Your grocery checklist is still ready.",
+  "shopping.previewUnavailable": "Meal preview is temporarily unavailable.",
   "shopping.shareList": "Share list",
   "shopping.shareFailed": "Could not open sharing. You can select and copy the ingredients above.",
   "shopping.copyFailed": "Could not copy. Select and copy the ingredients from the list.",

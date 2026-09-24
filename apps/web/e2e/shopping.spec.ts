@@ -206,6 +206,9 @@ test("keeps preparation in context and renders smart groceries without horizonta
   const preparePanel = page.getByRole("region", { name: "Prepare smart shopping list" });
   await expect(preparePanel.getByRole("heading", { name: "Planned meals" })).toBeVisible();
   await expect(preparePanel.getByRole("heading", { name: "Prepare smart list" })).toBeVisible();
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Grocery checklist" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Copy list" })).toHaveCount(0);
   await expect(page.getByText("Organize ingredients by what to buy, then choose products when you are ready.")).toHaveCount(0);
   await expect(preparePanel.getByText("Ginger rice bowl", { exact: true })).toHaveCount(1);
   await expect(preparePanel.getByText("7 recipes · 11 meals", { exact: true })).toBeVisible();
@@ -256,6 +259,7 @@ test("keeps preparation in context and renders smart groceries without horizonta
   }));
   await preparePanel.getByRole("button", { name: "Prepare smart shopping list" }).click();
   await expect(page.getByText("Smart mode", { exact: true })).toBeVisible();
+  await expect(page.getByRole("checkbox")).toHaveCount(4);
   await expect(page.getByRole("heading", { name: "Planned meals" })).toHaveCount(0);
   await expect(page.getByText("Ginger rice bowl", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Produce" })).toBeVisible();
@@ -340,6 +344,11 @@ test("keeps preparation in context and renders smart groceries without horizonta
       fullPage: true,
     });
   }
+  await page.getByRole("button", { name: "Back to original list" }).click();
+  await expect(page.getByRole("button", { name: "Prepare smart shopping list" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Planned meals" })).toBeVisible();
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Copy list" })).toHaveCount(0);
 });
 
 test("keeps long Chinese ingredient quantities readable and product controls separate", async ({ page }, testInfo) => {

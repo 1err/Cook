@@ -1,7 +1,7 @@
 {
   "shopping.basicList": "购物清单",
   "shopping.basicDescription": "根据已计划的食谱汇总。也可选择智能整理。",
-  "shopping.previewUnavailable": "暂时无法显示餐食预览，仍可使用购物清单。",
+  "shopping.previewUnavailable": "暂时无法显示餐食预览。",
   "shopping.shareList": "分享清单",
   "shopping.shareFailed": "无法打开分享。可选择并复制上方食材文字。",
   "shopping.copyFailed": "复制失败，请选择清单中的食材并复制。",
