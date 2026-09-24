@@ -9,16 +9,34 @@ const shoppingItems = [
   { name: "Whole milk", total_quantity: "1 quart" },
 ];
 
+function recipeThumbnail(color: string) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480"><rect width="640" height="480" fill="${color}"/><circle cx="320" cy="240" r="132" fill="#f3dfbd"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 const mealPlans = [
-  { date: "2026-08-10", breakfast: ["recipe-1"], lunch: [], dinner: [] },
+  { date: "2026-08-10", breakfast: ["recipe-1"], lunch: ["recipe-2"], dinner: ["recipe-3"] },
+  { date: "2026-08-11", breakfast: ["recipe-1"], lunch: [], dinner: ["recipe-3"] },
+  { date: "2026-08-12", breakfast: [], lunch: ["recipe-4"], dinner: ["recipe-5"] },
+  { date: "2026-08-13", breakfast: [], lunch: [], dinner: ["recipe-6"] },
+  { date: "2026-08-14", breakfast: [], lunch: ["recipe-2"], dinner: [] },
+  { date: "2026-08-15", breakfast: [], lunch: [], dinner: ["recipe-7"] },
+  { date: "2026-08-16", breakfast: [], lunch: ["recipe-1"], dinner: [] },
 ];
 
 const recipes = [
-  {
-    id: "recipe-1",
-    title: "Ginger rice bowl",
+  ["recipe-1", "Ginger rice bowl", "#bd7658"],
+  ["recipe-2", "Lemon herb chicken", "#71866b"],
+  ["recipe-3", "Creamy tomato pasta", "#b85f45"],
+  ["recipe-4", "Black bean tacos", "#6f624c"],
+  ["recipe-5", "Beef and broccoli stir-fry", "#637b52"],
+  ["recipe-6", "Roasted tomato soup", "#aa533c"],
+  ["recipe-7", "Simple green salad", "#78946b"],
+].map(([id, title, color]) => ({
+    id,
+    title,
     source_url: null,
-    thumbnail_url: null,
+    thumbnail_url: recipeThumbnail(color),
     ingredients: shoppingItems.map(({ name, total_quantity }) => ({ name, quantity: total_quantity })),
     raw_extraction_text: null,
     library_tags: ["weeknight"],
@@ -30,8 +48,7 @@ const recipes = [
     steps: [],
     tips: [],
     equipment: [],
-  },
-];
+  }));
 
 const refinedList = {
   remove: [],
@@ -189,7 +206,28 @@ test("keeps preparation in context and renders smart groceries without horizonta
   const preparePanel = page.getByRole("region", { name: "Prepare smart shopping list" });
   await expect(preparePanel.getByRole("heading", { name: "Planned meals" })).toBeVisible();
   await expect(preparePanel.getByRole("heading", { name: "Prepare smart list" })).toBeVisible();
-  await expect(preparePanel.getByText("Ginger rice bowl")).toBeVisible();
+  await expect(page.getByText("Organize ingredients by what to buy, then choose products when you are ready.")).toHaveCount(0);
+  await expect(preparePanel.getByText("Ginger rice bowl", { exact: true })).toHaveCount(1);
+  await expect(preparePanel.getByText("7 recipes · 11 meals", { exact: true })).toBeVisible();
+  await expect(preparePanel.getByText("3 meals · Mon breakfast · +2 more", { exact: true })).toBeVisible();
+  await expect(preparePanel.getByRole("link")).toHaveCount(4);
+  await preparePanel.getByRole("button", { name: "+ 3 more" }).click();
+  await expect(preparePanel.getByRole("link")).toHaveCount(7);
+
+  const plannedPanel = preparePanel.getByRole("heading", { name: "Planned meals" }).locator("xpath=../..");
+  const prepareAction = preparePanel.getByRole("heading", { name: "Prepare smart list" }).locator("..");
+  const preparationLayout = await Promise.all([
+    plannedPanel.boundingBox(),
+    prepareAction.boundingBox(),
+  ]);
+  expect(preparationLayout[0]).not.toBeNull();
+  expect(preparationLayout[1]).not.toBeNull();
+  if (testInfo.project.name === "desktop") {
+    expect(preparationLayout[0]!.x).toBeLessThan(preparationLayout[1]!.x);
+    expect(preparationLayout[0]!.width).toBeGreaterThan(preparationLayout[1]!.width);
+  } else {
+    expect(preparationLayout[0]!.y).toBeLessThan(preparationLayout[1]!.y);
+  }
 
   const shellMetrics = await page.locator('[data-page-shell="default"]').evaluate((shell) => {
     const rect = shell.getBoundingClientRect();
@@ -203,17 +241,57 @@ test("keeps preparation in context and renders smart groceries without horizonta
   });
   expect(shellMetrics.shellWidth).toBeLessThanOrEqual(1280);
   if (testInfo.project.name === "desktop") {
-    expect(shellMetrics.shellWidth).toBeGreaterThanOrEqual(1120);
+    expect(shellMetrics.shellWidth).toBeGreaterThanOrEqual(1000);
   }
   expect(Math.abs(shellMetrics.leftGutter - shellMetrics.rightGutter)).toBeLessThanOrEqual(1);
   expect(shellMetrics.documentWidth).toBeLessThanOrEqual(shellMetrics.viewportWidth);
 
+  await page.route(`${API_BASE}/shopping-list/refine`, (route) => fulfillJson(route, {
+    ...refinedList,
+    purchase_items: [
+      refinedList.purchase_items[0],
+      { name: "Soy sauce", suggested_purchase: "1 bottle", category: "Pantry & Dry Goods" },
+      ...refinedList.purchase_items.slice(1),
+    ],
+  }));
   await preparePanel.getByRole("button", { name: "Prepare smart shopping list" }).click();
   await expect(page.getByText("Smart mode", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Planned meals" })).toHaveCount(0);
+  await expect(page.getByText("Ginger rice bowl", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Produce" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Pantry & Dry Goods" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Dairy" })).toBeVisible();
   await expect(page.locator("[data-category-icon]")).toHaveCount(0);
+
+  const pantrySection = page.getByRole("heading", { name: "Pantry & Dry Goods" }).locator("..").locator("..");
+  const smartLayout = await pantrySection.evaluate((section) => {
+    const items = section.lastElementChild as HTMLElement;
+    const categoryGrid = section.parentElement!;
+    const workspace = categoryGrid.parentElement!.parentElement!;
+    const header = section.firstElementChild as HTMLElement;
+    const itemRects = Array.from(items.children).map((item) => {
+      const rect = item.getBoundingClientRect();
+      return { left: rect.left, top: rect.top };
+    });
+    return {
+      categoryWidth: categoryGrid.getBoundingClientRect().width,
+      headerWidth: header.getBoundingClientRect().width,
+      itemColumns: getComputedStyle(items).gridTemplateColumns.split(" ").length,
+      itemRects,
+      workspaceWidth: workspace.getBoundingClientRect().width,
+    };
+  });
+  expect(smartLayout.categoryWidth).toBeGreaterThan(smartLayout.workspaceWidth * 0.99);
+  expect(smartLayout.headerWidth).toBeGreaterThan(smartLayout.categoryWidth * 0.99);
+  const expectedIngredientColumns = testInfo.project.name === "phone" ? 1 : 2;
+  expect(smartLayout.itemColumns).toBe(expectedIngredientColumns);
+  expect(smartLayout.itemRects).toHaveLength(2);
+  if (expectedIngredientColumns === 2) {
+    expect(Math.abs(smartLayout.itemRects[0].top - smartLayout.itemRects[1].top)).toBeLessThanOrEqual(1);
+    expect(smartLayout.itemRects[1].left).toBeGreaterThan(smartLayout.itemRects[0].left);
+  } else {
+    expect(smartLayout.itemRects[1].top).toBeGreaterThan(smartLayout.itemRects[0].top);
+  }
 
   const categoryLayout = await page.getByRole("heading", { name: "Produce" }).locator("..").locator("..").evaluate((section) => ({
     width: section.getBoundingClientRect().width,
@@ -256,13 +334,89 @@ test("keeps preparation in context and renders smart groceries without horizonta
     }
   }
   await expect(produceSection.getByRole("link", { name: "View on Weee" })).toHaveCount(3);
-
   if (testInfo.project.name === "desktop" && process.platform === "darwin") {
     await expect(page).toHaveScreenshot("shopping-smart.png", {
       animations: "disabled",
       fullPage: true,
     });
   }
+});
+
+test("keeps long Chinese ingredient quantities readable and product controls separate", async ({ page }, testInfo) => {
+  const longQuantity = "1/2 茶匙（少于 4 克）；另加少许，按口味调整。12 个 + 3 克，4 teaspoons + a few extra to taste.";
+  await page.route(`${API_BASE}/**`, async (route) => {
+    const { pathname } = new URL(route.request().url());
+    if (pathname === "/shopping-list/refine") {
+      await fulfillJson(route, {
+        remove: [],
+        likely_pantry: [],
+        purchase_items: [
+          { name: "五香粉", suggested_purchase: longQuantity, category: "Pantry & Dry Goods" },
+          { name: "泰国罗勒（九层塔）", suggested_purchase: "适量", category: "Pantry & Dry Goods" },
+          { name: "大料", suggested_purchase: "12 个 + 3 克", category: "Pantry & Dry Goods" },
+        ],
+      });
+      return;
+    }
+    if (pathname === "/store-products") {
+      await fulfillJson(route, { products: storeProducts, expires_at: new Date(Date.now() + 60_000).toISOString() });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.getByRole("button", { name: "Prepare smart shopping list" }).click();
+  const ingredient = page.getByRole("checkbox", { name: /五香粉/ }).locator("xpath=../..");
+  await expect(ingredient.getByText(longQuantity, { exact: true })).toBeVisible();
+  const assertReadableLayout = async () => {
+    const layout = await ingredient.evaluate((row) => {
+      const label = row.querySelector("label")!;
+      const name = row.querySelector("strong")!;
+      const amount = row.querySelector("small")!;
+      const products = row.querySelector("button")!;
+      const nameRect = name.getBoundingClientRect();
+      const amountRect = amount.getBoundingClientRect();
+      const labelRect = label.getBoundingClientRect();
+      const productsRect = products.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(amount);
+      return {
+        amountBelowName: amountRect.top >= nameRect.bottom - 1,
+        amountFitsLabel: Array.from(range.getClientRects()).every((rect) => rect.left >= labelRect.left - 1 && rect.right <= labelRect.right + 1),
+        controlsSeparate: labelRect.right <= productsRect.left + 1 || labelRect.bottom <= productsRect.top + 1,
+        nameWidth: nameRect.width,
+        pageFits: document.documentElement.scrollWidth <= window.innerWidth,
+        rowFits: row.scrollWidth <= row.clientWidth + 1,
+      };
+    });
+    expect(layout.amountBelowName).toBe(true);
+    expect(layout.amountFitsLabel).toBe(true);
+    expect(layout.controlsSeparate).toBe(true);
+    expect(layout.nameWidth).toBeGreaterThan(60);
+    expect(layout.pageFits).toBe(true);
+    expect(layout.rowFits).toBe(true);
+  };
+  await assertReadableLayout();
+  if (testInfo.project.name === "phone") {
+    await page.setViewportSize({ width: 320, height: 900 });
+    await assertReadableLayout();
+  } else if (testInfo.project.name === "tablet") {
+    await page.setViewportSize({ width: 640, height: 900 });
+    await assertReadableLayout();
+  }
+
+  await ingredient.getByRole("button", { name: "View products" }).click();
+  const choices = page.getByRole("radiogroup", { name: "Choose 五香粉 for cart" });
+  await expect(choices.getByRole("radio")).toHaveCount(3);
+  await choices.getByRole("radio").nth(1).check();
+  await expect(choices.getByRole("radio").nth(1)).toBeChecked();
+  await ingredient.getByRole("button", { name: "Hide products" }).click();
+  await ingredient.getByRole("checkbox").check();
+  await expect(ingredient.getByRole("checkbox")).toBeChecked();
+  await ingredient.getByRole("checkbox").uncheck();
+  await ingredient.getByRole("button", { name: /More.*五香粉/ }).click();
+  await page.getByRole("button", { name: "Remove from list" }).click();
+  await expect(page.getByRole("checkbox", { name: /五香粉/ })).toHaveCount(0);
 });
 
 test("reviews editable top picks and records only explicit user-confirmed Weee progress", async ({ page }, testInfo) => {

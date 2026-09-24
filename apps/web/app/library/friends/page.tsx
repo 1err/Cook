@@ -6,7 +6,9 @@ import { PageHeader, PageShell } from "../../components/PageShell";
 import { RequireAuth } from "../../components/RequireAuth";
 import { apiFetch } from "../../lib/api";
 import { useEditorialCopy } from "../../lib/editorialCopy";
+import { useT } from "../../lib/i18n";
 import styles from "./Friends.module.css";
+import libraryStyles from "../LibraryPage.module.css";
 
 type Result =
   | { kind: "idle" }
@@ -17,6 +19,7 @@ type Result =
 
 function FriendsSearchPageContent() {
   const editorialCopy = useEditorialCopy();
+  const t = useT();
   const [email, setEmail] = useState("");
   const [result, setResult] = useState<Result>({ kind: "idle" });
 
@@ -52,15 +55,18 @@ function FriendsSearchPageContent() {
 
   return (
     <PageShell>
-      <PageHeader title="Find a friend" description={editorialCopy["friends.tagline"]} />
-
-      <nav className={styles.tabs} aria-label="Library views">
-        <Link href="/library">My recipes</Link>
-        <Link href="/library?view=public">Public</Link>
-        <span aria-current="page">Friends</span>
-      </nav>
+      <PageHeader title={t("library.title")} description={editorialCopy["library.tagline"]} />
+      <div className={libraryStyles.tabs} role="tablist" aria-label={t("library.views")}>
+        <Link href="/library" role="tab" aria-selected={false} className={libraryStyles.tab}>{t("library.myLibrary")}</Link>
+        <Link href="/library?view=public" role="tab" aria-selected={false} className={libraryStyles.tab}>{t("library.publicLibrary")}</Link>
+        <Link href="/library/friends" role="tab" aria-selected={true} className={libraryStyles.tab}>{editorialCopy["library.friends"]}</Link>
+      </div>
 
       <section className={styles.searchPanel} aria-label="Friend library search">
+        <div className={styles.searchHeading}>
+          <h2>Find a friend</h2>
+          <p>{editorialCopy["friends.tagline"]}</p>
+        </div>
         <form onSubmit={onSubmit} className={styles.searchForm}>
           <label htmlFor="friend-email">Email address</label>
           <div className={styles.fieldRow}>
@@ -78,6 +84,7 @@ function FriendsSearchPageContent() {
               {result.kind === "loading" ? "Searching…" : "Search"}
             </button>
           </div>
+          <p className={styles.searchHint}>{t("friends.searchHint")}</p>
         </form>
 
         {result.kind === "found" ? (
@@ -108,6 +115,10 @@ function FriendsSearchPageContent() {
         {result.kind === "error" ? (
           <p className={styles.error} role="alert">{result.message}</p>
         ) : null}
+        <div className={styles.sharingHint}>
+          <h2>{t("friends.sharingTitle")}</h2>
+          <Link href="/settings">{t("friends.sharingSettings")} →</Link>
+        </div>
       </section>
     </PageShell>
   );

@@ -105,6 +105,13 @@
 
 .metadata { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.25rem 0.6rem; margin-top: 0.35rem; }
 .metadata > p + .tags::before { content: "·"; color: var(--cw-color-muted-ink); }
+@media (min-width: 841px) {
+  .media { border-radius: 10px; }
+  .body { padding-block: 0.5rem; }
+  .title { font-size: 1.125rem; }
+  .tag, .time { font-size: 0.75rem; }
+  .metadata { margin-top: 0.3rem; font-size: 0.75rem; line-height: 1.4; }
+}
 @media (max-width: 640px) {
   .placeholder { aspect-ratio: 4 / 3; }
   .body { padding: 0.6rem 0; }

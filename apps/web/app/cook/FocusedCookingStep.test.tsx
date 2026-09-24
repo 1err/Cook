@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { CookingDish, CookingStep } from "@cooking/shared";
 import { FocusedCookingStep } from "./FocusedCookingStep";
@@ -107,4 +107,26 @@ test("retries an image source when cooking advances to the next step", () => {
   );
 
   expect(focusedImage()?.getAttribute("src")).toBe(sharedStepImage);
+});
+
+test("presents one compact progress treatment without repeating the step counter", () => {
+  render(
+    <FocusedCookingStep
+      dish={cookingDish([
+        cookingStep({ state: "completed", resolved_at: now }),
+        cookingStep({
+          id: "step-2",
+          recipe_step_id: "recipe-step-2",
+          position: 1,
+          text: "Finish the dish",
+        }),
+      ])}
+      onAction={vi.fn()}
+    />,
+  );
+
+  const focus = within(screen.getByTestId("focused-step"));
+  expect(focus.getByRole("heading", { name: "Finish the dish" })).toBeVisible();
+  expect(focus.queryByText("Step 2 of 2")).not.toBeInTheDocument();
+  expect(focus.getAllByText("50% complete")).toHaveLength(1);
 });

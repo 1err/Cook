@@ -76,25 +76,21 @@ export function FocusedCookingStep({
 
   return (
     <section className={styles.focusCard} data-testid="focused-step">
-      <header className={styles.focusHeader}>
-        <div>
-          <p className={styles.eyebrow}>{t("cook.step.number", { current: step.position + 1, total: dish.steps.length })}</p>
-          <h2>{dish.title}</h2>
-        </div>
-        <span className={state === "needs_attention" ? styles.attentionBadge : styles.stepBadge}>{stateLabel}</span>
-      </header>
-      <div className={styles.focusProgress}>
-        <span aria-hidden="true" className={styles.progressTrack}>
-          <span style={{ inlineSize: `${progress}%` }} />
-        </span>
-        <span>{t("cook.progress", { progress })}</span>
-      </div>
       <div className={styles.focusGrid}>
         <StepVisual key={step.id} step={step} recipeImage={dish.thumbnail_url} />
         <div className={styles.stepBody}>
-          <h3 className={styles.stepText}>{step.text}</h3>
+          <div className={styles.stepContext}>
+            <span className={state === "needs_attention" ? styles.attentionBadge : styles.stepBadge}>{stateLabel}</span>
+          </div>
+          <h2 className={styles.stepText}>{step.text}</h2>
           <p className={styles.stepMeta}>{formatRecipeStepMetadata(step, t)}</p>
           {showTimer ? <CookingTimer step={{ ...step, state }} /> : null}
+          <div className={styles.focusProgress}>
+            <span aria-hidden="true" className={styles.progressTrack}>
+              <span style={{ inlineSize: `${progress}%` }} />
+            </span>
+            <span>{t("cook.progress", { progress })}</span>
+          </div>
           <div className={styles.stepActions}>
             {step.attention_type === "passive" && state === "ready" ? (
               <Button onClick={() => onAction(step.id, "start_timer")}>{t("cook.action.startTimer")}</Button>

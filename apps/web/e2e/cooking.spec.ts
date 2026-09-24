@@ -264,6 +264,8 @@ test("starts two dishes, advances hands-on work, and runs a passive timer", asyn
   await expect(page.getByRole("heading", { name: "Your cooking session" })).toBeVisible();
   await expect(page.getByText("Work on Mapo tofu")).toBeVisible();
   await expect(page.getByText("0% complete")).toBeVisible();
+  await expect(page.getByTestId("focused-step").getByRole("heading", { name: "Chop the tofu" })).toBeVisible();
+  await expect(page.getByTestId("focused-step").getByText(/^Step \d+ of \d+$/)).toHaveCount(0);
   await expect(page.getByRole("timer")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Complete step" }).click();

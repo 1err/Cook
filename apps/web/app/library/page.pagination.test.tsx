@@ -3,13 +3,13 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { RecipePage } from '@cooking/shared';
 import LibraryPage from './page';
-const { mine, catalog } = vi.hoisted(() => ({mine:vi.fn(),catalog:vi.fn()}));
-vi.mock('next/navigation', () => ({useSearchParams: () => new URLSearchParams()}));
+const { mine, catalog, query } = vi.hoisted(() => ({mine:vi.fn(),catalog:vi.fn(),query:{value:""}}));
+vi.mock('next/navigation', () => ({useSearchParams: () => new URLSearchParams(query.value)}));
 vi.mock('../components/RequireAuth', () => ({RequireAuth: ({children}: {children:ReactNode}) => <>{children}</>}));
 vi.mock('../lib/i18n', () => ({useT: () => (key:string) => key, useI18n: () => ({language:'en'})}));
 vi.mock('../lib/api', () => ({apiFetch:vi.fn(),webApiClient:{recipes:{page:mine,catalogPage:catalog}}}));
 const page = (id:string, next_cursor:string|null=null, already_saved=false):RecipePage => ({items:[{id,title:id,ingredient_count:0,step_count:0,already_saved}],next_cursor});
-beforeEach(() => {mine.mockReset();catalog.mockReset();vi.stubGlobal('ResizeObserver',class {observe(){}disconnect(){}});});
+beforeEach(() => {query.value="";mine.mockReset();catalog.mockReset();vi.stubGlobal('ResizeObserver',class {observe(){}disconnect(){}});});
 afterEach(() => {cleanup();vi.unstubAllGlobals();});
 
 test('loads one page on demand, searches server-side, and uses per-row copy state without private-library scans', async () => {
@@ -85,4 +85,16 @@ test('a catalog copy completing after unmount cannot refresh another account', a
   rendered.unmount();
   await act(async () => { finish(new Response('{}')); });
   expect(mine).toHaveBeenCalledTimes(1);
+});
+
+
+test('a public-library navigation link activates the paginated catalog immediately', async () => {
+  query.value = 'view=public';
+  mine.mockResolvedValue(page('Private recipe'));
+  catalog.mockResolvedValue(page('Linked public recipe'));
+  render(<LibraryPage />);
+  expect(await screen.findByRole('heading', { name: 'Linked public recipe' })).toBeVisible();
+  expect(screen.getByRole('tab', { name: 'library.publicLibrary' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.queryByRole('heading', { name: 'Private recipe' })).not.toBeInTheDocument();
+  expect(catalog).toHaveBeenCalledTimes(1);
 });

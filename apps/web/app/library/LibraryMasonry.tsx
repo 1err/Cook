@@ -26,8 +26,8 @@ export function LibraryMasonry({ children }: { children: ReactNode }) {
       const heights = items.map((item) => item.getBoundingClientRect().height);
       const bottoms = Array<number>(columnCount).fill(0);
       items.forEach((item, index) => {
-        // Keep each group in reading order, even when photo heights differ.
-        const column = index % columnCount;
+        const column = bottoms.reduce((shortest, bottom, candidate) =>
+          bottom < bottoms[shortest] ? candidate : shortest, 0);
         item.style.transform = `translate(${column * (columnWidth + columnGap)}px, ${bottoms[column]}px)`;
         bottoms[column] += heights[index] + rowGap;
       });

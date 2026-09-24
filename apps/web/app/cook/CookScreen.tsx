@@ -27,7 +27,7 @@ export function CookScreen() {
     return (
       <section className={styles.centerState}>
         <div className={styles.errorPanel}>
-          <span className={styles.errorIcon} aria-hidden="true"><Icon name="chef" size={32} /></span>
+          <Icon name="chef" size={36} className={styles.errorIcon} />
           <p className={styles.eyebrow}>{t("nav.cook")}</p>
           <h1>{t("cook.error.title")}</h1>
           <p role="alert">{controller.error}</p>

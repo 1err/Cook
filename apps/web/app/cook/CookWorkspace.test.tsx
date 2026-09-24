@@ -164,7 +164,8 @@ test("shows hands-on work without a countdown and advances explicitly", async ()
   const user = userEvent.setup();
   render(<CookWorkspace controller={current} />);
 
-  expect(screen.getByRole("heading", { name: "Mapo tofu" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Chop the tofu" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Focus Mapo tofu" })).toBeVisible();
   expect(screen.queryByRole("timer")).not.toBeInTheDocument();
   expect(screen.getByText("About 2 min · From recipe · Hands-on")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "Complete step" }));

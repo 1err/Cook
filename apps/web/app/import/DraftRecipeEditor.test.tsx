@@ -18,6 +18,11 @@ vi.mock("../lib/i18n", () => ({
       "common.saving": "Saving…",
       "common.tags": "Tags",
       "import.saveRecipe": "Save recipe",
+      "import.backToSource": "Back to source",
+      "import.reviewRecipe": "Review recipe",
+      "import.reviewPersonalize": "Make it yours, then save it to your library.",
+      "import.recipeDetails": "Recipe details",
+      "import.editTags": "Edit tags",
       "import.untitledRecipe": "Untitled recipe",
       "recipe.coverImage": "Cover image",
       "recipe.description": "Description",
@@ -26,6 +31,9 @@ vi.mock("../lib/i18n", () => ({
       "recipe.equipment.placeholder": "Equipment item",
       "recipe.ingredient": "Ingredient",
       "recipe.qty": "Amount",
+      "recipe.originalAmount": "Original amount",
+      "recipe.metricQty": "Amount in g / ml",
+      "recipe.metricQtyHelp": "Optional conversion, e.g. 400 g or 250 ml.",
       "recipe.removeIngredient": "Remove ingredient",
       "recipe.recipeTitle": "Recipe title",
       "recipe.step.addRow": "Add step",
@@ -97,6 +105,29 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("DraftRecipeEditor", () => {
+  it("lets an optional gram or milliliter conversion be edited without changing the original amount or notes", async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValueOnce(new Response(JSON.stringify({ ...draft, id: "saved-1" })));
+    const onSaveSuccess = vi.fn();
+    function ControlledDraft() {
+      const [value, setValue] = useState(draft);
+      return <DraftRecipeEditor draft={value} onChange={setValue} onBack={vi.fn()} onSaveSuccess={onSaveSuccess} />;
+    }
+    render(<ControlledDraft />);
+    const conversion = screen.getByLabelText("Amount in g / ml 1");
+    expect(conversion).toHaveValue("400 g");
+    expect(conversion).toHaveAccessibleDescription("Optional conversion, e.g. 400 g or 250 ml.");
+    expect(conversion).not.toBeRequired();
+    await user.clear(conversion);
+    await user.type(conversion, "450 g");
+    await user.click(screen.getByRole("button", { name: "Save recipe" }));
+    await waitFor(() => expect(onSaveSuccess).toHaveBeenCalledWith("saved-1"));
+    const [, request] = mockApiFetch.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(request.body)).ingredients).toEqual([
+      { ...draft.ingredients[0], metric_quantity: "450 g" },
+    ]);
+  });
+
   it("keeps the review hierarchy focused on editable recipe content", () => {
     render(
       <DraftRecipeEditor
@@ -181,6 +212,7 @@ describe("DraftRecipeEditor", () => {
     expect(screen.getByRole("button", { name: "Back to source" })).toBeDisabled();
     expect(title).toBeDisabled();
     expect(ingredient).toBeDisabled();
+    expect(screen.getByLabelText("Amount in g / ml 1")).toBeDisabled();
     expect(instructions).toBeDisabled();
 
     await user.click(ingredient);

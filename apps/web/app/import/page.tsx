@@ -3,7 +3,7 @@
 import { createManualRecipeDraft } from "@cooking/shared";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PageHeader, PageShell } from "../components/PageShell";
+import { PageShell } from "../components/PageShell";
 import { RequireAuth } from "../components/RequireAuth";
 import { apiFetch } from "../lib/api";
 import { useEditorialCopy } from "../lib/editorialCopy";
@@ -11,6 +11,7 @@ import { useT } from "../lib/i18n";
 import type { Recipe } from "../types";
 import { DraftRecipeEditor } from "./DraftRecipeEditor";
 import { ImportSourceStep, type ImportSourceValues } from "./ImportSourceStep";
+import styles from "./ImportFlow.module.css";
 
 async function readErrorMessage(response: Response, fallback: string): Promise<string> {
   try {
@@ -96,13 +97,15 @@ function ImportPageContent() {
         />
       ) : (
         <>
-          <PageHeader title="Import recipe" description={editorialCopy["import.tagline"]} actions={
+          <header className={styles.sourceHeader}>
+            <h1>{t("import.importRecipe")}</h1>
+            <p>{editorialCopy["import.tagline"]}</p>
             <button className="btn-secondary" type="button" disabled={loading} onClick={() => {
               setError(null);
               setManual(true);
               setDraftRecipe(createManualRecipeDraft());
             }}>{t("import.createManually")}</button>
-          } />
+          </header>
           <ImportSourceStep
             values={values}
             parsing={loading}

@@ -144,34 +144,45 @@
   border-bottom: 0;
 }
 
+.category > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .categoryHeader {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1.25rem 1.5rem 0.75rem;
+  padding: 0.9rem 1.1rem 0.6rem;
   border-bottom: 1px solid var(--cw-color-divider);
 }
 
 .categoryHeader h2 {
   margin: 0;
   font-family: var(--cw-font-display, Georgia, serif);
-  font-size: 1.5rem;
+  font-size: 1.35rem;
   font-weight: 600;
 }
 
 .categoryHeader span {
   color: var(--cw-color-muted-ink);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 600;
 }
 
 .itemBlock {
-  padding: 0.65rem 1.5rem;
+  min-width: 0;
+  padding: 0.35rem 1.1rem;
   border-bottom: 1px solid var(--cw-color-divider);
 }
 
-.itemBlock:last-child {
+.category > div > .itemBlock:nth-child(odd) {
+  border-right: 1px solid var(--cw-color-divider);
+}
+
+.category > div > .itemBlock:nth-last-child(2):nth-child(odd),
+.category > div > .itemBlock:last-child {
   border-bottom: 0;
 }
 
@@ -207,15 +218,15 @@
 .itemRow label > span {
   display: grid;
   min-width: 0;
-  align-items: baseline;
-  gap: 0.75rem;
-  grid-template-columns: minmax(0, 1fr) auto;
+  width: 100%;
+  gap: 0.15rem;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .itemRow strong {
   min-width: 0;
   color: var(--cw-color-ink);
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -226,10 +237,13 @@
 }
 
 .itemRow small {
+  min-width: 0;
   color: var(--cw-color-muted-ink);
-  font-size: 0.875rem;
-  text-align: right;
-  white-space: nowrap;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .itemMenu {
@@ -679,9 +693,13 @@
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(18rem, 21rem);
+  grid-template-columns: minmax(0, 1.35fr) minmax(25rem, 0.95fr);
   align-items: start;
   gap: clamp(1.25rem, 2vw, 2rem);
+}
+
+.smartWorkspace {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .listColumn,
@@ -708,7 +726,7 @@
 
 .plannedMeals,
 .prepareAction {
-  padding: clamp(1.25rem, 2.5vw, 1.75rem);
+  padding: clamp(1rem, 2vw, 1.4rem);
   border: 1px solid var(--cw-color-divider);
   border-radius: 12px;
   background: var(--cw-color-surface);
@@ -723,13 +741,13 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .plannedMeals h2,
 .prepareAction h2 {
   margin: 0;
-  font-size: 1.7rem;
+  font-size: 1.65rem;
   font-weight: 600;
 }
 
@@ -746,26 +764,28 @@
 .plannedMeals header span,
 .plannedMeals > p {
   color: var(--cw-color-muted-ink);
-  font-size: 0.875rem;
+  font-size: 0.8rem;
 }
 
 .mealList {
   display: grid;
+  gap: 0 1.25rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .mealList a {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.8rem 0;
+  gap: 0.7rem;
+  padding: 0.65rem 0;
   border-bottom: 1px solid var(--cw-color-divider);
   color: inherit;
   text-decoration: none;
 }
 
 .mealThumbnail {
-  width: 4.5rem;
+  width: 5.25rem;
   flex: 0 0 auto;
   overflow: hidden;
   aspect-ratio: 4 / 3;
@@ -787,16 +807,19 @@
 }
 
 .mealCopy strong {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+  line-height: 1.25;
   overflow-wrap: anywhere;
 }
 
 .mealCopy > span {
   color: var(--cw-color-muted-ink);
-  font-size: 0.85rem;
+  font-size: 0.76rem;
+  line-height: 1.35;
 }
 
 .mealList > button {
+  grid-column: 1 / -1;
   width: max-content;
   min-height: 2.75rem;
   margin-top: 0.75rem;
@@ -806,7 +829,7 @@
   color: var(--cw-color-action);
   cursor: pointer;
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   font-weight: 750;
 }
 
@@ -917,7 +940,28 @@
   }
 
   .retailerColumn {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .mealList {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .category > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .category > div > .itemBlock,
+  .category > div > .itemBlock:nth-child(odd),
+  .category > div > .itemBlock:nth-last-child(2):nth-child(odd) {
+    border-right: 0;
+    border-bottom: 1px solid var(--cw-color-divider);
+  }
+
+  .category > div > .itemBlock:last-child {
+    border-bottom: 0;
   }
 }
 
@@ -996,15 +1040,6 @@
 
   .itemRow {
     gap: 0.35rem 0.6rem;
-  }
-
-  .itemRow label > span {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.15rem;
-  }
-
-  .itemRow small {
-    text-align: left;
   }
 
   .productToggle {

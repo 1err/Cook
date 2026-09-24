@@ -25,8 +25,8 @@ function LibraryPageContent() {
   const [mineFilters, setMineFilters] = useState<RecipeTagSlug[]>([]);
   const [publicFilter, setPublicFilter] = useState<LibraryFilterId>("all");
   const [search, setSearch] = useState("");
-  const [catalogVisited, setCatalogVisited] = useState(false);
-  const [view, setView] = useState<"mine" | "public">("mine");
+  const [catalogVisited, setCatalogVisited] = useState(searchParams.get("view") === "public");
+  const [view, setView] = useState<"mine" | "public">(searchParams.get("view") === "public" ? "public" : "mine");
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const t = useT();
   const copy = useEditorialCopy();

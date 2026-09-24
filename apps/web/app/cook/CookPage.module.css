@@ -690,3 +690,392 @@
   .stepText { font-size: 1.65rem; }
   .stepActions { gap: 0.5rem; }
 }
+
+/* Phase 4: compact active-cooking hierarchy. */
+.workspace,
+.setup {
+  width: 100%;
+  max-width: 74rem;
+}
+
+.workspace {
+  gap: 0.875rem;
+  padding-top: 0;
+  padding-bottom: 1.5rem;
+}
+
+.workspaceHeader {
+  min-height: 3.75rem;
+  padding: 0 0 0.625rem;
+  border-bottom: 1px solid var(--cw-color-divider);
+}
+
+.workspaceHeader h1,
+.setupHeader h1 {
+  max-width: 30rem;
+  font-size: clamp(2rem, 3vw, 2.5rem);
+  line-height: 1.05;
+}
+
+.workspaceHeader .eyebrow,
+.setupHeader .eyebrow {
+  margin-bottom: 0.2rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+}
+
+.recommendation {
+  max-width: 22rem;
+  padding: 0.35rem 0 0.35rem 0.75rem;
+  border-left-width: 1px;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+.recommendation span {
+  font-size: 0.625rem;
+}
+
+.dishRail {
+  display: flex;
+  gap: 0;
+  min-width: 0;
+  border-top: 0;
+  border-bottom: 1px solid var(--cw-color-divider);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.dishCard {
+  flex: 1 0 12rem;
+  max-width: 18rem;
+  min-height: 4rem;
+  gap: 0.25rem;
+  padding: 0.55rem 0.875rem 0.625rem;
+  border-right: 1px solid var(--cw-color-divider);
+  border-bottom-width: 2px;
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.dishCard[aria-current="true"] {
+  background: color-mix(in srgb, var(--cw-color-action) 4%, transparent);
+}
+
+.dishCardTop strong {
+  overflow: visible;
+  font-size: 1rem;
+  line-height: 1.15;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.dishCardTop > span:last-child,
+.dishCard > .progressTrack {
+  display: none;
+}
+
+.focusCard {
+  gap: 0;
+  padding: clamp(0.875rem, 1.5vw, 1.25rem);
+  border: 1px solid var(--cw-color-divider);
+  border-radius: 0.75rem;
+  background: var(--cw-color-surface);
+}
+
+.focusCard > h2 {
+  font-size: clamp(1.5rem, 2.5vw, 2rem);
+  line-height: 1.15;
+}
+
+.focusGrid,
+.focusGrid:has(.focusIllustration) {
+  grid-template-columns: minmax(16rem, 0.82fr) minmax(20rem, 1.18fr);
+  align-items: stretch;
+  gap: clamp(1.25rem, 3vw, 2.5rem);
+}
+
+.focusVisual,
+.focusIllustration {
+  min-height: 0;
+  max-height: 22rem;
+  border-radius: 0.625rem;
+}
+
+.focusVisual {
+  aspect-ratio: 16 / 10;
+}
+
+.focusIllustration {
+  aspect-ratio: 16 / 10;
+}
+
+.focusIllustration svg {
+  max-width: 7rem;
+  max-height: 7rem;
+}
+
+.stepBody {
+  align-content: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+}
+
+.stepContext {
+  display: flex;
+  align-items: center;
+  min-height: 1.75rem;
+}
+
+.stepBadge,
+.attentionBadge {
+  padding: 0.3rem 0.625rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.stepText {
+  font-size: clamp(1.75rem, 2.7vw, 2.35rem);
+  letter-spacing: -0.018em;
+  line-height: 1.18;
+}
+
+.stepMeta {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.timer {
+  grid-template-columns: auto 1fr;
+  justify-items: start;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  text-align: left;
+}
+
+.timer span {
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.timer strong {
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+}
+
+.focusProgress {
+  gap: 0.625rem;
+  font-size: 0.75rem;
+}
+
+.focusProgress .progressTrack {
+  height: 0.375rem;
+}
+
+.stepActions {
+  gap: 0.5rem;
+  padding-top: 0.125rem;
+}
+
+.workspace button,
+.setup button,
+.workspace input,
+.setup input,
+.workspace summary {
+  font-size: 0.875rem;
+}
+
+.workspace button,
+.setup button {
+  min-height: 44px;
+}
+
+.notice,
+.undoNotice,
+.takeover {
+  padding: 0.625rem 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.sessionControls {
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.preferencePanel summary {
+  padding: 0.55rem 0;
+  font-size: 0.8125rem;
+}
+
+.preferenceGrid {
+  gap: 0.125rem 0.5rem;
+  padding: 0.25rem 0 0.5rem;
+}
+
+.preferenceControl {
+  font-size: 0.8125rem;
+}
+
+.sessionActions {
+  gap: 0.5rem;
+}
+
+.setup {
+  gap: 1rem;
+  padding-top: 0;
+}
+
+.setupHeader {
+  gap: 0.35rem;
+}
+
+.setupHeader p:last-child {
+  max-width: 38rem;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.setupPanel {
+  gap: 0.875rem;
+}
+
+.recipeChoice {
+  min-height: 4.75rem;
+}
+
+.recipeThumb {
+  width: 3.75rem;
+  height: 3.75rem;
+}
+
+.recipeChoice,
+.plannedRecipe {
+  grid-template-columns: 3.75rem minmax(0, 1fr) auto;
+}
+
+.recipeChoiceTitle,
+.plannedRecipe strong {
+  font-size: 1rem;
+}
+
+@media (max-width: 900px) {
+  .focusGrid,
+  .focusGrid:has(.focusIllustration) {
+    grid-template-columns: minmax(14rem, 0.75fr) minmax(18rem, 1.25fr);
+    gap: 1.25rem;
+  }
+
+  .focusVisual,
+  .focusIllustration {
+    max-height: 18rem;
+  }
+
+  .sessionControls {
+    grid-template-columns: 1fr;
+  }
+
+  .sessionActions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .workspace,
+  .setup {
+    gap: 0.75rem;
+    padding-bottom: 1rem;
+  }
+
+  .workspaceHeader {
+    min-height: 0;
+    gap: 0.375rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .workspaceHeader h1,
+  .setupHeader h1 {
+    font-size: clamp(1.75rem, 8vw, 2.125rem);
+  }
+
+  .recommendation {
+    width: 100%;
+    max-width: none;
+    padding: 0;
+  }
+
+  .dishCard {
+    flex-basis: 10rem;
+    min-width: 10rem;
+    min-height: 3.75rem;
+    padding: 0.5rem 0.625rem;
+  }
+
+  .focusCard {
+    padding: 0.75rem;
+  }
+
+  .focusGrid,
+  .focusGrid:has(.focusIllustration) {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .stepBody {
+    order: -1;
+    gap: 0.625rem;
+    padding: 0;
+  }
+
+  .stepText {
+    font-size: clamp(1.5rem, 7vw, 1.85rem);
+    line-height: 1.2;
+  }
+
+  .focusVisual {
+    max-height: 13rem;
+    aspect-ratio: 16 / 9;
+  }
+
+  .focusIllustration {
+    min-height: 5.5rem;
+    max-height: 5.5rem;
+    aspect-ratio: auto;
+  }
+
+  .focusIllustration svg {
+    max-width: 4rem;
+    max-height: 4rem;
+  }
+
+  .stepActions > * {
+    flex: 1 1 8.5rem;
+  }
+
+  .timer {
+    grid-template-columns: 1fr auto;
+  }
+
+  .sessionActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sessionActions > * {
+    width: 100%;
+  }
+
+  .recipeChoices,
+  .selectionList {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .sessionActions {
+    grid-template-columns: 1fr;
+  }
+}

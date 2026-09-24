@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { LanguageControl } from "./LanguageControl";
 import { PublicLinks } from "../public-site/PublicShell";
 
-const HERO_IMAGE = "/brand/editorial-dinner.png";
+const HERO_IMAGE = "/brand/login-original.jpg";
 
 export function AuthShell({
   title,

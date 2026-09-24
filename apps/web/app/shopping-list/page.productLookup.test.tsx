@@ -173,6 +173,72 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+test("offers to refresh legacy quantities without discarding shopping progress", async () => {
+  const storage = stubSessionStorage();
+  storage.set("smartShoppingList:2026-08-10", JSON.stringify({
+    remove: [], likely_pantry: [],
+    purchase_items: [{ name: "盐", suggested_purchase: "4 /8小勺", category: "Other" }],
+    _ui: { hidden: [], checked: [0] },
+  }));
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/shopping-list?")) return Promise.resolve(jsonResponse([{ name: "盐", total_quantity: "0.5 小勺" }]));
+    if (path.startsWith("/meal-plan?") || path === "/recipes") return Promise.resolve(jsonResponse([]));
+    if (path === "/shopping-list/refine") return Promise.resolve(jsonResponse({
+      remove: [], likely_pantry: [],
+      purchase_items: [{ name: "盐", suggested_purchase: "0.5 小勺", category: "Pantry & Dry Goods" }],
+    }));
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  const view = render(<ShoppingListPage />);
+  expect(await screen.findByRole("checkbox")).toBeChecked();
+  expect(await screen.findByRole("button", { name: "shopping.refreshSmartList" })).toBeVisible();
+  // Reading and persisting an old list must not silently mark its totals as fixed.
+  view.unmount();
+  render(<ShoppingListPage />);
+  const refresh = await screen.findByRole("button", { name: "shopping.refreshSmartList" });
+  await userEvent.setup().click(refresh);
+  expect(await screen.findByText("0.5 小勺")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "shopping.refreshSmartList" })).not.toBeInTheDocument();
+});
+
+test("keeps planned meals in preparation mode and removes them from smart mode", async () => {
+  const storage = stubSessionStorage();
+  storage.set("smartShoppingList:2026-08-10", JSON.stringify({
+    remove: [],
+    likely_pantry: [],
+    purchase_items: [
+      { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+    ],
+    _ui: { hidden: [], checked: [] },
+  }));
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/shopping-list?")) {
+      return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+    }
+    if (path.startsWith("/meal-plan?")) {
+      return Promise.resolve(jsonResponse([
+        { date: "2026-08-10", breakfast: ["rice-bowl"], lunch: [], dinner: [] },
+      ]));
+    }
+    if (path === "/recipes/rice-bowl") {
+      return Promise.resolve(jsonResponse(
+        { id: "rice-bowl", title: "Ginger rice bowl", ingredients: [] },
+      ));
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+
+  const user = userEvent.setup();
+  render(<ShoppingListPage />);
+
+  expect(await screen.findByText("Smart mode")).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "Planned meals" })).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Back to original list" }));
+  expect(await screen.findByRole("heading", { name: "Planned meals" })).toBeVisible();
+  expect(screen.getByRole("link", { name: /Ginger rice bowl/ })).toBeVisible();
+});
+
 test("a refinement completing after sign-out cannot write groceries into the next account", async () => {
   const storage = stubSessionStorage();
   bindUserStorage("alice");

@@ -331,6 +331,7 @@ function RecipeEditContent() {
               + {t("common.add")}
             </button>
           </div>
+          <p id="recipe-conversion-help" className={styles.selectionSummary}>{t("recipe.metricQtyHelp")}</p>
           <div className={styles.ingredientLabels} aria-hidden>
             <span>{t("recipe.ingredient")}</span>
             <span>{t("recipe.originalAmount")}</span>
@@ -359,6 +360,7 @@ function RecipeEditContent() {
                   onChange={(event) => updateIngredient(index, "metric_quantity", event.target.value)}
                   placeholder={t("recipe.metricQty")}
                   aria-label={`${t("recipe.metricQty")} ${index + 1}`}
+                  aria-describedby="recipe-conversion-help"
                 />
                 <button
                   type="button"

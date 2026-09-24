@@ -1,7 +1,7 @@
 :root {
-  --cw-shell-max: 1280px;
+  --cw-shell-max: 1024px;
   --cw-shell-gutter: clamp(1.25rem, 3vw, 3rem);
-  --app-header-height: 80px;
+  --app-header-height: 56px;
   --cw-font-display: "Source Serif 4", "Songti SC", Georgia, serif;
   --cw-font-ui: Inter, "PingFang SC", system-ui, sans-serif;
   --cw-type-display-family: "Source Serif 4";
@@ -39,6 +39,10 @@ h3.font-headline {
   body:has([data-app-shell] nav) {
     padding-bottom: calc(76px + env(safe-area-inset-bottom));
   }
+}
+
+@media (min-width: 641px) and (max-width: 840px) {
+  :root { --app-header-height: 68px; }
 }
 
 ::selection {

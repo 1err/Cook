@@ -1,18 +1,47 @@
+.sourceHeader {
+  max-width: 48rem;
+  margin: 0.75rem auto 1.75rem;
+  text-align: center;
+}
+
+.sourceHeader h1 {
+  margin: 0;
+  color: var(--cw-color-ink);
+  font-family: var(--cw-font-display);
+  font-size: clamp(2.25rem, 4vw, 3rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.12;
+}
+
+.sourceHeader p {
+  margin: 0.8rem 0 0;
+  color: var(--cw-color-muted-ink);
+  font-family: var(--cw-font-display);
+  font-size: clamp(1rem, 1.6vw, 1.2rem);
+  line-height: 1.5;
+}
+
 .sourcePanel {
-  max-width: 43rem;
-  padding: 0 0 clamp(2.5rem, 7vw, 5rem);
+  max-width: 45rem;
+  margin: 0 auto 2rem;
+  padding: clamp(1.25rem, 3vw, 1.75rem);
+  border: 1px solid var(--cw-color-divider);
+  border-radius: 12px;
+  background: var(--cw-color-surface);
 }
 
 .sourceTabs {
   display: flex;
   gap: 0;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
   border-bottom: 1px solid var(--cw-color-divider);
 }
 
 .sourceTabs button {
   position: relative;
-  padding: 0.55rem 1.5rem 0.9rem 0;
+  flex: 1;
+  padding: 0.55rem 0.5rem 0.9rem;
   border: 0;
   background: transparent;
   color: var(--cw-color-muted-ink);
@@ -23,12 +52,12 @@
 }
 
 .sourceTabs button[aria-selected="true"] {
-  color: var(--cw-color-ink);
+  color: var(--cw-color-action);
 }
 
 .sourceTabs button[aria-selected="true"]::after {
   position: absolute;
-  right: 1.2rem;
+  right: 0;
   bottom: -1px;
   left: 0;
   height: 2px;
@@ -52,13 +81,15 @@
 .field textarea {
   width: 100%;
   min-width: 0;
-  padding: 0.8rem 0.9rem;
+  min-height: 2.75rem;
+  padding: 0.65rem 0.75rem;
   border: 1px solid var(--cw-color-divider);
   border-radius: var(--cw-radius-field);
   outline: 0;
   background: var(--cw-color-surface);
   color: var(--cw-color-ink);
   font: inherit;
+  font-size: 0.875rem;
   line-height: 1.5;
   resize: vertical;
 }
@@ -70,7 +101,7 @@
 
 .field small {
   color: var(--cw-color-muted-ink);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   line-height: 1.55;
 }
 
@@ -79,11 +110,11 @@
   width: 100%;
   align-items: center;
   justify-content: space-between;
-  margin-top: 1.75rem;
-  padding: 1rem 0;
-  border: 0;
-  border-top: 1px solid var(--cw-color-divider);
-  border-bottom: 1px solid var(--cw-color-divider);
+  margin-top: 1.5rem;
+  min-height: 2.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-field);
   background: transparent;
   color: var(--cw-color-ink);
   cursor: pointer;
@@ -140,9 +171,16 @@
 }
 
 .sourceActions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 1.75rem;
+  display: grid;
+  margin-top: 1.5rem;
+}
+
+.sourceHint {
+  margin: 0.8rem 0 0;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .sourceActions button,
@@ -155,6 +193,7 @@
   color: var(--cw-color-on-action);
   cursor: pointer;
   font: inherit;
+  font-size: 0.875rem;
   font-weight: 600;
 }
 
@@ -172,6 +211,8 @@
 
 .review {
   min-width: 0;
+  max-width: 72rem;
+  margin-inline: auto;
 }
 
 .reviewBackRow {
@@ -194,7 +235,7 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
   padding: 0.4rem 0 1rem;
   border-bottom: 1px solid var(--cw-color-divider);
   position: sticky;
@@ -207,17 +248,24 @@
   margin: 0;
   color: var(--cw-color-ink);
   font-family: var(--cw-font-display);
-  font-size: clamp(2.25rem, 4vw, 3.4rem);
-  font-weight: 400;
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-weight: 600;
   letter-spacing: -0.035em;
-  line-height: 1;
+  line-height: 1.15;
+}
+
+.reviewHeader p {
+  margin: 0.5rem 0 0;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 .reviewColumns {
   display: grid;
   align-items: start;
-  gap: clamp(2rem, 5vw, 4.5rem);
-  grid-template-columns: minmax(17rem, 0.68fr) minmax(0, 1.5fr);
+  gap: 1rem;
+  grid-template-columns: 18rem minmax(0, 1fr);
 }
 
 .overviewColumn,
@@ -225,10 +273,66 @@
   display: grid;
   min-width: 0;
   gap: 1.5rem;
+  padding: 1.5rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: 10px;
+  background: var(--cw-color-surface);
 }
 
 .overviewColumn {
   align-content: start;
+}
+
+.overviewHeading {
+  margin: 0;
+  font-family: var(--cw-font-display);
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.reviewTags {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--cw-color-divider);
+}
+
+.reviewTags > p {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.selectedTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.selectedTags span {
+  padding: 0.4rem 0.6rem;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--cw-color-action) 9%, var(--cw-color-surface));
+  color: var(--cw-color-action);
+  font-size: 0.75rem;
+}
+
+.reviewTags summary {
+  width: fit-content;
+  padding-block: 0.6rem;
+  color: var(--cw-color-action);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.reviewTags .tagPicker {
+  margin-top: 0.75rem;
+}
+
+.contentColumn > :last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 
 .editorSection,
@@ -270,7 +374,8 @@
 
 .timeField span {
   display: flex;
-  min-height: 3rem;
+  align-self: stretch;
+  min-height: 2.75rem;
   align-items: center;
   padding: 0 0.85rem;
   border: 1px solid var(--cw-color-divider);
@@ -307,9 +412,14 @@
 
 .sectionHeader button,
 .contentColumn :global(.add-row-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
   min-height: 2.75rem;
   padding: 0.4rem 0.55rem;
-  border: 0;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
   background: transparent;
   color: var(--cw-color-action);
   cursor: pointer;
@@ -323,13 +433,34 @@
   gap: 0;
 }
 
+.conversionHint {
+  margin: -0.35rem 0 0.75rem;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
 .ingredientRow {
   display: grid;
-  align-items: center;
+  align-items: end;
   gap: 0.55rem;
   padding: 0.7rem 0;
-  border-top: 1px solid var(--cw-color-divider);
-  grid-template-columns: minmax(7.5rem, 0.38fr) minmax(0, 1fr) 2rem;
+  grid-template-columns: minmax(6.5rem, 0.6fr) minmax(0, 1fr) minmax(8.5rem, 0.8fr) 2.75rem;
+}
+
+.ingredientRow label {
+  display: grid;
+  min-width: 0;
+  gap: 0.5rem;
+}
+
+.ingredientRow label > span {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.ingredientRow:not(:first-child) label > span {
+  display: none;
 }
 
 .ingredientRow input,
@@ -344,6 +475,8 @@
   background: var(--cw-color-canvas);
   color: var(--cw-color-ink);
   font: inherit;
+  font-size: 0.875rem;
+  min-height: 2.75rem;
 }
 
 .ingredientRow input:focus,
@@ -400,6 +533,32 @@
 .stepBody {
   display: grid;
   gap: 0.6rem;
+}
+
+.review .stepRows > li {
+  gap: 0.75rem;
+}
+
+.review .rowActions {
+  gap: 0;
+}
+
+.review .stepMetadata {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0;
+  background: transparent;
+}
+
+.review .stepMetadataField,
+.review .durationEditor {
+  grid-column: 1 / -1;
+}
+
+.review .attentionControl button,
+.review .actionControl select {
+  min-width: 0;
+  padding-inline: 0.5rem;
+  font-size: 0.8125rem;
 }
 
 .stepBody textarea {
@@ -601,9 +760,7 @@
   }
 
   .overviewColumn {
-    max-width: 38rem;
-    padding-bottom: 2rem;
-    border-bottom: 1px solid var(--cw-color-divider);
+    max-width: none;
   }
 
   .saveButton {
@@ -612,26 +769,77 @@
 }
 
 @media (max-width: 540px) {
+  .sourceHeader {
+    margin-top: 0.25rem;
+    margin-bottom: 1.25rem;
+  }
+
   .sourcePanel {
     max-width: none;
+    padding: 1rem;
+  }
+
+  .sourceHeader h1 {
+    font-size: 2.25rem;
+  }
+
+  .overviewColumn,
+  .contentColumn {
+    padding: 1rem;
+  }
+
+  .reviewImage {
+    max-height: 13rem;
+    aspect-ratio: auto;
   }
 
   .reviewHeader {
-    padding-top: 0;
+    align-items: center;
+    flex-direction: row;
+    gap: 0.75rem;
+    padding-block: 0.65rem;
+  }
+
+  .reviewHeader > div {
+    min-width: 0;
+  }
+
+  .reviewHeader h1 {
+    font-size: 1.65rem;
+  }
+
+  .reviewHeader p {
+    margin-top: 0.3rem;
+    font-size: 0.75rem;
+  }
+
+  .reviewHeader .saveButton {
+    flex: 0 0 auto;
+    width: auto;
+    padding-inline: 0.8rem;
   }
 
   .ingredientRow {
-    align-items: start;
-    grid-template-columns: 1fr 2rem;
+    grid-template-columns: minmax(5rem, 0.65fr) minmax(0, 1fr) 2.75rem;
+    padding-block: 1rem;
+    border-top: 1px solid var(--cw-color-divider);
   }
 
-  .ingredientRow input:nth-child(2) {
-    grid-column: 1;
+  .ingredientRow:not(:first-child) label > span {
+    display: block;
+  }
+
+  .ingredientRow .conversionField {
+    grid-column: 1 / 3;
+  }
+
+  .ingredientRow .conversionField input {
+    max-width: 12rem;
   }
 
   .ingredientRow .removeButton {
-    grid-row: 1 / span 2;
-    grid-column: 2;
+    grid-row: 1;
+    grid-column: 3;
   }
 
   .stepRows > li {
@@ -640,6 +848,19 @@
 
   .rowActions {
     grid-column: 2;
+  }
+
+  .review .stepMetadata {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .field input,
+  .field textarea,
+  .ingredientRow input,
+  .stepBody textarea,
+  .contentColumn :global(.string-row input),
+  .review .actionControl select {
+    font-size: 1rem;
   }
 }
 

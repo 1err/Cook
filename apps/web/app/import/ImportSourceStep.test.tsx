@@ -3,6 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ImportSourceStep, type ImportSourceValues } from "./ImportSourceStep";
 
+vi.mock("../lib/i18n", () => ({
+  useT: () => () => "Review and edit before saving to your library.",
+}));
+
 const values: ImportSourceValues = {
   mode: "link",
   url: "",

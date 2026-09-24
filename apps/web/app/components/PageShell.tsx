@@ -4,7 +4,7 @@ import styles from "./PageShell.module.css";
 type PageShellProps = {
   children: ReactNode;
   className?: string;
-  size?: "default" | "narrow";
+  size?: "default" | "narrow" | "wide";
 };
 
 type PageHeaderProps = {

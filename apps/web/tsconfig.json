@@ -15,6 +15,7 @@
     "incremental": true,
     "plugins": [{ "name": "next" }],
     "paths": {
+      "@cooking/shared": ["../../packages/shared/src/index.ts"],
       "@/*": ["./*"]
     }
   },

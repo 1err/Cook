@@ -9,13 +9,13 @@ function thumbnail(width: number, height: number, color: string) {
 }
 
 const recipes = [
-  ["Aubergine clay pot", 640, 350, "#a85136"],
-  ["Braised pork", 640, 400, "#7d8a58"],
-  ["Chicken stew", 640, 450, "#c17c4f"],
-  ["Dumplings", 640, 850, "#a94731"],
-  ["Egg fried rice", 640, 750, "#8a553c"],
-  ["Five-spice soy-braised beef", 640, 160, "#87564a"],
-  ["Mapo tofu", 640, 500, "#b2442e"],
+  ["Aubergine clay pot", 640, 850, "#a85136"],
+  ["Braised pork", 640, 700, "#7d8a58"],
+  ["Chicken stew", 640, 600, "#c17c4f"],
+  ["Eggplant tofu", 640, 200, "#a94731"],
+  ["Five-spice soy-braised beef", 640, 400, "#8a553c"],
+  ["Mapo tofu", 640, 560, "#87564a"],
+  ["Scallion eggs", 640, 360, "#b2442e"],
 ].map(([title, width, height, color], index) => ({
   id: `recipe-${index + 1}`,
   title,
@@ -34,6 +34,7 @@ const publicRecipes = [
   ["Scallion noodles", 720, 400, "#556d58"],
   ["Crispy tofu", 600, 600, "#bb704e"],
   ["Red-braised pork", 520, 760, "#9a4337"],
+  ["Tea-smoked tofu", 640, 480, "#6f7651"],
 ].map(([title, width, height, color], index) => ({
   id: `public-${index + 1}`,
   title,
@@ -74,7 +75,8 @@ async function expectWaterfall(page: Page, titles: string[], columnCount: number
     Array.from(item.querySelectorAll("img")).every((image) => image.complete),
   ))).toBe(true);
 
-  const rowGap = await page.getByRole("list").evaluate((grid) => parseFloat(getComputedStyle(grid).rowGap));
+  const grid = page.getByRole("list");
+  const rowGap = await grid.evaluate((element) => parseFloat(getComputedStyle(element).rowGap));
   await expect(async () => {
     const metrics = await cards.evaluateAll((items) => items.map((item) => {
       const box = item.getBoundingClientRect();
@@ -82,14 +84,18 @@ async function expectWaterfall(page: Page, titles: string[], columnCount: number
     }));
     const columns = [...new Set(metrics.map(({ x }) => Math.round(x)))].sort((a, b) => a - b);
     expect(columns).toHaveLength(Math.min(columnCount, titles.length));
-    const nextTop = columns.map(() => Math.min(...metrics.map(({ y }) => y)));
-    for (const [index, title] of titles.entries()) {
+    const top = Math.min(...metrics.map(({ y }) => y));
+    const nextTop = columns.map(() => top);
+    for (const title of titles) {
       const card = metrics.find((item) => item.title === title)!;
-      const column = index % columns.length;
-      expect(Math.abs(card.x - columns[column]), `${title} should keep its left-to-right column`).toBeLessThan(1);
-      expect(Math.abs(card.y - nextTop[column]), `${title} should sit just below the previous card`).toBeLessThan(1);
+      const column = nextTop.reduce((shortest, bottom, index) =>
+        bottom < nextTop[shortest] ? index : shortest, 0);
+      expect(Math.abs(card.x - columns[column]), `${title} should use the left-most shortest column`).toBeLessThan(1);
+      expect(Math.abs(card.y - nextTop[column]), `${title} should sit directly below that column`).toBeLessThan(1);
       nextTop[column] = card.bottom + rowGap;
     }
+    const gridHeight = await grid.evaluate((element) => element.getBoundingClientRect().height);
+    expect(Math.abs(gridHeight - (Math.max(...nextTop) - rowGap - top))).toBeLessThan(1);
   }).toPass({ timeout: 5000 });
 }
 
@@ -107,10 +113,21 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/library");
 });
 
-test("uses four compact desktop columns with natural photos and left-to-right order", async ({ page }, testInfo) => {
+test("uses four compact desktop columns and places the fifth recipe in the shortest column", async ({ page }, testInfo) => {
   const expectedColumns = testInfo.project.name === "desktop" ? 4 : 2;
   const grid = page.getByRole("list");
   await expectWaterfall(page, recipes.map(({ title }) => String(title)), expectedColumns);
+
+  if (testInfo.project.name === "desktop") {
+    const positions = await grid.getByRole("listitem").evaluateAll((cards) => cards.map((card) => {
+      const box = card.getBoundingClientRect();
+      return { title: card.querySelector("h2")?.textContent, x: box.x, y: box.y };
+    }));
+    const eggplant = positions.find(({ title }) => title === "Eggplant tofu")!;
+    const beef = positions.find(({ title }) => title === "Five-spice soy-braised beef")!;
+    expect(beef.x).toBeCloseTo(eggplant.x, 0);
+    expect(beef.y).toBeGreaterThan(eggplant.y);
+  }
 
 
   const cardMetrics = await grid.getByRole("listitem").evaluateAll((cards) =>
@@ -133,12 +150,13 @@ test("uses four compact desktop columns with natural photos and left-to-right or
   expect(Math.max(...cardMetrics.map(({ cardHeight }) => cardHeight))).toBeLessThan(760);
 });
 
-test("preserves original photo proportions and ordered columns in the public library", async ({ page }, testInfo) => {
-  await page.getByRole("tab", { name: "Public library" }).click();
+test("preserves natural photos and shortest-column placement in the public library", async ({ page }, testInfo) => {
+  await page.goto("/library?view=public");
+  await expect(page.getByRole("tab", { name: "Public library" })).toHaveAttribute("aria-selected", "true");
 
   const expectedColumns = testInfo.project.name === "desktop" ? 4 : 2;
   const grid = page.getByRole("list");
-  await expectWaterfall(page, ["Clay pot rice", "Crispy tofu", "Red-braised pork", "Scallion noodles"], expectedColumns);
+  await expectWaterfall(page, ["Clay pot rice", "Crispy tofu", "Red-braised pork", "Scallion noodles", "Tea-smoked tofu"], expectedColumns);
   await expect(grid.getByText(/Hidden public ingredient/)).toHaveCount(0);
 
   const metrics = await grid.getByRole("listitem").evaluateAll((cards) =>
@@ -163,7 +181,7 @@ test("preserves original photo proportions and ordered columns in the public lib
   }
 });
 
-test("keeps column order and prevents overlap when a portrait image finishes loading", async ({ page }, testInfo) => {
+test("recomputes shortest columns without overlap when a portrait image finishes loading", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "One desktop run exercises delayed image sizing.");
   await page.setViewportSize({ width: 1100, height: 1000 });
   let releaseImage!: () => void;
@@ -176,7 +194,7 @@ test("keeps column order and prevents overlap when a portrait image finishes loa
     });
   });
   await page.route("**/recipes", (route) => fulfillJson(route, recipes.map((recipe, index) =>
-    index === 5 ? { ...recipe, thumbnail_url: "/late-library-thumbnail.svg" } : recipe,
+    index === 4 ? { ...recipe, thumbnail_url: "/late-library-thumbnail.svg" } : recipe,
   )));
   await page.goto("/library", { waitUntil: "domcontentloaded" });
   const cards = page.getByRole("list").getByRole("listitem");
@@ -184,26 +202,24 @@ test("keeps column order and prevents overlap when a portrait image finishes loa
   await expect(page.getByRole("list")).toHaveAttribute("data-layout", "masonry");
   await page.evaluate(() => document.fonts.ready);
   try {
-    const before = await cards.evaluateAll((items) => items.map((item) => {
-      const box = item.getBoundingClientRect();
-      return { x: box.x, y: box.y };
-    }));
     releaseImage();
     await expectWaterfall(page, recipes.map(({ title }) => String(title)), 3);
     const after = await cards.evaluateAll((items) => items.map((item) => {
       const box = item.getBoundingClientRect();
-      return { x: box.x, y: box.y };
+      return { bottom: box.bottom, right: box.right, title: item.querySelector("h2")?.textContent, x: box.x, y: box.y };
     }));
-    after.forEach((position, index) => {
-      expect(Math.abs(position.x - before[index].x)).toBeLessThanOrEqual(1);
-      // Vertical offsets may grow to show the full image; columns remain stable.
-    });
+    for (const [index, card] of after.entries()) {
+      for (const other of after.slice(index + 1)) {
+        const separated = card.right <= other.x || other.right <= card.x || card.bottom <= other.y || other.bottom <= card.y;
+        expect(separated, `${card.title} should not overlap ${other.title}`).toBe(true);
+      }
+    }
   } finally {
     releaseImage();
   }
 });
 
-test("reflows between four, three and two columns without changing reading order", async ({ page }, testInfo) => {
+test("recomputes shortest columns at four, three and two-column breakpoints", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "One page exercises each responsive breakpoint.");
   const titles = recipes.map(({ title }) => String(title));
   for (const [width, columns] of [[1440, 4], [1100, 3], [820, 2], [390, 2], [1440, 4]]) {
@@ -225,5 +241,5 @@ test("reflows matching recipes after search and tag filtering", async ({ page },
   await page.getByRole("button", { name: "Filter recipes" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Weeknight", exact: true }).click();
   await search.click();
-  await expectWaterfall(page, ["Braised pork", "Dumplings", "Five-spice soy-braised beef"], columns);
+  await expectWaterfall(page, ["Braised pork", "Eggplant tofu", "Mapo tofu"], columns);
 });

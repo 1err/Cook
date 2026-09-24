@@ -23,21 +23,36 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("renders an accessible responsive authenticated shell", async ({ page }, testInfo) => {
+  await expect(page.getByRole("heading", { level: 1, name: "Settings", exact: true })).toBeVisible();
   if (testInfo.project.name === "desktop") {
     const geometry = await page.locator("header > div").evaluate((inner) => {
       const rect = inner.getBoundingClientRect();
+      const main = document.querySelector("main")!.getBoundingClientRect();
       return {
+        headingFont: parseFloat(getComputedStyle(document.querySelector("h1")!).fontSize),
         left: rect.left,
         right: window.innerWidth - rect.right,
         width: rect.width,
+        mainWidth: main.width,
+        mainLeft: main.left,
         rootFont: parseFloat(getComputedStyle(document.documentElement).fontSize),
         headerHeight: inner.parentElement!.getBoundingClientRect().height,
       };
     });
-    expect(geometry.width).toBeCloseTo(1280, 0);
+    expect(geometry.width).toBeCloseTo(1024, 0);
+    expect(geometry.mainWidth).toBeCloseTo(1024, 0);
+    expect(Math.abs(geometry.mainLeft - geometry.left)).toBeLessThanOrEqual(1);
     expect(geometry.rootFont).toBe(16);
-    expect(geometry.headerHeight).toBeGreaterThanOrEqual(80);
+    expect(geometry.headerHeight).toBeGreaterThanOrEqual(56);
+    expect(geometry.headerHeight).toBeLessThanOrEqual(57);
+    expect(geometry.headingFont).toBe(32);
     expect(Math.abs(geometry.left - geometry.right)).toBeLessThanOrEqual(1);
+  }
+  if (testInfo.project.name === "phone") {
+    const headerHeight = await page.locator("header").evaluate((header) => header.getBoundingClientRect().height);
+    expect(headerHeight).toBeGreaterThanOrEqual(72);
+    expect(headerHeight).toBeLessThanOrEqual(73);
+    expect(await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize))).toBe(16);
   }
   await expect(page.getByRole("link", { name: "Add Recipe" })).toBeVisible();
   const navigationMenu = page.getByRole("button", { name: "Open navigation menu" });

@@ -73,8 +73,8 @@ it('creates and saves a manual recipe without calling a parsing provider', async
   expect(mockApiFetch).not.toHaveBeenCalled();
   expect(screen.getByRole('button', { name: 'import.saveRecipe' })).toBeDisabled();
   await user.type(screen.getByLabelText('recipe.recipeTitle'), 'Family noodles');
-  await user.type(screen.getByLabelText('Ingredient 1'), 'Noodles');
-  await user.type(screen.getByLabelText('Ingredient 1 amount'), '200 g');
+  await user.type(screen.getByLabelText('recipe.ingredient 1'), 'Noodles');
+  await user.type(screen.getByLabelText('recipe.originalAmount 1'), '200 g');
   await user.type(screen.getByLabelText('recipe.tutorial.editor.stepLabel'), 'Boil noodles.');
   await user.click(screen.getByRole('button', { name: 'import.saveRecipe' }));
   await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/recipe/manual-saved'));
@@ -91,7 +91,7 @@ it('does not navigate to an old manual save after the account view unmounts', as
   const rendered = render(<ImportPage />);
   await user.click(screen.getByRole('button', { name: 'import.createManually' }));
   await user.type(screen.getByLabelText('recipe.recipeTitle'), 'Noodles');
-  await user.type(screen.getByLabelText('Ingredient 1'), 'Noodles');
+  await user.type(screen.getByLabelText('recipe.ingredient 1'), 'Noodles');
   await user.type(screen.getByLabelText('recipe.tutorial.editor.stepLabel'), 'Boil noodles.');
   await user.click(screen.getByRole('button', { name: 'import.saveRecipe' }));
   rendered.unmount();

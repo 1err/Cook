@@ -1,7 +1,7 @@
 .tabs {
   display: flex;
   gap: 1.5rem;
-  margin-bottom: 2.5rem;
+  margin-bottom: 2rem;
   border-bottom: 1px solid var(--cw-color-divider);
 }
 
@@ -11,7 +11,7 @@
   padding-bottom: 0.8rem;
   color: var(--cw-color-muted-ink);
   font-size: 0.9rem;
-  font-weight: 700;
+  font-weight: 500;
   text-decoration: none;
 }
 
@@ -30,8 +30,9 @@
 }
 
 .searchPanel {
-  max-width: 43rem;
-  padding-bottom: clamp(2.5rem, 7vw, 5rem);
+  max-width: 39rem;
+  margin: 2.25rem auto;
+  padding-bottom: 2rem;
 }
 
 .searchForm label {
@@ -39,7 +40,7 @@
   margin-bottom: 0.5rem;
   color: var(--cw-color-ink);
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 500;
 }
 
 .fieldRow {
@@ -73,7 +74,7 @@
   color: var(--cw-color-on-action);
   cursor: pointer;
   font: inherit;
-  font-weight: 750;
+  font-weight: 500;
 }
 
 .fieldRow button:disabled {
@@ -86,9 +87,10 @@
   align-items: center;
   gap: 0.9rem;
   margin-top: 1.75rem;
-  padding: 1.15rem 0;
-  border-top: 1px solid var(--cw-color-divider);
-  border-bottom: 1px solid var(--cw-color-divider);
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: 12px;
+  background: var(--cw-color-surface);
   color: inherit;
   text-decoration: none;
 }
@@ -128,7 +130,7 @@
 .open {
   color: var(--cw-color-action);
   font-size: 0.85rem;
-  font-weight: 750;
+  font-weight: 500;
 }
 
 .notice {
@@ -175,7 +177,7 @@
 .recipeMedia {
   display: grid;
   overflow: hidden;
-  aspect-ratio: 4 / 3;
+  min-height: 5rem;
   border-radius: var(--cw-radius-card);
   place-items: center;
   background: var(--cw-color-subtle-surface);
@@ -184,12 +186,12 @@
 
 .recipeMedia img {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
+  object-fit: contain;
 }
 
 .recipeBody {
-  min-height: 7.8rem;
+  min-height: 0;
   padding: 1rem 0 0;
 }
 
@@ -223,7 +225,7 @@
   border-radius: var(--cw-radius-round);
   color: var(--cw-color-muted-ink);
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 500;
   text-transform: capitalize;
 }
 
@@ -243,7 +245,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 500;
 }
 
 .recipeAction button:disabled {
@@ -263,7 +265,7 @@
   width: max-content;
   color: var(--cw-color-action);
   font-size: 0.85rem;
-  font-weight: 750;
+  font-weight: 500;
   text-decoration: none;
 }
 
@@ -307,10 +309,24 @@
   }
 
   .recipeBody {
-    min-height: 7rem;
+    min-height: 0;
   }
 
   .recipeAction button {
     width: 100%;
   }
 }
+
+.searchHeading { text-align: center; margin-bottom: 1.75rem; }
+.searchHeading h2 { margin: 0; font: 600 1.5rem/1.2 var(--cw-font-display); letter-spacing: -0.025em; }
+.searchHeading p { margin: 0.5rem 0 0; color: var(--cw-color-muted-ink); font-size: 0.9375rem; }
+.searchForm { padding: 1.5rem; border: 1px solid var(--cw-color-divider); border-radius: 12px; background: var(--cw-color-surface); }
+.searchHint { margin: 0.65rem 0 0; color: var(--cw-color-muted-ink); font-size: 0.8125rem; }
+.sharingHint { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--cw-color-divider); text-align: center; }
+.sharingHint h2 { margin: 0 0 0.5rem; font-family: var(--cw-font-display); font-size: 1.25rem; font-weight: 600; }
+.sharingHint a { color: var(--cw-color-action); font-size: 0.875rem; text-underline-offset: 4px; }
+.fieldRow input { font-size: 0.9375rem; }
+.fieldRow button { font-size: 0.875rem; }
+.resultCopy strong { font-size: 0.9375rem; font-weight: 500; }
+.resultCopy small { font-size: 0.8125rem; }
+@media(max-width:640px) { .searchPanel { margin-top: 1.5rem; } .searchForm { padding: 1rem; } .fieldRow { flex-direction: row; } .fieldRow input { font-size: 1rem; } .fieldRow button { width: auto; padding-inline: 1rem; } .tabs { gap: 1.3rem; } .tabs a, .tabs span { font-size: 0.8125rem; } }
