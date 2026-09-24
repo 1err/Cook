@@ -68,6 +68,7 @@ async def copy_friend_recipe_to_user(
     source_user_id: uuid.UUID,
     recipe_id: str,
     caller_user_id: uuid.UUID,
+    created_outcome: list[bool] | None = None,
 ) -> Optional[RecipeModel]:
     """Clone a recipe from a public-library user into the caller's library.
 
@@ -128,4 +129,6 @@ async def copy_friend_recipe_to_user(
     )
     session.add(clone)
     await session.flush()
+    if created_outcome is not None:
+        created_outcome.append(True)
     return clone

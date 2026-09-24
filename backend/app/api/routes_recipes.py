@@ -196,10 +196,14 @@ async def copy_catalog_recipe(
     recipe_id: str,
     session: AsyncSession = Depends(get_session),
     current_user: UserModel = Depends(get_current_user),
+    request: Request = None,
 ):
-    recipe = await repo_recipes.copy_public_recipe_to_user(session, recipe_id, current_user.id)
+    created: list[bool] = []
+    recipe = await repo_recipes.copy_public_recipe_to_user(session, recipe_id, current_user.id, created_outcome=created)
     if not recipe:
         raise HTTPException(404, "Recipe not found in the public catalog")
+    if request is not None:
+        request.state.analytics_skip = not bool(created)
     return recipe
 
 

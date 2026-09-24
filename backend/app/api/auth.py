@@ -115,6 +115,7 @@ async def get_current_user(
     user = await repo_auth.get_user_by_id(session, user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    request.state.analytics_user_id = user.id
     return user
 
 
@@ -123,6 +124,7 @@ async def register(
     body: RegisterBody,
     response: Response,
     session: AsyncSession = Depends(get_session),
+    request: Request = None,
 ):
     """Create user + local identity, set JWT cookie."""
     if len(body.password) < 8:
@@ -149,6 +151,8 @@ async def register(
         raise
     token = create_access_token(str(user.id))
     _set_cookie(response, token)
+    if request is not None:
+        request.state.analytics_user_id = user.id
     return AuthResponse.from_model_with_token(user, token)
 
 
@@ -157,6 +161,7 @@ async def login(
     body: LoginBody,
     response: Response,
     session: AsyncSession = Depends(get_session),
+    request: Request = None,
 ):
     """Verify local identity, set JWT cookie."""
     identity = await repo_auth.get_identity(
@@ -171,6 +176,8 @@ async def login(
         raise HTTPException(status_code=401, detail="User not found")
     token = create_access_token(str(user.id))
     _set_cookie(response, token)
+    if request is not None:
+        request.state.analytics_user_id = user.id
     return AuthResponse.from_model_with_token(user, token)
 
 

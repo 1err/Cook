@@ -2,10 +2,12 @@ import { getApiBase } from "../config";
 import { createApiClient } from "@cooking/api-client";
 import { AUTH_EXPIRED_EVENT, clearUserStorage, getAuthGeneration } from "./userStorage";
 import { isPublicPage } from "./publicRoutes";
+import { analyticsHeaders } from './analytics';
 
 export const webApiClient = createApiClient({
   baseUrl: getApiBase(),
   auth: { kind: "cookie" },
+  getRequestHeaders: analyticsHeaders,
   getAuthGeneration,
   onUnauthorized: () => {
     if (typeof window === "undefined") return;
