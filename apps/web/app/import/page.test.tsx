@@ -9,6 +9,8 @@ const { mockApiFetch, mockPush } = vi.hoisted(() => ({
   mockPush: vi.fn(),
 }));
 
+vi.mock("../lib/auth", () => ({ useAuth: () => ({ user: { id: "test-user" }, loading: false }) }));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
 }));
@@ -22,7 +24,7 @@ vi.mock("../lib/editorialCopy", () => ({
   useEditorialCopy: () => ({ "import.tagline": "Import recipes" }),
 }));
 vi.mock("../lib/i18n", () => ({
-  useT: () => (key: string) => ({ "import.videoLink": "Video link", "import.recipeText": "Paste recipe text", "import.createDraft": "Create draft" })[key] || key,
+  useT: () => (key: string) => ({ "import.sourceUrlLabel": "YouTube, TikTok, or RedNote URL", "import.videoLink": "Video link", "import.recipeText": "Paste recipe text", "import.createDraft": "Create draft" })[key] || key,
 }));
 
 beforeEach(() => {
@@ -44,7 +46,7 @@ describe("ImportPage source errors", () => {
     const user = userEvent.setup();
     render(<ImportPage />);
 
-    const url = screen.getByLabelText("YouTube or TikTok URL");
+    const url = screen.getByLabelText("YouTube, TikTok, or RedNote URL");
     await user.type(url, "https://vm.tiktok.com/ZMrecipe/");
     await user.click(screen.getByRole("button", { name: "Create draft" }));
 

@@ -75,7 +75,7 @@ export const PUBLIC_DOCUMENTS: Record<PublicDocumentKind, PublicDocumentContent>
       {
         heading: "AI-assisted features and service providers",
         paragraphs: [
-          "When you request a recipe import, relevant source text and instructions are sent to OpenAI to organize the recipe. Ingredient refinement and cooking-time estimates also send the relevant ingredient or recipe text to OpenAI. A link import may involve requesting content from the source website. Avoid submitting sensitive personal information in these inputs.",
+          "When you request a recipe import, relevant source text and instructions may be sent to OpenAI or Google Gemini to organize the recipe. Video or audio imports send the supplied media, or an accessible source video, to Google Gemini for analysis. Ingredient refinement and cooking-time estimates also send the relevant ingredient or recipe text to OpenAI. A link import may involve requesting content from the source website. Avoid submitting sensitive personal information in these inputs.",
           "For some YouTube imports, the public video URL may be sent to Jina Reader to retrieve the video description when direct access fails.",
           "Hosting, database, file-storage, and other service providers handle information needed to run the service. Their processing and retention of information depend on the services and applicable terms in use.",
           "Some pages load fonts from Google Fonts or images from external hosts, including Unsplash on the sign-in pages. Those hosts receive the network and browser information needed to deliver the resource, such as your IP address and browser details.",
@@ -99,6 +99,7 @@ export const PUBLIC_DOCUMENTS: Record<PublicDocumentKind, PublicDocumentContent>
         heading: "Cookies and browser storage",
         paragraphs: [
           "The web service uses a sign-in cookie to keep you authenticated. Browser storage also supports language preferences, shopping selections, meal-planner state, and cooking progress, including pending offline actions and a device identifier used for cooking synchronization.",
+          "When you share a link or video into the installed website, a temporary copy stays in browser storage so you can sign in and review it. It is removed after a successful import or when you discard it. Pending shares expire after 15 minutes and expired copies are removed the next time the share receiver runs.",
           "You can manage cookies and stored site data in your browser. Clearing or blocking them can sign you out, reset preferences, or remove locally stored progress. Signing out is not a request to delete information stored with your account, and device preferences may remain after sign-out.",
         ],
       },

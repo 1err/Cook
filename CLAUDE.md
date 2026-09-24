@@ -630,3 +630,12 @@ Update the affected sections **in the same change** when you:
 - Add a recipe tag slug (three places noted above)
 - Touch admin gating, catalog gating, or any other auth/authorization rule
 - Resolve or add to the "Known cleanup targets" list
+
+
+### RedNote links and incoming website shares (September 24 release)
+
+The website preserves the existing editorial Import layout and manual recipe creation. Source tabs are Video link, Upload video, and Paste recipe text. The URL field accepts full RedNote share messages as well as YouTube/TikTok links. Upload availability and maximum size come from `/recipes/import-capabilities`; the current Gemini inline-media cap is 14 MiB. It uses the existing asynchronous `/recipes/import-jobs` and `/recipes/import-jobs/media` pipeline and draft/candidate review, not the older synchronous local video endpoint.
+
+Public RedNote retrieval is restricted to explicit note/short-link/CDN hosts, bounded redirects and response sizes. Login-gated notes provide an upload/text fallback. Token-bearing retrieval URLs survive internal queue ingestion but saved recipe attribution is canonical and token-free. Accessible embedded RedNote videos pass through the existing Gemini media analysis and tutorial quality pipeline. This does not guarantee that every externally shared RedNote URL is retrievable.
+
+Installed Android Chrome sites receive links/text or one MP4/MOV/WebM through the manifest and narrowly scoped `chefworld-share-sw.js`. The worker intercepts only multipart POST `/share-target`; it does not cache normal pages or API calls. Browser IndexedDB holds at most three pending entries/60 MiB, with each video capped at 14 MiB and incoming multipart body at 15 MiB. Entries become inaccessible after 15 minutes and are physically pruned on subsequent activation/read/share. Opaque IDs survive login, registration, and verification redirects; first authenticated reads bind entries to that account. Receiving never starts AI work. Import success/discard deletes the pending entry; errors permit retry. Safari on iPhone does not expose an incoming web share target; native app sharing remains a separate build/release.

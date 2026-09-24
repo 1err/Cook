@@ -1,6 +1,6 @@
 import React from "react";
-import { fireEvent, render, waitFor } from "@testing-library/react";
-import { beforeEach, expect, test, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import LoginPage from "../login/page";
 import RegisterPage from "../register/page";
 
@@ -28,4 +28,16 @@ test("signing back in to a pending new account resumes verification with its app
   const { container } = render(<LoginPage />);
   fireEvent.submit(container.querySelector("form")!);
   await waitFor(() => expect(push).toHaveBeenCalledWith("/check-email?redirect=%2Fplanner"));
+});
+
+
+afterEach(() => { cleanup(); window.history.replaceState({}, "", "/login"); });
+test.each([
+  [LoginPage, "auth.createAccount", "/register"],
+  [RegisterPage, "nav.signIn", "/login"],
+] as const)("keeps pending share when switching auth forms", async (Page, label, target) => {
+  const redirect = "/import?share=33888241-5c9f-4c61-a797-1c4e7a970e05";
+  window.history.replaceState({}, "", `/login?redirect=${encodeURIComponent(redirect)}`);
+  render(<Page />);
+  await waitFor(() => expect(screen.getByRole("link", { name: label })).toHaveAttribute("href", `${target}?redirect=${encodeURIComponent(redirect)}`));
 });

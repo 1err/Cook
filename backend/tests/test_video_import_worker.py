@@ -174,3 +174,34 @@ async def test_large_output_is_drained_when_cancelled_before_reader_finishes(mon
             if process.returncode is None:
                 os.killpg(process.pid, 9)
                 await process.communicate()
+
+
+@pytest.mark.asyncio
+async def test_rednote_runner_round_trip_retains_media_and_resolved_attribution(monkeypatch):
+    # Execute the real runner/serialization boundary; replace only the provider I/O.
+    real_spawn = asyncio.create_subprocess_exec
+    source = parse_video_source('http://xhslink.com/a/Test')
+    resolved = 'https://www.xiaohongshu.com/explore/6411cf99000000001300b6d9'
+    media = 'https://sns-video-bd.xhscdn.com/example.mp4'
+    script = (
+        'from app import rednote; from app.video_import import VideoTextResult,parse_video_source; '
+        f'rednote.fetch_rednote_text=lambda source: VideoTextResult("ok", "鸡蛋2个，蒸10分钟。", '
+        f'parse_video_source({resolved!r}), source_kind="description", media_url={media!r}); '
+        'from app.core.video_runner import main; main()'
+    )
+    async def spawn(*args, **kwargs):
+        return await real_spawn(sys.executable, '-c', script, *args[-2:], **kwargs)
+    monkeypatch.setattr(video_process.asyncio, 'create_subprocess_exec', spawn)
+    result = await video_process.run_video_fetch(source, deadline=time.monotonic()+10)
+    assert result.status == 'ok' and result.source.canonical_url == resolved
+    assert result.media_url == media and result.source_kind == 'description'
+    assert result.text == '鸡蛋2个，蒸10分钟。'
+
+
+@pytest.mark.asyncio
+async def test_resolved_note_cannot_change_provider_or_existing_note(monkeypatch, tmp_path):
+    source = parse_video_source('https://www.xiaohongshu.com/explore/6411cf99000000001300b6d9')
+    fake_child(monkeypatch, tmp_path, response={'status': 'ok', 'text': 'Wrong source.',
+        'resolved_url': 'https://youtu.be/A6bByqI_TH8'})
+    result = await video_process.run_video_fetch(source, deadline=time.monotonic()+3)
+    assert result.status == 'fetch_failed'

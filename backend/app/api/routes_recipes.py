@@ -31,6 +31,7 @@ from app.extract import (
 )
 from app.models import IngredientItem, Recipe, RecipeStep, RecipePage, ImportReview, coerce_steps
 from app.services.video_analysis import video_analysis_available
+from app.rednote import download_rednote_video
 from app.api.recipe_pages import RecipePageQuery, read_page
 from app.services.storage_service import (
     matches_image_signature,
@@ -131,9 +132,18 @@ async def parse_from_link(
         raise HTTPException(503, {"code": "video_analysis_unavailable",
             "message": "Video analysis is not available. Paste recipe text or try a captioned video."})
     text_result = None if body.analyze_video else await fetch_video_text(source)
+    if text_result and source.provider == "xiaohongshu":
+        source = text_result.source
+    use_rednote_video = bool(text_result and text_result.status == "ok"
+                             and source.provider == "xiaohongshu" and text_result.media_url
+                             and video_analysis_available())
     use_video = can_analyze and (body.analyze_video or text_result.status != "ok"
                                 or text_result.source_kind == "description")
-    if use_video:
+    if use_rednote_video:
+        media_data, media_type = await download_rednote_video(text_result.media_url)
+        recipe = await extract_recipe_from_video(media_data=media_data, media_type=media_type,
+            notes=_append_import_notes(text_result.text, body.notes))
+    elif use_video:
         # Captured descriptions often carry exact ingredient quantities that are
         # never spoken. Keep that evidence when upgrading to video analysis.
         source_notes = (f"Video description (source evidence):\n{text_result.text}"
@@ -144,12 +154,13 @@ async def parse_from_link(
         if text_result.status != "ok":
             temporary = text_result.status in {"fetch_failed", "dependency_missing"}
             raise HTTPException(503 if temporary else 422, {
-                "code": "source_temporarily_unavailable" if temporary else "source_unavailable",
+                "code": ("source_temporarily_unavailable" if temporary else
+                         "source_access_required" if text_result.status == "access_required" else "source_unavailable"),
                 "message": text_result.message or "No usable recipe text was found. Paste recipe text to continue.",
             })
         recipe = await extract_recipe_from_text(_append_import_notes(text_result.text, body.notes),
                                                 source_kind=text_result.source_kind)
-    review = recipe.import_review or ImportReview(source_kind="video" if use_video else text_result.source_kind)
+    review = recipe.import_review or ImportReview(source_kind="media" if use_rednote_video else "video" if use_video else text_result.source_kind)
     review.can_analyze_video = can_analyze
     if not _has_usable_steps(recipe):
         if not any(is_usable_ingredient_name(item.name) for item in recipe.ingredients):

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { AuthSwitchLink } from "../components/AuthSwitchLink";
 import { safeAuthRedirect } from "@cooking/shared";
 import { apiFetch } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -63,9 +64,9 @@ export default function LoginPage() {
       footer={
         <>
           {t("auth.newHere")}{" "}
-          <Link href="/register" style={{ marginLeft: 4 }}>
+          <AuthSwitchLink to="/register">
             {t("auth.createAccount")}
-          </Link>
+          </AuthSwitchLink>
         </>
       }
     >

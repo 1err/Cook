@@ -96,3 +96,11 @@ Set `APP_ENV=production`, a random `AUTH_SECRET` of at least 32 characters, `COO
 Grant administrator/catalog privileges with `ADMIN_USER_IDS` and `PUBLIC_LIBRARY_EDITOR_USER_IDS`, using verified account UUIDs. Empty lists deny access. The previous email allowlist is deliberately unsupported.
 
 OpenAI settings and account/global request caps are in `.env.example`. Keep separate development and production provider projects and use a company-owned service identity. The backend owns one reusable client, bounds requests, records token counts without prompts, and closes the client at shutdown. Accepted operations consume their allowance even if subsequent provider work fails; these counters are not a dollar billing system.
+
+## Recipe import jobs
+
+Clients create authenticated jobs with `POST /recipes/import-jobs` (`mode: link` or `text`), or send a video to `POST /recipes/import-jobs/media` as multipart `file`, then poll `/recipes/import-jobs/{id}`. Drafts still require an explicit save. Media uploads use the existing Gemini analysis and recipe-quality pipeline; `GET /recipes/import-capabilities` reports availability and the 14 MiB media limit (15 MiB request envelope). No synchronous `/recipes/parse/video` route is provided.
+
+Link jobs accept public YouTube, TikTok, and RedNote / 小红书 URLs, including RedNote share text and `xhslink.com` redirects. RedNote retrieval only contacts exact allowlisted post/CDN hosts with bounded reads and redirects, without cookies or login bypass. Accessible video bytes are analyzed by the same Gemini pipeline; public post text remains a fallback. Login-required posts return `source_access_required` with upload/text recovery guidance.
+
+A RedNote share token is retained only in the private queued link payload so retrieval can work. Completed, failed, cancelled, revoked, or expired jobs clear or remove that payload through the existing queue lifecycle. Recipe attribution and uploaded-media/text attribution use canonical URLs without share tokens. No database migration or provider/budget configuration change is needed for the RedNote integration.

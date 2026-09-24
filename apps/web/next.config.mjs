@@ -13,7 +13,13 @@ const nextConfig = {
       { key: "Cache-Control", value: "no-store" },
       { key: "Content-Security-Policy", value: `default-src 'self'; script-src 'self' 'unsafe-inline'${development ? " 'unsafe-eval'" : ""}; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' ${apiOrigin}${development ? " ws: wss:" : ""}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'` },
     ];
-    return ["/forgot-password", "/reset-password", "/verify-email", "/check-email"].map((source) => ({ source, headers }));
+    return [
+      ...["/forgot-password", "/reset-password", "/verify-email", "/check-email"].map((source) => ({ source, headers })),
+      { source: "/chefworld-share-sw.js", headers: [
+        { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+        { key: "Service-Worker-Allowed", value: "/" },
+      ] },
+    ];
   },
 };
 

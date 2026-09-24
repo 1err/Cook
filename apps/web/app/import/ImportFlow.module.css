@@ -883,3 +883,31 @@
 .recoveryPanel button { margin: 0.4rem 0.75rem 0.4rem 0; min-height: 44px; }
 .recoveryPanel ol { max-height: 24rem; overflow: auto; padding-inline-start: 1.5rem; }
 .recoveryPanel li { margin-block: 0.6rem; }
+
+.sharedNotice {
+  display: flex;
+  max-width: 45rem;
+  margin: 0 auto 1rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-field);
+  color: var(--cw-color-muted-ink);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.sharedNotice p { margin: 0; }
+
+.sharedNotice button {
+  min-height: 44px;
+  padding: 0.25rem 0.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--cw-color-action);
+  font: inherit;
+  cursor: pointer;
+}

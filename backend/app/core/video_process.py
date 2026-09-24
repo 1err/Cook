@@ -38,7 +38,7 @@ async def _kill_and_reap(process):
 
 
 async def _fetch(source, deadline):
-    from app.video_import import VideoTextResult
+    from app.video_import import VideoTextResult, parse_video_source
     spawning = asyncio.create_task(asyncio.create_subprocess_exec(
         sys.executable, '-m', 'app.core.video_runner', str(os.getpid()), str(deadline),
         stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
@@ -60,6 +60,13 @@ async def _fetch(source, deadline):
         payload = json.loads(stdout)
         if not isinstance(payload, dict) or not isinstance(payload.get('status'), str) or not isinstance(payload.get('text'), str):
             raise ValueError('Invalid video worker result')
+        resolved_url = payload.pop('resolved_url', None)
+        if resolved_url and source.provider == 'xiaohongshu':
+            resolved = parse_video_source(resolved_url)
+            if (resolved.provider != source.provider or
+                    (source.external_id and resolved.external_id != source.external_id)):
+                raise ValueError('Video worker returned another source')
+            source = resolved
         return VideoTextResult(source=source, **payload)
     finally:
         # Keep ownership/lease until the OS confirms exit, even under repeated

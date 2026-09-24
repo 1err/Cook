@@ -1,6 +1,6 @@
 "use client";
 
-import { createManualRecipeDraft, recipeSourceMomentUrl, type RecipeImportCapabilities } from "@cooking/shared";
+import { createManualRecipeDraft, extractSharedVideoUrl, recipeSourceMomentUrl, type RecipeImportCapabilities } from "@cooking/shared";
 import { runRecipeImport } from "@cooking/api-client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -9,6 +9,8 @@ import { RequireAuth } from "../components/RequireAuth";
 import { webApiClient } from "../lib/api";
 import { useEditorialCopy } from "../lib/editorialCopy";
 import { useT } from "../lib/i18n";
+import { useAuth } from "../lib/auth";
+import { deleteSharedRecipe, readSharedRecipe, sharedRecipeText, shareErrorMessage } from "../lib/shareTarget";
 import type { Recipe } from "../types";
 import { DraftRecipeEditor } from "./DraftRecipeEditor";
 import { ImportSourceStep, type ImportSourceValues } from "./ImportSourceStep";
@@ -16,7 +18,7 @@ import styles from "./ImportFlow.module.css";
 
 const INITIAL_VALUES: ImportSourceValues = { mode: "link", url: "", transcript: "", notes: "", title: "", libraryTags: [] };
 
-function ImportPageContent() {
+function ImportPageContent({ userId }: { userId: string }) {
   const router = useRouter();
   const t = useT();
   const editorialCopy = useEditorialCopy();
@@ -30,6 +32,50 @@ function ImportPageContent() {
   const [capabilities, setCapabilities] = useState<RecipeImportCapabilities | null>(null);
   const [media, setMedia] = useState<File | null>(null);
   const active = useRef<AbortController | null>(null);
+  const [pendingShareId, setPendingShareId] = useState<string | null>(null);
+  const [receivingShare, setReceivingShare] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const params = new URLSearchParams(window.location.search);
+    const shareId = params.get("share");
+    const shareError = params.get("shareError");
+    if (shareError) setError(shareErrorMessage(shareError));
+    if (shareId) {
+      setReceivingShare(true);
+      void readSharedRecipe(shareId, userId).then(share => {
+        if (cancelled) return;
+        const text = sharedRecipeText(share);
+        const url = extractSharedVideoUrl(share.url, `${share.text}\n${share.title}`);
+        if (share.video) {
+          setMedia(share.video);
+          setValues({ ...INITIAL_VALUES, mode: "media", url: url ?? "" });
+        } else if (url) {
+          setValues({ ...INITIAL_VALUES, url });
+        } else {
+          if (!text) throw new Error("This shared item is empty. Share a recipe link or video.");
+          if (/https?:\/\//i.test(text)) throw new Error("Share a YouTube, TikTok, or RedNote recipe link.");
+          setValues({ ...INITIAL_VALUES, mode: "transcript", transcript: text });
+        }
+        setPendingShareId(shareId);
+      }).catch(caught => {
+        if (!cancelled) setError(caught instanceof Error ? caught.message : "Couldn't open this shared item.");
+      }).finally(() => { if (!cancelled) setReceivingShare(false); });
+    }
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  function releaseSharedItem() {
+    if (pendingShareId) void deleteSharedRecipe(pendingShareId, userId).catch(() => { /* Unread entries also expire. */ });
+    setPendingShareId(null);
+    const next = new URL(window.location.href);
+    next.searchParams.delete("share"); next.searchParams.delete("shareError");
+    window.history.replaceState(window.history.state, "", `${next.pathname}${next.search}${next.hash}`);
+  }
+
+  function discardSharedItem() {
+    releaseSharedItem(); setValues(INITIAL_VALUES); setMedia(null); setError(null);
+  }
 
   useEffect(() => {
     let alive = true;
@@ -49,9 +95,10 @@ function ImportPageContent() {
     setLoading(true);
     const controller = new AbortController();
     active.current = controller;
+    const pastedUrl = extractSharedVideoUrl(values.url, undefined) ?? values.url.trim();
     const sourceUrl = analyzeVideo
-      ? draftRecipe?.source_url || values.url.trim()
-      : values.url.trim() || draftRecipe?.source_url;
+      ? draftRecipe?.source_url || pastedUrl
+      : pastedUrl || draftRecipe?.source_url;
     try {
       const payload = { url: sourceUrl || undefined, notes: values.notes, title: values.title.trim() || draftRecipe?.title, library_tags: values.libraryTags };
       const start = () => {
@@ -71,6 +118,7 @@ function ImportPageContent() {
       if (draftRecipe) setCandidate(recovered);
       else { setManual(false); setDraftRecipe(recovered); }
       setShowSource(false);
+      releaseSharedItem();
     } catch (caught) {
       if (controller.signal.aborted || active.current !== controller) return;
       setError(caught instanceof Error ? caught.message : t("import.failed"));
@@ -116,13 +164,20 @@ function ImportPageContent() {
           </header>
           {capabilities && !capabilities.video_analysis && values.mode === "link" ? <p>{t("import.videoUnavailable")}</p> : null}
           {error && capabilities?.video_analysis && recipeSourceMomentUrl(values.url, 0) ? <button type="button" disabled={loading} onClick={() => void handleImportPreview(true)}>{t("import.analyzeVideo")}</button> : null}
-          <ImportSourceStep values={values} parsing={loading} error={error}
+          {pendingShareId ? <div className={styles.sharedNotice}>
+            <p role="status">{t(media ? "import.sharedVideoReady" : "import.sharedRecipeReady")}</p>
+            <button type="button" disabled={loading} onClick={discardSharedItem}>{t("import.discardShared")}</button>
+          </div> : null}
+          {receivingShare ? <p role="status">{t("import.openingShared")}</p> : <ImportSourceStep values={values} parsing={loading} error={error}
             onChange={(next) => { setValues(next); setError(null); }} onSubmit={() => void handleImportPreview()}
-            mediaEnabled={Boolean(capabilities?.media_upload)} maxMediaBytes={capabilities?.max_media_bytes} media={media} onMediaChange={setMedia} />
+            mediaEnabled={Boolean(capabilities?.media_upload)} maxMediaBytes={capabilities?.max_media_bytes} media={media} onMediaChange={(file) => { setMedia(file); setError(null); }} />}
         </>
       )}
     </PageShell>
   );
 }
 
-export default function ImportPage() { return <RequireAuth><ImportPageContent /></RequireAuth>; }
+export default function ImportPage() {
+  const { user, loading } = useAuth();
+  return <RequireAuth>{!loading && user ? <ImportPageContent key={user.id} userId={user.id} /> : null}</RequireAuth>;
+}

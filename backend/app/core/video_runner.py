@@ -29,11 +29,15 @@ def main():
 
     request = json.loads(sys.stdin.buffer.read(8192))
     source = parse_video_source(request['url'])
-    fetcher = fetch_youtube_text if source.provider == 'youtube' else fetch_tiktok_text
+    from app.rednote import fetch_rednote_text
+    fetcher = {'youtube': fetch_youtube_text, 'tiktok': fetch_tiktok_text,
+               'xiaohongshu': fetch_rednote_text}[source.provider]
     result = fetcher(source)
-    payload = json.dumps({name: getattr(result, name) for name in
+    fields = {name: getattr(result, name) for name in
                           ('status', 'text', 'message', 'title', 'thumbnail_url',
-                           'source_kind', 'segments', 'language_code', 'is_generated')})
+                           'source_kind', 'segments', 'language_code', 'is_generated', 'media_url')}
+    fields['resolved_url'] = result.source.canonical_url
+    payload = json.dumps(fields)
     if len(payload.encode()) > 512_000:
         payload = json.dumps({'status':'fetch_failed', 'text':'',
                               'message':'Video text is too large. Paste a shorter transcript instead.'})

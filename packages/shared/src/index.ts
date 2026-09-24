@@ -17,3 +17,5 @@ export * from "./externalUrl";
 export { formatStepDuration } from "./formatStepDuration";
 export { createManualRecipeDraft, isCompleteRecipeDraft } from "./manualRecipe";
 export { SUPPORT_EMAIL, BETA_FEEDBACK_URL, PRIVACY_URL } from "./support";
+
+export { extractSharedVideoUrl } from "./sharedVideoUrl";

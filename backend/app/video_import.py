@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class VideoSource:
-    provider: Literal["youtube", "tiktok"]
+    provider: Literal["youtube", "tiktok", "xiaohongshu"]
     original_url: str
     canonical_url: str
     external_id: str | None
@@ -57,6 +57,7 @@ class VideoTextResult:
     segments: tuple[dict, ...] = ()
     language_code: str | None = None
     is_generated: bool | None = None
+    media_url: str | None = None
 
     def __post_init__(self):
         # The isolated fetch worker serializes tuples as JSON arrays.
@@ -78,14 +79,19 @@ class UnsupportedVideoUrl(ValueError):
 
 
 def parse_video_source(raw_url: str) -> VideoSource:
+    from app.rednote import parse_rednote_source
+
+    rednote = parse_rednote_source(raw_url)
+    if rednote is not None:
+        return rednote
     original = (raw_url or "").strip()
     try:
         parsed = urlsplit(original)
         port = parsed.port
     except ValueError as exc:
-        raise UnsupportedVideoUrl("Paste a public YouTube or TikTok video link.") from exc
+        raise UnsupportedVideoUrl("Paste a public YouTube, TikTok, or RedNote (小红书) post link.") from exc
     if parsed.scheme != "https" or parsed.username or parsed.password or port not in (None, 443):
-        raise UnsupportedVideoUrl("Paste a public YouTube or TikTok video link.")
+        raise UnsupportedVideoUrl("Paste a public YouTube, TikTok, or RedNote (小红书) post link.")
 
     host = (parsed.hostname or "").lower().rstrip(".")
     youtube_id = _youtube_id(host, parsed.path, parse_qs(parsed.query))
@@ -114,7 +120,7 @@ def parse_video_source(raw_url: str) -> VideoSource:
         and re.fullmatch(r"/t/[A-Za-z0-9_-]+/?", parsed.path)
     ):
         return VideoSource("tiktok", original, original, None)
-    raise UnsupportedVideoUrl("Paste a public YouTube or TikTok video link.")
+    raise UnsupportedVideoUrl("Paste a public YouTube, TikTok, or RedNote (小红书) post link.")
 
 
 def _failure(source: VideoSource, status: str, message: str) -> VideoTextResult:

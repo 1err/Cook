@@ -37,8 +37,13 @@ export function ImportSourceStep({
 }: ImportSourceStepProps) {
   const t = useT();
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const mediaError = media?.size === 0
+    ? t("import.mediaEmpty")
+    : media && maxMediaBytes !== undefined && media.size > maxMediaBytes
+      ? t("import.mediaTooLarge")
+      : null;
   const canSubmit =
-    values.mode === "media" ? Boolean(media && mediaEnabled) : values.mode === "link" ? values.url.trim().length > 0 : values.transcript.trim().length > 0;
+    values.mode === "media" ? Boolean(media && mediaEnabled && !mediaError) : values.mode === "link" ? values.url.trim().length > 0 : values.transcript.trim().length > 0;
 
   function update<Key extends keyof ImportSourceValues>(key: Key, value: ImportSourceValues[Key]) {
     onChange({ ...values, [key]: value });
@@ -71,6 +76,17 @@ export function ImportSourceStep({
         >
           {t("import.videoLink")}
         </button>
+        {mediaEnabled ? (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={values.mode === "media"}
+            disabled={parsing}
+            onClick={() => update("mode", "media")}
+          >
+            {t("import.uploadVideo")}
+          </button>
+        ) : null}
         <button
           type="button"
           role="tab"
@@ -80,15 +96,17 @@ export function ImportSourceStep({
         >
           {t("import.recipeText")}
         </button>
-        {mediaEnabled ? <button type="button" role="tab" aria-selected={values.mode === "media"} disabled={parsing} onClick={() => update("mode", "media")}>{t("import.uploadMedia")}</button> : null}
       </div>
 
       {values.mode === "link" ? (
         <div className={styles.field} role="tabpanel">
-          <label htmlFor="import-source-url">YouTube or TikTok URL</label>
+          <label htmlFor="import-source-url">{t("import.sourceUrlLabel")}</label>
           <input
             id="import-source-url"
-            type="url"
+            type="text"
+            inputMode="url"
+            autoCapitalize="none"
+            spellCheck={false}
             placeholder="https://www.youtube.com/watch?v=..."
             value={values.url}
             onChange={(event) => update("url", event.target.value)}
@@ -100,10 +118,12 @@ export function ImportSourceStep({
         </div>
       ) : values.mode === "media" ? (
         <div className={styles.field} role="tabpanel">
-          <label htmlFor="import-media">{t("import.uploadMedia")}</label>
+          <label htmlFor="import-media">{t("import.uploadVideo")}</label>
           <input id="import-media" type="file" accept="video/*,audio/*" disabled={parsing} onChange={(event) => onMediaChange?.(event.target.files?.[0] ?? null)} />
+          {media ? <small role="status">{t("import.mediaSelected", { name: media.name })}</small> : null}
           <small>{t("import.mediaHint")}</small>
           {maxMediaBytes ? <small>{t("import.mediaLimit", { size: Math.floor(maxMediaBytes / 1024 / 1024) })}</small> : null}
+          {mediaError ? <p className={styles.error} role="alert">{mediaError}</p> : null}
         </div>
       ) : (
         <div className={styles.field} role="tabpanel">

@@ -254,3 +254,34 @@ async def test_deferred_job_keeps_original_expiration(lifecycle):
         await jobs.maintain_jobs(session)
         assert await jobs.claim_job(session, lease_seconds=100) is None
     assert (await client.get(f'/recipes/import-jobs/{claimed.id}')).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_rednote_queue_keeps_retrieval_token_then_clears_it_after_completion(lifecycle, monkeypatch):
+    from app.api import routes_recipes
+    from app.video_import import VideoTextResult, parse_video_source
+
+    maker, owner, client = lifecycle
+    canonical = 'https://www.xiaohongshu.com/explore/6411cf99000000001300b6d9'
+    original = canonical + '?xsec_token=private-share-token'
+    source = parse_video_source(original)
+    fetch = AsyncMock(return_value=VideoTextResult('ok', '鸡蛋2个，蒸10分钟。', source,
+                                                  source_kind='description'))
+    monkeypatch.setattr(routes_recipes, 'fetch_video_text', fetch)
+    monkeypatch.setattr(routes_recipes, 'extract_recipe_from_text', AsyncMock(return_value=Recipe(
+        id='draft', title='蒸蛋', ingredients=[{'name': '鸡蛋', 'quantity': '2个'}], steps=['蒸10分钟。'])))
+    response = await client.post('/recipes/import-jobs', json={'url': '蒸蛋教程 ' + original})
+    assert response.status_code == 202
+    async with maker.begin() as session:
+        claimed = await jobs.claim_job(session, lease_seconds=100)
+        assert claimed.payload['url'] == original
+        job_id = claimed.id
+    await worker.process_job(claimed)
+    result = (await client.get(f'/recipes/import-jobs/{job_id}')).json()
+    assert result['status'] == 'completed'
+    assert result['recipe']['source_url'] == canonical
+    assert 'private-share-token' not in str(result)
+    assert fetch.await_args.args[0].original_url == original
+    async with maker() as session:
+        completed = await jobs.get_job(session, job_id, owner.id)
+        assert completed.payload == {} and completed.media_data is None

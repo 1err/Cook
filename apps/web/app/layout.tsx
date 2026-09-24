@@ -14,6 +14,7 @@ import { AuthProvider } from "./lib/auth";
 import { Header } from "./components/Header";
 import { LocalEmailPreviewBanner } from "./components/LocalEmailPreviewBanner";
 import { I18nProvider } from "./lib/i18n";
+import { ShareTargetRegistration } from "./components/ShareTargetRegistration";
 import { AnalyticsTracker } from "./components/AnalyticsTracker";
 
 export const metadata: Metadata = {
@@ -29,6 +30,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <ShareTargetRegistration />
         <I18nProvider>
           <AuthProvider>
             <AnalyticsTracker />

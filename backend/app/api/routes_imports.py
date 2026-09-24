@@ -43,7 +43,12 @@ class ImportJobBody(BaseModel):
                 source = parse_video_source(link)
             except UnsupportedVideoUrl as exc:
                 raise ValueError(str(exc)) from None
-            self.url = source.canonical_url
+            # Keep a RedNote share token only while retrieving a queued link.
+            # Text/media attribution never needs that token and stays canonical.
+            self.url = (source.original_url if self.mode == 'link' and source.provider == 'xiaohongshu'
+                        else source.canonical_url)
+            if self.source_url:
+                self.source_url = source.canonical_url
             if self.mode == 'video' and source.provider != 'youtube':
                 raise ValueError('Video-link analysis supports public YouTube videos. Upload a file for other sources.')
         return self
