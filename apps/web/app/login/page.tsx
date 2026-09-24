@@ -37,9 +37,12 @@ export default function LoginPage() {
         );
         return;
       }
+      const account = await res.json();
       await refreshUser({ newSession: true });
       const params = new URLSearchParams(window.location.search);
-      router.push(safeAuthRedirect(params.get("redirect")));
+      const destination = safeAuthRedirect(params.get("redirect"));
+      router.push(account.email_verification_required && !account.email_verified
+        ? `/check-email?redirect=${encodeURIComponent(destination)}` : destination);
     } catch (err) {
       const message = err instanceof Error ? err.message : t("auth.loginFailed");
       if (message === "Failed to fetch") {

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
-from fastapi import HTTPException, Response
+from fastapi import BackgroundTasks, HTTPException, Response
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
@@ -37,12 +37,14 @@ def test_login_input_has_a_reasonable_upper_bound():
 
 @pytest.fixture
 def account(monkeypatch):
-    user = SimpleNamespace(id=UUID(int=401), email="user@example.com", is_library_public=False, auth_version=0)
+    user = SimpleNamespace(id=UUID(int=401), email="user@example.com", is_library_public=False,
+                           auth_version=0, email_verified=False, email_verification_required=False)
 
     async def no_existing(*args):
         return None
 
-    async def create_user(*args):
+    async def create_user(*args, **kwargs):
+        user.email_verification_required = kwargs.get("email_verification_required", False)
         return user
 
     async def create_identity(*args, **kwargs):
@@ -52,6 +54,7 @@ def account(monkeypatch):
     monkeypatch.setattr(auth.repo_auth, "create_user", create_user)
     monkeypatch.setattr(auth.repo_auth, "create_identity", create_identity)
     monkeypatch.setattr(auth, "create_access_token", lambda subject, claims=None: "test-token")
+    monkeypatch.setattr(auth, "email_available", lambda: True)
     return user
 
 
@@ -59,7 +62,7 @@ def account(monkeypatch):
 async def test_registration_checks_utf8_limit_before_database_work(monkeypatch, account):
     with pytest.raises(HTTPException) as error:
         await auth.register(
-            auth.RegisterBody(email=account.email, password="界" * 25), Response(), session=object()
+            auth.RegisterBody(email=account.email, password="界" * 25), Response(), BackgroundTasks(), session=object()
         )
     assert error.value.status_code == 400
     assert "72" in error.value.detail
@@ -74,7 +77,7 @@ async def test_registration_canonicalizes_email_before_duplicate_lookup(monkeypa
     with pytest.raises(HTTPException) as error:
         await auth.register(
             auth.RegisterBody(email="User@example.com", password="valid-password"),
-            Response(), session=object(),
+            Response(), BackgroundTasks(), session=object(),
         )
     assert error.value.status_code == 400
     assert error.value.detail == "Email already registered"
@@ -85,14 +88,14 @@ async def test_registration_unique_race_returns_controlled_error(monkeypatch, ac
     class DuplicateEmail(Exception):
         sqlstate = "23505"
 
-    async def concurrent_insert(*args):
+    async def concurrent_insert(*args, **kwargs):
         raise IntegrityError("INSERT", {}, DuplicateEmail())
 
     monkeypatch.setattr(auth.repo_auth, "create_user", concurrent_insert)
     with pytest.raises(HTTPException) as error:
         await auth.register(
             auth.RegisterBody(email=account.email, password="valid-password"),
-            Response(), session=object(),
+            Response(), BackgroundTasks(), session=object(),
         )
     assert error.value.status_code == 400
     assert error.value.detail == "Email already registered"
@@ -108,9 +111,17 @@ async def test_registration_password_hash_runs_outside_event_loop(monkeypatch, a
         return "test-hash"
 
     monkeypatch.setattr(auth, "hash_password", hash_password)
+    async def issue_action_token(*args):
+        return "verification-token"
+
+    class Session:
+        async def commit(self):
+            pass
+
+    monkeypatch.setattr(auth.repo_accounts, "issue_action_token", issue_action_token)
     response = await auth.register(
         auth.RegisterBody(email=account.email, password="valid-password"),
-        Response(), session=object(),
+        Response(), BackgroundTasks(), session=Session(),
     )
     assert response.id == str(account.id)
     assert hash_threads and hash_threads[0] != event_loop_thread

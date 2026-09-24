@@ -11,6 +11,7 @@ export type AuthUser = {
   is_library_public: boolean;
   is_admin?: boolean;
   email_verified?: boolean;
+  email_verification_required?: boolean;
 };
 
 type AuthContextValue = {
@@ -65,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           is_library_public: Boolean(data.is_library_public),
           is_admin: data.is_admin === true,
           email_verified: data.email_verified === true,
+          email_verification_required: data.email_verification_required === true,
         });
       } else if (res.status === 401) {
         // Stale cookie (e.g. user id from another DB) still sends a valid JWT; backend returns 401.

@@ -70,14 +70,23 @@ async def account_client(account_db, monkeypatch):
 
     main.app.dependency_overrides[db.get_session] = get_session
     async with AsyncClient(transport=ASGITransport(app=main.app), base_url="https://api.example.com", headers={"Origin": "http://localhost:3000"}) as client:
+        client.test_email_messages = sent
         yield client, sent
     main.app.dependency_overrides.pop(db.get_session, None)
 
 
-async def register(client):
+async def register(client, *, verify=True):
     email = f"account-{uuid4()}@example.com"
     response = await client.post("/auth/register", json={"email": email, "password": "initial-password"})
     assert response.status_code == 200, response.text
+    if verify:
+        confirmation = await client.post("/auth/email-verification/confirm", json={
+            "token": sent_token(client.test_email_messages),
+        })
+        assert confirmation.status_code == 200, confirmation.text
+    # Existing lifecycle tests capture emails requested by that scenario. New
+    # onboarding tests exercise automatic registration delivery independently.
+    client.test_email_messages.clear()
     return email, response.json()
 
 
@@ -145,7 +154,7 @@ async def test_concurrent_reset_consumes_token_once(account_client):
 @pytest.mark.asyncio
 async def test_expired_and_cross_purpose_tokens_cannot_reset(account_client, account_db):
     client, sent = account_client
-    email, user = await register(client)
+    email, user = await register(client, verify=False)
     assert (await client.post("/auth/email-verification/request", headers=headers(user))).status_code == 200
     verification = sent_token(sent)
     assert (await client.post("/auth/password-reset/confirm", json={"token": verification, "password": "new-password"})).status_code == 400
@@ -161,7 +170,7 @@ async def test_expired_and_cross_purpose_tokens_cannot_reset(account_client, acc
 @pytest.mark.asyncio
 async def test_verification_replay_and_logout_scopes(account_client):
     client, sent = account_client
-    email, first = await register(client)
+    email, first = await register(client, verify=False)
     assert first.get("email_verified") is False
     second = (await client.post("/auth/login", json={"email": email, "password": "initial-password"})).json()
     assert first["access_token"] != second["access_token"]

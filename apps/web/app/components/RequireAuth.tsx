@@ -4,19 +4,23 @@ import { Fragment, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../lib/auth";
 
-export function RequireAuth({ children }: { children: React.ReactNode }) {
+export function RequireAuth({ children, allowUnverified = false }: { children: React.ReactNode; allowUnverified?: boolean }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const needsVerification = Boolean(user?.email_verification_required && !user.email_verified && !allowUnverified);
 
   useEffect(() => {
     if (!loading && !user && typeof window !== "undefined") {
       const redirect = `${window.location.pathname}${window.location.search || ""}`;
       router.replace(`/login?redirect=${encodeURIComponent(redirect)}`);
+    } else if (!loading && needsVerification) {
+      const redirect = `${window.location.pathname}${window.location.search || ""}`;
+      router.replace(`/check-email?redirect=${encodeURIComponent(redirect)}`);
     }
-  }, [loading, router, user]);
+  }, [loading, router, user, needsVerification]);
 
   if (loading) return <div style={loadingWrapStyle}><p style={loadingStyle}>Opening your workspace…</p></div>;
-  if (!user) return null;
+  if (!user || needsVerification) return null;
   return <Fragment key={user.id}>{children}</Fragment>;
 }
 

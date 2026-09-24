@@ -21,6 +21,7 @@ async def database_ready() -> bool:
                            store_jobs.id, request_limit_counters.scope,
                            meal_plan.revision, upload_budgets.scope,
                            store_request_leases.expires_at, users.auth_version, users.email_verified,
+                           users.email_verification_required,
                            account_action_tokens.token_hash, revoked_sessions.token_hash,
                            owned_images.state, deleted_accounts.next_attempt_at
                     FROM users, recipes, ai_call_ledger, store_jobs,

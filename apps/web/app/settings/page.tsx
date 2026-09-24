@@ -32,7 +32,7 @@ function SettingsPageContent() {
   return (
     <PageShell>
       <PageHeader title="Settings" description={editorialCopy["settings.tagline"]} />
-      <section className={styles.section}>
+      {!(user.email_verification_required && !user.email_verified) ? <section className={styles.section}>
         <div className={styles.copy}>
           <h2>Share my library</h2>
           <p>Anyone who knows your email can browse and copy your recipes.</p>
@@ -49,7 +49,7 @@ function SettingsPageContent() {
           <span className={styles.track} aria-hidden><span /></span>
           <span className={styles.state}>{pending ? "Saving…" : user.is_library_public ? "On" : "Off"}</span>
         </label>
-      </section>
+      </section> : null}
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
       <AccountSecurity />
     </PageShell>
@@ -58,7 +58,7 @@ function SettingsPageContent() {
 
 export default function SettingsPage() {
   return (
-    <RequireAuth>
+    <RequireAuth allowUnverified>
       <SettingsPageContent />
     </RequireAuth>
   );

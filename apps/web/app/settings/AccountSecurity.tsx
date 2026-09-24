@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { BETA_FEEDBACK_URL, PRIVACY_URL } from "@cooking/shared";
 import { useAuth } from "../lib/auth";
 import { webApiClient } from "../lib/api";
@@ -8,8 +9,10 @@ import { Button } from "../components/ui/Button";
 import { useT } from "../lib/i18n";
 import styles from "./Settings.module.css";
 
-export function AccountSecurity() {
+function AccountSecurityContent() {
   const { user, deleteAccount, logoutAll, refreshUser } = useAuth();
+  const router = useRouter();
+  const query = useSearchParams().toString();
   const t = useT();
   const [emailAvailable, setEmailAvailable] = useState<boolean | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -21,6 +24,9 @@ export function AccountSecurity() {
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [verificationNotice, setVerificationNotice] = useState<"sent" | "checked" | null>(null);
   const [linkRequested, setLinkRequested] = useState(false);
+  const sectionRef = useRef<HTMLElement>(null);
+  const deletionFormRef = useRef<HTMLFormElement>(null);
+  const restoreDeletionFocus = useRef(false);
   const active = useRef(true);
   const capabilityGeneration = useRef(0);
   const refreshEmailAvailability = useCallback(async () => {
@@ -37,6 +43,25 @@ export function AccountSecurity() {
     void refreshEmailAvailability();
     return () => { active.current = false; };
   }, [refreshEmailAvailability]);
+
+  useEffect(() => {
+    const parameters = new URLSearchParams(query);
+    if (parameters.get("delete") !== "1" || !user?.id) return;
+    setDeleting(true); setPassword(""); setConfirmed(false); setError(null);
+    deletionFormRef.current?.focus();
+    // Consume the opening request so Cancel/revisiting Settings cannot reopen it.
+    parameters.delete("delete");
+    const remaining = parameters.toString();
+    router.replace(`/settings${remaining ? `?${remaining}` : ""}`, { scroll: false });
+  }, [query, router, user?.id]);
+
+  useEffect(() => {
+    if (deleting) deletionFormRef.current?.focus();
+    else if (restoreDeletionFocus.current) {
+      restoreDeletionFocus.current = false;
+      sectionRef.current?.querySelector<HTMLButtonElement>("#delete-account-trigger")?.focus();
+    }
+  }, [deleting]);
 
   async function run(action: () => Promise<unknown>) {
     if (pending) return;
@@ -80,7 +105,7 @@ export function AccountSecurity() {
   }
 
   if (!user) return null;
-  return <section className={`${styles.section} ${styles.account}`} aria-labelledby="account-security-title">
+  return <section ref={sectionRef} className={`${styles.section} ${styles.account}`} aria-labelledby="account-security-title">
     <div className={styles.copy}>
       <h2 id="account-security-title">{t("account.settings")}</h2>
       <p className={styles.accountEmail}>{user.email}</p>
@@ -109,20 +134,24 @@ export function AccountSecurity() {
     </section>
     <p>{t("account.logoutAllHelp")}</p>
     <Button variant="secondary" disabled={pending} onClick={() => void run(logoutAll)}>{t("account.logoutAll")}</Button>
-    {deleting ? <form onSubmit={submitDeletion} className={styles.deletion}>
-      <h3>{t("account.deleteTitle")}</h3>
-      <p>{t("account.deleteHelp")}</p>
+    {deleting ? <form ref={deletionFormRef} id="delete-account" tabIndex={-1} aria-labelledby="delete-account-title" aria-describedby="delete-account-help" onSubmit={submitDeletion} className={styles.deletion} style={{ scrollMarginTop: "6rem" }}>
+      <h3 id="delete-account-title">{t("account.deleteTitle")}</h3>
+      <p id="delete-account-help">{t("account.deleteHelp")}</p>
       <label>{t("account.currentPassword")}<input className="input-editorial" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
       <label className={styles.confirm}><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />{t("account.deleteConfirm")}</label>
       <div className={styles.actions}>
         <Button variant="secondary" type="submit" disabled={pending || !confirmed || !password}>{t("account.deletePermanently")}</Button>
-        <Button variant="secondary" type="button" disabled={pending} onClick={() => { setDeleting(false); setPassword(""); setConfirmed(false); setError(null); }}>{t("common.cancel")}</Button>
+        <Button variant="secondary" type="button" disabled={pending} onClick={() => { restoreDeletionFocus.current = true; setDeleting(false); setPassword(""); setConfirmed(false); setError(null); }}>{t("common.cancel")}</Button>
       </div>
-    </form> : <Button variant="secondary" disabled={pending} onClick={() => setDeleting(true)}>{t("account.deleteTitle")}</Button>}
+    </form> : <Button id="delete-account-trigger" variant="secondary" disabled={pending} onClick={() => setDeleting(true)}>{t("account.deleteTitle")}</Button>}
     {error ? <p className={styles.error} role="alert">{error}</p> : null}
     <div className={styles.actions}>
       <a href={BETA_FEEDBACK_URL}>{t("account.support")}</a>
       <a href={PRIVACY_URL}>{t("account.privacy")}</a>
     </div>
   </section>;
+}
+
+export function AccountSecurity() {
+  return <Suspense fallback={null}><AccountSecurityContent /></Suspense>;
 }

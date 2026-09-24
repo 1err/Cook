@@ -39,6 +39,7 @@ export function Header() {
   const isActive = (href: string) =>
     pathname === href || (href === "/library" && pathname.startsWith("/library/"));
   const addRecipeHref = `/import?from=${encodeURIComponent(pathname)}`;
+  const canUseApp = Boolean(user && !(user.email_verification_required && !user.email_verified));
 
   return (
     <header className={styles.header} data-app-shell>
@@ -61,7 +62,7 @@ export function Header() {
           </span>
         </Link>
 
-        {!loading && user ? (
+        {!loading && canUseApp ? (
           <IconButton
             className={styles.menuButton}
             controls={navigationId}
@@ -72,7 +73,7 @@ export function Header() {
           />
         ) : null}
 
-        {user ? (
+        {canUseApp ? (
           <nav
             aria-label="Main"
             className={`${styles.nav}${mobileMenuOpen ? ` ${styles.navOpen}` : ""}`}
@@ -101,14 +102,14 @@ export function Header() {
 
           {!loading && user ? (
             <>
-              <ActionLink
+              {canUseApp ? <ActionLink
                 className={styles.addRecipe}
                 href={addRecipeHref}
                 leadingIcon="add"
                 size="sm"
               >
                 {t("nav.addRecipe")}
-              </ActionLink>
+              </ActionLink> : null}
               <AccountMenu email={user.email} isAdmin={isAdminUser(user)} onLogout={logout} />
             </>
           ) : null}

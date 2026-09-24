@@ -39,7 +39,7 @@ export default function RegisterPage() {
       }
       await refreshUser({ newSession: true });
       const params = new URLSearchParams(window.location.search);
-      router.push(safeAuthRedirect(params.get("redirect")));
+      router.push(`/check-email?redirect=${encodeURIComponent(safeAuthRedirect(params.get("redirect")))}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : t("auth.registrationFailed");
       if (message === "Failed to fetch") {
@@ -67,6 +67,7 @@ export default function RegisterPage() {
       }
     >
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.35rem" }}>
+        <p style={{ margin: 0, color: "var(--cw-color-muted-ink)", lineHeight: 1.6 }}>{t("account.signupVerificationHelp")}</p>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <label className="font-headline" htmlFor="register-email" style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--on-surface)", marginLeft: 4 }}>
             {t("common.email")}

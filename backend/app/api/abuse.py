@@ -46,6 +46,23 @@ async def enforce_auth_limits(request: Request | None, email: str, *, registrati
     ])
 
 
+async def account_limits(request: Request | None, kind: str, account: str = "") -> None:
+    """Share initial verification and resend quotas, without retaining email/IP."""
+    if not settings.ABUSE_LIMITS_ENABLED:
+        return
+    peer = request.client.host if request is not None and request.client else "unknown"
+    limits = [RequestLimit("account-action-global", 60, settings.AUTH_GLOBAL_PER_MINUTE)]
+    if kind in {"reset", "verify"}:
+        limits.extend([
+            RequestLimit(private_scope("account-email-ip", peer), 3600, settings.ACCOUNT_EMAIL_IP_PER_HOUR),
+            RequestLimit(private_scope("account-email-address", account.strip().lower()), 3600,
+                         settings.ACCOUNT_EMAIL_ADDRESS_PER_HOUR),
+        ])
+    else:
+        limits.append(RequestLimit(private_scope("account-confirm-ip", peer), 60, settings.ACCOUNT_CONFIRM_IP_PER_MINUTE))
+    await enforce_limits(limits)
+
+
 async def enforce_upload_limits(account_id: str, byte_count: int) -> None:
     if not settings.ABUSE_LIMITS_ENABLED:
         return

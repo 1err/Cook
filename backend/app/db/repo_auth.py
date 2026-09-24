@@ -32,8 +32,8 @@ async def get_identity(
     return result.scalars().one_or_none()
 
 
-async def create_user(session: AsyncSession, email: str) -> UserModel:
-    user = UserModel(email=email.strip().lower())
+async def create_user(session: AsyncSession, email: str, *, email_verification_required: bool = False) -> UserModel:
+    user = UserModel(email=email.strip().lower(), email_verification_required=email_verification_required)
     session.add(user)
     await session.flush()
     return user

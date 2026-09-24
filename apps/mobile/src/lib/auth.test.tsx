@@ -11,11 +11,12 @@ jest.mock("@react-native-async-storage/async-storage", () => require("@react-nat
 jest.mock("../features/cook/notifications", () => ({ cancelAllCookingNotifications: jest.fn() }));
 const mockMe = jest.fn();
 const mockLogin = jest.fn();
+const mockRegister = jest.fn();
 const mockLogout = jest.fn();
 const mockLogoutAll = jest.fn();
 const mockDeleteAccount = jest.fn();
 jest.mock("./api", () => ({ buildClient: () => ({ auth: {
-  me: mockMe, login: mockLogin, logout: mockLogout,
+  me: mockMe, login: mockLogin, register: mockRegister, logout: mockLogout,
   logoutAll: mockLogoutAll, deleteAccount: mockDeleteAccount,
 } }) }));
 
@@ -30,6 +31,17 @@ beforeEach(() => {
   mockLogout.mockResolvedValue({ ok: true });
   mockLogoutAll.mockResolvedValue({ ok: true });
   mockDeleteAccount.mockResolvedValue({ ok: true });
+});
+
+test.each(["login", "register"] as const)("%s retains the email verification requirement before entering the app", async (action) => {
+  const { result } = await renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  ({ login: mockLogin, register: mockRegister })[action].mockResolvedValue({
+    id: "new-account", email: "new@example.com", is_library_public: false,
+    email_verified: false, email_verification_required: true, access_token: "new-token",
+  });
+  await act(async () => { await result.current[action]("new@example.com", "password"); });
+  expect(result.current.user).toMatchObject({ email_verified: false, email_verification_required: true });
 });
 
 test("logout clears authenticated memory even when notification cleanup fails", async () => {

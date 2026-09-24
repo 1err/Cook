@@ -5,13 +5,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
-from app.api.abuse import enforce_limits, private_scope
-from app.api.auth import _clear_cookie, get_current_user, presented_token
+from app.api.abuse import account_limits
+from app.api.auth import _clear_cookie, get_authenticated_user, presented_token
 from app.core.config import settings
 from app.core.security import BCRYPT_MAX_PASSWORD_BYTES, MAX_LOGIN_PASSWORD_CHARACTERS, decode_access_token, hash_password, verify_password
 from app.db import repo_accounts
 from app.db.models import AuthIdentityModel, UserModel
-from app.db.repo_request_limits import RequestLimit
 from app.db.session import get_session
 from app.services.account_email import deliver_account_email, email_available
 
@@ -32,22 +31,6 @@ class PasswordBody(BaseModel):
 
 class ResetBody(TokenBody, PasswordBody):
     pass
-
-
-async def account_limits(request: Request, kind: str, account: str = "") -> None:
-    if not settings.ABUSE_LIMITS_ENABLED:
-        return
-    peer = request.client.host if request.client else "unknown"
-    limits = [RequestLimit("account-action-global", 60, settings.AUTH_GLOBAL_PER_MINUTE)]
-    if kind in {"reset", "verify"}:
-        limits.extend([
-            RequestLimit(private_scope("account-email-ip", peer), 3600, settings.ACCOUNT_EMAIL_IP_PER_HOUR),
-            RequestLimit(private_scope("account-email-address", account.strip().lower()), 3600,
-                         settings.ACCOUNT_EMAIL_ADDRESS_PER_HOUR),
-        ])
-    else:
-        limits.append(RequestLimit(private_scope("account-confirm-ip", peer), 60, settings.ACCOUNT_CONFIRM_IP_PER_MINUTE))
-    await enforce_limits(limits)
 
 
 def require_email():
@@ -104,7 +87,7 @@ async def confirm_reset(body: ResetBody, request: Request, session: AsyncSession
 @router.post("/email-verification/request")
 async def request_verification(request: Request, background: BackgroundTasks,
                                session: AsyncSession = Depends(get_session),
-                               current_user: UserModel = Depends(get_current_user)):
+                               current_user: UserModel = Depends(get_authenticated_user)):
     await account_limits(request, "verify", current_user.email)
     require_email()
     user = await current_locked_user(request, session, current_user)
@@ -127,7 +110,7 @@ async def confirm_verification(body: TokenBody, request: Request, session: Async
 
 @router.post("/logout-all")
 async def logout_all(request: Request, response: Response, session: AsyncSession = Depends(get_session),
-                     current_user: UserModel = Depends(get_current_user)):
+                     current_user: UserModel = Depends(get_authenticated_user)):
     await account_limits(request, "confirm")
     user = await current_locked_user(request, session, current_user)
     user.auth_version += 1
@@ -139,7 +122,7 @@ async def logout_all(request: Request, response: Response, session: AsyncSession
 @router.delete("/account")
 async def delete_account(body: PasswordBody, request: Request, response: Response,
                          session: AsyncSession = Depends(get_session),
-                         current_user: UserModel = Depends(get_current_user)):
+                         current_user: UserModel = Depends(get_authenticated_user)):
     await account_limits(request, "confirm")
     user = await current_locked_user(request, session, current_user)
     identity = (await session.execute(select(AuthIdentityModel).where(

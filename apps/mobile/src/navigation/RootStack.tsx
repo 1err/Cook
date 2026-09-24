@@ -7,6 +7,7 @@ import { useAuth } from "../lib/auth";
 import { AuthStack } from "./AuthStack";
 import { MainTabs } from "./MainTabs";
 import { ImportModalScreen } from "../features/import/ImportModalScreen";
+import { SettingsScreen } from "../features/profile/SettingsScreen";
 import { extractSharedVideoUrl } from "../features/import/sharedVideoUrl";
 import { AccountStack } from "./stacks/AccountStack";
 import { colors } from "../theme";
@@ -26,6 +27,8 @@ export function RootStack() {
   const { token, user, loading } = useAuth();
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
   const accountKey = user?.id ?? (token ? "authenticated" : "anonymous");
+  const verificationRequired = user?.email_verification_required === true && !user.email_verified;
+  const navigationKey = `${accountKey}:${verificationRequired ? "verify" : "app"}`;
   const [navigationReady, setNavigationReady] = useState<string | null>(null);
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
   const consumedIntentKeyRef = useRef<string | null>(null);
@@ -39,7 +42,8 @@ export function RootStack() {
     if (
       loading ||
       !token ||
-      navigationReady !== accountKey ||
+      verificationRequired ||
+      navigationReady !== navigationKey ||
       !navigationRef.isReady()
     ) {
       return;
@@ -59,25 +63,28 @@ export function RootStack() {
     }
     resetShareIntent();
   }, [
-    accountKey,
     hasShareIntent,
     loading,
     navigationReady,
+    navigationKey,
     navigationRef,
     resetShareIntent,
     shareIntent.text,
     shareIntent.type,
     shareIntent.webUrl,
     token,
+    verificationRequired,
   ]);
 
   if (loading) return <SplashGate />;
 
   return (
-    <NavigationContainer key={accountKey} ref={navigationRef} onReady={() => setNavigationReady(accountKey)}>
+    <NavigationContainer key={navigationKey} ref={navigationRef} onReady={() => setNavigationReady(navigationKey)}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!token ? (
           <Stack.Screen name="Auth" component={AuthStack} />
+        ) : verificationRequired ? (
+          <Stack.Screen name="VerifyEmail" component={SettingsScreen} />
         ) : (
           <>
             <Stack.Screen name="Main" component={MainTabs} />

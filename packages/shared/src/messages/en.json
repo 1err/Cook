@@ -505,5 +505,13 @@
   "account.verificationTitle": "Email verification",
   "account.verificationHelp": "Verify your email to confirm it belongs to you. Open the link we send, then return here to check your status.",
   "account.verificationChecked": "Verification status updated.",
-  "account.resendVerification": "Resend verification link"
+  "account.resendVerification": "Resend verification link",
+  "account.checkInbox": "Check your email",
+  "account.signupVerificationHelp": "We’ll email you a link to verify your address before you start using Chef World.",
+  "account.checkInboxHelp": "Open the verification link sent to {email}, then return here to continue.",
+  "account.checkInboxTips": "Check your spam folder too. If you request another link, use the newest email.",
+  "account.verificationWaiting": "Your email is not verified yet. Open the link in your email, then check again.",
+  "account.differentEmail": "Use a different email",
+  "account.finishVerification": "I’ve verified my email",
+  "account.verificationRequired": "Verify your email to continue."
 }
