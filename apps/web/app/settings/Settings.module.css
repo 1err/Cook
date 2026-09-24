@@ -94,6 +94,58 @@
 
 .account { margin-top: 1.5rem; display: grid; justify-content: stretch; gap: 1rem; }
 .account p { margin: 0; }
+.account > * { min-width: 0; }
+.accountEmail { overflow-wrap: anywhere; }
+.verification {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+  margin: 0.25rem 0 0.75rem;
+  padding: clamp(1rem, 3vw, 1.5rem);
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-subtle-surface);
+}
+.verificationHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+.verificationHeader h3 {
+  margin: 0;
+  color: var(--cw-color-ink);
+  font-family: var(--cw-font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+.verificationBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 100%;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid currentColor;
+  border-radius: var(--cw-radius-round);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.verificationBadge svg { width: 1rem; height: 1rem; flex: 0 0 auto; }
+.verifiedBadge { color: var(--cw-color-action); background: var(--cw-color-surface); }
+.unverifiedBadge { color: var(--cw-color-muted-ink); }
+.verificationHelp, .verificationNotice, .verificationError {
+  max-width: 40rem;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.verificationHelp { color: var(--cw-color-muted-ink); }
+.verificationNotice { color: var(--cw-color-ink); }
+.verificationError { color: var(--cw-color-error); }
+.verificationActions button { min-height: 44px; max-width: 100%; }
+.verificationActions button > span { overflow-wrap: anywhere; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
 .deletion { display: grid; gap: 1rem; border-top: 1px solid var(--cw-color-divider); padding-top: 1rem; }
 .deletion h3 { margin: 0; }
@@ -109,6 +161,9 @@
   .switch {
     width: 100%;
   }
+
+  .verificationActions { align-items: stretch; flex-direction: column; gap: 0.65rem; }
+  .verificationActions button { width: 100%; }
 }
 
 .switch {

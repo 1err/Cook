@@ -496,5 +496,14 @@
   "account.shareHelp": "知道你邮箱的人可以浏览和复制你的食谱。",
   "account.logoutServerFailed": "无法确认服务器端退出，请恢复网络后重试。",
   "account.deletePermanently": "永久删除账户",
-  "account.passwordLength": "密码至少需要 8 个字符。如果密码包含较多中文或特殊符号，请尝试缩短密码。"
+  "account.passwordLength": "密码至少需要 8 个字符。如果密码包含较多中文或特殊符号，请尝试缩短密码。",
+  "account.backToSignIn": "返回登录",
+  "account.continue": "继续使用 Chef World",
+  "account.verificationRecovery": "请前往账户设置申请新的验证链接。如有需要，请先登录。",
+  "account.sending": "正在发送…",
+  "account.verifying": "正在验证…",
+  "account.verificationTitle": "邮箱验证",
+  "account.verificationHelp": "验证邮箱以确认归属。打开我们发送的链接完成验证，然后返回此处查看验证状态。",
+  "account.verificationChecked": "验证状态已更新。",
+  "account.resendVerification": "重新发送验证链接"
 }

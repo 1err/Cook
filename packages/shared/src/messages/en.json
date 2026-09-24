@@ -496,5 +496,14 @@
   "account.shareHelp": "Anyone who knows your email can browse and copy your recipes.",
   "account.logoutServerFailed": "Could not confirm sign-out on the server. Please reconnect and try again.",
   "account.deletePermanently": "Delete account permanently",
-  "account.passwordLength": "Use at least 8 characters. For a long password with Chinese characters or symbols, choose a shorter password."
+  "account.passwordLength": "Use at least 8 characters. For a long password with Chinese characters or symbols, choose a shorter password.",
+  "account.backToSignIn": "Back to sign in",
+  "account.continue": "Continue to Chef World",
+  "account.verificationRecovery": "Request a new verification link from account settings. Sign in first if needed.",
+  "account.sending": "Sending…",
+  "account.verifying": "Verifying…",
+  "account.verificationTitle": "Email verification",
+  "account.verificationHelp": "Verify your email to confirm it belongs to you. Open the link we send, then return here to check your status.",
+  "account.verificationChecked": "Verification status updated.",
+  "account.resendVerification": "Resend verification link"
 }

@@ -4,6 +4,8 @@ import { MESSAGE_MAP } from "@cooking/shared";
 import { AccountRecoveryForm } from "./AccountRecoveryForm";
 
 const api = vi.hoisted(() => ({ capabilities: vi.fn(), requestPasswordReset: vi.fn(), confirmPasswordReset: vi.fn(), confirmEmailVerification: vi.fn() }));
+const auth = vi.hoisted(() => ({ refreshUser: vi.fn() }));
+vi.mock("../lib/auth", () => ({ useAuth: () => auth }));
 vi.mock("../lib/api", () => ({ webApiClient: { auth: api } }));
 vi.mock("../lib/i18n", () => {
   const t = (key: string) => MESSAGE_MAP.en[key] ?? key;
@@ -14,6 +16,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   window.history.replaceState(null, "", "/forgot-password");
   api.capabilities.mockResolvedValue({ password_recovery: true, email_verification: true });
+  auth.refreshUser.mockResolvedValue(undefined);
 });
 afterEach(cleanup);
 
@@ -57,6 +60,41 @@ test("verification does not mutate on page load and preserves an expired-link re
   fireEvent.click(button);
   expect(await screen.findByRole("alert")).toHaveTextContent("expired");
   expect(screen.getByRole("link", { name: "Account settings" })).toHaveAttribute("href", "/settings");
+  expect(screen.queryByRole("button", { name: "Verify email" })).not.toBeInTheDocument();
+});
+
+test("a missing verification token provides a way to request a fresh link", async () => {
+  window.history.replaceState(null, "", "/verify-email");
+  render(<AccountRecoveryForm mode="verify" />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("expired");
+  expect(screen.getByRole("link", { name: "Account settings" })).toHaveAttribute("href", "/settings");
+  expect(screen.getByText(/request a new verification link from account settings/i)).toBeVisible();
+});
+
+test("verification retries a connection failure with the captured token and refreshes the account", async () => {
+  window.history.replaceState(null, "", "/verify-email#token=retry-token");
+  api.confirmEmailVerification.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ ok: true });
+  render(<AccountRecoveryForm mode="verify" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Verify email" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Check your connection");
+  fireEvent.click(screen.getByRole("button", { name: "Verify email" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("Email verified");
+  await waitFor(() => expect(auth.refreshUser).toHaveBeenCalledOnce());
+  expect(api.confirmEmailVerification).toHaveBeenLastCalledWith("retry-token");
+  expect(screen.getByRole("link", { name: "Continue to Chef World" })).toHaveAttribute("href", "/library");
+  expect(screen.getByRole("link", { name: "Account settings" })).toHaveAttribute("href", "/settings");
+});
+
+test("a refresh failure does not undo successful email verification or reuse its token", async () => {
+  window.history.replaceState(null, "", "/verify-email#token=successful-token");
+  api.confirmEmailVerification.mockResolvedValue({ ok: true });
+  auth.refreshUser.mockRejectedValue(new Error("offline"));
+  render(<AccountRecoveryForm mode="verify" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Verify email" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("Email verified");
+  await waitFor(() => expect(auth.refreshUser).toHaveBeenCalledOnce());
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Verify email" })).not.toBeInTheDocument();
 });
 
 test("unconfigured email cannot show a false message-sent success", async () => {

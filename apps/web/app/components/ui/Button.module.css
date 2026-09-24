@@ -31,6 +31,7 @@
 .primary:hover:not(:disabled),
 .primary:active:not(:disabled) {
   background: var(--cw-color-action-pressed);
+  color: var(--cw-color-on-action);
 }
 
 .secondary {

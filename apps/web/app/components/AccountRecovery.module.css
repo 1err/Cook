@@ -1,0 +1,85 @@
+.page :global(.auth-panel) {
+  padding-top: 6rem;
+  padding-bottom: 3rem;
+}
+
+.form {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.form > button,
+.form > a {
+  min-height: 48px;
+}
+
+.copy {
+  color: var(--cw-color-muted-ink);
+  line-height: 1.65;
+  margin: 0;
+}
+
+.field {
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.field input {
+  min-width: 0;
+  width: 100%;
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+.success,
+.error {
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  padding: 1.25rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.success {
+  display: grid;
+  gap: 0.75rem;
+  background: var(--cw-color-surface);
+}
+
+.success svg {
+  color: var(--cw-color-action);
+}
+
+.success p {
+  margin: 0;
+}
+
+.error {
+  border-left: 3px solid var(--cw-color-error);
+  background: var(--cw-color-surface);
+  color: var(--cw-color-ink);
+}
+
+.secondaryLink,
+.footer a {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.footer {
+  display: grid;
+  gap: 0.25rem;
+}
+
+@media (max-width: 480px) {
+  .page :global(.auth-panel) {
+    align-items: flex-start;
+    padding-inline: 1.5rem;
+  }
+}

@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { webApiClient } from "../lib/api";
-import { Button } from "./ui/Button";
+import { ActionLink, Button } from "./ui/Button";
 import { useT } from "../lib/i18n";
+import { useAuth } from "../lib/auth";
+import styles from "./AccountRecovery.module.css";
 
 export function AccountRecoveryForm({ mode }: { mode: "request" | "reset" | "verify" }) {
   const t = useT();
+  const { refreshUser } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -68,27 +71,43 @@ export function AccountRecoveryForm({ mode }: { mode: "request" | "reset" | "ver
       setToken(null);
       setPassword("");
       setConfirmation("");
+      // Verification has already succeeded; a status refresh must not turn it into
+      // a failed confirmation or encourage reusing the consumed link.
+      if (mode !== "request") void refreshUser().catch(() => {});
     } catch (caught) {
       const status = (caught as { status?: number } | null)?.status;
+      if (status === 400 && mode !== "request") setToken(null);
       setError(t(status === 429 ? "account.tooManyRequests" : status === 503 ? "account.emailUnavailable"
         : status === 400 && mode !== "request" ? "account.linkInvalid" : "account.tryAgain"));
     } finally { setPending(false); }
   }
 
-  if (!ready) return <p role="status">{t("common.loading")}</p>;
-  if (success) return <p role="status">{t(mode === "request" ? "account.resetSent" : mode === "reset" ? "account.resetComplete" : "account.verificationComplete")}</p>;
-  if (mode !== "request" && !token) return <p role="alert">{t("account.linkInvalid")}</p>;
-  if (!available) return <div><p role="alert">{error}</p><Button variant="secondary" onClick={() => setAttempt((value) => value + 1)}>{t("account.retry")}</Button></div>;
+  if (!ready) return <p className={styles.copy} role="status">{t("common.loading")}</p>;
+  if (success) return <div className={styles.form}>
+    <div className={styles.success} role="status">
+      <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>
+      <p>{t(mode === "request" ? "account.resetSent" : mode === "reset" ? "account.resetComplete" : "account.verificationComplete")}</p>
+    </div>
+    <ActionLink href={mode === "verify" ? "/library" : "/login"}>{t(mode === "verify" ? "account.continue" : "nav.signIn")}</ActionLink>
+    {mode === "verify" ? <Link className={styles.secondaryLink} href="/settings">{t("account.settings")}</Link> : null}
+  </div>;
+  if (mode !== "request" && !token) return <div className={styles.form}>
+    <p className={styles.error} role="alert">{t("account.linkInvalid")}</p>
+    {mode === "verify" ? <p className={styles.copy}>{t("account.verificationRecovery")}</p> : null}
+    <ActionLink href={mode === "verify" ? "/settings" : "/forgot-password"}>{t(mode === "verify" ? "account.settings" : "account.requestNewLink")}</ActionLink>
+  </div>;
+  if (!available) return <div className={styles.form}><p className={styles.error} role="alert">{error}</p><Button variant="secondary" onClick={() => setAttempt((value) => value + 1)}>{t("account.retry")}</Button></div>;
 
-  return <form onSubmit={submit} style={{ display: "grid", gap: "1rem" }}>
-    <p>{t(mode === "request" ? "account.resetHelp" : mode === "reset" ? "account.passwordHelp" : "account.verifyHelp")}</p>
-    {mode === "request" ? <label>{t("common.email")}<input className="input-editorial" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label> : null}
+  return <form onSubmit={submit} className={styles.form} aria-busy={pending}>
+    <p className={styles.copy} id="recovery-help">{t(mode === "request" ? "account.resetHelp" : mode === "reset" ? "account.passwordHelp" : "account.verifyHelp")}</p>
+    {mode === "request" ? <label className={styles.field}>{t("common.email")}<input className="input-editorial" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} aria-describedby="recovery-help" required value={email} onChange={(event) => setEmail(event.target.value)} /></label> : null}
     {mode === "reset" ? <>
-      <label>{t("account.newPassword")}<input className="input-editorial" type="password" autoComplete="new-password" minLength={8} maxLength={72} required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-      <label>{t("account.confirmPassword")}<input className="input-editorial" type="password" autoComplete="new-password" minLength={8} maxLength={72} required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
+      <label className={styles.field}>{t("account.newPassword")}<input className="input-editorial" type="password" autoComplete="new-password" aria-describedby="recovery-help" minLength={8} maxLength={72} required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+      <label className={styles.field}>{t("account.confirmPassword")}<input className="input-editorial" type="password" autoComplete="new-password" minLength={8} maxLength={72} required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
     </> : null}
-    {error ? <p role="alert">{error}</p> : null}
-    <Button type="submit" disabled={pending}>{t(pending ? "common.saving" : mode === "request" ? "account.sendReset" : mode === "reset" ? "account.setPassword" : "account.verifyEmail")}</Button>
-    {mode === "verify" ? <Link href="/settings">{t("account.settings")}</Link> : null}
+    {error ? <p className={styles.error} role="alert">{error}</p> : null}
+    <Button type="submit" loading={pending}>{t(pending ? mode === "request" ? "account.sending" : mode === "verify" ? "account.verifying" : "common.saving" : mode === "request" ? "account.sendReset" : mode === "reset" ? "account.setPassword" : "account.verifyEmail")}</Button>
+    {mode === "verify" ? <Link className={styles.secondaryLink} href="/settings">{t("account.settings")}</Link> : null}
+    {mode === "reset" ? <Link className={styles.secondaryLink} href="/forgot-password">{t("account.requestNewLink")}</Link> : null}
   </form>;
 }
