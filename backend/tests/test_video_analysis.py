@@ -129,6 +129,110 @@ async def test_youtube_request_precounts_and_accounts_for_thinking(provider, mon
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("schema", [None, {
+    "type": "object", "properties": {
+        "title": {"type": "string"},
+        "duration_seconds": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+    }, "required": ["title", "duration_seconds"], "additionalProperties": False,
+}])
+async def test_response_json_schema_only_sent_to_generation(provider, monkeypatch, ledger, admitted, schema):
+    requests = mock_http(monkeypatch, provider, ledger)
+
+    await provider.complete_video("Extract JSON.", source_url=URL, response_schema=schema)
+
+    assert len(requests) == 2
+    count, generation = [json.loads(request.content) for request in requests]
+    assert set(count) == {"contents"}
+    config = generation["generationConfig"]
+    assert config["responseMimeType"] == "application/json"
+    if schema is None:
+        assert "responseJsonSchema" not in config
+    else:
+        assert config["responseJsonSchema"] == schema
+    assert "responseSchema" not in config
+    assert len(ledger.reservations) == 1
+
+
+@pytest.mark.asyncio
+async def test_truncated_structured_output_records_charge_without_retry(provider, monkeypatch, ledger, admitted):
+    result = response_payload()
+    result["candidates"][0]["finishReason"] = "MAX_TOKENS"
+    result["candidates"][0]["content"]["parts"][0]["text"] = '{"title":"Eggpl'
+    requests = mock_http(monkeypatch, provider, ledger, result=result)
+
+    with pytest.raises(AIUnavailableError):
+        await provider.complete_video("Extract JSON.", source_url=URL,
+            response_schema={"type": "object", "properties": {"title": {"type": "string"}}})
+
+    assert len(requests) == 2
+    assert len(ledger.reservations) == 1
+    assert ledger.finishes == [{"input_tokens": 1200, "output_tokens": 150,
+                                "provider_request_id": "provider-request"}]
+    assert admitted.calls == 1 and admitted.denied and not admitted.call_active
+
+
+@pytest.mark.asyncio
+async def test_video_extraction_retains_first_draft_when_real_provider_audit_truncates(
+    provider, monkeypatch, ledger, admitted,
+):
+    from app.extract import extract_recipe_from_video
+    from app.services.tutorial_quality import AUDIT_UNAVAILABLE
+
+    first = response_payload()
+    first["responseId"] = "first-recipe-response"
+    first["candidates"][0]["content"]["parts"][0]["text"] = json.dumps({
+        "title": "Sliced mushrooms",
+        "ingredients": [{"name": "Mushrooms", "quantity": "200 g"}],
+        "actions": [{"id": "a1", "text": "Slice the mushrooms.", "role": "main",
+                     "source_excerpt": "The cook slices the mushrooms.",
+                     "source_start_seconds": 12, "source_end_seconds": 18}],
+        "steps": [{"id": "s1", "text": "Slice the mushrooms.", "source_action_ids": ["a1"],
+                   "instruction_source": "source", "duration_seconds": None,
+                   "duration_source": "unknown", "attention_type": "hands_on", "action_type": "prep"}],
+    })
+    second = response_payload()
+    second["responseId"] = "truncated-audit-response"
+    second["candidates"][0]["finishReason"] = "MAX_TOKENS"
+    second["candidates"][0]["content"]["parts"][0]["text"] = '{"actions":['
+    second["usageMetadata"] = {"promptTokenCount": 1800, "candidatesTokenCount": 200,
+                               "thoughtsTokenCount": 75, "totalTokenCount": 2075}
+    results = iter([first, second])
+    requests = []
+
+    async def handler(request):
+        assert not ledger.in_transaction
+        requests.append(request)
+        if request.url.path.endswith(":countTokens"):
+            return httpx.Response(200, json={"totalTokens": 1200})
+        return httpx.Response(200, json=next(results))
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(provider.httpx, "AsyncClient", lambda **kwargs:
+                        real_client(transport=httpx.MockTransport(handler), **kwargs))
+
+    recipe = await extract_recipe_from_video(source_url=URL)
+
+    assert recipe.title == "Sliced mushrooms" and recipe.source_url == URL
+    assert [(item.name, item.quantity) for item in recipe.ingredients] == [("Mushrooms", "200 g")]
+    assert [step.text for step in recipe.steps] == ["Slice the mushrooms."]
+    assert recipe.steps[0].instruction_source == "source"
+    assert recipe.steps[0].source_start_seconds == 12
+    assert recipe.steps[0].source_excerpt == "The cook slices the mushrooms."
+    assert recipe.steps[0].duration_seconds is None
+    assert recipe.import_review.status == "needs_review"
+    assert AUDIT_UNAVAILABLE in recipe.import_review.warnings
+    assert [request.url.path.rsplit(":", 1)[-1] for request in requests] == [
+        "countTokens", "generateContent", "countTokens", "generateContent",
+    ]
+    assert len(ledger.reservations) == 2
+    assert ledger.finishes == [
+        {"input_tokens": 1200, "output_tokens": 150, "provider_request_id": "first-recipe-response"},
+        {"input_tokens": 1800, "output_tokens": 275, "provider_request_id": "truncated-audit-response"},
+    ]
+    assert admitted.calls == 2 and admitted.denied and not admitted.call_active
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("data,mime", [(MP4, "video/mp4"), (b"RIFF\x24\x00\x00\x00WAVEfmt "+b"\x00"*32, "audio/wav")])
 async def test_upload_sends_actual_media_bytes(provider, monkeypatch, ledger, admitted, data, mime):
     requests = mock_http(monkeypatch, provider, ledger)

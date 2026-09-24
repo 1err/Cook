@@ -154,7 +154,7 @@ class Settings(BaseSettings):
     GEMINI_INPUT_USD_PER_MILLION_TOKENS: Decimal | None = Field(None, gt=0)
     GEMINI_OUTPUT_USD_PER_MILLION_TOKENS: Decimal | None = Field(None, gt=0)
     GEMINI_TIMEOUT_SECONDS: float = Field(35, gt=0, le=120)
-    GEMINI_MAX_OUTPUT_TOKENS: int = Field(6000, ge=256, le=8000)
+    GEMINI_MAX_OUTPUT_TOKENS: int = Field(8000, ge=256, le=8000)
     AI_USER_REQUESTS_PER_MINUTE: int = Field(6, ge=1)
     AI_USER_REQUESTS_PER_DAY: int = Field(50, ge=1)
     AI_GLOBAL_REQUESTS_PER_MINUTE: int = Field(60, ge=1)

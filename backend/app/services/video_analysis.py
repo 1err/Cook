@@ -119,7 +119,8 @@ def _content(result: dict) -> str:
 
 
 async def complete_video(prompt: str, *, source_url: str | None = None,
-                         media_data: bytes | None = None, media_type: str | None = None) -> str:
+                         media_data: bytes | None = None, media_type: str | None = None,
+                         response_schema: dict | None = None) -> str:
     """Return raw recipe JSON; exactly one metered generation and no retries.
 
     Source URL must already be canonical and is revalidated here. Gemini accepts
@@ -155,6 +156,11 @@ async def complete_video(prompt: str, *, source_url: str | None = None,
         if timeout <= 0:
             raise AIUnavailableError()
         contents = [{'role': 'user', 'parts': [media_part, {'text': prompt}]}]
+        generation_config = {'candidateCount': 1,
+                             'maxOutputTokens': settings.GEMINI_MAX_OUTPUT_TOKENS,
+                             'responseMimeType': 'application/json'}
+        if response_schema is not None:
+            generation_config['responseJsonSchema'] = response_schema
         async with asyncio.timeout(timeout):
             async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False,
                                        headers={'x-goog-api-key': settings.GEMINI_API_KEY.strip()}) as client:
@@ -165,9 +171,7 @@ async def complete_video(prompt: str, *, source_url: str | None = None,
                 generation_started = True
                 result = await _post_json(client, 'generateContent', {
                     'contents': contents, 'serviceTier': 'standard', 'store': False,
-                    'generationConfig': {'candidateCount': 1,
-                                         'maxOutputTokens': settings.GEMINI_MAX_OUTPUT_TOKENS,
-                                         'responseMimeType': 'application/json'},
+                    'generationConfig': generation_config,
                 })
         # Bill every charged token, including thinking, before checking content.
         input_tokens, output_tokens = _usage(result)

@@ -160,16 +160,46 @@ def _ingredient_aliases(ingredients: object) -> list[list[str]]:
     return aliases
 
 
-def _ingredients_supported(instruction: object, excerpt: str, aliases: list[list[str]]) -> bool:
-    def mentions(text: str) -> set[int]:
-        return {index for index, names in enumerate(aliases)
-                if any(re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", text.casefold())
-                       if name.isascii() else name in text.casefold() for name in names)}
+def _ingredient_mentions(text: str, aliases: list[list[str]]) -> set[int]:
+    return {index for index, names in enumerate(aliases)
+            if any(re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", text.casefold())
+                   if name.isascii() else name in text.casefold() for name in names)}
 
-    claimed, evidenced = mentions(str(instruction)), mentions(excerpt)
+
+def _ingredients_supported(instruction: object, excerpt: str, aliases: list[list[str]]) -> bool:
+    claimed = _ingredient_mentions(str(instruction), aliases)
+    evidenced = _ingredient_mentions(excerpt, aliases)
     # If the source uses another language without supplied aliases, retain the
     # translation. Only reject a substitution we can identify on both sides.
     return not claimed or not evidenced or claimed <= evidenced
+
+
+def _prepared_ingredient_warnings(steps: list[dict], aliases: list[list[str]]) -> list[str]:
+    prepared, used = set(), set()
+    use_texts = []
+    for step in steps:
+        text = str(step.get("text", ""))
+        groups = _action_groups(text)
+        mentioned = _ingredient_mentions(text, aliases)
+        # The first two action families are preparation and cutting. Do not
+        # infer missing cooking from a preparation-only recipe such as crudites.
+        if groups and groups <= {0, 1}:
+            prepared.update(mentioned)
+        elif groups - {0, 1}:
+            use_texts.append(text)
+            used.update(mentioned)
+    if not use_texts:
+        return []
+    # Qualified Chinese names can become shorter references (老豆腐 -> 豆腐,
+    # 五花肉 -> 肥肉). A shared trailing portion is only grounds to abstain
+    # from this warning; it never establishes ingredient identity or provenance.
+    for index in prepared - used:
+        if any(suffix in text for name in aliases[index]
+               if len(name) >= 3 and re.fullmatch(r"[\u3400-\u9fff]+", name)
+               for suffix in (name[start:] for start in range(1, len(name))) for text in use_texts):
+            used.add(index)
+    return [f"{aliases[index][0]} is prepared but no later use is explained; check the source."
+            for index in sorted(prepared - used)]
 
 
 def _ingredient_only_evidence(excerpt: str, source_text: str, ingredients: object) -> bool:
@@ -339,6 +369,8 @@ def ground_steps(steps: list[dict], actions: list[dict], source_text: str, *,
         warnings.append("The tutorial repeats a source action; check for duplicate recap steps.")
     if grounded and not actions:
         warnings.append("The cooking action inventory is missing; check the tutorial for omitted actions.")
+    aliases = next((action["_ingredient_aliases"] for action in actions if action.get("_ingredient_aliases")), [])
+    warnings.extend(_prepared_ingredient_warnings(grounded, aliases))
     return grounded, warnings
 
 

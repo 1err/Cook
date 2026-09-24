@@ -583,6 +583,51 @@ async def test_video_pipeline_uses_same_media_in_both_passes_and_keeps_timestamp
     assert complete.await_count == 2
     assert all(call.kwargs["media_data"] == b"video-data" for call in complete.await_args_list)
     assert all(call.kwargs["media_type"] == "video/mp4" for call in complete.await_args_list)
+    extraction_schema = complete.await_args_list[0].kwargs.get("response_schema")
+    audit_schema = complete.await_args_list[1].kwargs.get("response_schema")
+    assert isinstance(extraction_schema, dict), "Video extraction must constrain its JSON response"
+    assert {"title", "ingredients", "actions", "steps"} <= set(extraction_schema["required"])
+    assert isinstance(audit_schema, dict), "Video audit must constrain its distinct response shape"
+    assert set(audit_schema["required"]) == {"actions", "steps", "audit"}
+    audit_fields = audit_schema["properties"]["audit"]
+    assert set(audit_fields["required"]) == {
+        "complete", "order_valid", "method_available", "missing_action_ids", "unsupported_step_ids", "warnings",
+    }
+    for key in ("complete", "order_valid", "method_available"):
+        assert audit_fields["properties"][key]["type"] == "boolean"
+    for key in ("missing_action_ids", "unsupported_step_ids", "warnings"):
+        assert audit_fields["properties"][key]["type"] == "array"
+    for schema in (extraction_schema, audit_schema):
+        assert {"id", "text", "source_action_ids", "duration_seconds", "duration_source"} <= set(
+            schema["properties"]["steps"]["items"]["required"]
+        )
+        assert {"id", "text", "source_excerpt", "source_start_seconds", "source_end_seconds", "role"} <= set(
+            schema["properties"]["actions"]["items"]["required"]
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("malformed_shape", ["flattened", "string_boolean", "missing_arrays"])
+async def test_video_response_schema_does_not_replace_fail_safe_audit_validation(monkeypatch, malformed_shape):
+    action = _action("a1", "Transfer tofu to the claypot.", 42, 46)
+    steps = [_step("Transfer tofu to the claypot.", "a1")]
+    audit = _audit(actions=[action], steps=steps)
+    if malformed_shape == "flattened":
+        audit.update(audit.pop("audit"))
+    elif malformed_shape == "string_boolean":
+        audit["audit"]["complete"] = "true"
+    else:
+        del audit["audit"]["missing_action_ids"]
+    complete = AsyncMock(side_effect=[
+        json.dumps({"title": "Tofu", "ingredients": [{"name": "Tofu"}], "actions": [action], "steps": steps}),
+        json.dumps(audit),
+    ])
+    monkeypatch.setattr(extract_module, "complete_video", complete)
+    recipe = await extract_module.extract_recipe_from_video(media_data=b"video-data", media_type="video/mp4")
+    assert [step.text for step in recipe.steps] == ["Transfer tofu to the claypot."]
+    assert recipe.import_review.status == "needs_review"
+    assert any("completeness check could not finish" in warning for warning in recipe.import_review.warnings)
+    assert complete.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -933,3 +978,48 @@ async def test_bilingual_ingredients_and_explicit_quantities_remain_supported(mo
     recipe = await extract_recipe_from_text(excerpt)
     assert recipe.import_review.status == "ready"
     assert recipe.steps[0].instruction_source == "source"
+
+
+@pytest.mark.asyncio
+async def test_prepared_garlic_and_scallion_bulbs_need_explained_use_even_when_audit_claims_complete(monkeypatch):
+    texts = ["将大蒜拍散剁碎，小葱头切成颗粒备用。", "加入茄子炒熟。", "撒上葱花。"]
+    actions = [_action(f"a{index}", text) for index, text in enumerate(texts)]
+    steps = [_step(text, action["id"]) for text, action in zip(texts, actions)]
+    ingredients = [{"name": name} for name in ("大蒜", "小葱头", "茄子", "葱花")]
+    client, _ = _client_with_responses(
+        {"title": "茄子", "ingredients": ingredients, "actions": actions, "steps": steps},
+        _audit(actions=actions, steps=steps),
+    )
+    monkeypatch.setattr(extract_module, "get_openai_client", lambda: client)
+    recipe = await extract_recipe_from_text("\n".join(texts))
+    assert [step.text for step in recipe.steps] == texts
+    assert recipe.import_review.status == "needs_review"
+    assert recipe.import_review.warnings == [
+        "大蒜 is prepared but no later use is explained; check the source.",
+        "小葱头 is prepared but no later use is explained; check the source.",
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ingredient, texts", [
+    ("garlic", ["Chop the garlic.", "Add garlic to the pan."]),
+    ("大蒜", ["将大蒜剁碎。", "加入大蒜炒香。"]),
+    ("Garlic (大蒜)", ["将大蒜剁碎。", "Add garlic to the pan."]),
+    ("garlic", ["Chop the cloves.", "Fry the aromatics."]),
+    ("garlic", ["Chop the garlic."]),
+    ("老豆腐", ["将老豆腐切片。", "煎豆腐。"]),
+    ("紫皮茄子", ["将紫皮茄子切块。", "加入茄子炒熟。"]),
+    ("五花肉", ["将五花肉切粒。", "将肥肉粒炒出猪油。"]),
+])
+async def test_prepared_ingredient_warning_requires_exact_preparation_without_recognized_use(monkeypatch, ingredient, texts):
+    actions = [_action(f"a{index}", text) for index, text in enumerate(texts)]
+    steps = [_step(text, action["id"]) for text, action in zip(texts, actions)]
+    client, _ = _client_with_responses(
+        {"title": "Dinner", "ingredients": [{"name": ingredient}], "actions": actions, "steps": steps},
+        _audit(actions=actions, steps=steps),
+    )
+    monkeypatch.setattr(extract_module, "get_openai_client", lambda: client)
+    recipe = await extract_recipe_from_text("\n".join(texts))
+    assert [step.text for step in recipe.steps] == texts
+    assert recipe.import_review.status == "ready"
+    assert recipe.import_review.warnings == []

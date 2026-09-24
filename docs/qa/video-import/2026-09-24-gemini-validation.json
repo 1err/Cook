@@ -1,0 +1,1589 @@
+{
+  "status": "completed",
+  "commit": "e7156bc2b28038d22078d1f604a725b5b6205f50",
+  "worktree_changes": "Structured response contracts, granular tutorial prompts, 8000 output token ceiling",
+  "source_url": "https://www.youtube.com/watch?v=A6bByqI_TH8",
+  "started_at": "2026-09-24T19:45:17.779567+00:00",
+  "provider_requests": [
+    {
+      "method": "countTokens",
+      "elapsed_seconds": 0.152,
+      "generation_call_number": 1,
+      "http_status": 200,
+      "total_tokens": 22336
+    },
+    {
+      "method": "generateContent",
+      "elapsed_seconds": 16.904,
+      "generation_call_number": 1,
+      "http_status": 200,
+      "usage": {
+        "promptTokenCount": 19772,
+        "candidatesTokenCount": 6493,
+        "totalTokenCount": 26265
+      },
+      "service_tier": "standard",
+      "generated_content": {
+        "title": "豆腐茄子煲",
+        "description": "一道非常美味的豆腐茄子煲，做法家常且非常下饭。",
+        "total_time_minutes": null,
+        "ingredients": [
+          {
+            "name": "老豆腐",
+            "quantity": "1块",
+            "notes": "约400克"
+          },
+          {
+            "name": "紫皮茄子",
+            "quantity": "1根",
+            "notes": "嫩茄子"
+          },
+          {
+            "name": "五花肉",
+            "quantity": "适量",
+            "notes": "略肥"
+          },
+          {
+            "name": "大红椒",
+            "quantity": "1个",
+            "notes": "去籽"
+          },
+          {
+            "name": "大蒜",
+            "quantity": "几颗",
+            "notes": "拍散剁碎"
+          },
+          {
+            "name": "香菇",
+            "quantity": "2朵",
+            "notes": null
+          },
+          {
+            "name": "小葱头",
+            "quantity": "2根",
+            "notes": null
+          },
+          {
+            "name": "食用油",
+            "quantity": "适量",
+            "notes": null
+          },
+          {
+            "name": "食用盐",
+            "quantity": "适量",
+            "notes": "约0.5克"
+          },
+          {
+            "name": "蚝油",
+            "quantity": "适量",
+            "notes": "约8克"
+          },
+          {
+            "name": "生抽酱油",
+            "quantity": "适量",
+            "notes": "约5克"
+          },
+          {
+            "name": "老抽",
+            "quantity": "适量",
+            "notes": "约2克"
+          },
+          {
+            "name": "清水",
+            "quantity": "少许",
+            "notes": null
+          },
+          {
+            "name": "水淀粉",
+            "quantity": "适量",
+            "notes": null
+          },
+          {
+            "name": "明油",
+            "quantity": "少许",
+            "notes": null
+          },
+          {
+            "name": "葱花",
+            "quantity": "适量",
+            "notes": null
+          }
+        ],
+        "equipment": [
+          "菜刀",
+          "砧板",
+          "碗",
+          "铁锅",
+          "锅铲",
+          "汤勺",
+          "筷子",
+          "煲仔"
+        ],
+        "actions": [
+          {
+            "id": "a1",
+            "text": "首先我们准备老豆腐1块（约400克）",
+            "source_excerpt": "首先我们准备老豆腐1块（约400克）",
+            "source_start_seconds": 5.12,
+            "source_end_seconds": 6.84,
+            "role": "main"
+          },
+          {
+            "id": "a2",
+            "text": "将豆腐直接切成5毫米左右的厚片备用",
+            "source_excerpt": "将豆腐直接切成5毫米左右的厚片备用",
+            "source_start_seconds": 6.84,
+            "source_end_seconds": 9.94,
+            "role": "main"
+          },
+          {
+            "id": "a3",
+            "text": "同学们注意，最好将豆腐切厚一些，这样在煎制的时候不容易煎碎保持完整",
+            "source_excerpt": "同学们注意，最好将豆腐切厚一些，这样在煎制的时候不容易煎碎保持完整",
+            "source_start_seconds": 10.02,
+            "source_end_seconds": 16.24,
+            "role": "main"
+          },
+          {
+            "id": "a4",
+            "text": "准备紫皮茄子1根切成滚刀块备用",
+            "source_excerpt": "准备紫皮茄子1根切成滚刀块备用",
+            "source_start_seconds": 16.7,
+            "source_end_seconds": 19.86,
+            "role": "main"
+          },
+          {
+            "id": "a5",
+            "text": "茄子最好选择嫩茄子口感更佳",
+            "source_excerpt": "茄子最好选择嫩茄子口感更佳",
+            "source_start_seconds": 19.86,
+            "source_end_seconds": 22.38,
+            "role": "main"
+          },
+          {
+            "id": "a6",
+            "text": "准备适量略肥的五花肉切成颗粒状备用",
+            "source_excerpt": "准备适量略肥的五花肉切成颗粒状备用",
+            "source_start_seconds": 22.82,
+            "source_end_seconds": 25.86,
+            "role": "main"
+          },
+          {
+            "id": "a7",
+            "text": "同学们最好选择比较肥厚的五花肉，这样才能够爆出更多的猪油",
+            "source_excerpt": "同学们最好选择比较肥厚的五花肉，这样才能够爆出更多的猪油",
+            "source_start_seconds": 25.86,
+            "source_end_seconds": 30.0,
+            "role": "main"
+          },
+          {
+            "id": "a8",
+            "text": "准备大红椒1个去籽之后切成颗粒粒备用",
+            "source_excerpt": "准备大红椒1个去籽之后切成颗粒粒备用",
+            "source_start_seconds": 31.46,
+            "source_end_seconds": 35.1,
+            "role": "main"
+          },
+          {
+            "id": "a9",
+            "text": "准备大蒜几颗拍散之后剁碎备用",
+            "source_excerpt": "准备大蒜几颗拍散之后剁碎备用",
+            "source_start_seconds": 35.62,
+            "source_end_seconds": 38.6,
+            "role": "main"
+          },
+          {
+            "id": "a10",
+            "text": "准备香菇2朵切成颗粒备用",
+            "source_excerpt": "准备香菇2朵切成颗粒备用",
+            "source_start_seconds": 39.22,
+            "source_end_seconds": 42.42,
+            "role": "main"
+          },
+          {
+            "id": "a11",
+            "text": "准备小葱头2根切成颗粒备用",
+            "source_excerpt": "准备小葱头2根切成颗粒备用",
+            "source_start_seconds": 42.92,
+            "source_end_seconds": 45.8,
+            "role": "main"
+          },
+          {
+            "id": "a12",
+            "text": "锅烧热之后加入适量的油滑锅",
+            "source_excerpt": "锅烧热之后加入适量的油滑锅",
+            "source_start_seconds": 46.54,
+            "source_end_seconds": 49.02,
+            "role": "main"
+          },
+          {
+            "id": "a13",
+            "text": "然后将热油倒出",
+            "source_excerpt": "然后将热油倒出",
+            "source_start_seconds": 49.02,
+            "source_end_seconds": 51.0,
+            "role": "main"
+          },
+          {
+            "id": "a14",
+            "text": "热油倒出之后加入少许的底油",
+            "source_excerpt": "热油倒出之后加入少许的底油",
+            "source_start_seconds": 51.52,
+            "source_end_seconds": 54.42,
+            "role": "main"
+          },
+          {
+            "id": "a15",
+            "text": "加入适量的食用盐均匀撒在锅中（约0.5克）",
+            "source_excerpt": "加入适量的食用盐均匀撒在锅中（约0.5克）",
+            "source_start_seconds": 54.76,
+            "source_end_seconds": 58.74,
+            "role": "main"
+          },
+          {
+            "id": "a16",
+            "text": "撒好盐之后转微小火",
+            "source_excerpt": "撒好盐之后转微小火",
+            "source_start_seconds": 58.82,
+            "source_end_seconds": 60.54,
+            "role": "main"
+          },
+          {
+            "id": "a17",
+            "text": "再将切好的豆腐依次下入锅中",
+            "source_excerpt": "再将切好的豆腐依次下入锅中",
+            "source_start_seconds": 60.54,
+            "source_end_seconds": 64.06,
+            "role": "main"
+          },
+          {
+            "id": "a18",
+            "text": "然后将豆腐煎香煎至两面金黄",
+            "source_excerpt": "然后将豆腐煎香煎至两面金黄",
+            "source_start_seconds": 64.56,
+            "source_end_seconds": 67.24,
+            "role": "main"
+          },
+          {
+            "id": "a19",
+            "text": "同学们切记，这个过程必须小火慢煎6分钟（2面各三分钟）",
+            "source_excerpt": "同学们切记，这个过程必须小火慢煎6分钟（2面各三分钟）",
+            "source_start_seconds": 67.24,
+            "source_end_seconds": 73.1,
+            "role": "main"
+          },
+          {
+            "id": "a20",
+            "text": "必须让豆腐均匀的受热，使其表面煎香煎黄",
+            "source_excerpt": "必须让豆腐均匀的受热，使其表面煎香煎黄",
+            "source_start_seconds": 73.1,
+            "source_end_seconds": 77.2,
+            "role": "main"
+          },
+          {
+            "id": "a21",
+            "text": "豆腐在翻面之前再撒上适量的食用盐",
+            "source_excerpt": "豆腐在翻面之前再撒上适量的食用盐",
+            "source_start_seconds": 77.2,
+            "source_end_seconds": 80.9,
+            "role": "main"
+          },
+          {
+            "id": "a22",
+            "text": "翻图的时候用筷子或者锅铲翻另外一面",
+            "source_excerpt": "翻图的时候用筷子或者锅铲翻另外一面",
+            "source_start_seconds": 81.3,
+            "source_end_seconds": 85.0,
+            "role": "main"
+          },
+          {
+            "id": "a23",
+            "text": "豆腐煎好之后放入煲仔中垫底备用",
+            "source_excerpt": "豆腐煎好之后放入煲仔中垫底备用",
+            "source_start_seconds": 84.14,
+            "source_end_seconds": 88.34,
+            "role": "main"
+          },
+          {
+            "id": "a24",
+            "text": "我们直接用上一步煎豆腐剩下的油烧热",
+            "source_excerpt": "我们直接用上一步煎豆腐剩下的油烧热",
+            "source_start_seconds": 91.82,
+            "source_end_seconds": 95.3,
+            "role": "main"
+          },
+          {
+            "id": "a25",
+            "text": "然后将切好的肥肉粒下锅爆香炒出猪油",
+            "source_excerpt": "然后将切好的肥肉粒下锅爆香炒出猪油",
+            "source_start_seconds": 95.3,
+            "source_end_seconds": 99.4,
+            "role": "main"
+          },
+          {
+            "id": "a26",
+            "text": "同学们切记，猪肉不能一次性爆得太干",
+            "source_excerpt": "同学们切记，猪肉不能一次性爆得太干",
+            "source_start_seconds": 99.4,
+            "source_end_seconds": 103.54,
+            "role": "main"
+          },
+          {
+            "id": "a27",
+            "text": "爆出猪油之后将切好的茄子下锅",
+            "source_excerpt": "爆出猪油之后将切好的茄子下锅",
+            "source_start_seconds": 103.6,
+            "source_end_seconds": 106.66,
+            "role": "main"
+          },
+          {
+            "id": "a28",
+            "text": "茄子下锅之后转中小火煸炒5分钟",
+            "source_excerpt": "茄子下锅之后转中小火煸炒5分钟",
+            "source_start_seconds": 106.66,
+            "source_end_seconds": 111.0,
+            "role": "main"
+          },
+          {
+            "id": "a29",
+            "text": "这一步的目的是将茄子炒熟",
+            "source_excerpt": "这一步的目的是将茄子炒熟",
+            "source_start_seconds": 111.22,
+            "source_end_seconds": 113.82,
+            "role": "main"
+          },
+          {
+            "id": "a30",
+            "text": "其中不太干的肥肉粒也会边炒边出油",
+            "source_excerpt": "其中不太干的肥肉粒也会边炒边出油",
+            "source_start_seconds": 113.92,
+            "source_end_seconds": 118.22,
+            "role": "main"
+          },
+          {
+            "id": "a31",
+            "text": "煸炒过程中吸出来的猪油会再次被茄子吸收",
+            "source_excerpt": "煸炒过程中吸出来的猪油会再次被茄子吸收",
+            "source_start_seconds": 118.22,
+            "source_end_seconds": 122.9,
+            "role": "main"
+          },
+          {
+            "id": "a32",
+            "text": "此做法会使茄子的口感更加的浓香",
+            "source_excerpt": "此做法会使茄子的口感更加的浓香",
+            "source_start_seconds": 122.9,
+            "source_end_seconds": 126.96,
+            "role": "main"
+          },
+          {
+            "id": "a33",
+            "text": "茄子炒香炒熟之后开始调味",
+            "source_excerpt": "茄子炒香炒熟之后开始调味",
+            "source_start_seconds": 126.96,
+            "source_end_seconds": 130.34,
+            "role": "main"
+          },
+          {
+            "id": "a34",
+            "text": "锅中加入适量的蚝油（约8克）",
+            "source_excerpt": "锅中加入适量的蚝油（约8克）",
+            "source_start_seconds": 130.34,
+            "source_end_seconds": 134.42,
+            "role": "main"
+          },
+          {
+            "id": "a35",
+            "text": "加入适量的生抽酱油从锅边淋入（约5克）",
+            "source_excerpt": "加入适量的生抽酱油从锅边淋入（约5克）",
+            "source_start_seconds": 134.62,
+            "source_end_seconds": 139.06,
+            "role": "main"
+          },
+          {
+            "id": "a36",
+            "text": "加入适量的老抽调色（约2克）",
+            "source_excerpt": "加入适量的老抽调色（约2克）",
+            "source_start_seconds": 139.38,
+            "source_end_seconds": 142.82,
+            "role": "main"
+          },
+          {
+            "id": "a37",
+            "text": "再加入少许清水之后将其翻炒均匀",
+            "source_excerpt": "再加入少许清水之后将其翻炒均匀",
+            "source_start_seconds": 143.26,
+            "source_end_seconds": 147.2,
+            "role": "main"
+          },
+          {
+            "id": "a38",
+            "text": "中途加入切好的大红椒粒和香菇粒炒至断生",
+            "source_excerpt": "中途加入切好的大红椒粒和香菇粒炒至断生",
+            "source_start_seconds": 147.4,
+            "source_end_seconds": 153.22,
+            "role": "main"
+          },
+          {
+            "id": "a39",
+            "text": "再加入适量的水淀粉将茄子收汁",
+            "source_excerpt": "再加入适量的水淀粉将茄子收汁",
+            "source_start_seconds": 153.22,
+            "source_end_seconds": 157.08,
+            "role": "main"
+          },
+          {
+            "id": "a40",
+            "text": "茄子收汁之后加入少许的明油即可出锅放在煲仔中",
+            "source_excerpt": "茄子收汁之后加入少许的明油即可出锅放在煲仔中",
+            "source_start_seconds": 157.5,
+            "source_end_seconds": 164.74,
+            "role": "main"
+          },
+          {
+            "id": "a41",
+            "text": "最后上菜之前可以再次将其烧开撒上葱花",
+            "source_excerpt": "最后上菜之前可以再次将其烧开撒上葱花",
+            "source_start_seconds": 167.3,
+            "source_end_seconds": 171.72,
+            "role": "main"
+          },
+          {
+            "id": "a42",
+            "text": "一道非常美味的豆腐茄子煲就制作完成",
+            "source_excerpt": "一道非常美味的豆腐茄子煲就制作完成",
+            "source_start_seconds": 171.72,
+            "source_end_seconds": 175.76,
+            "role": "main"
+          }
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "text": "将老豆腐切成5毫米左右的厚片备用。",
+            "source_action_ids": [
+              "a1",
+              "a2",
+              "a3"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "chop"
+          },
+          {
+            "id": "step2",
+            "text": "将紫皮茄子切成滚刀块备用。",
+            "source_action_ids": [
+              "a4",
+              "a5"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "chop"
+          },
+          {
+            "id": "step3",
+            "text": "将五花肉切成颗粒状备用。",
+            "source_action_ids": [
+              "a6",
+              "a7"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "chop"
+          },
+          {
+            "id": "step4",
+            "text": "将大红椒去籽切成颗粒粒，大蒜拍散剁碎，香菇切成颗粒，小葱头切成颗粒备用。",
+            "source_action_ids": [
+              "a8",
+              "a9",
+              "a10",
+              "a11"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "chop"
+          },
+          {
+            "id": "step5",
+            "text": "锅烧热后加入适量的油滑锅，然后将热油倒出。",
+            "source_action_ids": [
+              "a12",
+              "a13"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "prep"
+          },
+          {
+            "id": "step6",
+            "text": "热油倒出后加入少许底油和约0.5克食用盐均匀撒在锅中，转微小火，将切好的豆腐依次下入锅中，小火慢煎6分钟至两面金黄，翻面时再撒上适量食用盐。",
+            "source_action_ids": [
+              "a14",
+              "a15",
+              "a16",
+              "a17",
+              "a18",
+              "a19",
+              "a20",
+              "a21",
+              "a22"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": 360,
+            "duration_source": "stated",
+            "attention_type": "hands_on",
+            "action_type": "sear"
+          },
+          {
+            "id": "step7",
+            "text": "将煎好的豆腐放入煲仔中垫底备用。",
+            "source_action_ids": [
+              "a23"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "assemble"
+          },
+          {
+            "id": "step8",
+            "text": "用煎豆腐剩下的油烧热，将肥肉粒下锅爆香炒出猪油。",
+            "source_action_ids": [
+              "a24",
+              "a25",
+              "a26"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "sear"
+          },
+          {
+            "id": "step9",
+            "text": "爆出猪油后将茄子下锅，转中小火煸炒5分钟至熟。",
+            "source_action_ids": [
+              "a27",
+              "a28",
+              "a29",
+              "a30",
+              "a31",
+              "a32"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": 300,
+            "duration_source": "stated",
+            "attention_type": "hands_on",
+            "action_type": "simmer"
+          },
+          {
+            "id": "step10",
+            "text": "锅中加入约8克蚝油、约5克生抽酱油从锅边淋入、约2克老抽调色，再加入少许清水翻炒均匀。",
+            "source_action_ids": [
+              "a33",
+              "a34",
+              "a35",
+              "a36",
+              "a37"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "season"
+          },
+          {
+            "id": "step11",
+            "text": "中途加入大红椒粒和香菇粒炒至断生。",
+            "source_action_ids": [
+              "a38"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "mix"
+          },
+          {
+            "id": "step12",
+            "text": "加入适量的水淀粉将茄子收汁，加入少许明油出锅放入煲仔中。",
+            "source_action_ids": [
+              "a39",
+              "a40"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "assemble"
+          },
+          {
+            "id": "step13",
+            "text": "上菜之前再次将其烧开撒上葱花即可。",
+            "source_action_ids": [
+              "a41",
+              "a42"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "plate"
+          }
+        ],
+        "tips": [
+          "豆腐最好选择老豆腐煎制，嫩豆腐下锅容易煎碎煎烂，煎的时候不能用大火，必须使用微小火慢煎。"
+        ]
+      },
+      "finish_reasons": [
+        "STOP"
+      ]
+    },
+    {
+      "method": "countTokens",
+      "elapsed_seconds": 0.223,
+      "generation_call_number": 2,
+      "http_status": 200,
+      "total_tokens": 27325
+    },
+    {
+      "method": "generateContent",
+      "elapsed_seconds": 13.9,
+      "generation_call_number": 2,
+      "http_status": 200,
+      "usage": {
+        "promptTokenCount": 24761,
+        "candidatesTokenCount": 5873,
+        "totalTokenCount": 30634
+      },
+      "service_tier": "standard",
+      "generated_content": {
+        "actions": [
+          {
+            "id": "a1",
+            "text": "首先我们准备老豆腐1块（约400克）",
+            "source_excerpt": "首先我们准备老豆腐1块（约400克）",
+            "source_start_seconds": 5.12,
+            "source_end_seconds": 6.84,
+            "role": "main"
+          },
+          {
+            "id": "a2",
+            "text": "将豆腐直接切成5毫米左右的厚片备用",
+            "source_excerpt": "将豆腐直接切成5毫米左右的厚片备用",
+            "source_start_seconds": 6.84,
+            "source_end_seconds": 9.94,
+            "role": "main"
+          },
+          {
+            "id": "a3",
+            "text": "同学们注意，最好将豆腐切厚一些，这样在煎制的时候不容易煎碎保持完整",
+            "source_excerpt": "同学们注意，最好将豆腐切厚一些，这样在煎制的时候不容易煎碎保持完整",
+            "source_start_seconds": 10.02,
+            "source_end_seconds": 16.24,
+            "role": "main"
+          },
+          {
+            "id": "a4",
+            "text": "准备紫皮茄子1根切成滚刀块备用",
+            "source_excerpt": "准备紫皮茄子1根切成滚刀块备用",
+            "source_start_seconds": 16.7,
+            "source_end_seconds": 19.86,
+            "role": "main"
+          },
+          {
+            "id": "a5",
+            "text": "茄子最好选择嫩茄子口感更佳",
+            "source_excerpt": "茄子最好选择嫩茄子口感更佳",
+            "source_start_seconds": 19.86,
+            "source_end_seconds": 22.38,
+            "role": "main"
+          },
+          {
+            "id": "a6",
+            "text": "准备适量略肥的五花肉切成颗粒状备用",
+            "source_excerpt": "准备适量略肥的五花肉切成颗粒状备用",
+            "source_start_seconds": 22.82,
+            "source_end_seconds": 25.86,
+            "role": "main"
+          },
+          {
+            "id": "a7",
+            "text": "同学们最好选择比较肥厚的五花肉，这样才能够爆出更多的猪油",
+            "source_excerpt": "同学们最好选择比较肥厚的五花肉，这样才能够爆出更多的猪油",
+            "source_start_seconds": 25.86,
+            "source_end_seconds": 30.0,
+            "role": "main"
+          },
+          {
+            "id": "a8",
+            "text": "准备大红椒1个去籽之后切成颗粒粒备用",
+            "source_excerpt": "准备大红椒1个去籽之后切成颗粒粒备用",
+            "source_start_seconds": 31.46,
+            "source_end_seconds": 35.1,
+            "role": "main"
+          },
+          {
+            "id": "a9",
+            "text": "准备大蒜几颗拍散之后剁碎备用",
+            "source_excerpt": "准备大蒜几颗拍散之后剁碎备用",
+            "source_start_seconds": 35.62,
+            "source_end_seconds": 38.6,
+            "role": "main"
+          },
+          {
+            "id": "a10",
+            "text": "准备香菇2朵切成颗粒备用",
+            "source_excerpt": "准备香菇2朵切成颗粒备用",
+            "source_start_seconds": 39.22,
+            "source_end_seconds": 42.42,
+            "role": "main"
+          },
+          {
+            "id": "a11",
+            "text": "准备小葱头2根切成颗粒备用",
+            "source_excerpt": "准备小葱头2根切成颗粒备用",
+            "source_start_seconds": 42.92,
+            "source_end_seconds": 45.8,
+            "role": "main"
+          },
+          {
+            "id": "a12",
+            "text": "锅烧热之后加入适量的油滑锅",
+            "source_excerpt": "锅烧热之后加入适量的油滑锅",
+            "source_start_seconds": 46.54,
+            "source_end_seconds": 49.02,
+            "role": "main"
+          },
+          {
+            "id": "a13",
+            "text": "然后将热油倒出",
+            "source_excerpt": "然后将热油倒出",
+            "source_start_seconds": 49.02,
+            "source_end_seconds": 51.0,
+            "role": "main"
+          },
+          {
+            "id": "a14",
+            "text": "热油倒出之后加入少许的底油",
+            "source_excerpt": "热油倒出之后加入少许的底油",
+            "source_start_seconds": 51.52,
+            "source_end_seconds": 54.42,
+            "role": "main"
+          },
+          {
+            "id": "a15",
+            "text": "加入适量的食用盐均匀撒在锅中（约0.5克）",
+            "source_excerpt": "加入适量的食用盐均匀撒在锅中（约0.5克）",
+            "source_start_seconds": 54.76,
+            "source_end_seconds": 58.74,
+            "role": "main"
+          },
+          {
+            "id": "a16",
+            "text": "撒好盐之后转微小火",
+            "source_excerpt": "撒好盐之后转微小火",
+            "source_start_seconds": 58.82,
+            "source_end_seconds": 60.54,
+            "role": "main"
+          },
+          {
+            "id": "a17",
+            "text": "再将切好的豆腐依次下入锅中",
+            "source_excerpt": "再将切好的豆腐依次下入锅中",
+            "source_start_seconds": 60.54,
+            "source_end_seconds": 64.06,
+            "role": "main"
+          },
+          {
+            "id": "a18",
+            "text": "然后将豆腐煎香煎至两面金黄",
+            "source_excerpt": "然后将豆腐煎香煎至两面金黄",
+            "source_start_seconds": 64.56,
+            "source_end_seconds": 67.24,
+            "role": "main"
+          },
+          {
+            "id": "a19",
+            "text": "同学们切记，这个过程必须小火慢煎6分钟（2面各三分钟）",
+            "source_excerpt": "同学们切记，这个过程必须小火慢煎6分钟（2面各三分钟）",
+            "source_start_seconds": 67.24,
+            "source_end_seconds": 73.1,
+            "role": "main"
+          },
+          {
+            "id": "a20",
+            "text": "必须让豆腐均匀的受热，使其表面煎香煎黄",
+            "source_excerpt": "必须让豆腐均匀的受热，使其表面煎香煎黄",
+            "source_start_seconds": 73.1,
+            "source_end_seconds": 77.2,
+            "role": "main"
+          },
+          {
+            "id": "a21",
+            "text": "豆腐在翻面之前再撒上适量的食用盐",
+            "source_excerpt": "豆腐在翻面之前再撒上适量的食用盐",
+            "source_start_seconds": 77.2,
+            "source_end_seconds": 80.9,
+            "role": "main"
+          },
+          {
+            "id": "a22",
+            "text": "翻图的时候用筷子或者锅铲翻另外一面",
+            "source_excerpt": "翻图的时候用筷子或者锅铲翻另外一面",
+            "source_start_seconds": 81.3,
+            "source_end_seconds": 85.0,
+            "role": "main"
+          },
+          {
+            "id": "a23",
+            "text": "豆腐煎好之后放入煲仔中垫底备用",
+            "source_excerpt": "豆腐煎好之后放入煲仔中垫底备用",
+            "source_start_seconds": 84.14,
+            "source_end_seconds": 88.34,
+            "role": "main"
+          },
+          {
+            "id": "a24",
+            "text": "我们直接用上一步煎豆腐剩下的油烧热",
+            "source_excerpt": "我们直接用上一步煎豆腐剩下的油烧热",
+            "source_start_seconds": 91.82,
+            "source_end_seconds": 95.3,
+            "role": "main"
+          },
+          {
+            "id": "a25",
+            "text": "然后将切好的肥肉粒下锅爆香炒出猪油",
+            "source_excerpt": "然后将切好的肥肉粒下锅爆香炒出猪油",
+            "source_start_seconds": 95.3,
+            "source_end_seconds": 99.4,
+            "role": "main"
+          },
+          {
+            "id": "a26",
+            "text": "同学们切记，猪肉不能一次性爆得太干",
+            "source_excerpt": "同学们切记，猪肉不能一次性爆得太干",
+            "source_start_seconds": 99.4,
+            "source_end_seconds": 103.54,
+            "role": "main"
+          },
+          {
+            "id": "a27",
+            "text": "爆出猪油之后将切好的茄子下锅",
+            "source_excerpt": "爆出猪油之后将切好的茄子下锅",
+            "source_start_seconds": 103.6,
+            "source_end_seconds": 106.66,
+            "role": "main"
+          },
+          {
+            "id": "a28",
+            "text": "茄子下锅之后转中小火煸炒5分钟",
+            "source_excerpt": "茄子下锅之后转中小火煸炒5分钟",
+            "source_start_seconds": 106.66,
+            "source_end_seconds": 111.0,
+            "role": "main"
+          },
+          {
+            "id": "a29",
+            "text": "这一步的目的时将茄子炒熟",
+            "source_excerpt": "这一步的目的时将茄子炒熟",
+            "source_start_seconds": 111.22,
+            "source_end_seconds": 113.82,
+            "role": "main"
+          },
+          {
+            "id": "a30",
+            "text": "其中不太干的肥肉粒也会边炒边出油",
+            "source_excerpt": "其中不太干的肥肉粒也会边炒边出油",
+            "source_start_seconds": 113.92,
+            "source_end_seconds": 118.22,
+            "role": "main"
+          },
+          {
+            "id": "a31",
+            "text": "煸炒过程中吸出来的猪油会再次被茄子吸收",
+            "source_excerpt": "煸炒过程中吸出来的猪油会再次被茄子吸收",
+            "source_start_seconds": 118.22,
+            "source_end_seconds": 122.9,
+            "role": "main"
+          },
+          {
+            "id": "a32",
+            "text": "此做法会使茄子的口感更加的浓香",
+            "source_excerpt": "此做法会使茄子的口感更加的浓香",
+            "source_start_seconds": 122.9,
+            "source_end_seconds": 126.96,
+            "role": "main"
+          },
+          {
+            "id": "a33",
+            "text": "茄子炒香炒熟之后开始调味",
+            "source_excerpt": "茄子炒香炒熟之后开始调味",
+            "source_start_seconds": 126.96,
+            "source_end_seconds": 130.34,
+            "role": "main"
+          },
+          {
+            "id": "a34",
+            "text": "锅中加入适量的蚝油（约8克）",
+            "source_excerpt": "锅中加入适量的蚝油（约8克）",
+            "source_start_seconds": 130.34,
+            "source_end_seconds": 134.42,
+            "role": "main"
+          },
+          {
+            "id": "a35",
+            "text": "加入适量的生抽酱油从锅边淋入（约5克）",
+            "source_excerpt": "加入适量的生抽酱油从锅边淋入（约5克）",
+            "source_start_seconds": 134.62,
+            "source_end_seconds": 139.06,
+            "role": "main"
+          },
+          {
+            "id": "a36",
+            "text": "加入适量的老抽调色（约2克）",
+            "source_excerpt": "加入适量的老抽调色（约2克）",
+            "source_start_seconds": 139.38,
+            "source_end_seconds": 142.82,
+            "role": "main"
+          },
+          {
+            "id": "a37",
+            "text": "再加入少许清水之后将其翻炒均匀",
+            "source_excerpt": "再加入少许清水之后将其翻炒均匀",
+            "source_start_seconds": 143.26,
+            "source_end_seconds": 147.2,
+            "role": "main"
+          },
+          {
+            "id": "a38",
+            "text": "中途加入切好的大红椒粒和香菇粒炒至断生",
+            "source_excerpt": "中途加入切好的大红椒粒和香菇粒炒至断生",
+            "source_start_seconds": 147.4,
+            "source_end_seconds": 153.22,
+            "role": "main"
+          },
+          {
+            "id": "a39",
+            "text": "再加入适量的水淀粉将茄子收汁",
+            "source_excerpt": "再加入适量的水淀粉将茄子收汁",
+            "source_start_seconds": 153.22,
+            "source_end_seconds": 157.08,
+            "role": "main"
+          },
+          {
+            "id": "a40",
+            "text": "茄子收汁之后加入少许的明油即可出锅放在煲仔中",
+            "source_excerpt": "茄子收汁之后加入少许的明油即可出锅放在煲仔中",
+            "source_start_seconds": 157.5,
+            "source_end_seconds": 164.74,
+            "role": "main"
+          },
+          {
+            "id": "a41",
+            "text": "最后上菜之前可以再次将其烧开撒上葱花",
+            "source_excerpt": "最后上菜之前可以再次将其烧开撒上葱花",
+            "source_start_seconds": 167.3,
+            "source_end_seconds": 171.72,
+            "role": "main"
+          },
+          {
+            "id": "a42",
+            "text": "一道非常美味的豆腐茄子煲就制作完成",
+            "source_excerpt": "一道非常美味的豆腐茄子煲就制作完成",
+            "source_start_seconds": 171.72,
+            "source_end_seconds": 175.76,
+            "role": "main"
+          }
+        ],
+        "steps": [
+          {
+            "id": "step1",
+            "text": "将老豆腐切成5毫米左右的厚片备用。",
+            "source_action_ids": [
+              "a1",
+              "a2",
+              "a3"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "chop"
+          },
+          {
+            "id": "step2",
+            "text": "将紫皮茄子切成滚刀块备用。",
+            "source_action_ids": [
+              "a4",
+              "a5"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "chop"
+          },
+          {
+            "id": "step3",
+            "text": "将五花肉切成颗粒状备用。",
+            "source_action_ids": [
+              "a6",
+              "a7"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "chop"
+          },
+          {
+            "id": "step4",
+            "text": "将大红椒去籽切成颗粒粒，大蒜拍散剁碎，香菇切成颗粒，小葱头切成颗粒备用。",
+            "source_action_ids": [
+              "a8",
+              "a9",
+              "a10",
+              "a11"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "chop"
+          },
+          {
+            "id": "step5",
+            "text": "锅烧热后加入适量的油滑锅，然后将热油倒出。",
+            "source_action_ids": [
+              "a12",
+              "a13"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "prep"
+          },
+          {
+            "id": "step6",
+            "text": "热油倒出后加入少许底油和约0.5克食用盐均匀撒在锅中，转微小火，将切好的豆腐依次下入锅中，小火慢煎6分钟至两面金黄，翻面时再撒上适量食用盐。",
+            "source_action_ids": [
+              "a14",
+              "a15",
+              "a16",
+              "a17",
+              "a18",
+              "a19",
+              "a20",
+              "a21",
+              "a22"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": 360,
+            "duration_source": "stated",
+            "attention_type": "hands_on",
+            "action_type": "sear"
+          },
+          {
+            "id": "step7",
+            "text": "将煎好的豆腐放入煲仔中垫底备用。",
+            "source_action_ids": [
+              "a23"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "assemble"
+          },
+          {
+            "id": "step8",
+            "text": "用煎豆腐剩下的油烧热，将肥肉粒下锅爆香炒出猪油。",
+            "source_action_ids": [
+              "a24",
+              "a25",
+              "a26"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "sear"
+          },
+          {
+            "id": "step9",
+            "text": "爆出猪油后将茄子下锅，转中小火煸炒5分钟至熟。",
+            "source_action_ids": [
+              "a27",
+              "a28",
+              "a29",
+              "a30",
+              "a31",
+              "a32"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": 300,
+            "duration_source": "stated",
+            "attention_type": "hands_on",
+            "action_type": "simmer"
+          },
+          {
+            "id": "step10",
+            "text": "锅中加入约8克蚝油、约5克生抽酱油从锅边淋入、约2克老抽调色，再加入少许清水翻炒均匀。",
+            "source_action_ids": [
+              "a33",
+              "a34",
+              "a35",
+              "a36",
+              "a37"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "season"
+          },
+          {
+            "id": "step11",
+            "text": "中途加入大红椒粒和香菇粒炒至断生。",
+            "source_action_ids": [
+              "a38"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "mix"
+          },
+          {
+            "id": "step12",
+            "text": "加入适量的水淀粉将茄子收汁，加入少许明油出锅放入煲仔中。",
+            "source_action_ids": [
+              "a39",
+              "a40"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "assemble"
+          },
+          {
+            "id": "step13",
+            "text": "上菜之前再次将其烧开撒上葱花即可。",
+            "source_action_ids": [
+              "a41",
+              "a42"
+            ],
+            "instruction_source": "source",
+            "duration_seconds": null,
+            "duration_source": "unknown",
+            "attention_type": "hands_on",
+            "action_type": "plate"
+          }
+        ],
+        "audit": {
+          "complete": true,
+          "order_valid": true,
+          "method_available": true,
+          "missing_action_ids": [],
+          "unsupported_step_ids": [],
+          "warnings": []
+        }
+      },
+      "finish_reasons": [
+        "STOP"
+      ]
+    }
+  ],
+  "ledger": [
+    {
+      "operation": "video_analysis",
+      "model": "gemini-3.5-flash-lite",
+      "price_version": "2026-09-24-standard-review",
+      "status": "completed",
+      "input_tokens": 19772,
+      "output_tokens_including_thinking": 6493,
+      "modeled_reservation_usd": "0.4784128",
+      "modeled_actual_usd": "0.0221641"
+    },
+    {
+      "operation": "video_analysis",
+      "model": "gemini-3.5-flash-lite",
+      "price_version": "2026-09-24-standard-review",
+      "status": "completed",
+      "input_tokens": 24761,
+      "output_tokens_including_thinking": 5873,
+      "modeled_reservation_usd": "0.4784128",
+      "modeled_actual_usd": "0.0221108"
+    }
+  ],
+  "errors": [],
+  "billing_note": "Costs below are conservative local ledger estimates, not actual Google charges. Google project free-tier status must be checked separately before execution.",
+  "limits": {
+    "operations_per_day": 3,
+    "generation_calls_per_operation": 2,
+    "operation_deadline_seconds": 85,
+    "modeled_app_budget_usd": "1",
+    "modeled_account_budget_usd": "1",
+    "openai_enabled": false
+  },
+  "recipe": {
+    "title": "豆腐茄子煲",
+    "source_url": "https://www.youtube.com/watch?v=A6bByqI_TH8",
+    "ingredients": [
+      {
+        "name": "老豆腐",
+        "quantity": "1块",
+        "metric_quantity": null,
+        "notes": "约400克"
+      },
+      {
+        "name": "紫皮茄子",
+        "quantity": "1根",
+        "metric_quantity": null,
+        "notes": "嫩茄子"
+      },
+      {
+        "name": "五花肉",
+        "quantity": "适量",
+        "metric_quantity": null,
+        "notes": "略肥"
+      },
+      {
+        "name": "大红椒",
+        "quantity": "1个",
+        "metric_quantity": null,
+        "notes": "去籽"
+      },
+      {
+        "name": "大蒜",
+        "quantity": "几颗",
+        "metric_quantity": null,
+        "notes": "拍散剁碎"
+      },
+      {
+        "name": "香菇",
+        "quantity": "2朵",
+        "metric_quantity": null,
+        "notes": null
+      },
+      {
+        "name": "小葱头",
+        "quantity": "2根",
+        "metric_quantity": null,
+        "notes": null
+      },
+      {
+        "name": "食用油",
+        "quantity": "适量",
+        "metric_quantity": null,
+        "notes": null
+      },
+      {
+        "name": "食用盐",
+        "quantity": "适量",
+        "metric_quantity": null,
+        "notes": "约0.5克"
+      },
+      {
+        "name": "蚝油",
+        "quantity": "适量",
+        "metric_quantity": null,
+        "notes": "约8克"
+      },
+      {
+        "name": "生抽酱油",
+        "quantity": "适量",
+        "metric_quantity": null,
+        "notes": "约5克"
+      },
+      {
+        "name": "老抽",
+        "quantity": "适量",
+        "metric_quantity": null,
+        "notes": "约2克"
+      },
+      {
+        "name": "清水",
+        "quantity": "少许",
+        "metric_quantity": null,
+        "notes": null
+      },
+      {
+        "name": "水淀粉",
+        "quantity": "适量",
+        "metric_quantity": null,
+        "notes": null
+      },
+      {
+        "name": "明油",
+        "quantity": "少许",
+        "metric_quantity": null,
+        "notes": null
+      },
+      {
+        "name": "葱花",
+        "quantity": "适量",
+        "metric_quantity": null,
+        "notes": null
+      }
+    ],
+    "description": "一道非常美味的豆腐茄子煲，做法家常且非常下饭。",
+    "total_time_minutes": null,
+    "steps": [
+      {
+        "id": "84879df1-d954-4342-af50-8c1e5ffefa12",
+        "text": "将老豆腐切成5毫米左右的厚片备用。",
+        "duration_seconds": null,
+        "duration_source": "unknown",
+        "attention_type": "hands_on",
+        "action_type": "chop",
+        "instruction_source": "source",
+        "source_start_seconds": 5.12,
+        "source_end_seconds": 16.24,
+        "source_excerpt": "首先我们准备老豆腐1块（约400克） | 将豆腐直接切成5毫米左右的厚片备用 | 同学们注意，最好将豆腐切厚一些，这样在煎制的时候不容易煎碎保持完整"
+      },
+      {
+        "id": "9c43d253-bbe0-498d-b8c6-7ec62fad1f6e",
+        "text": "将紫皮茄子切成滚刀块备用。",
+        "duration_seconds": null,
+        "duration_source": "unknown",
+        "attention_type": "hands_on",
+        "action_type": "chop",
+        "instruction_source": null,
+        "source_start_seconds": null,
+        "source_end_seconds": null,
+        "source_excerpt": null
+      },
+      {
+        "id": "7bb46474-9365-4bb4-b617-4b4754b5627d",
+        "text": "将五花肉切成颗粒状备用。",
+        "duration_seconds": null,
+        "duration_source": "unknown",
+        "attention_type": "hands_on",
+        "action_type": "chop",
+        "instruction_source": null,
+        "source_start_seconds": null,
+        "source_end_seconds": null,
+        "source_excerpt": null
+      },
+      {
+        "id": "8830f15c-97af-4450-8079-1f2a465cd20b",
+        "text": "将大红椒去籽切成颗粒粒，大蒜拍散剁碎，香菇切成颗粒，小葱头切成颗粒备用。",
+        "duration_seconds": null,
+        "duration_source": "unknown",
+        "attention_type": "hands_on",
+        "action_type": "chop",
+        "instruction_source": "source",
+        "source_start_seconds": 31.46,
+        "source_end_seconds": 45.8,
+        "source_excerpt": "准备大红椒1个去籽之后切成颗粒粒备用 | 准备大蒜几颗拍散之后剁碎备用 | 准备香菇2朵切成颗粒备用 | 准备小葱头2根切成颗粒备用"
+      },
+      {
+        "id": "42360fc6-6278-47e9-acb3-4d6f01f7951d",
+        "text": "锅烧热后加入适量的油滑锅，然后将热油倒出。",
+        "duration_seconds": null,
+        "duration_source": "unknown",
+        "attention_type": "hands_on",
+        "action_type": "prep",
+        "instruction_source": null,
+        "source_start_seconds": null,
+        "source_end_seconds": null,
+        "source_excerpt": null
+      },
+      {
+        "id": "659fcced-df21-4b65-bd8b-152e52098461",
+        "text": "热油倒出后加入少许底油和约0.5克食用盐均匀撒在锅中，转微小火，将切好的豆腐依次下入锅中，小火慢煎6分钟至两面金黄，翻面时再撒上适量食用盐。",
+        "duration_seconds": 360,
+        "duration_source": "stated",
+        "attention_type": "hands_on",
+        "action_type": "sear",
+        "instruction_source": null,
+        "source_start_seconds": null,
+        "source_end_seconds": null,
+        "source_excerpt": null
+      },
+      {
+        "id": "a53d2e60-6ccf-4f15-8e36-810c5c26feb9",
+        "text": "将煎好的豆腐放入煲仔中垫底备用。",
+        "duration_seconds": null,
+        "duration_source": "unknown",
+        "attention_type": "hands_on",
+        "action_type": "assemble",
+        "instruction_source": "source",
+        "source_start_seconds": 84.14,
+        "source_end_seconds": 88.34,
+        "source_excerpt": "豆腐煎好之后放入煲仔中垫底备用"
+      },
+      {
+        "id": "a9018efc-cbbf-4654-89cf-8afae1cd9783",
+        "text": "用煎豆腐剩下的油烧热，将肥肉粒下锅爆香炒出猪油。",
+        "duration_seconds": null,
+        "duration_source": "unknown",
+        "attention_type": "hands_on",
+        "action_type": "sear",
+        "instruction_source": "source",
+        "source_start_seconds": 91.82,
+        "source_end_seconds": 103.54,
+        "source_excerpt": "我们直接用上一步煎豆腐剩下的油烧热 | 然后将切好的肥肉粒下锅爆香炒出猪油 | 同学们切记，猪肉不能一次性爆得太干"
+      },
+      {
+        "id": "a90946f2-e950-40be-a227-3b04eb6dfcd7",
+        "text": "爆出猪油后将茄子下锅，转中小火煸炒5分钟至熟。",
+        "duration_seconds": 300,
+        "duration_source": "stated",
+        "attention_type": "hands_on",
+        "action_type": "simmer",
+        "instruction_source": null,
+        "source_start_seconds": null,
+        "source_end_seconds": null,
+        "source_excerpt": null
+      },
+      {
+        "id": "6b8cb857-454d-4378-a4ea-17098a371ff8",
+        "text": "锅中加入约8克蚝油、约5克生抽酱油从锅边淋入、约2克老抽调色，再加入少许清水翻炒均匀。",
+        "duration_seconds": null,
+        "duration_source": "unknown",
+        "attention_type": "hands_on",
+        "action_type": "season",
+        "instruction_source": "source",
+        "source_start_seconds": 126.96,
+        "source_end_seconds": 147.2,
+        "source_excerpt": "茄子炒香炒熟之后开始调味 | 锅中加入适量的蚝油（约8克） | 加入适量的生抽酱油从锅边淋入（约5克） | 加入适量的老抽调色（约2克） | 再加入少许清水之后将其翻炒均匀"
+      },
+      {
+        "id": "a61b3972-9b34-43ec-9e8f-31f609163fa2",
+        "text": "中途加入大红椒粒和香菇粒炒至断生。",
+        "duration_seconds": null,
+        "duration_source": "unknown",
+        "attention_type": "hands_on",
+        "action_type": "mix",
+        "instruction_source": "source",
+        "source_start_seconds": 147.4,
+        "source_end_seconds": 153.22,
+        "source_excerpt": "中途加入切好的大红椒粒和香菇粒炒至断生"
+      },
+      {
+        "id": "6b5f104a-171a-4159-95ac-e86e32abf99e",
+        "text": "加入适量的水淀粉将茄子收汁，加入少许明油出锅放入煲仔中。",
+        "duration_seconds": null,
+        "duration_source": "unknown",
+        "attention_type": "hands_on",
+        "action_type": "assemble",
+        "instruction_source": "source",
+        "source_start_seconds": 153.22,
+        "source_end_seconds": 164.74,
+        "source_excerpt": "再加入适量的水淀粉将茄子收汁 | 茄子收汁之后加入少许的明油即可出锅放在煲仔中"
+      },
+      {
+        "id": "12b921d5-da47-4e6e-9a05-088796efef48",
+        "text": "上菜之前再次将其烧开撒上葱花即可。",
+        "duration_seconds": null,
+        "duration_source": "unknown",
+        "attention_type": "hands_on",
+        "action_type": "plate",
+        "instruction_source": null,
+        "source_start_seconds": null,
+        "source_end_seconds": null,
+        "source_excerpt": null
+      }
+    ],
+    "tips": [
+      "豆腐最好选择老豆腐煎制，嫩豆腐下锅容易煎碎煎烂，煎的时候不能用大火，必须使用微小火慢煎。"
+    ],
+    "equipment": [
+      "菜刀",
+      "砧板",
+      "碗",
+      "铁锅",
+      "锅铲",
+      "汤勺",
+      "筷子",
+      "煲仔"
+    ],
+    "import_review": {
+      "status": "needs_review",
+      "warnings": [
+        "Some action evidence does not clearly support the claimed procedure; review the source.",
+        "The completeness check omitted or changed previously identified source actions.",
+        "Some instruction wording is not clearly supported by its quoted actions; review the method."
+      ],
+      "source_kind": "video",
+      "can_analyze_video": true
+    }
+  },
+  "operation_elapsed_seconds": 31.305,
+  "generation_calls_reserved": 2,
+  "context_denied": false,
+  "budgets": [
+    {
+      "scope": "global",
+      "month": "2026-09-01",
+      "modeled_spent_usd": "0.1060438",
+      "modeled_reserved_usd": "0"
+    },
+    {
+      "scope": "synthetic_account",
+      "month": "2026-09-01",
+      "modeled_spent_usd": "0.1060438",
+      "modeled_reserved_usd": "0"
+    }
+  ],
+  "remaining_account_leases": 0,
+  "operation_counters": [
+    {
+      "scope": "global",
+      "window_seconds": 60,
+      "request_count": 1
+    },
+    {
+      "scope": "global",
+      "window_seconds": 86400,
+      "request_count": 3
+    },
+    {
+      "scope": "synthetic_account",
+      "window_seconds": 60,
+      "request_count": 1
+    },
+    {
+      "scope": "synthetic_account",
+      "window_seconds": 86400,
+      "request_count": 3
+    }
+  ],
+  "total_elapsed_seconds": 32.489,
+  "finished_at": "2026-09-24T19:45:50.301107+00:00",
+  "environment": "Local disposable database; Google project verified Free tier; billing not enabled; no production writes.",
+  "postprocessing_replay": {
+    "method": "Same two captured live provider outputs, replayed offline through the additional preparation/use check; no new provider requests.",
+    "step_texts_unchanged": true,
+    "import_review": {
+      "status": "needs_review",
+      "warnings": [
+        "Some action evidence does not clearly support the claimed procedure; review the source.",
+        "The completeness check omitted or changed previously identified source actions.",
+        "Some instruction wording is not clearly supported by its quoted actions; review the method.",
+        "大蒜 is prepared but no later use is explained; check the source.",
+        "小葱头 is prepared but no later use is explained; check the source."
+      ],
+      "source_kind": "video",
+      "can_analyze_video": false
+    }
+  }
+}
