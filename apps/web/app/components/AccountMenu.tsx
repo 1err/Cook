@@ -106,11 +106,11 @@ export function AccountMenu({ email, isAdmin, onLogout }: AccountMenuProps) {
                 <li>
                   <Link
                     className={styles.action}
-                    href="/admin/design-system"
+                    href="/admin/dashboard"
                     onClick={closeMenu}
                   >
                     <Icon name="admin" />
-                    <span>Design system</span>
+                    <span>Dashboard</span>
                   </Link>
                 </li>
               </ul>

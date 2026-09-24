@@ -319,3 +319,42 @@ async def test_lifespan_finishes_later_cleanup_before_propagating_caller_cancell
         "browser",
         "database",
     ]
+
+
+@pytest.mark.asyncio
+async def test_cancellation_during_analytics_shutdown_still_cleans_business_resources(monkeypatch):
+    analytics_started = asyncio.Event()
+    analytics_stopping = asyncio.Event()
+    cleaned = []
+
+    async def maintenance():
+        analytics_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            analytics_stopping.set()
+            await asyncio.Event().wait()
+
+    async def record(name):
+        cleaned.append(name)
+
+    for name in ("init_engine", "start_live_lookup_admission", "start_scheduler",
+                 "stop_scheduler", "stop_live_lookup_admission"):
+        monkeypatch.setattr(main, name, lambda: None)
+    monkeypatch.setattr(main, "maintenance_loop", maintenance)
+    for name in ("shutdown_cache_warmer", "shutdown_live_lookups", "shutdown_weee_scraper",
+                 "close_openai_client", "shutdown_account_cleanup", "dispose_engine"):
+        monkeypatch.setattr(main, name, lambda name=name: record(name))
+
+    context = main.lifespan(SimpleNamespace())
+    await context.__aenter__()
+    await analytics_started.wait()
+    closing = asyncio.create_task(context.__aexit__(None, None, None))
+    await analytics_stopping.wait()
+    closing.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await closing
+    assert cleaned == [
+        "shutdown_cache_warmer", "shutdown_live_lookups", "shutdown_weee_scraper",
+        "close_openai_client", "shutdown_account_cleanup", "dispose_engine",
+    ]

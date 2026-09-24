@@ -36,6 +36,10 @@ from app.api.routes_users import router as users_router
 from app.api.routes_cooking import router as cooking_router
 from app.api.admin import router as admin_router
 from app.api.admin_usage import router as admin_usage_router
+from app.api.analytics import router as analytics_router
+from app.api.admin_analytics import router as admin_analytics_router
+from app.analytics.middleware import AnalyticsMiddleware
+from app.analytics.repository import maintenance_loop
 from app.jobs.cache_warmer import (
     shutdown_cache_warmer,
     start_scheduler,
@@ -105,10 +109,15 @@ async def lifespan(app: FastAPI):
     start_account_cleanup()
     if settings.STORE_JOBS_MODE == "local":
         start_scheduler()
+    analytics_maintenance = asyncio.create_task(maintenance_loop())
     try:
         yield
     finally:
-        await _shutdown_application_resources()
+        analytics_maintenance.cancel()
+        try:
+            await asyncio.gather(analytics_maintenance, return_exceptions=True)
+        finally:
+            await _shutdown_application_resources()
 
 
 app = FastAPI(title="Cooking Recipe API", lifespan=lifespan,
@@ -135,6 +144,7 @@ async def ai_input_too_large(_request: Request, exc: AIInputTooLargeError):
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 origins = get_cors_origins_list()
+app.add_middleware(AnalyticsMiddleware)
 app.add_middleware(HTTPGuardMiddleware, trusted_origins=origins)
 app.add_middleware(
     CORSMiddleware,
@@ -161,6 +171,8 @@ app.include_router(users_router)
 app.include_router(cooking_router)
 app.include_router(admin_router)
 app.include_router(admin_usage_router)
+app.include_router(analytics_router)
+app.include_router(admin_analytics_router)
 
 _upload_root = get_local_upload_root()
 _upload_root.mkdir(parents=True, exist_ok=True)

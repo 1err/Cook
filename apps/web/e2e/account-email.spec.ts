@@ -13,7 +13,7 @@ async function fulfillJson(route: Route, body: unknown, status = 200) {
     headers: {
       "Access-Control-Allow-Origin": appOrigin,
       "Access-Control-Allow-Credentials": "true",
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Headers": "Content-Type, X-Cw-Visitor, X-Cw-Session, X-Cw-Event-Id, X-Cw-Source, X-Cw-Medium, X-Cw-Campaign, X-Cw-Referrer",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     },
     body: JSON.stringify(body),
@@ -29,6 +29,13 @@ async function installAccountFixtures(page: Page, signedIn = true) {
     const { pathname } = new URL(request.url());
     if (request.method() === "OPTIONS") {
       await fulfillJson(route, {});
+    } else if (pathname === "/analytics/events" && request.method() === "POST") {
+      const event = request.postDataJSON();
+      expect(event.path).not.toMatch(/[?#]/);
+      expect(Object.keys(event)).not.toEqual(expect.arrayContaining(["token"]));
+      expect(Object.keys(event)).not.toEqual(expect.arrayContaining(["email"]));
+      expect(Object.keys(event)).not.toEqual(expect.arrayContaining(["password"]));
+      await fulfillJson(route, { ok: true }, 202);
     } else if (pathname === "/auth/me" && request.method() === "GET") {
       state.authReads += 1;
       if (state.failRefresh) await route.abort("failed");

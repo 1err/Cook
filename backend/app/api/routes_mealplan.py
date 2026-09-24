@@ -4,7 +4,7 @@ Meal plan routes. Uses repo only. All require auth.
 from datetime import date as CalendarDate
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,9 +49,12 @@ async def meal_plan_put(
     body: MealPlanPutBody,
     session: AsyncSession = Depends(get_session),
     current_user: UserModel = Depends(get_current_user),
+    request: Request = None,
 ):
     """Create or update meal plan for the given date (YYYY-MM-DD)."""
     slots = normalize_meal_plan_slots(body.model_dump(exclude_none=True, exclude_unset=True))
+    if request is not None and not any(slots.values()):
+        request.state.analytics_skip = True
     try:
         return await repo_mealplan.put_meal_plan(session, date.isoformat(), slots, current_user.id, expected_revision=body.expected_revision)
     except repo_mealplan.MealPlanConflict as exc:

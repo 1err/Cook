@@ -6,7 +6,7 @@ POST /users/{user_id}/recipes/{recipe_id}/copy          — clone into the calle
 """
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Request, APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
@@ -100,10 +100,14 @@ async def copy_friend_recipe(
     recipe_id: str,
     session: AsyncSession = Depends(get_session),
     current_user: UserModel = Depends(get_current_user),
+    request: Request = None,
 ):
+    created: list[bool] = []
     clone = await repo_users.copy_friend_recipe_to_user(
-        session, user_id, recipe_id, current_user.id
+        session, user_id, recipe_id, current_user.id, created_outcome=created
     )
     if clone is None:
         raise HTTPException(404, "Recipe not available for copy.")
+    if request is not None:
+        request.state.analytics_skip = not bool(created)
     return _row_to_recipe(clone)

@@ -1,5 +1,7 @@
 "use client";
 
+import { trackEvent } from "../lib/analytics";
+
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -1044,6 +1046,7 @@ function ShoppingListPageContent() {
     );
     if (currentSelection?.product.url !== productUrl) return;
     window.open(productUrl, "_blank", "noopener,noreferrer");
+    trackEvent("retailer_handoff", "/shopping-list", "weee");
   }
 
   function handleConfirmCartItem(confirmationToken: string) {

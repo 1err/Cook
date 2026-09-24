@@ -23,6 +23,10 @@ async function installFriendsFixtures(page: Page) {
   await page.route(`${API_BASE}/**`, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
+    if (request.method() === "POST" && url.pathname === "/analytics/events") {
+      await fulfillJson(route, { ok: true }, 202);
+      return;
+    }
     if (request.method() !== "GET") {
       mutations.push(`${request.method()} ${url.pathname}`);
       await route.abort();

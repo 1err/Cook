@@ -186,8 +186,9 @@ test('checks and copies basic groceries during an AI failure without Instacart',
   await screen.findByRole('alert');
   expect(screen.getByRole('checkbox', { name: 'shopping.markStillNeedToBuy Rice' })).toBeChecked();
   expectInstacartAbsent();
-  fireEvent.click(screen.getByRole('button', { name: 'shopping.copyList' }));
-  await waitFor(() => expect(writeText).toHaveBeenLastCalledWith('Milk — 250 ml'));
+  fireEvent.click(screen.getByRole('button', { name: /shopping\.(copyList|copied)/ }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+  expect(writeText).toHaveBeenLastCalledWith('Milk — 250 ml');
 });
 
 test('keeps the basic checklist usable when the optional meal preview fails', async () => {

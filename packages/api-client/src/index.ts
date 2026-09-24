@@ -44,6 +44,7 @@ export type ApiClientOptions = {
   baseUrl: string;
   auth: AuthStrategy;
   defaultHeaders?: HeadersInit;
+  getRequestHeaders?: () => HeadersInit;
   onUnauthorized?: () => void;
   getAuthGeneration?: () => number;
 };
@@ -141,6 +142,9 @@ export function createApiClient(options: ApiClientOptions) {
     const { headers, body, skipJsonContentType = false, ...rest } = requestOptions;
     const isFormData = body instanceof FormData;
     const nextHeaders = new Headers(options.defaultHeaders || {});
+    if (options.getRequestHeaders) {
+      new Headers(options.getRequestHeaders()).forEach((value, key) => nextHeaders.set(key, value));
+    }
     if (!skipJsonContentType && !isFormData && body != null && !nextHeaders.has("Content-Type")) {
       nextHeaders.set("Content-Type", "application/json");
     }

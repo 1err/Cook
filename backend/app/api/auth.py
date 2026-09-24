@@ -125,6 +125,7 @@ async def get_current_user(
     if (not isinstance(version, int) or isinstance(version, bool)
             or version != user.auth_version or await repo_accounts.is_token_revoked(session, token)):
         raise HTTPException(status_code=401, detail="Session expired. Please sign in again.")
+    request.state.analytics_user_id = user.id
     return user
 
 
@@ -161,6 +162,8 @@ async def register(
         raise
     token = create_access_token(str(user.id), {"auth_version": user.auth_version})
     _set_cookie(response, token)
+    if request is not None:
+        request.state.analytics_user_id = user.id
     return AuthResponse.from_model_with_token(user, token)
 
 
@@ -179,6 +182,8 @@ async def login(
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = create_access_token(str(user.id), {"auth_version": user.auth_version})
     _set_cookie(response, token)
+    if request is not None:
+        request.state.analytics_user_id = user.id
     return AuthResponse.from_model_with_token(user, token)
 
 

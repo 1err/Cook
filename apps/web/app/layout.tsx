@@ -14,6 +14,7 @@ import { AuthProvider } from "./lib/auth";
 import { Header } from "./components/Header";
 import { LocalEmailPreviewBanner } from "./components/LocalEmailPreviewBanner";
 import { I18nProvider } from "./lib/i18n";
+import { AnalyticsTracker } from "./components/AnalyticsTracker";
 
 export const metadata: Metadata = {
   title: "Chef World — Recipe library & planner",
@@ -30,6 +31,7 @@ export default function RootLayout({
       <body>
         <I18nProvider>
           <AuthProvider>
+            <AnalyticsTracker />
             <LocalEmailPreviewBanner />
             <Header />
             <div id="app-content">{children}</div>

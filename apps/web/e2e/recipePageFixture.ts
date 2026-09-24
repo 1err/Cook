@@ -1,5 +1,5 @@
 /** API-shaped summary fixtures keep browser journeys honest about list/detail separation. */
-export function recipePageFixture(rows: Array<{id:string; title:unknown; ingredients?:unknown[]; steps?:unknown[]; library_tags?:string[]; library_category?:string|null}>, url:string) {
+export function recipePageFixture<T extends {id:string; title:unknown; ingredients?:unknown[]; steps?:unknown[]; library_tags?:string[]; library_category?:string|null}>(rows: T[], url:string) {
   const params=new URL(url).searchParams;
   const q=(params.get('q') ?? '').toLowerCase();
   const tags=params.getAll('tags');

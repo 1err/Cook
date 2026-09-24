@@ -60,7 +60,7 @@ export const PUBLIC_DOCUMENTS: Record<PublicDocumentKind, PublicDocumentContent>
     title: "Privacy Notice",
     intro:
       "This notice explains how Chef World handles information when you use its recipe, meal-planning, shopping, and cooking features. For privacy questions or data requests, contact jerryxiang24@gmail.com.",
-    updated: "Last updated: September 21, 2026",
+    updated: "Last updated: September 24, 2026",
     sections: [
       {
         heading: "Information used to provide the service",
@@ -68,6 +68,8 @@ export const PUBLIC_DOCUMENTS: Record<PublicDocumentKind, PublicDocumentContent>
           "When you create an account, Chef World stores your email address, an account identifier, your library-sharing setting, and a password hash used to verify your password. Your original password is submitted for registration or sign-in; the account database stores its hash.",
           "The service stores information you save, including recipe titles, ingredients, instructions, tags, source links, image links, meal plans, and cooking progress. Saved imports can include the original text and guidance you submitted. If you email us, we receive your address, message, and any attachments you choose to include.",
           "Operational records can include request status, timing, error information, AI usage counters, and grocery search terms. These records help operate the service, investigate problems, and manage usage.",
+          "Chef World uses first-party analytics to understand registrations, successful logins, page visits, recipe saves, meal planning, cooking, and retailer handoffs. Administrators can view account emails, signup dates, and account-linked activity. Browser analytics use random visitor and visit identifiers, normalized page paths, referrer domains, campaign labels, and broad browser/device categories; they do not collect passwords, recipe contents, full page URLs, or keystrokes. A visitor identifier may be linked to your account when you sign in or register.",
+          "Browser analytics respect Do Not Track and Global Privacy Control signals. Visitor identifiers expire after 90 days; visits expire after 30 minutes of inactivity. Detailed events are retained for 90 days, with non-identifying daily totals retained for 13 months. Account-level last-activity and first-use milestones remain with the account. Browser privacy controls do not disable the operational recording of successful sign-ins and authenticated product actions.",
         ],
       },
       {

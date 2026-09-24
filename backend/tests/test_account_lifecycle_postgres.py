@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select, update, func, delete
+from sqlalchemy import select, update, func, delete, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -185,12 +185,42 @@ async def test_delete_requires_password_and_cannot_be_replayed(account_client, a
     bad = await client.request("DELETE", "/auth/account", headers=headers(user), json={"password": "incorrect-password"})
     assert bad.status_code == 403
     assert (await client.get("/auth/me", headers=headers(user))).status_code == 200
+    async with account_db() as session:
+        assert (await session.execute(text(
+            "SELECT count(*) FROM analytics_events WHERE user_id=:id AND name='registered'"
+        ), {"id": user["id"]})).scalar() == 1
+        assert (await session.execute(text(
+            "SELECT count(*) FROM analytics_profiles WHERE user_id=:id"
+        ), {"id": user["id"]})).scalar() == 1
     deleted = await client.request("DELETE", "/auth/account", headers=headers(user), json={"password": "initial-password"})
     assert deleted.status_code == 200, deleted.text
     assert (await client.get("/auth/me", headers=headers(user))).status_code == 401
     assert (await client.post("/auth/login", json={"email": email, "password": "initial-password"})).status_code == 401
     async with account_db() as session:
         assert (await session.execute(select(UserModel).where(UserModel.email == email))).scalar_one_or_none() is None
+        for table in ("analytics_events", "analytics_profiles"):
+            assert (await session.execute(text(
+                f"SELECT count(*) FROM {table} WHERE user_id=:id"
+            ), {"id": user["id"]})).scalar() == 0
+
+
+@pytest.mark.asyncio
+async def test_revoked_session_cannot_attribute_client_analytics_to_account(account_client, account_db):
+    client, _ = account_client
+    _, user = await register(client)
+    assert (await client.post("/auth/logout", headers=headers(user))).status_code == 200
+    assert (await client.get("/auth/me", headers=headers(user))).status_code == 401
+    visitor_id = uuid4()
+    result = await client.post("/analytics/events", headers=headers(user), json={
+        "name": "page_view", "event_id": str(uuid4()), "visitor_id": str(visitor_id),
+        "session_id": str(uuid4()), "path": "/library",
+    })
+    assert result.status_code == 204
+    async with account_db() as session:
+        rows = (await session.execute(text(
+            "SELECT user_id FROM analytics_events WHERE visitor_id=:visitor"
+        ), {"visitor": visitor_id})).scalars().all()
+        assert rows == [None]
 
 
 @pytest.mark.asyncio

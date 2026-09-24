@@ -188,7 +188,8 @@ async def set_recipe_public_catalog(
 
 
 async def copy_public_recipe_to_user(
-    session: AsyncSession, recipe_id: str, user_id: uuid.UUID
+    session: AsyncSession, recipe_id: str, user_id: uuid.UUID,
+    created_outcome: list[bool] | None = None,
 ) -> Optional[Recipe]:
     result = await session.execute(
         select(RecipeModel).where(
@@ -235,6 +236,8 @@ async def copy_public_recipe_to_user(
     )
     session.add(clone)
     await session.flush()
+    if created_outcome is not None:
+        created_outcome.append(True)
     return _row_to_recipe(clone)
 
 
