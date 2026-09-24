@@ -231,6 +231,8 @@ describe("DraftRecipeEditor", () => {
       steps: [{
         ...draft.steps?.[0],
         text: "Captured tutorial step.",
+        duration_seconds: null, duration_source: "unknown", instruction_source: "user",
+        source_start_seconds: null, source_end_seconds: null, source_excerpt: null,
       }],
     });
 

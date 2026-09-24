@@ -1,6 +1,6 @@
 """Simple data models. No complex schemas."""
 import math
-from typing import Annotated, Optional
+from typing import Annotated, Optional, Literal
 
 from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
 
@@ -102,6 +102,10 @@ class RecipeStep(BaseModel):
     attention_type: Optional[str] = None
     action_type: Optional[str] = None
     image_url: Optional[str] = None
+    instruction_source: Literal["source", "suggested", "user"] | None = None
+    source_start_seconds: float | None = Field(None, ge=0, le=86400, allow_inf_nan=False)
+    source_end_seconds: float | None = Field(None, ge=0, le=86400, allow_inf_nan=False)
+    source_excerpt: str | None = Field(None, max_length=500)
 
     @field_validator("id", "duration_source", "attention_type", "action_type", mode="before")
     @classmethod
@@ -200,6 +204,13 @@ def coerce_total_time_minutes(v: object) -> Optional[int]:
     return n if n >= 0 else None
 
 
+class ImportReview(BaseModel):
+    status: Literal["ready", "needs_review"] = "needs_review"
+    warnings: list[str] = Field(default_factory=list, max_length=30)
+    source_kind: Literal["captions", "description", "video", "media", "text"] = "text"
+    can_analyze_video: bool = False
+
+
 class RecipeCreate(BaseModel):
     title: str
     source_url: Optional[str] = None
@@ -236,7 +247,8 @@ class RecipeCreate(BaseModel):
     @model_validator(mode="after")
     def normalize_steps(self) -> "RecipeCreate":
         self.steps = coerce_steps(self.steps, self.total_time_minutes)
-        if self.total_time_minutes is None and self.steps:
+        if (self.total_time_minutes is None and self.steps
+                and all(step.duration_seconds is not None for step in self.steps)):
             seconds = sum(step.duration_seconds or 0 for step in self.steps)
             self.total_time_minutes = math.ceil(seconds / 60)
         return self
@@ -263,6 +275,7 @@ class RecipeCreate(BaseModel):
 
 
 class Recipe(RecipeCreate):
+    import_review: ImportReview | None = None
     id: str
 
 

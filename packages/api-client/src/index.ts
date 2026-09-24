@@ -1,4 +1,5 @@
 export { RecipePager } from "./recipePager";
+export { runRecipeImport } from "./recipeImport";
 export { loadStoreProductBatches } from "./storeProductBatches";
 import type {
   CookingActionPayload,
@@ -9,6 +10,8 @@ import type {
   RecipePage,
   RecipeStep,
   RecipeTagSlug,
+  RecipeImportJob,
+  RecipeImportCapabilities,
   ShoppingListItem,
   User,
 } from "@cooking/shared";
@@ -84,6 +87,16 @@ export type ParseLinkPayload = {
 
 export type ParseTranscriptPayload = {
   transcript: string;
+  source_url?: string;
+  notes?: string;
+  title?: string;
+  library_tags?: RecipeTagSlug[];
+};
+
+export type RecipeImportPayload = {
+  mode: "link" | "text" | "video";
+  url?: string;
+  transcript?: string;
   notes?: string;
   title?: string;
   library_tags?: RecipeTagSlug[];
@@ -223,6 +236,11 @@ export function createApiClient(options: ApiClientOptions) {
         }),
     },
     recipes: {
+      importCapabilities: () => json<RecipeImportCapabilities>("/recipes/import-capabilities"),
+      createImportJob: (payload: RecipeImportPayload) => json<RecipeImportJob>("/recipes/import-jobs", { method: "POST", body: JSON.stringify(payload) }),
+      createMediaImportJob: (form: FormData) => json<RecipeImportJob>("/recipes/import-jobs/media", { method: "POST", body: form }),
+      getImportJob: (id: string, signal?: AbortSignal) => json<RecipeImportJob>(`/recipes/import-jobs/${encodeURIComponent(id)}`, { signal }),
+      cancelImportJob: (id: string) => json<RecipeImportJob>(`/recipes/import-jobs/${encodeURIComponent(id)}`, { method: "DELETE" }),
       /** @deprecated Compatibility for older releases; use page for lists. */
       list: () => json<Recipe[]>("/recipes"),
       page: (options: RecipePageOptions = {}) => json<RecipePage>(`/recipes/page?${recipePageQuery(options)}`),

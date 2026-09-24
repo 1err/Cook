@@ -20,7 +20,7 @@ export function CookingTimerRing({ step }: { step: CookingStep }) {
   const label = step.state === "timer_paused"
     ? t("cook.timer.paused")
     : seconds > 0 ? t("cook.timer.remaining") : t("cook.attention.needsAttention");
-  const ratio = Math.min(1, seconds / Math.max(1, step.duration_seconds));
+  const ratio = Math.min(1, seconds / Math.max(1, step.duration_seconds ?? 1));
   const circumference = 2 * Math.PI * 48;
 
   return (

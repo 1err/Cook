@@ -66,7 +66,7 @@ export function FocusedCookingStep({
       <Text style={styles.metadata}>{formatRecipeStepMetadata(step, t)}</Text>
       {timerActive ? <CookingTimerRing step={{ ...step, state }} /> : null}
       <View style={styles.actions}>
-        {step.attention_type === "passive" && state === "ready" ? <Button title={t("cook.action.startTimer")} onPress={() => onAction(step.id, "start_timer")} /> : null}
+        {step.attention_type === "passive" && step.duration_seconds != null && step.duration_seconds > 0 && state === "ready" ? <Button title={t("cook.action.startTimer")} onPress={() => onAction(step.id, "start_timer")} /> : null}
         {state === "timer_running" ? <Button title={t("cook.action.pause")} onPress={() => onAction(step.id, "pause_timer")} variant="secondary" /> : null}
         {state === "timer_paused" ? <Button title={t("cook.action.resume")} onPress={() => onAction(step.id, "resume_timer")} variant="secondary" /> : null}
         {timerActive ? <Button title={t("cook.action.extend")} onPress={() => onAction(step.id, "extend_timer", 60)} variant="secondary" /> : null}

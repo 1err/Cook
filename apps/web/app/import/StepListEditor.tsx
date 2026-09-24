@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import {
   createRecipeStep,
+  editRecipeStepText,
   RECIPE_ACTION_MESSAGE_KEYS,
   RECIPE_ACTION_TYPES,
   RECIPE_ATTENTION_TYPE_MESSAGE_KEYS,
@@ -11,11 +12,13 @@ import {
   type RecipeStep,
 } from "@cooking/shared";
 import { useT } from "../lib/i18n";
+import { StepEvidence } from "./StepEvidence";
 import { DurationField } from "./DurationField";
 import styles from "./ImportFlow.module.css";
 
 export interface StepListEditorProps {
   steps: RecipeStep[];
+  sourceUrl?: string | null;
   onChange: (next: RecipeStep[]) => void;
   uploadImage?: (file: File) => Promise<string>;
   onValidityChange?: (valid: boolean) => void;
@@ -23,7 +26,7 @@ export interface StepListEditorProps {
 }
 
 function hasValidDuration(step: RecipeStep): boolean {
-  return (
+  return step.duration_seconds == null || (
     typeof step.duration_seconds === "number" &&
     Number.isInteger(step.duration_seconds) &&
     step.duration_seconds >= 1 &&
@@ -37,6 +40,7 @@ function stepKey(step: RecipeStep, index: number): string {
 
 export function StepListEditor({
   steps,
+  sourceUrl,
   onChange,
   uploadImage,
   onValidityChange,
@@ -115,21 +119,22 @@ export function StepListEditor({
                 aria-label={t("recipe.tutorial.editor.stepLabel", { step: index + 1 })}
                 placeholder={t("recipe.step.textPlaceholder")}
                 value={step.text}
-                onChange={(event) => updateAt(index, { ...step, text: event.target.value })}
+                onChange={(event) => updateAt(index, editRecipeStepText(step, event.target.value))}
               />
+              <StepEvidence step={step} sourceUrl={sourceUrl} />
               <div className={styles.stepMetadata}>
                 <div className={styles.stepMetadataField}>
                   <span>{t("recipe.tutorial.editor.duration")}</span>
                   <span className={styles.metadataSource}>
-                    {t(RECIPE_DURATION_SOURCE_MESSAGE_KEYS[step.duration_source ?? "fallback"])}
+                    {t(RECIPE_DURATION_SOURCE_MESSAGE_KEYS[step.duration_source ?? "unknown"])}
                   </span>
                 </div>
                 <DurationField
                   seconds={step.duration_seconds ?? null}
                   onChange={(next) => updateAt(index, {
                     ...step,
-                    duration_seconds: Math.max(1, Math.min(86_400, next ?? 1)),
-                    duration_source: "user",
+                    duration_seconds: next,
+                    duration_source: next == null ? "unknown" : "user",
                   })}
                   ariaLabel={t("recipe.tutorial.editor.durationLabel", { step: index + 1 })}
                   minutesAriaLabel={t("recipe.tutorial.editor.durationMinutes", { step: index + 1 })}

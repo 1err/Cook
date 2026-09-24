@@ -17,12 +17,12 @@ vi.mock("../components/RequireAuth", () => ({
   RequireAuth: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-vi.mock("../lib/api", () => ({ apiFetch: mockApiFetch }));
+vi.mock("../lib/api", () => ({ apiFetch: mockApiFetch, webApiClient: { recipes: { importCapabilities: () => Promise.resolve({ video_analysis: false, media_upload: false, max_media_bytes: 0 }), createImportJob: () => Promise.reject(new Error("TikTok only exposed an attribution caption.")), cancelImportJob: vi.fn() } } }));
 vi.mock("../lib/editorialCopy", () => ({
   useEditorialCopy: () => ({ "import.tagline": "Import recipes" }),
 }));
 vi.mock("../lib/i18n", () => ({
-  useT: () => (key: string) => key,
+  useT: () => (key: string) => ({ "import.videoLink": "Video link", "import.recipeText": "Paste recipe text", "import.createDraft": "Create draft" })[key] || key,
 }));
 
 beforeEach(() => {

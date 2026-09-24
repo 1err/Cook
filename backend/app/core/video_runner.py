@@ -32,7 +32,8 @@ def main():
     fetcher = fetch_youtube_text if source.provider == 'youtube' else fetch_tiktok_text
     result = fetcher(source)
     payload = json.dumps({name: getattr(result, name) for name in
-                          ('status', 'text', 'message', 'title', 'thumbnail_url')})
+                          ('status', 'text', 'message', 'title', 'thumbnail_url',
+                           'source_kind', 'segments', 'language_code', 'is_generated')})
     if len(payload.encode()) > 512_000:
         payload = json.dumps({'status':'fetch_failed', 'text':'',
                               'message':'Video text is too large. Paste a shorter transcript instead.'})

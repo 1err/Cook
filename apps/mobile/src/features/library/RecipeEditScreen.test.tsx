@@ -125,6 +125,8 @@ test("keeps Estimate preview-only and applies it to an independent local tutoria
   expect(mockEstimateTutorial).toHaveBeenCalledWith(recipe.id, [{
     ...fallbackStep,
     text: "Simmer the edited sauce.",
+    duration_seconds: null, duration_source: "unknown", instruction_source: "user",
+    source_start_seconds: null, source_end_seconds: null, source_excerpt: null,
   }]);
   expect(mockUpdate).not.toHaveBeenCalled();
   expect(recipe.steps?.[0]).toEqual(fallbackStep);
@@ -158,7 +160,7 @@ test("saves only tutorial steps and returns only after a successful PATCH", asyn
 
   await waitFor(() => expect(nav.goBack).toHaveBeenCalledTimes(1));
   expect(mockUpdate).toHaveBeenCalledWith(recipe.id, {
-    steps: [{ ...fallbackStep, text: "Simmer gently." }],
+    steps: [{ ...fallbackStep, text: "Simmer gently.", duration_seconds: null, duration_source: "unknown", instruction_source: "user", source_start_seconds: null, source_end_seconds: null, source_excerpt: null }],
   });
 });
 
@@ -322,7 +324,7 @@ test("locks tutorial mutations and navigation until a pending Save settles", asy
   await waitFor(() => expect(nav.goBack).toHaveBeenCalledTimes(1));
   expect(mockPreventRemove).toBe(false);
   expect(mockUpdate).toHaveBeenCalledWith(recipe.id, {
-    steps: [{ ...fallbackStep, text: "Snapshot sent for saving." }],
+    steps: [{ ...fallbackStep, text: "Snapshot sent for saving.", duration_seconds: null, duration_source: "unknown", instruction_source: "user", source_start_seconds: null, source_end_seconds: null, source_excerpt: null }],
   });
 });
 

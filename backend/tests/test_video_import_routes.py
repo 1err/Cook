@@ -234,7 +234,7 @@ async def test_parse_link_rejects_structurally_empty_tiktok_draft(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_parse_link_rejects_youtube_draft_when_step_recovery_is_empty(monkeypatch):
+async def test_parse_link_preserves_ingredients_when_method_is_empty(monkeypatch):
     raw_url = "https://www.youtube.com/watch?v=A6bByqI_TH8&t=23s"
     canonical_url = "https://www.youtube.com/watch?v=A6bByqI_TH8"
     source = VideoSource("youtube", raw_url, canonical_url, "A6bByqI_TH8")
@@ -262,18 +262,15 @@ async def test_parse_link_rejects_youtube_draft_when_step_recovery_is_empty(monk
         ),
     )
 
-    with pytest.raises(HTTPException) as exc_info:
-        await routes_recipes.parse_from_link(
-            routes_recipes.ParseLinkBody(url=raw_url), _user=object()
-        )
-
-    assert exc_info.value.status_code == 422
-    assert "cooking steps" in str(exc_info.value.detail)
-    assert "Paste a transcript" in str(exc_info.value.detail)
+    result = await routes_recipes.parse_from_link(
+        routes_recipes.ParseLinkBody(url=raw_url), _user=object())
+    assert result.ingredients[0].name == "老豆腐"
+    assert result.steps == []
+    assert result.import_review.status == "needs_review"
 
 
 @pytest.mark.asyncio
-async def test_parse_link_rejects_placeholder_step_from_real_extraction_pipeline(monkeypatch):
+async def test_parse_link_preserves_ingredients_after_unusable_audit(monkeypatch):
     raw_url = "https://www.youtube.com/watch?v=A6bByqI_TH8&t=23s"
     canonical_url = "https://www.youtube.com/watch?v=A6bByqI_TH8"
     source = VideoSource("youtube", raw_url, canonical_url, "A6bByqI_TH8")
@@ -308,17 +305,16 @@ async def test_parse_link_rejects_placeholder_step_from_real_extraction_pipeline
     )
     monkeypatch.setattr(extract_module, "get_openai_client", lambda: client)
 
-    with pytest.raises(HTTPException) as exc_info:
-        await routes_recipes.parse_from_link(
-            routes_recipes.ParseLinkBody(url=raw_url), _user=object()
-        )
-
-    assert exc_info.value.status_code == 422
+    result = await routes_recipes.parse_from_link(
+        routes_recipes.ParseLinkBody(url=raw_url), _user=object())
+    assert result.steps == []
+    assert result.ingredients[0].name == "老豆腐"
+    assert result.import_review.status == "needs_review"
     assert create.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_parse_link_returns_recovered_steps_from_real_extraction_pipeline(monkeypatch):
+async def test_parse_link_does_not_accept_ungrounded_reconstructed_method(monkeypatch):
     raw_url = "https://www.youtube.com/watch?v=A6bByqI_TH8&t=23s"
     canonical_url = "https://www.youtube.com/watch?v=A6bByqI_TH8"
     source = VideoSource("youtube", raw_url, canonical_url, "A6bByqI_TH8")
@@ -371,13 +367,14 @@ async def test_parse_link_returns_recovered_steps_from_real_extraction_pipeline(
     )
 
     assert result.source_url == canonical_url
-    assert [step.text for step in result.steps] == ["将豆腐切块，煎至两面金黄。"]
-    assert result.steps[0].duration_source == "estimated"
+    assert result.steps == []
+    assert len(result.ingredients) == 2
+    assert result.import_review.status == "needs_review"
     assert create.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_parse_link_rejects_placeholder_step_from_normalized_draft(monkeypatch):
+async def test_parse_link_strips_placeholder_steps_but_keeps_ingredients(monkeypatch):
     source = VideoSource("youtube", RAW_URL, CANONICAL_URL, POST_ID)
     monkeypatch.setattr(routes_recipes, "parse_video_source", lambda _: source)
     monkeypatch.setattr(
@@ -391,16 +388,15 @@ async def test_parse_link_rejects_placeholder_step_from_normalized_draft(monkeyp
         AsyncMock(return_value=_recipe(steps=["No instructions available."])),
     )
 
-    with pytest.raises(HTTPException) as exc_info:
-        await routes_recipes.parse_from_link(
-            routes_recipes.ParseLinkBody(url=RAW_URL), _user=object()
-        )
-
-    assert exc_info.value.status_code == 422
+    result = await routes_recipes.parse_from_link(
+        routes_recipes.ParseLinkBody(url=RAW_URL), _user=object())
+    assert result.steps == []
+    assert result.ingredients[0].name == "Eggs"
+    assert result.import_review.status == "needs_review"
 
 
 @pytest.mark.asyncio
-async def test_parse_transcript_keeps_successful_procedure_on_one_completion(monkeypatch):
+async def test_parse_transcript_keeps_procedure_and_always_attempts_audit(monkeypatch):
     create = AsyncMock(
         return_value=_completion(
             {
@@ -443,4 +439,5 @@ async def test_parse_transcript_keeps_successful_procedure_on_one_completion(mon
         "Dice the tofu.",
         "Sear the tofu until golden.",
     ]
-    assert create.await_count == 1
+    assert create.await_count == 2
+    assert result.import_review.status == "needs_review"

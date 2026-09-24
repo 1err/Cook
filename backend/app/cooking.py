@@ -83,7 +83,7 @@ class CookingStep(BaseModel):
     recipe_step_id: str
     position: int
     text: str
-    duration_seconds: int
+    duration_seconds: int | None
     duration_source: str
     attention_type: str
     action_type: str
@@ -181,6 +181,11 @@ def apply_step_action(
         )
 
     occurred = _occurred_at(body, now)
+
+    if body.action in {"start_timer", "resume_timer", "extend_timer"} and (
+        step.duration_seconds is None or step.duration_source == "unknown"
+    ):
+        raise CookingConflict("timer_duration_unknown", "Set a duration before using a timer for this step.")
 
     if body.action == "start_timer":
         _require_state(step, "ready")

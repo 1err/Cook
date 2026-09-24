@@ -191,7 +191,7 @@ def test_fetch_youtube_text_uses_current_api_and_snippet_objects(monkeypatch):
     result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
 
     assert result.status == "ok"
-    assert result.text == "Coupez les oignons. Faites-les revenir."
+    assert result.text == "[s1 0-1s] Coupez les oignons.\n[s2 0-1s] Faites-les revenir."
     assert requested_ids == ["A6bByqI_TH8"]
 
 
@@ -223,7 +223,7 @@ def test_fetch_youtube_text_tries_remaining_track_after_empty_preferred_track(mo
     result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
 
     assert result.status == "ok"
-    assert result.text == "Hachez l'ail. Ajoutez-le."
+    assert result.text == "[s1 0-1s] Hachez l'ail.\n[s2 0-1s] Ajoutez-le."
 
 
 def test_fetch_youtube_text_tries_generated_track_after_empty_manual_track(monkeypatch):
@@ -254,7 +254,7 @@ def test_fetch_youtube_text_tries_generated_track_after_empty_manual_track(monke
     result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
 
     assert result.status == "ok"
-    assert result.text == "Brown the tofu, then add the eggplant."
+    assert result.text == "[s1 0-1s] Brown the tofu, then add the eggplant."
 
 
 def test_fetch_youtube_text_tries_remaining_track_after_po_token_failure(monkeypatch):
@@ -288,7 +288,7 @@ def test_fetch_youtube_text_tries_remaining_track_after_po_token_failure(monkeyp
     result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
 
     assert result.status == "ok"
-    assert result.text == "将豆腐煎至金黄。"
+    assert result.text == "[s1 0-1s] 将豆腐煎至金黄。"
 
 
 def test_fetch_youtube_text_tries_remaining_track_after_caption_request_failure(monkeypatch):
@@ -325,7 +325,7 @@ def test_fetch_youtube_text_tries_remaining_track_after_caption_request_failure(
     result = fetch_youtube_text(parse_video_source("https://youtu.be/dQw4w9WgXcQ"))
 
     assert result.status == "ok"
-    assert result.text == "将茄子炒软。"
+    assert result.text == "[s1 0-1s] 将茄子炒软。"
 
 
 def test_fetch_youtube_text_tries_remaining_track_after_ip_block(monkeypatch):
@@ -363,7 +363,7 @@ def test_fetch_youtube_text_tries_remaining_track_after_ip_block(monkeypatch):
     result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
 
     assert result.status == "ok"
-    assert result.text == "将豆腐煎至金黄，再加入茄子。"
+    assert result.text == "[s1 0-1s] 将豆腐煎至金黄，再加入茄子。"
 
 
 @pytest.mark.parametrize(
@@ -644,7 +644,7 @@ def test_youtube_sdk_bounds_both_listing_and_caption_requests(monkeypatch):
     result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
 
     assert result.status == "ok"
-    assert result.text == "Chop the onion, then simmer it."
+    assert result.text == "[s1 0-1s] Chop the onion, then simmer it."
     assert len(received) == 2
     assert all(kwargs["timeout"] == (5.0, 10.0) for _, kwargs in received)
     assert all(kwargs["allow_redirects"] is False for _, kwargs in received)
@@ -1842,7 +1842,7 @@ def test_legacy_transcript_fetch_wrapper_exposes_compatibility_attributes(monkey
 
     assert isinstance(result, TranscriptFetchResult)
     assert (result.transcript, result.status, result.message, result.video_id) == (
-        "Whisk the eggs.",
+        "[s1 0-1s] Whisk the eggs.",
         "ok",
         None,
         "dQw4w9WgXcQ",
@@ -1855,3 +1855,80 @@ def test_legacy_transcript_fetch_wrapper_rejects_non_youtube_urls(url):
 
     assert (result.transcript, result.status, result.video_id) == ("", "unsupported_url", None)
     assert result.message == "Only YouTube links are supported right now. Paste a transcript for other platforms."
+
+
+def test_caption_result_preserves_segments_and_captured_description_without_extra_fetch(monkeypatch):
+    source = parse_video_source("https://youtu.be/A6bByqI_TH8")
+
+    class Track:
+        language_code = "zh-Hans"
+        is_generated = True
+
+        def fetch(self):
+            return [SimpleNamespace(text="将豆腐转入砂锅。", start=12.5, duration=2.5)]
+
+    class Api(_YouTubeApiStub):
+        def list(self, video_id):
+            response = SimpleNamespace(
+                request=SimpleNamespace(method="POST"),
+                url="https://www.youtube.com/youtubei/v1/player",
+                headers={"content-type": "application/json"}, status_code=200, history=[],
+                content=b"{}", json=lambda: {
+                    "playabilityStatus": {"status": "OK"},
+                    "videoDetails": {"videoId": video_id, "title": "豆腐煲", "shortDescription": "豆腐400克"},
+                },
+            )
+            for hook in self.http_client.hooks["response"]:
+                hook(response)
+            return [Track()]
+
+    def no_network(*args, **kwargs):
+        pytest.fail("Successful captions must reuse captured metadata, not refetch the page")
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    monkeypatch.setattr(video_import, "_open_youtube_watch_page", no_network)
+    result = fetch_youtube_text(source)
+
+    assert result.status == "ok"
+    assert result.source_kind == "captions"
+    assert result.segments == ({"id": "s1", "start": 12.5, "duration": 2.5, "text": "将豆腐转入砂锅。"},)
+    assert "[s1 12.5-15s] 将豆腐转入砂锅。" in result.text
+    assert "豆腐400克" in result.text
+    assert result.title == "豆腐煲"
+    assert result.language_code == "zh-Hans"
+    assert result.is_generated is True
+
+
+def test_caption_selection_prefers_original_generated_language_over_manual_translation(monkeypatch):
+    fetched = []
+
+    class Track:
+        def __init__(self, language_code, generated, text):
+            self.language_code, self.is_generated, self.text = language_code, generated, text
+
+        def fetch(self):
+            fetched.append(self.language_code)
+            return [_snippet(self.text)]
+
+    class Api(_YouTubeApiStub):
+        def list(self, video_id):
+            return [Track("en", False, "Brown tofu."), Track("zh-Hans", True, "把豆腐煎金黄。")]
+
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", Api)
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
+
+    assert result.status == "ok"
+    assert "把豆腐煎金黄。" in result.text
+    assert result.language_code == "zh-Hans"
+    assert fetched == ["zh-Hans"]
+
+
+def test_description_fallback_is_labeled_as_description(monkeypatch):
+    monkeypatch.setattr(video_import, "YouTubeTranscriptApi", None)
+    monkeypatch.setattr(video_import, "_open_youtube_watch_page", _youtube_watch_opener(
+        video_id="A6bByqI_TH8", title="Tofu", description="Tofu 400 g; eggplant 1."
+    ))
+    result = fetch_youtube_text(parse_video_source("https://youtu.be/A6bByqI_TH8"))
+    assert result.status == "ok"
+    assert result.source_kind == "description"
+    assert not result.segments

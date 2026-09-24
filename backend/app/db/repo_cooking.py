@@ -163,7 +163,8 @@ def _append_recipe_snapshots(
                 recipe_step_id=UUID(str(step.id)),
                 position=step_position,
                 text=step.text,
-                duration_seconds=int(step.duration_seconds or 300),
+                duration_seconds=(None if step.duration_source == "unknown"
+                                  else int(step.duration_seconds or 300)),
                 duration_source=step.duration_source or "fallback",
                 attention_type=step.attention_type or "hands_on",
                 action_type=step.action_type or "other",

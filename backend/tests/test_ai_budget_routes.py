@@ -66,6 +66,42 @@ async def test_budget_reservation_commits_before_provider_admission(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_concurrency_denial_has_distinct_type_and_rolls_back_allowance(monkeypatch):
+    from fastapi import HTTPException
+    from app.core.ai_context import current_ai_request
+    session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock(), close=AsyncMock())
+    monkeypatch.setattr(ai_budget, 'is_llm_enabled', lambda: True)
+    monkeypatch.setattr(ai_budget, 'reserve_ai_budget', AsyncMock())
+    monkeypatch.setattr(ai_budget, 'acquire_lease', AsyncMock(side_effect=AIUsageLimitExceeded(95)))
+    cleanup = AsyncMock()
+    monkeypatch.setattr(ai_budget, 'cleanup_lease', cleanup)
+    with pytest.raises(HTTPException) as raised:
+        await anext(ai_budget.enforce_ai_budget(session, SimpleNamespace(id=uuid4())))
+    assert type(raised.value).__name__ == 'AIConcurrencyUnavailable'
+    assert raised.value.status_code == 429 and raised.value.headers['Retry-After'] == '95'
+    assert current_ai_request.get() is None
+    session.rollback.assert_awaited_once()
+    session.commit.assert_not_awaited()
+    cleanup.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_request_quota_denial_is_not_retryable_concurrency(monkeypatch):
+    from fastapi import HTTPException
+    session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock(), close=AsyncMock())
+    monkeypatch.setattr(ai_budget, 'is_llm_enabled', lambda: True)
+    monkeypatch.setattr(ai_budget, 'reserve_ai_budget', AsyncMock(side_effect=AIUsageLimitExceeded(60)))
+    lease = AsyncMock()
+    monkeypatch.setattr(ai_budget, 'acquire_lease', lease)
+    with pytest.raises(HTTPException) as raised:
+        await anext(ai_budget.enforce_ai_budget(session, SimpleNamespace(id=uuid4())))
+    assert type(raised.value) is HTTPException
+    assert raised.value.status_code == 429
+    lease.assert_not_awaited()
+    session.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_disabled_provider_keeps_local_fallback_usable(monkeypatch):
     session = SimpleNamespace(close=AsyncMock(), commit=AsyncMock())
     monkeypatch.setattr(ai_budget, 'is_llm_enabled', lambda: False)

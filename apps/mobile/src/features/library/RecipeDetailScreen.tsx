@@ -28,6 +28,7 @@ import { resolveImageUrl } from "../../lib/imageUrl";
 import { useT } from "../../lib/i18n";
 import { colors, radii, spacing, typography } from "../../theme";
 import { haptics } from "../../lib/haptics";
+import { StepEvidence } from "../import/StepEvidence";
 import { RecipeCookAction } from "./RecipeCookAction";
 import type {
   LibraryStackParamList,
@@ -322,6 +323,7 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
                     <Text style={styles.stepMetadata}>{formatRecipeStepMetadata(step, t)}</Text>
                   </View>
                   <Text style={styles.stepText}>{step.text}</Text>
+                  <StepEvidence step={step} sourceUrl={recipe.source_url} />
                   <View style={styles.stepVisual}>
                     <RecipeStepVisual
                       step={step}

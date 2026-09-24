@@ -1,8 +1,9 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, spacing, typography } from "../../theme";
+import { useT } from "../../lib/i18n";
 
-export type ImportMode = "link" | "transcript";
+export type ImportMode = "link" | "transcript" | "media";
 
 type ImportSourceTabsProps = {
   value: ImportMode;
@@ -11,9 +12,10 @@ type ImportSourceTabsProps = {
 };
 
 export function ImportSourceTabs({ value, onChange, disabled = false }: ImportSourceTabsProps) {
+  const t = useT();
   return (
     <View style={styles.wrap}>
-      {(["link", "transcript"] as ImportMode[]).map((mode) => {
+      {(["link", "transcript", "media"] as ImportMode[]).map((mode) => {
         const active = value === mode;
         return (
           <Pressable
@@ -29,7 +31,7 @@ export function ImportSourceTabs({ value, onChange, disabled = false }: ImportSo
             accessibilityState={{ selected: active, disabled }}
           >
             <Text style={[styles.label, active && styles.labelActive]}>
-              {mode === "link" ? "Video link" : "Transcript"}
+              {mode === "link" ? "Video link" : mode === "transcript" ? "Transcript" : t("import.pickVideo")}
             </Text>
           </Pressable>
         );

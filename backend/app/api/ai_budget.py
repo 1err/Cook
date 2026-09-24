@@ -12,6 +12,7 @@ from app.api.auth import get_current_user
 from app.core.config import settings
 from app.core.ai_context import AIRequestContext, current_ai_request, cleanup_lease
 from app.core.llm import is_llm_enabled
+from app.services.video_analysis import video_analysis_available
 from app.db.models import UserModel
 from app.db.repo_ai_usage import AIUsageLimitExceeded, reserve_ai_budget
 from app.db.repo_ai_cost import acquire_lease
@@ -20,9 +21,17 @@ from app.db.session import get_session
 logger = logging.getLogger(__name__)
 
 
+class AIConcurrencyUnavailable(HTTPException):
+    """Pre-operation lease contention, distinct from usage/money/provider limits."""
+    def __init__(self, retry_after: int):
+        self.retry_after = max(1, retry_after)
+        super().__init__(429, str(AIUsageLimitExceeded(retry_after)),
+                         headers={'Retry-After': str(self.retry_after)})
+
+
 async def enforce_ai_budget(session: AsyncSession = Depends(get_session),
                             user: UserModel = Depends(get_current_user)):
-    if not is_llm_enabled():
+    if not is_llm_enabled() and not video_analysis_available():
         await session.close()
         yield
         return
@@ -40,10 +49,15 @@ async def enforce_ai_budget(session: AsyncSession = Depends(get_session),
             try:
                 await reserve_ai_budget(session, account_id)
                 lease_attempted = True
-                await acquire_lease(session, account_id, request_id,
-                                    global_limit=settings.AI_GLOBAL_MAX_INFLIGHT,
-                                    account_limit=settings.AI_USER_MAX_INFLIGHT,
-                                    ttl=duration + 10)
+                try:
+                    await acquire_lease(session, account_id, request_id,
+                                        global_limit=settings.AI_GLOBAL_MAX_INFLIGHT,
+                                        account_limit=settings.AI_USER_MAX_INFLIGHT,
+                                        ttl=duration + 10)
+                except AIUsageLimitExceeded as exc:
+                    # The operation counters are still uncommitted. The finally
+                    # block rolls them back so queued retries spend no allowance.
+                    raise AIConcurrencyUnavailable(exc.retry_after) from None
                 await session.commit()
                 await session.close()
             except AIUsageLimitExceeded as exc:

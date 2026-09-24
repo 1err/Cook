@@ -97,7 +97,7 @@ export function RecipeEditScreen({ navigation, route }: Props) {
   const handleEstimate = useCallback(async () => {
     if (!draft || !recipeId || estimating || saving) return;
     const submittedSteps = copySteps(draft.steps);
-    if (!submittedSteps.some((step) => step.duration_source === "fallback")) return;
+    if (!submittedSteps.some((step) => step.duration_source === "fallback" || step.duration_source === "unknown" || step.duration_seconds == null)) return;
     setSaveError(null);
     setEstimateError(null);
     setEstimating(true);
@@ -196,7 +196,7 @@ export function RecipeEditScreen({ navigation, route }: Props) {
   }
 
   const canEstimate = (draft.steps ?? []).some(
-    (step) => step.duration_source === "fallback",
+    (step) => step.duration_source === "fallback" || step.duration_source === "unknown" || step.duration_seconds == null,
   );
 
   return (

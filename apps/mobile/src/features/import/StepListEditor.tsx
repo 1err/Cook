@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   createRecipeStep,
+  editRecipeStepText,
   formatRecipeStepMetadata,
   RECIPE_ACTION_MESSAGE_KEYS,
   RECIPE_ACTION_TYPES,
@@ -21,17 +22,19 @@ import {
 import { SegmentedControl } from "../../components";
 import { useT } from "../../lib/i18n";
 import { colors, radii, spacing, typography } from "../../theme";
+import { StepEvidence } from "./StepEvidence";
 import { DurationField } from "./DurationField";
 
 export interface StepListEditorProps {
   steps: RecipeStep[];
+  sourceUrl?: string | null;
   onChange: (next: RecipeStep[]) => void;
   onValidityChange?: (valid: boolean) => void;
   disabled?: boolean;
 }
 
 function hasValidDuration(step: RecipeStep): boolean {
-  return (
+  return step.duration_seconds == null || (
     typeof step.duration_seconds === "number" &&
     Number.isInteger(step.duration_seconds) &&
     step.duration_seconds >= 1 &&
@@ -45,6 +48,7 @@ function stepKey(step: RecipeStep, index: number): string {
 
 export function StepListEditor({
   steps,
+  sourceUrl,
   onChange,
   onValidityChange,
   disabled = false,
@@ -134,9 +138,10 @@ export function StepListEditor({
               placeholder={t("recipe.step.textPlaceholder")}
               style={[styles.instructions, disabled && styles.disabled]}
               value={step.text}
-              onChangeText={(text) => updateAt(index, { text })}
+              onChangeText={(text) => updateAt(index, editRecipeStepText(step, text))}
             />
 
+            <StepEvidence step={step} sourceUrl={sourceUrl} />
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>{t("recipe.tutorial.editor.duration")}</Text>
               <DurationField
@@ -144,8 +149,8 @@ export function StepListEditor({
                 minutesLabel={t("recipe.tutorial.editor.durationMinutes", { step: stepNumber })}
                 onChange={(durationSeconds) =>
                   updateAt(index, {
-                    duration_seconds: Math.max(1, Math.min(86_400, durationSeconds ?? 1)),
-                    duration_source: "user",
+                    duration_seconds: durationSeconds,
+                    duration_source: durationSeconds == null ? "unknown" : "user",
                   })
                 }
                 onValidityChange={(valid) => reportDurationValidity(key, valid)}

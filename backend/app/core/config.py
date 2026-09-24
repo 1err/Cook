@@ -146,6 +146,15 @@ class Settings(BaseSettings):
     INSTACART_ENVIRONMENT: Literal["development", "production"] = "development"
     OPENAI_TIMEOUT_SECONDS: float = Field(35.0, gt=0, le=120)
     OPENAI_MAX_OUTPUT_TOKENS: int = Field(4000, ge=256, le=8000)
+    # Optional audiovisual provider. Blank reviewed pricing keeps this disabled.
+    GEMINI_API_KEY: str | None = Field(None, repr=False)
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
+    GEMINI_PRICE_MODEL: str = ""
+    GEMINI_PRICE_VERSION: str = ""
+    GEMINI_INPUT_USD_PER_MILLION_TOKENS: Decimal | None = Field(None, gt=0)
+    GEMINI_OUTPUT_USD_PER_MILLION_TOKENS: Decimal | None = Field(None, gt=0)
+    GEMINI_TIMEOUT_SECONDS: float = Field(35, gt=0, le=120)
+    GEMINI_MAX_OUTPUT_TOKENS: int = Field(6000, ge=256, le=8000)
     AI_USER_REQUESTS_PER_MINUTE: int = Field(6, ge=1)
     AI_USER_REQUESTS_PER_DAY: int = Field(50, ge=1)
     AI_GLOBAL_REQUESTS_PER_MINUTE: int = Field(60, ge=1)

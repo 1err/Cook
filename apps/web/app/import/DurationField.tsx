@@ -36,14 +36,14 @@ export function DurationField({
   const initial = durationParts(seconds);
   const [minutes, setMinutes] = useState(initial[0]);
   const [secondsPart, setSecondsPart] = useState(initial[1]);
-  const [valid, setValid] = useState(isValidDuration(seconds));
+  const [valid, setValid] = useState(seconds == null || isValidDuration(seconds));
   const errorId = useId();
 
   useEffect(() => {
     const [nextMinutes, nextSeconds] = durationParts(seconds);
     setMinutes(nextMinutes);
     setSecondsPart(nextSeconds);
-    setValid(isValidDuration(seconds));
+    setValid(seconds == null || isValidDuration(seconds));
   }, [seconds]);
 
   useEffect(() => {
@@ -54,8 +54,9 @@ export function DurationField({
     setMinutes(nextMinutes);
     setSecondsPart(nextSeconds);
 
-    if (nextMinutes.trim() === "" || nextSeconds.trim() === "") {
-      setValid(false);
+    if (nextMinutes.trim() === "" && nextSeconds.trim() === "") {
+      setValid(true);
+      onChange(null);
       return;
     }
 

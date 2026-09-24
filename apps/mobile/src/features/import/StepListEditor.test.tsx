@@ -102,8 +102,8 @@ test("adds canonical unique steps and preserves IDs and hidden images when reord
   const added = latestSteps(onChange)[2];
   expect(added).toMatchObject({
     text: "",
-    duration_seconds: 300,
-    duration_source: "fallback",
+    duration_seconds: null,
+    duration_source: "unknown",
     attention_type: "hands_on",
     action_type: "other",
   });
@@ -141,4 +141,15 @@ test("keeps every editor action at least 44 points", async () => {
     expect(style.minHeight).toBeGreaterThanOrEqual(44);
     expect(style.minWidth).toBeGreaterThanOrEqual(44);
   }
+});
+
+test("unknown times remain valid and instruction edits invalidate extracted evidence", async () => {
+  const onChange = jest.fn();
+  const onValidityChange = jest.fn();
+  const { rerender } = await render(<StepListEditor steps={[{ ...estimatedStep, duration_seconds: null, duration_source: "unknown" }]} onChange={onChange} onValidityChange={onValidityChange} />);
+  expect(screen.getByText("Time not specified · Passive")).toBeOnTheScreen();
+  expect(onValidityChange).toHaveBeenLastCalledWith(true);
+  await rerender(<StepListEditor steps={[{ ...estimatedStep, instruction_source: "source", source_start_seconds: 12 }]} onChange={onChange} />);
+  await fireEvent.changeText(screen.getByLabelText("Step 1"), "Stir the sauce.");
+  expect(latestSteps(onChange)[0]).toMatchObject({ text: "Stir the sauce.", instruction_source: "user", duration_seconds: null, duration_source: "unknown", source_start_seconds: null, source_end_seconds: null, source_excerpt: null });
 });

@@ -70,8 +70,8 @@ describe("recipe tutorial contract", () => {
     expect(first).toEqual({
       id: first.id,
       text: "",
-      duration_seconds: 300,
-      duration_source: "fallback",
+      duration_seconds: null,
+      duration_source: "unknown",
       attention_type: "hands_on",
       action_type: "other",
     });
@@ -114,7 +114,7 @@ describe("recipe tutorial contract", () => {
   test("uses transparent labels for legacy steps with missing metadata", () => {
     expect(
       formatRecipeStepMetadata({ text: "Legacy instruction" }, translateEnglish),
-    ).toBe("About 5 min · Rough estimate · Hands-on");
+    ).toBe("Time not specified · Hands-on");
   });
 
   test("uses the neutral pictogram for legacy or unknown action values", () => {

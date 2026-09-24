@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from statistics import median
+import math
 from typing import Literal
 from uuid import UUID, uuid4
 
-DurationSource = Literal["stated", "estimated", "user", "fallback"]
+DurationSource = Literal["stated", "estimated", "user", "fallback", "unknown"]
 AttentionType = Literal["hands_on", "passive"]
 ActionType = Literal[
     "prep",
@@ -24,7 +25,7 @@ ActionType = Literal[
     "other",
 ]
 
-DURATION_SOURCES = frozenset({"stated", "estimated", "user", "fallback"})
+DURATION_SOURCES = frozenset({"stated", "estimated", "user", "fallback", "unknown"})
 ATTENTION_TYPES = frozenset({"hands_on", "passive"})
 ACTION_TYPES = frozenset(
     {
@@ -159,7 +160,9 @@ def normalize_step_payloads(
     for row in parse_step_rows(raw):
         duration = _coerce_nonnegative_int(row.get("duration_seconds"))
         supplied_source = row.get("duration_source")
-        if duration is None:
+        if supplied_source == "unknown":
+            duration, source = None, "unknown"
+        elif duration is None:
             source = "fallback"
         elif supplied_source is None or supplied_source == "":
             source = "stated"
@@ -180,11 +183,13 @@ def normalize_step_payloads(
                 "attention_type": _metadata(row.get("attention_type"), ATTENTION_TYPES, "hands_on"),
                 "action_type": _metadata(row.get("action_type"), ACTION_TYPES, "other"),
                 "image_url": _normalized_image_url(row.get("image_url")),
+                **normalize_step_evidence(row),
             }
         )
 
     missing_indexes = [
-        index for index, record in enumerate(records) if record["duration_seconds"] is None
+        index for index, record in enumerate(records)
+        if record["duration_seconds"] is None and record["duration_source"] != "unknown"
     ]
     known_durations = [
         int(record["duration_seconds"])
@@ -213,6 +218,27 @@ def normalize_step_payloads(
         records[index]["duration_seconds"] = _clamp_duration(duration, "fallback")
         records[index]["duration_source"] = "fallback"
     return records
+
+
+def normalize_step_evidence(row: dict) -> dict:
+    source = row.get("instruction_source")
+    source = source if source in {"source", "suggested", "user"} else None
+    if source is None:
+        return {}
+    def timestamp(value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        return float(value) if math.isfinite(value) and 0 <= value <= 86400 else None
+    start = timestamp(row.get("source_start_seconds"))
+    end = timestamp(row.get("source_end_seconds"))
+    excerpt = row.get("source_excerpt")
+    excerpt = excerpt.strip()[:500] or None if isinstance(excerpt, str) else None
+    if source != "source":
+        start = end = excerpt = None
+    elif start is None or (end is not None and end < start):
+        end = None
+    return {"instruction_source": source, "source_start_seconds": start,
+            "source_end_seconds": end, "source_excerpt": excerpt}
 
 
 def _normalized_image_url(value: object) -> str | None:

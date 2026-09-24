@@ -6,6 +6,7 @@ import {
   formatRecipeStepMetadata,
   type RecipeActionType,
 } from "@cooking/shared";
+import { StepEvidence } from "../../import/StepEvidence";
 import { RecipeStepIllustration } from "../../components/RecipeStepIllustration";
 import { useT } from "../../lib/i18n";
 import type { Recipe, RecipeStep } from "../../types";
@@ -65,6 +66,7 @@ export function RecipeTutorial({ recipe }: { recipe: Recipe }) {
               <div className={styles.stepContent}>
                 <small>{formatRecipeStepMetadata(step, t)}</small>
                 <p>{step.text}</p>
+                <StepEvidence step={step} sourceUrl={recipe.source_url} />
               </div>
             </li>
           ))}

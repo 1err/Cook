@@ -3,9 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ImportSourceStep, type ImportSourceValues } from "./ImportSourceStep";
 
-vi.mock("../lib/i18n", () => ({
-  useT: () => () => "Review and edit before saving to your library.",
-}));
+vi.mock("../lib/i18n", async () => {
+  const { MESSAGE_MAP } = await import("@cooking/shared");
+  return { useT: () => (key: string) => MESSAGE_MAP.en[key] || key };
+});
 
 const values: ImportSourceValues = {
   mode: "link",
@@ -64,7 +65,7 @@ describe("ImportSourceStep", () => {
 
     expect(
       screen.getByText(
-        "YouTube imports use public captions, then the video description if captions are unavailable. TikTok imports use the public caption and title.",
+        "We use available captions and descriptions. If steps are missing, you can analyze the video or add recipe text.",
       ),
     ).toBeVisible();
   });
@@ -120,13 +121,13 @@ describe("ImportSourceStep", () => {
 
     expect(screen.getByRole("tab", { name: "Video link" })).toBeDisabled();
     expect(screen.getByRole("tab", { name: "Paste recipe text" })).toBeDisabled();
-    expect(screen.getByLabelText("Recipe text")).toBeDisabled();
+    expect(screen.getByLabelText("Paste recipe text")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Optional details" })).toBeDisabled();
     expect(screen.getByLabelText("Title (optional)")).toBeDisabled();
     expect(screen.getByLabelText("Notes (optional)")).toBeDisabled();
     expect(screen.getByRole("group", { name: "Tags (optional)" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Quick" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Creating draft…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Preparing your draft…" })).toBeDisabled();
   });
 
   it("emits a source edit so the page can clear a prior error", async () => {

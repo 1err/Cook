@@ -20,6 +20,8 @@ export type DraftRecipeEditorProps = {
   requireCompleteRecipe?: boolean;
   onChange: (next: Recipe) => void;
   saving: boolean;
+  disabled?: boolean;
+  reviewHeader?: React.ReactNode;
   estimating?: boolean;
   canEstimate?: boolean;
   error: string | null;
@@ -35,8 +37,10 @@ export type DraftRecipeEditorProps = {
 export function DraftRecipeEditor({
   draft,
   requireCompleteRecipe = false,
-  onChange,
+  onChange: onChangeDraft,
   saving,
+  disabled = false,
+  reviewHeader,
   estimating = false,
   canEstimate = false,
   error,
@@ -52,7 +56,8 @@ export function DraftRecipeEditor({
   const upload = useImageUpload(draft.thumbnail_url);
   const [tutorialValid, setTutorialValid] = useState(true);
   const tutorialOnly = focus === "tutorial";
-  const busy = saving || estimating;
+  const busy = saving || estimating || disabled;
+  const onChange = (next: Recipe) => { if (!busy) onChangeDraft(next); };
   const complete = !requireCompleteRecipe || isCompleteRecipeDraft(draft);
   const resolvedSaveLabel = saveLabel ?? (tutorialOnly ? t("recipe.tutorial.save") : "Save recipe");
   const resolvedCancelLabel = cancelLabel ?? (tutorialOnly ? t("recipe.tutorial.cancel") : "Back");
@@ -71,6 +76,7 @@ export function DraftRecipeEditor({
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
+      {reviewHeader}
       {tutorialOnly ? (
         <View style={styles.tutorialHeader}>
           <Text style={styles.tutorialRecipeTitle}>{draft.title}</Text>
@@ -113,6 +119,7 @@ export function DraftRecipeEditor({
             label="Title"
             placeholder="What's this recipe called?"
             value={draft.title}
+            editable={!busy}
             onChangeText={(title) => onChange({ ...draft, title })}
             autoCapitalize="words"
           />
@@ -125,6 +132,7 @@ export function DraftRecipeEditor({
               placeholder="Optional short description"
               style={styles.descriptionInput}
               value={draft.description ?? ""}
+              editable={!busy}
               onChangeText={(description) => onChange({ ...draft, description })}
             />
           </View>
@@ -147,6 +155,7 @@ export function DraftRecipeEditor({
       )}
 
       <StepListEditor
+        sourceUrl={draft.source_url}
         disabled={busy}
         steps={draft.steps ?? []}
         onChange={(steps: RecipeStep[]) => onChange({ ...draft, steps })}
@@ -172,6 +181,7 @@ export function DraftRecipeEditor({
 
           <Text style={styles.sectionLabel}>Tags</Text>
           <TagPicker
+            disabled={busy}
             value={draft.library_tags ?? []}
             onChange={(library_tags: RecipeTagSlug[]) => onChange({ ...draft, library_tags })}
           />

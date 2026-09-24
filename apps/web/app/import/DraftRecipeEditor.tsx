@@ -31,17 +31,19 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
 
 export interface DraftRecipeEditorProps {
   draft: Recipe;
+  disabled?: boolean;
   requireCompleteRecipe?: boolean;
   onChange: (next: Recipe) => void;
   onBack: () => void;
   onSaveSuccess: (savedId: string) => void;
 }
 
-export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requireCompleteRecipe = false }: DraftRecipeEditorProps) {
+export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requireCompleteRecipe = false, disabled = false }: DraftRecipeEditorProps) {
   const t = useT();
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const [saving, setSaving] = useState(false);
+  const [savingRequest, setSaving] = useState(false);
+  const saving = savingRequest || disabled;
   const [error, setError] = useState<string | null>(null);
   const [tutorialValid, setTutorialValid] = useState(true);
   const complete = !requireCompleteRecipe || isCompleteRecipeDraft(draft);
@@ -262,6 +264,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
           </section>
 
           <StepListEditor
+            sourceUrl={draft.source_url}
             steps={draft.steps ?? []}
             onChange={(steps) => onChange({ ...draft, steps })}
             onValidityChange={setTutorialValid}

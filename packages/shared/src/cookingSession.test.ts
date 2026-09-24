@@ -167,3 +167,13 @@ describe("optimistic transitions", () => {
     expect(timer.notification_owner_device_id).toBe("device-1");
   });
 });
+
+test("unknown-duration steps count toward progress and complete without a timer", () => {
+  const unknown = step("step-1", "ready", 0, { duration_seconds: null, duration_source: "unknown", attention_type: "passive" });
+  const current = session([dish("dish-a", 0, [unknown, step("step-2", "locked", 120)])]);
+  expect(() => applyOptimisticCookingAction(current, "dish-a", "step-1", action("start_timer"))).toThrow("Set a duration");
+  const completed = applyOptimisticCookingAction(current, "dish-a", "step-1", action("complete"));
+  expect(getDishProgress(completed.dishes[0])).toBe(50);
+  const skipped = applyOptimisticCookingAction(current, "dish-a", "step-1", action("skip"));
+  expect(skipped.dishes[0].steps[1].state).toBe("ready");
+});

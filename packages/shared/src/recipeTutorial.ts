@@ -18,6 +18,7 @@ export const RECIPE_ACTION_TYPES = [
 ] as const;
 
 export type RecipeDurationSource =
+  | "unknown"
   | "stated"
   | "estimated"
   | "user"
@@ -27,13 +28,14 @@ export type RecipeActionType = (typeof RECIPE_ACTION_TYPES)[number];
 
 export type CanonicalRecipeStep = RecipeStep & {
   id: string;
-  duration_seconds: number;
+  duration_seconds: number | null;
   duration_source: RecipeDurationSource;
   attention_type: RecipeAttentionType;
   action_type: RecipeActionType;
 };
 
 export const RECIPE_DURATION_SOURCE_MESSAGE_KEYS = {
+  unknown: "recipe.tutorial.source.unknown",
   stated: "recipe.tutorial.source.stated",
   estimated: "recipe.tutorial.source.estimated",
   user: "recipe.tutorial.source.user",
@@ -198,16 +200,15 @@ type Translate = (
   vars?: Record<string, string | number>,
 ) => string;
 
-const DEFAULT_DURATION_SECONDS = 300;
-
-function canonicalDuration(value: unknown): number {
+function canonicalDuration(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.min(86_400, Math.ceil(value))
-    : DEFAULT_DURATION_SECONDS;
+    : null;
 }
 
 function isDurationSource(value: unknown): value is RecipeDurationSource {
   return (
+    value === "unknown" ||
     value === "stated" ||
     value === "estimated" ||
     value === "user" ||
@@ -229,9 +230,9 @@ export function createRecipeStep(
   const step: CanonicalRecipeStep = {
     text: typeof overrides.text === "string" ? overrides.text : "",
     duration_seconds: canonicalDuration(overrides.duration_seconds),
-    duration_source: isDurationSource(overrides.duration_source)
+    duration_source: canonicalDuration(overrides.duration_seconds) === null ? "unknown" : isDurationSource(overrides.duration_source)
       ? overrides.duration_source
-      : "fallback",
+      : canonicalDuration(overrides.duration_seconds) === null ? "unknown" : "user",
     attention_type: isAttentionType(overrides.attention_type)
       ? overrides.attention_type
       : "hands_on",
@@ -267,15 +268,39 @@ export function formatRecipeStepMetadata(
   t: Translate,
 ): string {
   const seconds = canonicalDuration(step?.duration_seconds);
-  const durationSource = isDurationSource(step?.duration_source)
+  const durationSource = seconds === null ? "unknown" : isDurationSource(step?.duration_source)
     ? step.duration_source
     : "fallback";
   const attentionType = isAttentionType(step?.attention_type)
     ? step.attention_type
     : "hands_on";
   return [
-    formatApproximateDuration(seconds, t),
-    t(RECIPE_DURATION_SOURCE_MESSAGE_KEYS[durationSource]),
+    seconds === null ? t("recipe.tutorial.source.unknown") : formatApproximateDuration(seconds, t),
+    ...(seconds === null ? [] : [t(RECIPE_DURATION_SOURCE_MESSAGE_KEYS[durationSource])]),
     t(RECIPE_ATTENTION_TYPE_MESSAGE_KEYS[attentionType]),
   ].join(" · ");
+}
+
+/** Editing instructions invalidates extracted evidence and non-user timing. */
+export function editRecipeStepText(step: RecipeStep, text: string): RecipeStep {
+  return {
+    ...step, text, instruction_source: "user",
+    source_start_seconds: null, source_end_seconds: null, source_excerpt: null,
+    ...(step.duration_source === "user" ? {} : { duration_seconds: null, duration_source: "unknown" as const }),
+  };
+}
+
+/** Only canonical public YouTube hosts and valid IDs become source links. */
+export function recipeSourceMomentUrl(sourceUrl: string | null | undefined, seconds: number | null | undefined): string | null {
+  if (!sourceUrl || seconds == null || !Number.isFinite(seconds) || seconds < 0) return null;
+  try {
+    const url = new URL(sourceUrl);
+    if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
+    let id: string | null = null;
+    if (["youtube.com", "www.youtube.com", "m.youtube.com"].includes(url.hostname)) {
+      id = url.pathname === "/watch" ? url.searchParams.get("v") : /^\/(?:shorts|embed)\/([^/]+)\/?$/.exec(url.pathname)?.[1] ?? null;
+    } else if (url.hostname === "youtu.be") id = url.pathname.slice(1);
+    return id && /^[A-Za-z0-9_-]{11}$/.test(id)
+      ? `https://www.youtube.com/watch?v=${id}&t=${Math.floor(seconds)}s` : null;
+  } catch { return null; }
 }

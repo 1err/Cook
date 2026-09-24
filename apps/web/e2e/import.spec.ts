@@ -69,8 +69,12 @@ async function installImportFixtures(page: Page) {
       });
       return;
     }
-    if ((pathname === "/recipes/parse/link" || pathname === "/recipes/parse/transcript") && request.method() === "POST") {
-      await fulfillJson(route, draftRecipe);
+    if (pathname === "/recipes/import-capabilities") {
+      await fulfillJson(route, { video_analysis: false, media_upload: false, max_media_bytes: 0 });
+      return;
+    }
+    if (pathname === "/recipes/import-jobs" && request.method() === "POST") {
+      await fulfillJson(route, { id: "import-job", status: "completed", recipe: draftRecipe });
       return;
     }
     if (pathname === "/recipes" && request.method() === "POST") {
@@ -109,7 +113,7 @@ test("imports a TikTok link, then saves the streamlined Review draft", async ({ 
 
   await page.getByLabel("YouTube or TikTok URL").fill("https://www.tiktok.com/@chef/video/7412345678901234567");
   const parseRequest = page.waitForRequest(
-    (request) => request.method() === "POST" && new URL(request.url()).pathname === "/recipes/parse/link",
+    (request) => request.method() === "POST" && new URL(request.url()).pathname === "/recipes/import-jobs",
   );
   await page.getByRole("button", { name: "Create draft" }).click();
   expect((await parseRequest).postDataJSON()).toMatchObject({
@@ -192,7 +196,7 @@ test("imports a TikTok link, then saves the streamlined Review draft", async ({ 
 test("sends YouTube links to the link parser", async ({ page }) => {
   await page.getByLabel("YouTube or TikTok URL").fill("https://www.youtube.com/watch?v=recipe");
   const parseRequest = page.waitForRequest(
-    (request) => request.method() === "POST" && new URL(request.url()).pathname === "/recipes/parse/link",
+    (request) => request.method() === "POST" && new URL(request.url()).pathname === "/recipes/import-jobs",
   );
   await page.getByRole("button", { name: "Create draft" }).click();
   expect((await parseRequest).postDataJSON()).toMatchObject({
@@ -203,16 +207,17 @@ test("sends YouTube links to the link parser", async ({ page }) => {
 
 test("keeps pasted text and optional metadata when returning from review", async ({ page }) => {
   await page.getByRole("tab", { name: "Paste recipe text" }).click();
-  await page.getByLabel("Recipe text", { exact: true }).fill("Sear one block of tofu, then simmer with soy sauce.");
+  await page.getByLabel("Paste recipe text", { exact: true }).fill("Sear one block of tofu, then simmer with soy sauce.");
   await page.getByRole("button", { name: "Optional details" }).click();
   await page.getByLabel("Title (optional)").fill("My tofu braise");
   await page.getByLabel("Notes (optional)").fill("Use firm tofu.");
   await page.getByRole("button", { name: "Quick", exact: true }).click();
   const parseRequest = page.waitForRequest(
-    (request) => request.method() === "POST" && new URL(request.url()).pathname === "/recipes/parse/transcript",
+    (request) => request.method() === "POST" && new URL(request.url()).pathname === "/recipes/import-jobs",
   );
   await page.getByRole("button", { name: "Create draft" }).click();
   expect((await parseRequest).postDataJSON()).toEqual({
+    mode: "text",
     transcript: "Sear one block of tofu, then simmer with soy sauce.",
     title: "My tofu braise",
     notes: "Use firm tofu.",
@@ -220,7 +225,7 @@ test("keeps pasted text and optional metadata when returning from review", async
   });
   await page.getByRole("button", { name: "Back to source" }).click();
   await expect(page.getByRole("tab", { name: "Paste recipe text" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByLabel("Recipe text", { exact: true })).toHaveValue("Sear one block of tofu, then simmer with soy sauce.");
+  await expect(page.getByLabel("Paste recipe text", { exact: true })).toHaveValue("Sear one block of tofu, then simmer with soy sauce.");
   await page.getByRole("button", { name: "Optional details" }).click();
   await expect(page.getByLabel("Title (optional)")).toHaveValue("My tofu braise");
   await expect(page.getByLabel("Notes (optional)")).toHaveValue("Use firm tofu.");

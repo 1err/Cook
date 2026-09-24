@@ -92,7 +92,7 @@ export function FocusedCookingStep({
             <span>{t("cook.progress", { progress })}</span>
           </div>
           <div className={styles.stepActions}>
-            {step.attention_type === "passive" && state === "ready" ? (
+            {step.attention_type === "passive" && step.duration_seconds != null && step.duration_seconds > 0 && state === "ready" ? (
               <Button onClick={() => onAction(step.id, "start_timer")}>{t("cook.action.startTimer")}</Button>
             ) : null}
             {state === "timer_running" ? (

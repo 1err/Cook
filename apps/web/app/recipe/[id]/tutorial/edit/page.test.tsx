@@ -202,7 +202,7 @@ describe("TutorialEditPage", () => {
     pendingSave.resolve(jsonResponse(recipe));
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/recipe/recipe-1"));
     expect(JSON.parse(String(requestOptionsAt("PATCH")?.body))).toEqual({
-      steps: [{ ...fallbackStep, text: "Draft sent for saving." }],
+      steps: [{ ...fallbackStep, text: "Draft sent for saving.", duration_seconds: null, duration_source: "unknown", instruction_source: "user", source_start_seconds: null, source_end_seconds: null, source_excerpt: null }],
     });
   });
 
@@ -224,7 +224,7 @@ describe("TutorialEditPage", () => {
       headers: { "Content-Type": "application/json" },
     });
     expect(JSON.parse(String(requestOptionsAt("POST")?.body))).toEqual({
-      steps: [{ ...fallbackStep, text: "Simmer the edited sauce." }],
+      steps: [{ ...fallbackStep, text: "Simmer the edited sauce.", duration_seconds: null, duration_source: "unknown", instruction_source: "user", source_start_seconds: null, source_end_seconds: null, source_excerpt: null }],
     });
     expect(requestOptionsAt("PATCH")).toBeUndefined();
     expect(recipe.steps?.[0]).toEqual(fallbackStep);
@@ -259,7 +259,7 @@ describe("TutorialEditPage", () => {
       headers: { "Content-Type": "application/json" },
     });
     expect(JSON.parse(String(patch?.body))).toEqual({
-      steps: [{ ...fallbackStep, text: "Simmer gently." }],
+      steps: [{ ...fallbackStep, text: "Simmer gently.", duration_seconds: null, duration_source: "unknown", instruction_source: "user", source_start_seconds: null, source_end_seconds: null, source_excerpt: null }],
     });
   });
 
@@ -318,8 +318,9 @@ describe("TutorialEditPage", () => {
     const save = screen.getByRole("button", { name: "Save tutorial" });
     await user.clear(instructions);
     await user.type(instructions, "Retry this exact edit.");
-    await user.clear(screen.getByLabelText("Step 1 minutes"));
+    await user.type(screen.getByLabelText("Step 1 minutes"), "-1");
     expect(save).toBeDisabled();
+    await user.clear(screen.getByLabelText("Step 1 minutes"));
 
     await user.type(screen.getByLabelText("Step 1 minutes"), "5");
     expect(save).toBeEnabled();

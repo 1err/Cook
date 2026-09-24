@@ -189,8 +189,8 @@ describe("StepListEditor", () => {
     expect(afterAdd).toHaveLength(3);
     expect(afterAdd[2]).toMatchObject({
       text: "",
-      duration_seconds: 300,
-      duration_source: "fallback",
+      duration_seconds: null,
+      duration_source: "unknown",
       attention_type: "hands_on",
       action_type: "other",
     });
@@ -253,4 +253,26 @@ describe("StepListEditor", () => {
     });
     expect(minutes).toHaveValue(1_440);
   });
+});
+
+it("allows missing duration and clears source evidence when instructions change", async () => {
+  const user = userEvent.setup();
+  const onChange = vi.fn<(steps: RecipeStep[]) => void>();
+  const onValidityChange = vi.fn();
+  render(<EditorHarness initialSteps={[{ ...estimatedStep, instruction_source: "source", source_start_seconds: 5, source_excerpt: "Simmer" }]} onChange={onChange} onValidityChange={onValidityChange} />);
+  await user.type(screen.getByRole("textbox", { name: "Step 1" }), " Then stir.");
+  expect(onChange.mock.calls.at(-1)?.[0][0]).toMatchObject({ duration_seconds: null, duration_source: "unknown", instruction_source: "user", source_start_seconds: null, source_excerpt: null });
+  expect(screen.getByLabelText("Step 1 minutes")).toHaveValue(null);
+  expect(onValidityChange).toHaveBeenLastCalledWith(true);
+});
+
+it("allows both duration fields to be cleared without inventing a timer", async () => {
+  const user = userEvent.setup();
+  const onChange = vi.fn<(steps: RecipeStep[]) => void>();
+  const onValidityChange = vi.fn();
+  render(<EditorHarness initialSteps={[estimatedStep]} onChange={onChange} onValidityChange={onValidityChange} />);
+  await user.clear(screen.getByLabelText("Step 1 minutes"));
+  await user.clear(screen.getByLabelText("Step 1 seconds"));
+  expect(onChange.mock.calls.at(-1)?.[0][0]).toMatchObject({ duration_seconds: null, duration_source: "unknown" });
+  expect(onValidityChange).toHaveBeenLastCalledWith(true);
 });

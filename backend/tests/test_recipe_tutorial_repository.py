@@ -20,6 +20,10 @@ CANONICAL_STEP = {
     "attention_type": "hands_on",
     "action_type": "bake",
     "image_url": "/uploads/bake.jpg",
+    "instruction_source": None,
+    "source_start_seconds": None,
+    "source_end_seconds": None,
+    "source_excerpt": None,
 }
 
 
@@ -64,6 +68,10 @@ def test_row_to_recipe_normalizes_legacy_steps_using_the_recipe_total_time() -> 
         "attention_type": "hands_on",
         "action_type": "other",
         "image_url": "/uploads/bake.jpg",
+        "instruction_source": None,
+        "source_start_seconds": None,
+        "source_end_seconds": None,
+        "source_excerpt": None,
     }
     assert UUID(recipe.steps[0].id or "")
     assert UUID(recipe.steps[1].id or "")
@@ -103,6 +111,10 @@ async def test_save_recipe_serializes_all_canonical_fields_and_preserves_ids() -
         "attention_type",
         "action_type",
         "image_url",
+        "instruction_source",
+        "source_start_seconds",
+        "source_end_seconds",
+        "source_excerpt",
     }
     assert first_payload[1]["image_url"] == "/uploads/bake.jpg"
     assert [step["id"] for step in first_payload] == [step.id for step in recipe.steps]

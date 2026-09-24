@@ -30,6 +30,9 @@ class HTTPGuardMiddleware:
             return
 
         limit = self.upload_limit if headers.get("content-type", "").lower().startswith("multipart/form-data") else self.json_limit
+        if (scope.get('path') == '/recipes/import-jobs/media'
+                and headers.get('content-type', '').lower().startswith('multipart/form-data')):
+            limit = 15 * 1024 * 1024  # 14 MiB media plus bounded multipart fields.
         if scope.get('path') == '/analytics/events':
             limit = min(limit, 4096)
         try:

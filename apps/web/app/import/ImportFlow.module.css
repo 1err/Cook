@@ -868,3 +868,18 @@
 .tagPicker button {
   min-height: 44px;
 }
+
+.recoveryPanel {
+  margin-block: var(--space-16, 1rem);
+  padding: var(--space-24, 1.5rem);
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--radius-lg, 1rem);
+  background: var(--surface-container-low, #f7f3ed);
+  overflow-wrap: anywhere;
+}
+
+.recoveryPanel h2 { margin-top: 0; }
+.recoveryPanel p { max-width: 70ch; }
+.recoveryPanel button { margin: 0.4rem 0.75rem 0.4rem 0; min-height: 44px; }
+.recoveryPanel ol { max-height: 24rem; overflow: auto; padding-inline-start: 1.5rem; }
+.recoveryPanel li { margin-block: 0.6rem; }

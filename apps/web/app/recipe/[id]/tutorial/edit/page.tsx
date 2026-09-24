@@ -22,6 +22,7 @@ function TutorialEditContent() {
   const id = params?.id as string;
   const t = useT();
   const [recipeTitle, setRecipeTitle] = useState("");
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [draftSteps, setDraftSteps] = useState<RecipeStep[]>([]);
   const [stepsValid, setStepsValid] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -31,7 +32,7 @@ function TutorialEditContent() {
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const detailHref = `/recipe/${id}`;
-  const canEstimate = draftSteps.some((step) => step.duration_source === "fallback");
+  const canEstimate = draftSteps.some((step) => step.duration_source === "fallback" || step.duration_source === "unknown" || step.duration_seconds == null);
 
   useEffect(() => {
     if (!id) return;
@@ -44,6 +45,7 @@ function TutorialEditContent() {
         const recipe = (await response.json()) as Recipe;
         if (!cancelled) {
           setRecipeTitle(recipe.title);
+          setSourceUrl(recipe.source_url ?? null);
           setDraftSteps(copySteps(recipe.steps));
         }
       } catch {
@@ -157,6 +159,7 @@ function TutorialEditContent() {
         onChange={setDraftSteps}
         onValidityChange={setStepsValid}
         steps={draftSteps}
+        sourceUrl={sourceUrl}
       />
     </PageShell>
   );

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from http.client import HTTPException
 import json
 import logging
+import math
 import re
 from time import monotonic
 from typing import Literal
@@ -52,6 +53,14 @@ class VideoTextResult:
     message: str | None = None
     title: str | None = None
     thumbnail_url: str | None = None
+    source_kind: Literal["captions", "description"] = "captions"
+    segments: tuple[dict, ...] = ()
+    language_code: str | None = None
+    is_generated: bool | None = None
+
+    def __post_init__(self):
+        # The isolated fetch worker serializes tuples as JSON arrays.
+        object.__setattr__(self, "segments", tuple(self.segments))
 
     @property
     def transcript(self) -> str:
@@ -245,6 +254,7 @@ def _youtube_description_result(
         source=source,
         title=title or None,
         thumbnail_url=f"https://img.youtube.com/vi/{source.external_id}/hqdefault.jpg",
+        source_kind="description",
     )
 
 
@@ -626,6 +636,12 @@ def _youtube_blocked_result(
     )
 
 
+def _caption_seconds(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if math.isfinite(value) and value >= 0 else None
+
+
 def fetch_youtube_text(source: VideoSource) -> VideoTextResult:
     """Fetch public YouTube captions, with public description text as a fallback."""
     metadata = _YouTubePlayerMetadata()
@@ -646,17 +662,19 @@ def fetch_youtube_text(source: VideoSource) -> VideoTextResult:
         request_stage = "list"
         tracks = YouTubeTranscriptApi(http_client=http_client).list(source.external_id or "")
         available_tracks = list(tracks)
-        try:
-            preferred_track = tracks.find_transcript(["en", "zh", "zh-Hans", "zh-Hant"])
-        except NoTranscriptFound:
-            candidate_tracks = available_tracks
-        else:
-            candidate_tracks = [preferred_track]
-            candidate_tracks.extend(
-                track
-                for track in available_tracks
-                if track is not preferred_track
-            )
+        # Automatic captions normally identify the video's spoken language.
+        # Prefer a manual track in that same language when available; otherwise
+        # preserve provider order instead of always choosing English translations.
+        original_language = next((getattr(track, "language_code", None)
+                                  for track in available_tracks
+                                  if getattr(track, "is_generated", False)), None)
+        candidate_tracks = sorted(
+            available_tracks,
+            key=lambda track: (
+                bool(original_language and getattr(track, "language_code", None) != original_language),
+                bool(getattr(track, "is_generated", False)) if original_language else False,
+            ),
+        )
         caption_request_failed = False
         caption_ip_blocked = False
         po_token_required = False
@@ -673,12 +691,26 @@ def fetch_youtube_text(source: VideoSource) -> VideoTextResult:
             except (IpBlocked, RequestBlocked):
                 caption_ip_blocked = True
                 continue
-            text = " ".join(
-                str(getattr(row, "text", "")).strip()
-                for row in snippets
-                if str(getattr(row, "text", "")).strip()
-            )
-            if text:
+            segments = []
+            lines = []
+            for row in snippets:
+                row_text = str(getattr(row, "text", "")).strip()
+                if not row_text:
+                    continue
+                start = _caption_seconds(getattr(row, "start", None))
+                duration = _caption_seconds(getattr(row, "duration", None))
+                segment_id = f"s{len(segments) + 1}"
+                segments.append({"id": segment_id, "start": start, "duration": duration, "text": row_text})
+                timing = f" {start:g}-{start + duration:g}s" if start is not None and duration is not None else ""
+                lines.append(f"[{segment_id}{timing}] {row_text}")
+            if lines:
+                language = getattr(track, "language_code", None)
+                generated = getattr(track, "is_generated", None)
+                text = "\n".join(lines)
+                if metadata.title:
+                    text = f"Video title: {metadata.title}\n\n" + text
+                if metadata.description:
+                    text += f"\n\nVideo description:\n{metadata.description[:12000]}"
                 logger.info(
                     "Video text fetch result provider=%s video_id=%s status=ok text_length=%d",
                     source.provider,
@@ -689,7 +721,12 @@ def fetch_youtube_text(source: VideoSource) -> VideoTextResult:
                     status="ok",
                     text=text,
                     source=source,
+                    title=metadata.title or None,
                     thumbnail_url=f"https://img.youtube.com/vi/{source.external_id}/hqdefault.jpg",
+                    source_kind="captions",
+                    segments=tuple(segments),
+                    language_code=language if isinstance(language, str) else None,
+                    is_generated=generated if isinstance(generated, bool) else None,
                 )
         if caption_ip_blocked:
             return _youtube_blocked_result(
@@ -883,7 +920,7 @@ def fetch_tiktok_text(source: VideoSource, *, opener=_open_tiktok_oembed) -> Vid
         source.external_id,
         len(text),
     )
-    return VideoTextResult("ok", text, source, title=title, thumbnail_url=thumbnail)
+    return VideoTextResult("ok", text, source, title=title, thumbnail_url=thumbnail, source_kind="description")
 
 
 async def fetch_video_text(source: VideoSource) -> VideoTextResult:

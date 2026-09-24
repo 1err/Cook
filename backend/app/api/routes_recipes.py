@@ -25,9 +25,12 @@ from app.db.session import get_session
 from app.extract import (
     estimate_tutorial_step_metadata,
     extract_recipe_from_text,
+    extract_recipe_from_video,
     is_usable_instruction_text,
+    is_usable_ingredient_name,
 )
-from app.models import IngredientItem, Recipe, RecipeStep, RecipePage, coerce_steps
+from app.models import IngredientItem, Recipe, RecipeStep, RecipePage, ImportReview, coerce_steps
+from app.services.video_analysis import video_analysis_available
 from app.api.recipe_pages import RecipePageQuery, read_page
 from app.services.storage_service import (
     matches_image_signature,
@@ -107,6 +110,7 @@ class ParseLinkBody(BaseModel):
     notes: str = Field("", max_length=4000)
     title: str = Field("", max_length=512)
     library_tags: LibraryTags = Field(default_factory=list)
+    analyze_video: bool = False
 
 
 @router.post("/parse/link", response_model=Recipe, dependencies=[Depends(enforce_ai_budget)])
@@ -122,25 +126,46 @@ async def parse_from_link(
     except UnsupportedVideoUrl as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    text_result = await fetch_video_text(source)
-    if text_result.status in {"fetch_failed", "dependency_missing"}:
-        raise HTTPException(503, text_result.message or "Video import is temporarily unavailable.")
-    if text_result.status != "ok":
-        raise HTTPException(422, text_result.message or "No usable recipe text was found.")
-
-    recipe = await extract_recipe_from_text(_append_import_notes(text_result.text, body.notes))
+    can_analyze = source.provider == "youtube" and video_analysis_available()
+    if body.analyze_video and not can_analyze:
+        raise HTTPException(503, {"code": "video_analysis_unavailable",
+            "message": "Video analysis is not available. Paste recipe text or try a captioned video."})
+    text_result = None if body.analyze_video else await fetch_video_text(source)
+    use_video = can_analyze and (body.analyze_video or text_result.status != "ok"
+                                or text_result.source_kind == "description")
+    if use_video:
+        # Captured descriptions often carry exact ingredient quantities that are
+        # never spoken. Keep that evidence when upgrading to video analysis.
+        source_notes = (f"Video description (source evidence):\n{text_result.text}"
+                        if text_result and text_result.text.strip() else "")
+        recipe = await extract_recipe_from_video(source_url=source.canonical_url,
+            notes=_append_import_notes(source_notes, body.notes))
+    else:
+        if text_result.status != "ok":
+            temporary = text_result.status in {"fetch_failed", "dependency_missing"}
+            raise HTTPException(503 if temporary else 422, {
+                "code": "source_temporarily_unavailable" if temporary else "source_unavailable",
+                "message": text_result.message or "No usable recipe text was found. Paste recipe text to continue.",
+            })
+        recipe = await extract_recipe_from_text(_append_import_notes(text_result.text, body.notes),
+                                                source_kind=text_result.source_kind)
+    review = recipe.import_review or ImportReview(source_kind="video" if use_video else text_result.source_kind)
+    review.can_analyze_video = can_analyze
     if not _has_usable_steps(recipe):
-        provider_name = "YouTube video" if source.provider == "youtube" else "TikTok"
-        raise HTTPException(
-            422,
-            f"We could not recover usable cooking steps from this {provider_name}. "
-            "Paste a transcript that includes the cooking method instead.",
-        )
+        if not any(is_usable_ingredient_name(item.name) for item in recipe.ingredients):
+            raise HTTPException(422, {'code':'recipe_content_missing',
+                'message':'No usable recipe content was found. Paste recipe text or upload the video to continue.'})
+        recipe = recipe.model_copy(update={'steps': []})
+        review.status = "needs_review"
+        review.warnings = list(dict.fromkeys([*review.warnings,
+            "The source did not provide a complete cooking method. Add instructions or analyze the video before cooking."]))[:30]
     updates = {
         "source_url": source.canonical_url,
-        "thumbnail_url": recipe.thumbnail_url or text_result.thumbnail_url,
+        "thumbnail_url": recipe.thumbnail_url or (text_result.thumbnail_url if text_result else None)
+            or (f"https://img.youtube.com/vi/{source.external_id}/hqdefault.jpg" if source.provider == "youtube" else None),
+        "import_review": review,
     }
-    source_title = (text_result.title or "").strip()
+    source_title = (text_result.title or "").strip() if text_result else ""
     if source_title and recipe.title.strip().casefold() in {"", "untitled recipe", "imported recipe"}:
         updates["title"] = source_title
     recipe = recipe.model_copy(update=updates)
@@ -152,6 +177,7 @@ class ParseTranscriptBody(BaseModel):
     notes: str = Field("", max_length=4000)
     title: str = Field("", max_length=512)
     library_tags: LibraryTags = Field(default_factory=list)
+    source_url: str | None = Field(None, max_length=4096)
 
 
 @router.post("/parse/transcript", response_model=Recipe, dependencies=[Depends(enforce_ai_budget)])
@@ -162,7 +188,15 @@ async def parse_from_transcript(
     text = _append_import_notes((body.transcript or "").strip(), body.notes)
     if not text.strip():
         raise HTTPException(422, "Paste recipe text before importing.")
+    source = None
+    if body.source_url:
+        try:
+            source = parse_video_source(body.source_url)
+        except UnsupportedVideoUrl as exc:
+            raise HTTPException(422, str(exc)) from None
     recipe = await extract_recipe_from_text(text)
+    if source is not None:
+        recipe = recipe.model_copy(update={"source_url": source.canonical_url})
     return _apply_import_overrides(recipe, body.title, body.library_tags)
 
 

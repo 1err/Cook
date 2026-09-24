@@ -7,7 +7,7 @@ import { RECIPE_TAG_GROUPS, type RecipeTagSlug } from "../lib/recipeCategories";
 import styles from "./ImportFlow.module.css";
 
 export type ImportSourceValues = {
-  mode: "link" | "transcript";
+  mode: "link" | "transcript" | "media";
   url: string;
   transcript: string;
   notes: string;
@@ -16,6 +16,10 @@ export type ImportSourceValues = {
 };
 
 type ImportSourceStepProps = {
+  mediaEnabled?: boolean;
+  maxMediaBytes?: number;
+  media?: File | null;
+  onMediaChange?: (file: File | null) => void;
   values: ImportSourceValues;
   parsing: boolean;
   error: string | null;
@@ -25,6 +29,7 @@ type ImportSourceStepProps = {
 
 export function ImportSourceStep({
   values,
+  mediaEnabled = false, maxMediaBytes, media, onMediaChange,
   parsing,
   error,
   onChange,
@@ -33,7 +38,7 @@ export function ImportSourceStep({
   const t = useT();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const canSubmit =
-    values.mode === "link" ? values.url.trim().length > 0 : values.transcript.trim().length > 0;
+    values.mode === "media" ? Boolean(media && mediaEnabled) : values.mode === "link" ? values.url.trim().length > 0 : values.transcript.trim().length > 0;
 
   function update<Key extends keyof ImportSourceValues>(key: Key, value: ImportSourceValues[Key]) {
     onChange({ ...values, [key]: value });
@@ -64,7 +69,7 @@ export function ImportSourceStep({
           onClick={() => update("mode", "link")}
           disabled={parsing}
         >
-          Video link
+          {t("import.videoLink")}
         </button>
         <button
           type="button"
@@ -73,8 +78,9 @@ export function ImportSourceStep({
           onClick={() => update("mode", "transcript")}
           disabled={parsing}
         >
-          Paste recipe text
+          {t("import.recipeText")}
         </button>
+        {mediaEnabled ? <button type="button" role="tab" aria-selected={values.mode === "media"} disabled={parsing} onClick={() => update("mode", "media")}>{t("import.uploadMedia")}</button> : null}
       </div>
 
       {values.mode === "link" ? (
@@ -89,13 +95,20 @@ export function ImportSourceStep({
             disabled={parsing}
           />
           <small>
-            YouTube imports use public captions, then the video description if captions are unavailable. TikTok
-            imports use the public caption and title.
+            {t("import.sourceHelp")}
           </small>
+        </div>
+      ) : values.mode === "media" ? (
+        <div className={styles.field} role="tabpanel">
+          <label htmlFor="import-media">{t("import.uploadMedia")}</label>
+          <input id="import-media" type="file" accept="video/*,audio/*" disabled={parsing} onChange={(event) => onMediaChange?.(event.target.files?.[0] ?? null)} />
+          <small>{t("import.mediaHint")}</small>
+          {maxMediaBytes ? <small>{t("import.mediaLimit", { size: Math.floor(maxMediaBytes / 1024 / 1024) })}</small> : null}
         </div>
       ) : (
         <div className={styles.field} role="tabpanel">
-          <label htmlFor="import-source-text">Recipe text</label>
+          <label htmlFor="import-source-text">{t("import.recipeText")}</label>
+          {values.url ? <small>{t("import.sourcePreserved")}</small> : null}
           <textarea
             id="import-source-text"
             rows={10}
@@ -167,7 +180,7 @@ export function ImportSourceStep({
 
       <div className={styles.sourceActions}>
         <button type="submit" disabled={!canSubmit || parsing}>
-          {parsing ? "Creating draft…" : "Create draft"}
+          {parsing ? t("import.processing") : t("import.createDraft")}
         </button>
       </div>
       <p className={styles.sourceHint}>{t("import.sourceReviewHint")}</p>

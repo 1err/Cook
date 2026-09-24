@@ -178,7 +178,7 @@ async function installCookingFixtures(page: Page, actions: unknown[]) {
                 ...step,
                 state: "timer_running",
                 timer_started_at: body.occurred_at,
-                timer_ends_at: new Date(Date.now() + step.duration_seconds * 1000).toISOString(),
+                timer_ends_at: new Date(Date.now() + (step.duration_seconds ?? 0) * 1000).toISOString(),
                 notification_owner_device_id: body.device_id,
                 revision: step.revision + 1,
                 updated_at: body.occurred_at,

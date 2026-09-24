@@ -174,13 +174,15 @@ class CookingSessionStepModel(Base):
     __table_args__ = (
         UniqueConstraint("dish_id", "position", name="uq_cooking_steps_dish_position"),
         sa.CheckConstraint("position >= 0", name="ck_cooking_steps_position"),
-        sa.CheckConstraint("duration_seconds BETWEEN 1 AND 86400", name="ck_cooking_steps_duration"),
+        sa.CheckConstraint("(duration_source = 'unknown' AND duration_seconds IS NULL) OR "
+                           "(duration_source <> 'unknown' AND duration_seconds IS NOT NULL "
+                           "AND duration_seconds BETWEEN 1 AND 86400)", name="ck_cooking_steps_duration"),
         sa.CheckConstraint(
             "state IN ('locked','ready','timer_running','timer_paused','needs_attention','completed','skipped')",
             name="ck_cooking_steps_state",
         ),
         sa.CheckConstraint(
-            "duration_source IN ('stated','estimated','user','fallback')",
+            "duration_source IN ('stated','estimated','user','fallback','unknown')",
             name="ck_cooking_steps_duration_source",
         ),
         sa.CheckConstraint(
@@ -206,7 +208,7 @@ class CookingSessionStepModel(Base):
     recipe_step_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     position: Mapped[int] = mapped_column(sa.Integer(), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    duration_seconds: Mapped[int] = mapped_column(sa.Integer(), nullable=False)
+    duration_seconds: Mapped[int | None] = mapped_column(sa.Integer(), nullable=True)
     duration_source: Mapped[str] = mapped_column(String(16), nullable=False)
     attention_type: Mapped[str] = mapped_column(String(16), nullable=False)
     action_type: Mapped[str] = mapped_column(String(16), nullable=False)

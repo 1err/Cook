@@ -204,7 +204,7 @@ async def test_keyless_admission_releases_auth_before_stateless_work(monkeypatch
         boundary_app.assert_released()
         return VideoTextResult(status="ok", text="Simmer the broth.", source=source)
 
-    async def extract(text):
+    async def extract(text, **_metadata):
         boundary_app.assert_released()
         return Recipe(id="draft", title="Soup", ingredients=[], steps=["Simmer the broth."])
 

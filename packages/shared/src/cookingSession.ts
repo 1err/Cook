@@ -38,7 +38,7 @@ export type CookingStep = {
   recipe_step_id: string;
   position: number;
   text: string;
-  duration_seconds: number;
+  duration_seconds: number | null;
   duration_source: RecipeDurationSource;
   attention_type: RecipeAttentionType;
   action_type: RecipeActionType;
@@ -110,11 +110,13 @@ export function getEffectiveStepState(step: CookingStep, nowMs = Date.now()): Co
 }
 
 export function getDishProgress(dish: CookingDish): number {
-  const total = dish.steps.reduce((sum, step) => sum + Math.max(0, step.duration_seconds), 0);
+  const useStepCount = dish.steps.some(step => step.duration_seconds == null);
+  const weight = (step: CookingStep) => useStepCount ? 1 : Math.max(0, step.duration_seconds ?? 0);
+  const total = dish.steps.reduce((sum, step) => sum + weight(step), 0);
   if (total <= 0) return 0;
   const resolved = dish.steps.reduce(
     (sum, step) =>
-      sum + (RESOLVED_STATES.has(step.state) ? Math.max(0, step.duration_seconds) : 0),
+      sum + (RESOLVED_STATES.has(step.state) ? weight(step) : 0),
     0,
   );
   if (resolved >= total) return 100;
@@ -260,6 +262,9 @@ export function applyOptimisticCookingAction(
       if (next.attention_type !== "passive") {
         throw new CookingTransitionError("timer_requires_passive_step", "Only passive steps use timers.");
       }
+      if (next.duration_seconds == null || next.duration_seconds <= 0) {
+        throw new CookingTransitionError("duration_unknown", "Set a duration before starting a timer.");
+      }
       next = {
         ...next,
         state: "timer_running",
@@ -283,7 +288,7 @@ export function applyOptimisticCookingAction(
     }
     case "resume_timer": {
       requireState(next, ["timer_paused"]);
-      const remaining = Math.max(0, next.paused_remaining_seconds ?? next.duration_seconds);
+      const remaining = Math.max(0, next.paused_remaining_seconds ?? next.duration_seconds ?? 0);
       next = {
         ...next,
         state: "timer_running",

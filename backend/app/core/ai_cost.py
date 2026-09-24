@@ -1,6 +1,6 @@
 """Versioned USD prices and conservative bounds for supported byte-BPE models.
 
-Only text chat messages are admitted. Byte-BPE cannot produce more content tokens
+Text chat uses byte-BPE, which cannot produce more content tokens
 than UTF-8 bytes; 64 tokens per message plus 1024 per request covers framing. New
 model families/modalities require an explicit reviewed bound before enabling.
 """
@@ -14,6 +14,15 @@ APP_AI_HARD_CAP_NANO = 30 * NANO_USD
 SUPPORTED_MODELS = {'gpt-4o-mini', 'gpt-4o-mini-2024-07-18'}
 MIN_INPUT_RATE = Decimal('0.15')
 MIN_OUTPUT_RATE = Decimal('0.60')
+
+# Reviewed 2026-09-24: https://ai.google.dev/gemini-api/docs/pricing and
+# https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite
+# Standard tier: all input modalities $0.30/M; output INCLUDING thinking $2.50/M.
+# Reserve full model limits: countTokens is an estimate and a YouTube source may
+# change between token counting and generation. No tools/agentic video are used.
+GEMINI_REVIEWED_MODEL = 'gemini-3.5-flash-lite'
+GEMINI_INPUT_TOKEN_BOUND = 1_048_576
+GEMINI_OUTPUT_TOKEN_BOUND = 65_536
 
 
 @dataclass(frozen=True)
@@ -38,6 +47,20 @@ def configured_price(settings) -> Price:
     if rates[0] < MIN_INPUT_RATE or rates[1] < MIN_OUTPUT_RATE:
         raise ValueError('AI rates are below the verified model price')
     return Price(model, settings.AI_PRICE_VERSION, *rates)
+
+
+def configured_video_price(settings) -> Price:
+    if (settings.GEMINI_MODEL != GEMINI_REVIEWED_MODEL
+            or settings.GEMINI_PRICE_MODEL != settings.GEMINI_MODEL
+            or not settings.GEMINI_PRICE_VERSION.strip()
+            or settings.GEMINI_INPUT_USD_PER_MILLION_TOKENS is None
+            or settings.GEMINI_OUTPUT_USD_PER_MILLION_TOKENS is None):
+        raise ValueError('Video AI pricing is not configured for this model')
+    rates = [Decimal(str(settings.GEMINI_INPUT_USD_PER_MILLION_TOKENS)),
+             Decimal(str(settings.GEMINI_OUTPUT_USD_PER_MILLION_TOKENS))]
+    if any(not rate.is_finite() for rate in rates) or rates[0] < Decimal('.30') or rates[1] < Decimal('2.50'):
+        raise ValueError('Video AI rates are below the verified model price')
+    return Price(settings.GEMINI_MODEL, settings.GEMINI_PRICE_VERSION, *rates)
 
 
 def usd_to_nano(amount) -> int:

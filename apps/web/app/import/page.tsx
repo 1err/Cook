@@ -1,11 +1,12 @@
 "use client";
 
-import { createManualRecipeDraft } from "@cooking/shared";
-import { useState } from "react";
+import { createManualRecipeDraft, recipeSourceMomentUrl, type RecipeImportCapabilities } from "@cooking/shared";
+import { runRecipeImport } from "@cooking/api-client";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageShell } from "../components/PageShell";
 import { RequireAuth } from "../components/RequireAuth";
-import { apiFetch } from "../lib/api";
+import { webApiClient } from "../lib/api";
 import { useEditorialCopy } from "../lib/editorialCopy";
 import { useT } from "../lib/i18n";
 import type { Recipe } from "../types";
@@ -13,32 +14,7 @@ import { DraftRecipeEditor } from "./DraftRecipeEditor";
 import { ImportSourceStep, type ImportSourceValues } from "./ImportSourceStep";
 import styles from "./ImportFlow.module.css";
 
-async function readErrorMessage(response: Response, fallback: string): Promise<string> {
-  try {
-    const text = await response.text();
-    if (!text.trim()) return fallback;
-    try {
-      const data = JSON.parse(text);
-      if (data && typeof data === "object" && typeof data.detail === "string" && data.detail.trim()) {
-        return data.detail;
-      }
-    } catch {
-      return text;
-    }
-    return text;
-  } catch {
-    return fallback;
-  }
-}
-
-const INITIAL_VALUES: ImportSourceValues = {
-  mode: "link",
-  url: "",
-  transcript: "",
-  notes: "",
-  title: "",
-  libraryTags: [],
-};
+const INITIAL_VALUES: ImportSourceValues = { mode: "link", url: "", transcript: "", notes: "", title: "", libraryTags: [] };
 
 function ImportPageContent() {
   const router = useRouter();
@@ -49,76 +25,104 @@ function ImportPageContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draftRecipe, setDraftRecipe] = useState<Recipe | null>(null);
+  const [candidate, setCandidate] = useState<Recipe | null>(null);
+  const [showSource, setShowSource] = useState(false);
+  const [capabilities, setCapabilities] = useState<RecipeImportCapabilities | null>(null);
+  const [media, setMedia] = useState<File | null>(null);
+  const active = useRef<AbortController | null>(null);
 
-  function handleValuesChange(next: ImportSourceValues) {
-    setValues(next);
-    setError(null);
+  useEffect(() => {
+    let alive = true;
+    void webApiClient.recipes.importCapabilities().then(result => { if (alive) setCapabilities(result); }).catch(() => { if (alive) setCapabilities({ video_analysis: false, media_upload: false, max_media_bytes: 0 }); });
+    return () => { alive = false; active.current?.abort(); active.current = null; };
+  }, []);
+
+  function cancelImport() {
+    active.current?.abort(); active.current = null; setLoading(false);
   }
 
-  async function handleImportPreview() {
+  async function handleImportPreview(analyzeVideo = false) {
+    if (active.current) return;
+    if (values.mode === "media" && (!media || !capabilities?.media_upload)) return;
+    if (values.mode === "media" && media!.size > capabilities!.max_media_bytes) { setError(t("import.mediaTooLarge")); return; }
     setError(null);
-    setManual(false);
     setLoading(true);
+    const controller = new AbortController();
+    active.current = controller;
+    const sourceUrl = analyzeVideo
+      ? draftRecipe?.source_url || values.url.trim()
+      : values.url.trim() || draftRecipe?.source_url;
     try {
-      const endpoint = values.mode === "link" ? "/recipes/parse/link" : "/recipes/parse/transcript";
-      const body =
-        values.mode === "link"
-          ? {
-              url: values.url.trim(),
-              notes: values.notes,
-              title: values.title.trim(),
-              library_tags: values.libraryTags,
-            }
-          : {
-              transcript: values.transcript,
-              notes: values.notes,
-              title: values.title.trim(),
-              library_tags: values.libraryTags,
-            };
-      const response = await apiFetch(endpoint, { method: "POST", body: JSON.stringify(body) });
-      if (!response.ok) throw new Error(await readErrorMessage(response, t("import.importRecipe")));
-      setDraftRecipe(await response.json());
+      const payload = { url: sourceUrl || undefined, notes: values.notes, title: values.title.trim() || draftRecipe?.title, library_tags: values.libraryTags };
+      const start = () => {
+        if (values.mode === "media" && !analyzeVideo) {
+          const form = new FormData();
+          form.append("file", media!);
+          if (payload.url) form.append("source_url", payload.url);
+          form.append("notes", payload.notes); form.append("title", payload.title || "");
+          form.append("library_tags", JSON.stringify(payload.library_tags));
+          return webApiClient.recipes.createMediaImportJob(form);
+        }
+        return webApiClient.recipes.createImportJob({ ...payload, mode: analyzeVideo ? "video" : values.mode === "transcript" ? "text" : "link", transcript: values.mode === "transcript" ? values.transcript : undefined });
+      };
+      const draft = await runRecipeImport(start, webApiClient.recipes, controller.signal);
+      if (controller.signal.aborted || active.current !== controller) return;
+      const recovered = { ...draft, source_url: draft.source_url || sourceUrl || null };
+      if (draftRecipe) setCandidate(recovered);
+      else { setManual(false); setDraftRecipe(recovered); }
+      setShowSource(false);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : t("import.importRecipe"));
+      if (controller.signal.aborted || active.current !== controller) return;
+      setError(caught instanceof Error ? caught.message : t("import.failed"));
     } finally {
-      setLoading(false);
+      if (active.current === controller) { active.current = null; setLoading(false); }
     }
   }
 
   return (
     <PageShell>
-      {draftRecipe ? (
-        <DraftRecipeEditor
-          draft={draftRecipe}
-          requireCompleteRecipe={manual}
-          onChange={setDraftRecipe}
-          onBack={() => setDraftRecipe(null)}
-          onSaveSuccess={(savedId) => router.push(`/recipe/${savedId}`)}
-        />
+      {loading ? <div className={styles.recoveryPanel} role="status"><p>{t("import.processing")}</p><button type="button" onClick={cancelImport}>{t("import.cancelJob")}</button></div> : null}
+      {draftRecipe && !showSource ? (
+        <>
+          {error ? <p role="alert" className={styles.error}>{error}</p> : null}
+          {candidate ? <section className={styles.recoveryPanel} aria-label={t("import.reviewCandidate")}>
+            <p>{t("import.reviewCandidate")}</p>
+            <h3>{candidate.title}</h3>
+            <ul>{candidate.ingredients.map((ingredient, index) => <li key={index}>{ingredient.quantity} {ingredient.name}</li>)}</ul>
+            <ol>{candidate.steps?.map((step, index) => <li key={step.id || index}>{step.text}</li>)}</ol>
+            <button type="button" disabled={loading} onClick={() => { setDraftRecipe(candidate); setCandidate(null); setManual(false); }}>{t("import.applyCandidate")}</button>
+            <button type="button" disabled={loading} onClick={() => setCandidate(null)}>{t("import.keepDraft")}</button>
+          </section> : null}
+          {draftRecipe.import_review?.status === "needs_review" ? <section className={styles.recoveryPanel} role="status">
+            <h2>{t("import.partialTitle")}</h2><p>{t("import.partialHelp")}</p>
+            {draftRecipe.import_review.warnings.map((warning, index) => <p key={index}>{warning}</p>)}
+            {capabilities?.video_analysis && draftRecipe.import_review.can_analyze_video ? <button type="button" disabled={loading} onClick={() => void handleImportPreview(true)}>{t("import.analyzeVideo")}</button> : <p>{t("import.videoUnavailable")}</p>}
+            <button type="button" disabled={loading} onClick={() => { setValues(current => ({ ...current, mode: "transcript" })); setShowSource(true); }}>{t("import.recoveryText")}</button>
+          </section> : null}
+          <DraftRecipeEditor
+            draft={draftRecipe}
+            requireCompleteRecipe={manual}
+            disabled={loading}
+            onChange={setDraftRecipe}
+            onBack={() => setShowSource(true)}
+            onSaveSuccess={(savedId) => router.push(`/recipe/${savedId}`)}
+          />
+        </>
       ) : (
         <>
           <header className={styles.sourceHeader}>
-            <h1>{t("import.importRecipe")}</h1>
-            <p>{editorialCopy["import.tagline"]}</p>
-            <button className="btn-secondary" type="button" disabled={loading} onClick={() => {
-              setError(null);
-              setManual(true);
-              setDraftRecipe(createManualRecipeDraft());
-            }}>{t("import.createManually")}</button>
+            <h1>{t("import.importRecipe")}</h1><p>{editorialCopy["import.tagline"]}</p>
+            {draftRecipe ? <button type="button" disabled={loading} onClick={() => setShowSource(false)}>{t("import.resumeDraft")}</button> : <button className="btn-secondary" type="button" disabled={loading} onClick={() => { setError(null); setManual(true); setDraftRecipe(createManualRecipeDraft()); setShowSource(false); }}>{t("import.createManually")}</button>}
           </header>
-          <ImportSourceStep
-            values={values}
-            parsing={loading}
-            error={error}
-            onChange={handleValuesChange}
-            onSubmit={() => void handleImportPreview()}
-          />
+          {capabilities && !capabilities.video_analysis && values.mode === "link" ? <p>{t("import.videoUnavailable")}</p> : null}
+          {error && capabilities?.video_analysis && recipeSourceMomentUrl(values.url, 0) ? <button type="button" disabled={loading} onClick={() => void handleImportPreview(true)}>{t("import.analyzeVideo")}</button> : null}
+          <ImportSourceStep values={values} parsing={loading} error={error}
+            onChange={(next) => { setValues(next); setError(null); }} onSubmit={() => void handleImportPreview()}
+            mediaEnabled={Boolean(capabilities?.media_upload)} maxMediaBytes={capabilities?.max_media_bytes} media={media} onMediaChange={setMedia} />
         </>
       )}
     </PageShell>
   );
 }
 
-export default function ImportPage() {
-  return <RequireAuth><ImportPageContent /></RequireAuth>;
-}
+export default function ImportPage() { return <RequireAuth><ImportPageContent /></RequireAuth>; }

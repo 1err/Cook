@@ -52,6 +52,10 @@ export interface RecipeStep {
   attention_type?: RecipeAttentionType | null;
   action_type?: RecipeActionType | null;
   image_url?: string | null;
+  instruction_source?: "source" | "suggested" | "user" | null;
+  source_start_seconds?: number | null;
+  source_end_seconds?: number | null;
+  source_excerpt?: string | null;
 }
 
 export interface Recipe {
@@ -70,7 +74,26 @@ export interface Recipe {
   steps?: RecipeStep[];
   tips?: string[];
   equipment?: string[];
+  import_review?: {
+    status: "ready" | "needs_review";
+    warnings: string[];
+    source_kind: "captions" | "description" | "video" | "media" | "text";
+    can_analyze_video: boolean;
+  } | null;
 }
+
+export type RecipeImportJob = {
+  id: string;
+  status: "queued" | "processing" | "completed" | "failed" | "cancelled";
+  recipe?: Recipe | null;
+  error?: { code: string; message: string } | null;
+};
+
+export type RecipeImportCapabilities = {
+  video_analysis: boolean;
+  media_upload: boolean;
+  max_media_bytes: number;
+};
 
 export type MealPlanDay = {
   date: string;

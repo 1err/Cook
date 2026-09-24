@@ -28,6 +28,8 @@ from app.core.llm import AIInputTooLargeError, AIUnavailableError, close_openai_
 from app.db.session import dispose_engine, init_engine
 from app.api.auth import router as auth_router
 from app.api.routes_recipes import router as recipes_router
+from app.api.routes_imports import router as imports_router
+from app.jobs.recipe_imports import import_worker_loop
 from app.api.routes_mealplan import router as mealplan_router
 from app.api.routes_shopping import router as shopping_router
 from app.api.routes_instacart import router as instacart_router
@@ -110,12 +112,14 @@ async def lifespan(app: FastAPI):
     if settings.STORE_JOBS_MODE == "local":
         start_scheduler()
     analytics_maintenance = asyncio.create_task(maintenance_loop())
+    recipe_import_worker = asyncio.create_task(import_worker_loop())
     try:
         yield
     finally:
         analytics_maintenance.cancel()
+        recipe_import_worker.cancel()
         try:
-            await asyncio.gather(analytics_maintenance, return_exceptions=True)
+            await asyncio.gather(analytics_maintenance, recipe_import_worker, return_exceptions=True)
         finally:
             await _shutdown_application_resources()
 
@@ -162,6 +166,7 @@ app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=settings.TRUSTED_PROXY_
 from app.api.account_routes import router as account_router
 app.include_router(auth_router)
 app.include_router(account_router)
+app.include_router(imports_router)
 app.include_router(recipes_router)
 app.include_router(mealplan_router)
 app.include_router(shopping_router)
