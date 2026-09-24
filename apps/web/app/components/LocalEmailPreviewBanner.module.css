@@ -1,0 +1,26 @@
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem 1rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--cw-color-divider);
+  background: var(--cw-color-surface);
+  color: var(--cw-color-ink);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.banner p {
+  margin: 0;
+}
+
+.banner a {
+  flex-shrink: 0;
+  padding: 0.25rem 0;
+  color: var(--cw-color-action);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}

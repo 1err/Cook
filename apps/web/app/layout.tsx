@@ -12,6 +12,7 @@ import "./globals.css";
 import "./styles/foundation.css";
 import { AuthProvider } from "./lib/auth";
 import { Header } from "./components/Header";
+import { LocalEmailPreviewBanner } from "./components/LocalEmailPreviewBanner";
 import { I18nProvider } from "./lib/i18n";
 
 export const metadata: Metadata = {
@@ -29,6 +30,7 @@ export default function RootLayout({
       <body>
         <I18nProvider>
           <AuthProvider>
+            <LocalEmailPreviewBanner />
             <Header />
             <div id="app-content">{children}</div>
           </AuthProvider>
