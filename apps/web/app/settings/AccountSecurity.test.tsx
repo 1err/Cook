@@ -7,6 +7,11 @@ const state = vi.hoisted(() => ({
   deleteAccount: vi.fn(), logoutAll: vi.fn(), refreshUser: vi.fn(), requestEmailVerification: vi.fn(), capabilities: vi.fn(),
   user: { id: "alice", email: "alice@example.com", email_verified: false },
 }));
+const navigation = vi.hoisted(() => ({ search: "", router: { replace: vi.fn() } }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => navigation.router,
+  useSearchParams: () => new URLSearchParams(navigation.search),
+}));
 vi.mock("../lib/auth", () => ({ useAuth: () => state }));
 vi.mock("../lib/api", () => ({ webApiClient: { auth: state } }));
 vi.mock("../lib/i18n", () => {
@@ -16,6 +21,10 @@ vi.mock("../lib/i18n", () => {
 afterEach(cleanup);
 beforeEach(() => {
   vi.resetAllMocks();
+  navigation.search = "";
+  navigation.router.replace.mockImplementation((url: string) => {
+    navigation.search = new URL(url, "http://localhost").search.slice(1);
+  });
   state.user = { id: "alice", email: "alice@example.com", email_verified: false };
   state.capabilities.mockResolvedValue({ password_recovery: true, email_verification: true });
   state.refreshUser.mockResolvedValue(undefined);
@@ -128,4 +137,49 @@ test("failed global sign-out stays recoverable and reports failure", async () =>
   fireEvent.click(screen.getByRole("button", { name: "Sign out everywhere" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Check your connection");
   expect(screen.getByRole("button", { name: "Sign out everywhere" })).toBeEnabled();
+});
+
+test("a menu deletion request opens and focuses confirmation without deleting the account", async () => {
+  navigation.search = "delete=1&from=menu";
+  render(<AccountSecurity />);
+
+  const form = await screen.findByRole("form", { name: /^Delete account$/ });
+  expect(form).toHaveAttribute("id", "delete-account");
+  expect(form).toHaveFocus();
+  expect(screen.getByLabelText("Current password")).toHaveValue("");
+  expect(screen.getByRole("checkbox", { name: "I understand that account deletion is permanent." })).not.toBeChecked();
+  expect(screen.getByRole("button", { name: "Delete account permanently" })).toBeDisabled();
+  expect(navigation.router.replace).toHaveBeenCalledWith("/settings?from=menu", { scroll: false });
+  expect(state.deleteAccount).not.toHaveBeenCalled();
+});
+
+test("cancel clears confirmation and password, restores focus and permits a fresh menu request", async () => {
+  navigation.search = "delete=1";
+  const view = render(<AccountSecurity />);
+  await screen.findByRole("form", { name: /^Delete account$/ });
+  fireEvent.change(screen.getByLabelText("Current password"), { target: { value: "sample-current-password" } });
+  fireEvent.click(screen.getByRole("checkbox", { name: "I understand that account deletion is permanent." }));
+  fireEvent.click(screen.getByRole("button", { name: /^Cancel$/ }));
+
+  expect(screen.queryByRole("form", { name: /^Delete account$/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^Delete account$/ })).toHaveFocus();
+  expect(navigation.search).toBe("");
+  expect(state.deleteAccount).not.toHaveBeenCalled();
+
+  navigation.search = "delete=1";
+  view.rerender(<AccountSecurity />);
+  expect(await screen.findByRole("form", { name: /^Delete account$/ })).toHaveFocus();
+  expect(screen.getByLabelText("Current password")).toHaveValue("");
+  expect(screen.getByRole("checkbox", { name: "I understand that account deletion is permanent." })).not.toBeChecked();
+  expect(screen.getByRole("button", { name: "Delete account permanently" })).toBeDisabled();
+  expect(state.deleteAccount).not.toHaveBeenCalled();
+});
+
+test.each(["", "delete=0", "delete=true"])("ordinary settings visits do not open deletion confirmation (%s)", async (search) => {
+  navigation.search = search;
+  render(<AccountSecurity />);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Verify email" })).toBeEnabled());
+  expect(screen.queryByLabelText("Current password")).not.toBeInTheDocument();
+  expect(navigation.router.replace).not.toHaveBeenCalled();
+  expect(state.deleteAccount).not.toHaveBeenCalled();
 });

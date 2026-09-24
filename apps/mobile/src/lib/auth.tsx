@@ -12,6 +12,7 @@ type MobileUser = {
   email: string;
   is_library_public: boolean;
   email_verified?: boolean;
+  email_verification_required?: boolean;
 };
 
 type AuthContextValue = {
@@ -157,7 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (loginGeneration !== generation.current) return;
     tokenRef.current = res.access_token;
     setToken(res.access_token);
-    setUser({ id: res.id, email: res.email, is_library_public: res.is_library_public, email_verified: res.email_verified });
+    setUser({ id: res.id, email: res.email, is_library_public: res.is_library_public, email_verified: res.email_verified, email_verification_required: res.email_verification_required });
   }, [clearAccountData, persistToken]);
 
   const register = useCallback(async (email: string, password: string) => {
@@ -172,7 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (registerGeneration !== generation.current) return;
     tokenRef.current = res.access_token;
     setToken(res.access_token);
-    setUser({ id: res.id, email: res.email, is_library_public: res.is_library_public, email_verified: res.email_verified });
+    setUser({ id: res.id, email: res.email, is_library_public: res.is_library_public, email_verified: res.email_verified, email_verification_required: res.email_verification_required });
   }, [clearAccountData, persistToken]);
 
   const setLibraryVisibility = useCallback(

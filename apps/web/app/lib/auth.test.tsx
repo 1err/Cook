@@ -211,3 +211,14 @@ test("failed cache removals cannot expose another account's saved groceries", ()
   userSessionStorage.setItem("smartShoppingList:2026-09-14", "bob groceries");
   expect(userSessionStorage.getItem("smartShoppingList:2026-09-14")).toBe("bob groceries");
 });
+
+
+test("auth preserves the server verification requirement without marking legacy accounts verified", async () => {
+  apiFetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: "new", email: "new@example.com", is_library_public: false, email_verification_required: true, email_verified: false })));
+  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("new"));
+  expect(result.current.user).toMatchObject({ email_verification_required: true, email_verified: false });
+  apiFetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: "old", email: "old@example.com", is_library_public: false })));
+  await act(async () => result.current.refreshUser());
+  expect(result.current.user).toMatchObject({ email_verification_required: false, email_verified: false });
+});

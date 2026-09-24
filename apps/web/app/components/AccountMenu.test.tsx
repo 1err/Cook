@@ -16,6 +16,7 @@ const messages: Record<string, string> = {
   "nav.logOut": "Log out",
   "nav.settings": "Settings",
   "account.language": "Language",
+  "account.deleteTitle": "Delete account",
 };
 
 function t(key: string, vars?: Record<string, string | number>) {
@@ -82,4 +83,24 @@ test("clicking outside or following a route link closes the menu", async () => {
   settingsLink.addEventListener("click", (event) => event.preventDefault());
   await user.click(settingsLink);
   expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument();
+});
+
+test("the keyboard-accessible delete entry opens settings confirmation without signing out", async () => {
+  const user = userEvent.setup();
+  const onLogout = vi.fn();
+  render(<AccountMenu email="cook@example.com" isAdmin={false} onLogout={onLogout} />);
+  const trigger = screen.getByRole("button", { name: "Account for cook@example.com" });
+  trigger.focus();
+  await user.keyboard("{Enter}");
+
+  const deleteLink = screen.getByRole("link", { name: /^Delete account$/ });
+  expect(deleteLink).toHaveAttribute("href", "/settings?delete=1#delete-account");
+  for (let step = 0; step < 8 && document.activeElement !== deleteLink; step += 1) await user.tab();
+  expect(deleteLink).toHaveFocus();
+  deleteLink.addEventListener("click", (event) => event.preventDefault());
+  await user.keyboard("{Enter}");
+
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByRole("link", { name: /^Delete account$/ })).not.toBeInTheDocument();
+  expect(onLogout).not.toHaveBeenCalled();
 });

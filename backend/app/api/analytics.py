@@ -7,7 +7,7 @@ from uuid import uuid5, NAMESPACE_URL
 
 from fastapi import APIRouter, Depends, Request, Response, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.auth import get_current_user
+from app.api.auth import get_authenticated_user
 from app.core.config import settings
 from app.db.session import get_session
 from app.analytics.schema import ClientEvent, normalize_path, normalize_referrer
@@ -44,7 +44,7 @@ async def collect(
     if path is None:
         return Response(status_code=204)
     try:
-        user = await get_current_user(request, session)
+        user = await get_authenticated_user(request, session)
     except HTTPException as error:
         if error.status_code != 401:
             raise

@@ -122,6 +122,12 @@ export function AccountMenu({ email, isAdmin, onLogout }: AccountMenuProps) {
               <Icon name="logout" />
               <span>{t("nav.logOut")}</span>
             </button>
+            <Link className={`${styles.action} ${styles.deleteAction}`} href="/settings?delete=1#delete-account" onClick={closeMenu}>
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7M14 10v7" />
+              </svg>
+              <span>{t("account.deleteTitle")}</span>
+            </Link>
             {logoutError ? <p role="alert">{t("account.tryAgain")}</p> : null}
           </div>
         </div>

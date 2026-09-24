@@ -14,7 +14,7 @@ from app.migrate import migrate_connection, migration_config
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("starting_revision", [
-    None, "20260924_analytics", "20260922_account_lifecycle",
+    None, "20260924_analytics", "20260922_account_lifecycle", "20260924_beta_analytics_merge",
 ])
 async def test_release_upgrade_preserves_both_histories(starting_revision):
     url = os.environ.get("TEST_DATABASE_URL")
@@ -59,7 +59,7 @@ async def test_release_upgrade_preserves_both_histories(starting_revision):
                         "INSERT INTO analytics_events(id,name,user_id,platform) "
                         "VALUES (:event,'login',:id,'web')"
                     ), {"event": event_id, "id": user_id})
-                else:
+                elif starting_revision == "20260922_account_lifecycle":
                     await connection.execute(text(
                         "UPDATE users SET email_verified=true,auth_version=3 WHERE id=:id"
                     ), {"id": user_id})
@@ -72,11 +72,12 @@ async def test_release_upgrade_preserves_both_histories(starting_revision):
                 assert (await connection.execute(text("SELECT to_regclass(:table)"), {"table": table})).scalar()
             if starting_revision:
                 row = (await connection.execute(text(
-                    "SELECT email,email_verified,auth_version FROM users WHERE id=:id"
+                    "SELECT email,email_verified,auth_version,email_verification_required FROM users WHERE id=:id"
                 ), {"id": user_id})).one()
                 assert row.email == "upgrade-test@example.com"
                 assert row.email_verified is (starting_revision == "20260922_account_lifecycle")
                 assert row.auth_version == (3 if starting_revision == "20260922_account_lifecycle" else 0)
+                assert row.email_verification_required is False, "Existing accounts keep access without being marked verified"
                 if starting_revision == "20260924_analytics":
                     assert (await connection.execute(text(
                         "SELECT is_test FROM analytics_profiles WHERE user_id=:id"

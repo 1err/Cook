@@ -5,9 +5,16 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import SettingsPage from "./page";
 import { I18nProvider } from "../lib/i18n";
 
-const { mockSetLibraryVisibility, mockUseAuth } = vi.hoisted(() => ({
+const { mockSetLibraryVisibility, mockUseAuth, router } = vi.hoisted(() => ({
   mockSetLibraryVisibility: vi.fn(),
   mockUseAuth: vi.fn(),
+  router: { replace: vi.fn() },
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/settings",
 }));
 
 vi.mock("../components/RequireAuth", () => ({

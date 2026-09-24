@@ -207,9 +207,6 @@ function ShoppingListPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
-  const [basicChecks, setBasicChecks] = useState<{ week: string; keys: Set<string> }>({ week: start, keys: new Set() });
-  const basicChecked = basicChecks.week === start ? basicChecks.keys : new Set<string>();
-  const basicKey = (item: ShoppingListItem) => JSON.stringify([item.name, item.total_quantity]);
   const [previewUnavailable, setPreviewUnavailable] = useState(false);
   const [loadVersion, setLoadVersion] = useState(0);
   const [bulkLoadingProducts, setBulkLoadingProducts] = useState(false);
@@ -421,7 +418,7 @@ function ShoppingListPageContent() {
   const activeRefinedData = smartWeekStart === start ? refinedData : null;
   const activeSavedPlannerFingerprint = smartWeekStart === start ? savedPlannerFingerprint : null;
 
-  useEffect(() => { setCopied(false); setCopyError(null); }, [items, smartChecked, basicChecks, activeRefinedData]);
+  useEffect(() => { setCopied(false); setCopyError(null); }, [items, smartChecked, activeRefinedData]);
 
   useEffect(() => {
     let cancelled = false;
@@ -857,12 +854,10 @@ function ShoppingListPageContent() {
   );
 
   async function handleCopyList() {
+    if (!activeRefinedData) return;
     const week = start;
-    const lines = activeRefinedData
-      ? visiblePurchaseItems.filter(row => !smartChecked.has(row.origIndex))
-          .map(row => [row.name, row.suggested_purchase].filter(Boolean).join(" — "))
-      : items.filter(item => !basicChecked.has(basicKey(item)))
-          .map(item => [item.name, item.total_quantity].filter(Boolean).join(" — "));
+    const lines = visiblePurchaseItems.filter(row => !smartChecked.has(row.origIndex))
+      .map(row => [row.name, row.suggested_purchase].filter(Boolean).join(" — "));
     setCopyError(null);
     try {
       await navigator.clipboard.writeText(lines.join("\n"));
@@ -1190,32 +1185,6 @@ function ShoppingListPageContent() {
         ) : null}
         <div className={styles.listColumn}>
       {copyError ? <p className={styles.error} role="alert">{copyError}</p> : null}
-      {!activeRefinedData && items.length > 0 ? (
-        <section className={styles.category} aria-label={t("shopping.basicList")}>
-          <header className={styles.categoryHeader}>
-            <h2 className="cw-display">{t("shopping.basicList")}</h2>
-            <button type="button" onClick={() => void handleCopyList()} disabled={items.every(item => basicChecked.has(basicKey(item)))}>{copied ? t("shopping.copied") : t("shopping.copyList")}</button>
-          </header>
-          <p className={styles.itemBlock}>{t("shopping.basicDescription")}</p>
-          {items.map(item => {
-            const key = basicKey(item);
-            const checked = basicChecked.has(key);
-            return <div className={`${styles.itemBlock} ${checked ? styles.checked : ""}`} key={key}>
-              <div className={styles.itemRow}><label>
-                <input type="checkbox" checked={checked} aria-label={t(checked ? "shopping.markStillNeedToBuy" : "shopping.markAlreadyHave", { name: item.name })} onChange={() => {
-                  setCopied(false);
-                  setBasicChecks(current => {
-                    const keys = new Set(current.week === start ? current.keys : []);
-                    if (keys.has(key)) keys.delete(key); else keys.add(key);
-                    return { week: start, keys };
-                  });
-                }} />
-                <span><strong>{item.name}</strong><small>{item.total_quantity}</small></span>
-              </label></div>
-            </div>;
-          })}
-        </section>
-      ) : null}
       {previewUnavailable ? <p role="status">{t("shopping.previewUnavailable")}</p> : null}
       {!hasPlannedMeals && items.length === 0 ? (
         <div className={styles.empty}>

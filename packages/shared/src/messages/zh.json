@@ -1,7 +1,7 @@
 {
   "shopping.basicList": "购物清单",
   "shopping.basicDescription": "根据已计划的食谱汇总。也可选择智能整理。",
-  "shopping.previewUnavailable": "暂时无法显示餐食预览，仍可使用购物清单。",
+  "shopping.previewUnavailable": "暂时无法显示餐食预览。",
   "shopping.shareList": "分享清单",
   "shopping.shareFailed": "无法打开分享。可选择并复制上方食材文字。",
   "shopping.copyFailed": "复制失败，请选择清单中的食材并复制。",
@@ -505,5 +505,13 @@
   "account.verificationTitle": "邮箱验证",
   "account.verificationHelp": "验证邮箱以确认归属。打开我们发送的链接完成验证，然后返回此处查看验证状态。",
   "account.verificationChecked": "验证状态已更新。",
-  "account.resendVerification": "重新发送验证链接"
+  "account.resendVerification": "重新发送验证链接",
+  "account.checkInbox": "请查收邮件",
+  "account.signupVerificationHelp": "我们会发送验证链接，请先验证邮箱，再开始使用 Chef World。",
+  "account.checkInboxHelp": "请打开发送至 {email} 的验证链接，然后返回此处继续。",
+  "account.checkInboxTips": "也请检查垃圾邮件。如果重新申请链接，请使用最新的邮件。",
+  "account.verificationWaiting": "邮箱尚未验证。请打开邮件中的链接，然后再次检查。",
+  "account.differentEmail": "使用其他邮箱",
+  "account.finishVerification": "我已验证邮箱",
+  "account.verificationRequired": "请验证邮箱后继续。"
 }

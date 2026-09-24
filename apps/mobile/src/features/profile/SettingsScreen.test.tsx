@@ -10,7 +10,10 @@ const mockDeleteAccount = jest.fn();
 const mockRefreshUser = jest.fn();
 const mockCapabilities = jest.fn();
 const mockVerify = jest.fn();
-let mockUser = { id: "alice", email: "alice@example.com", is_library_public: false, email_verified: false };
+let mockUser: {
+  id: string; email: string; is_library_public: boolean; email_verified: boolean;
+  email_verification_required?: boolean;
+} = { id: "alice", email: "alice@example.com", is_library_public: false, email_verified: false };
 const mockClient = { auth: { capabilities: mockCapabilities, requestEmailVerification: mockVerify } };
 jest.mock("../../lib/auth", () => ({ useAuth: () => ({
   user: mockUser, logout: mockLogout, logoutAll: mockLogoutAll,
@@ -23,7 +26,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUser = { id: "alice", email: "alice@example.com", is_library_public: false, email_verified: false };
   mockCapabilities.mockResolvedValue({ password_recovery: true, email_verification: true });
-  mockVerify.mockResolvedValue({ ok: true });
+  mockVerify.mockReset().mockResolvedValue({ ok: true });
   mockLogout.mockResolvedValue(undefined);
   mockLogoutAll.mockResolvedValue(undefined);
   mockDeleteAccount.mockResolvedValue(undefined);
@@ -35,6 +38,24 @@ async function confirmAlert() {
   const actions = jest.mocked(Alert.alert).mock.calls.at(-1)?.[2];
   await act(async () => { await actions?.find((action) => action.style === "destructive")?.onPress?.(); });
 }
+
+test("required verification explains the next step and keeps recovery and deletion available", async () => {
+  mockUser = { ...mockUser, email_verification_required: true };
+  mockVerify.mockRejectedValueOnce(new ApiError("Temporarily unavailable", 503));
+  await render(<SettingsScreen />);
+  expect(screen.getByRole("header", { name: "Verify your email to continue." })).toBeOnTheScreen();
+  expect(screen.getByText("Verify your email to confirm it belongs to you. Open the link we send, then return here to check your status.")).toBeOnTheScreen();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Verify email" })).toBeEnabled());
+  expect(mockVerify).not.toHaveBeenCalled();
+  await fireEvent.press(screen.getByRole("button", { name: "Verify email" }));
+  expect(await screen.findByText("Account email is temporarily unavailable. Please try again later or contact support.")).toBeOnTheScreen();
+  expect(screen.getByRole("button", { name: "Check verification status" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Sign out" })).toBeEnabled();
+  expect(screen.getByLabelText("Current password")).toBeOnTheScreen();
+  expect(screen.getByRole("button", { name: "Delete account permanently" })).toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole("button", { name: "Verify email" }));
+  expect(await screen.findByText("A verification link has been requested. Check your email.")).toBeOnTheScreen();
+});
 
 test("deletion needs a password and explicit confirmation, and a wrong password preserves the account", async () => {
   mockDeleteAccount.mockRejectedValue(new ApiError("Incorrect password", 403));

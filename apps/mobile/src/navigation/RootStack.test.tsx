@@ -17,7 +17,11 @@ type MockShareContext = {
   resetShareIntent: jest.Mock;
 };
 
-let mockAuthState: { loading: boolean; token: string | null; user?: { id: string } } = {
+let mockAuthState: {
+  loading: boolean;
+  token: string | null;
+  user?: { id: string; email_verified?: boolean; email_verification_required?: boolean };
+} = {
   loading: true,
   token: null,
 };
@@ -69,6 +73,10 @@ jest.mock("./MainTabs", () => ({ MainTabs: () => {
 } }));
 jest.mock("./stacks/AccountStack", () => ({ AccountStack: () => null }));
 jest.mock("../features/import/ImportModalScreen", () => ({ ImportModalScreen: () => null }));
+jest.mock("../features/profile/SettingsScreen", () => ({ SettingsScreen: () => {
+  const { Text } = require("react-native");
+  return <Text>Verification gate</Text>;
+} }));
 
 describe("RootStack shared video bridge", () => {
   beforeEach(() => {
@@ -111,6 +119,40 @@ describe("RootStack shared video bridge", () => {
 
     expect(mockNavigate).toHaveBeenCalledTimes(1);
     expect(mockResetShareIntent).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps required unverified accounts out of private screens and retains their shared recipe", async () => {
+    mockAuthState = {
+      loading: false,
+      token: "new-account-token",
+      user: { id: "new-account", email_verified: false, email_verification_required: true },
+    };
+    const view = await render(<RootStack />);
+
+    expect(screen.getByText("Verification gate")).toBeOnTheScreen();
+    expect(screen.queryByLabelText("Private draft")).toBeNull();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockResetShareIntent).not.toHaveBeenCalled();
+
+    mockAuthState = { ...mockAuthState, user: { ...mockAuthState.user!, email_verified: true } };
+    await view.rerender(<RootStack />);
+
+    expect(screen.queryByText("Verification gate")).toBeNull();
+    expect(screen.getByLabelText("Private draft")).toBeOnTheScreen();
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith("ImportModal", { initialUrl: "https://youtu.be/dQw4w9WgXcQ" });
+    expect(mockResetShareIntent).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, undefined])("preserves app access for legacy unverified accounts with requirement %s", async (required) => {
+    mockAuthState = {
+      loading: false,
+      token: "legacy-token",
+      user: { id: "legacy", email_verified: false, email_verification_required: required },
+    };
+    await render(<RootStack />);
+    expect(screen.getByLabelText("Private draft")).toBeOnTheScreen();
+    expect(screen.queryByText("Verification gate")).toBeNull();
   });
 
   it("consumes a replayed intent once and still handles a genuinely new intent", async () => {

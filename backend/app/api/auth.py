@@ -3,7 +3,7 @@ Auth router: register, login, logout, me. JWT in HttpOnly cookie.
 OAuth-ready: local provider now; add Google etc. by new provider identities.
 """
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.admin import is_admin
 from app.core.config import settings
-from app.api.abuse import enforce_auth_limits
+from app.api.abuse import account_limits, enforce_auth_limits
 from app.core.security import (
     BCRYPT_MAX_PASSWORD_BYTES,
     MAX_LOGIN_PASSWORD_CHARACTERS,
@@ -23,6 +23,7 @@ from app.core.security import (
 from app.db.session import get_session
 from app.db import repo_auth, repo_accounts
 from app.db.models import UserModel
+from app.services.account_email import deliver_account_email, email_available
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -47,6 +48,7 @@ class UserResponse(BaseModel):
     is_library_public: bool
     is_admin: bool = False
     email_verified: bool = False
+    email_verification_required: bool = False
 
     @classmethod
     def from_model(cls, u: UserModel) -> "UserResponse":
@@ -54,6 +56,7 @@ class UserResponse(BaseModel):
             id=str(u.id), email=u.email, is_library_public=bool(u.is_library_public),
             is_admin=is_admin(u),
             email_verified=bool(getattr(u, "email_verified", False)),
+            email_verification_required=bool(getattr(u, "email_verification_required", False)),
         )
 
 
@@ -68,6 +71,7 @@ class AuthResponse(UserResponse):
             is_library_public=bool(u.is_library_public),
             is_admin=is_admin(u),
             email_verified=bool(getattr(u, "email_verified", False)),
+            email_verification_required=bool(getattr(u, "email_verification_required", False)),
             access_token=token,
         )
 
@@ -103,7 +107,7 @@ def presented_token(request: Request) -> str | None:
     return request.cookies.get(COOKIE_NAME)
 
 
-async def get_current_user(
+async def get_authenticated_user(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> UserModel:
@@ -129,14 +133,29 @@ async def get_current_user(
     return user
 
 
+async def get_current_user(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> UserModel:
+    """App access requires verified email for accounts enrolled at registration."""
+    user = await get_authenticated_user(request, session)
+    if user.email_verification_required and not user.email_verified:
+        raise HTTPException(status_code=403, detail={
+            "code": "email_verification_required",
+            "message": "Verify your email address before using the app.",
+        })
+    return user
+
+
 @router.post("/register", response_model=AuthResponse)
 async def register(
     body: RegisterBody,
     response: Response,
+    background: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     request: Request = None,
 ):
-    """Create user + local identity, set JWT cookie."""
+    """Create a restricted account and queue verification after durable commit."""
     await enforce_auth_limits(request, str(body.email), registration=True)
     if len(body.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
@@ -146,9 +165,12 @@ async def register(
     existing = await repo_auth.get_user_by_email(session, email)
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
+    if not email_available():
+        raise HTTPException(503, "Email verification is temporarily unavailable. Please try creating your account again later.")
+    await account_limits(request, "verify", email)
     password_hash = await run_in_threadpool(hash_password, body.password)
     try:
-        user = await repo_auth.create_user(session, email)
+        user = await repo_auth.create_user(session, email, email_verification_required=True)
         await repo_auth.create_identity(
             session,
             user.id,
@@ -160,11 +182,19 @@ async def register(
         if getattr(exc.orig, "sqlstate", None) == "23505":
             raise HTTPException(status_code=400, detail="Email already registered") from exc
         raise
+    verification_token = await repo_accounts.issue_action_token(
+        session, user.id, "verify", settings.EMAIL_VERIFICATION_TTL_SECONDS)
+    if verification_token is None:
+        raise HTTPException(503, "Account creation is temporarily unavailable. Please try again.")
     token = create_access_token(str(user.id), {"auth_version": user.auth_version})
+    result = AuthResponse.from_model_with_token(user, token)
+    # Background dispatch can run before dependency teardown: commit explicitly.
+    await session.commit()
+    background.add_task(deliver_account_email, email, "verify", verification_token)
     _set_cookie(response, token)
     if request is not None:
         request.state.analytics_user_id = user.id
-    return AuthResponse.from_model_with_token(user, token)
+    return result
 
 
 @router.post("/login", response_model=AuthResponse)
@@ -204,7 +234,7 @@ async def logout(response: Response, request: Request, session: AsyncSession = D
 
 
 @router.get("/me", response_model=UserResponse)
-async def me(current_user: UserModel = Depends(get_current_user)):
+async def me(current_user: UserModel = Depends(get_authenticated_user)):
     """Return current authenticated user."""
     return UserResponse.from_model(current_user)
 

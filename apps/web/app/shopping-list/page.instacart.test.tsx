@@ -69,6 +69,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function expectOriginalPreparation() {
+  expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  expect(screen.queryByRole("region", { name: "shopping.basicList" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /shopping\.(copyList|copied)/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Planned meals" })).toBeVisible();
+}
+
 function expectInstacartAbsent() {
   expect(screen.queryByRole("button", { name: /instacart/i })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: /instacart/i })).not.toBeInTheDocument();
@@ -79,6 +86,7 @@ function expectInstacartAbsent() {
 test("original shopping keeps smart-list preparation available without Instacart", async () => {
   render(<ShoppingListPage />);
   expect(await screen.findByRole("button", { name: "Prepare smart shopping list" })).toBeEnabled();
+  expectOriginalPreparation();
   expectInstacartAbsent();
   expect(mockApiFetch.mock.calls.some(([path]) => path === "/shopping-list/refine" || path.startsWith("/store-products"))).toBe(false);
 });
@@ -152,9 +160,12 @@ test("preparing a smart list never exposes Instacart or sends an export request"
   render(<ShoppingListPage />);
   fireEvent.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
   expectInstacartAbsent();
+  expectOriginalPreparation();
   await waitFor(() => expect(mockApiFetch.mock.calls.some(([path]) => path === "/shopping-list/refine")).toBe(true));
   await act(async () => pending.resolve(response({ remove: [], likely_pantry: [], purchase_items: [{ name: "Rice", suggested_purchase: "1 bag" }] })));
   expect(await screen.findByRole("button", { name: "shopping.loadPicks" })).toBeEnabled();
+  expect(screen.getByRole("checkbox", { name: "shopping.markAlreadyHave Rice" })).toBeEnabled();
+  expect(screen.queryByRole("heading", { name: "Planned meals" })).not.toBeInTheDocument();
   expectInstacartAbsent();
 });
 
@@ -167,60 +178,81 @@ test("changing weeks keeps shopping available without Instacart", async () => {
   rerender(<ShoppingListPage />);
   await waitFor(() => expect(mockApiFetch.mock.calls.some(([path]) => path.startsWith("/shopping-list?") && path.includes("2026-08-17"))).toBe(true));
   expect(await screen.findByRole("button", { name: "Prepare smart shopping list" })).toBeEnabled();
+  expectOriginalPreparation();
   expectInstacartAbsent();
 });
 
-test('checks and copies basic groceries during an AI failure without Instacart', async () => {
-  const writeText = vi.fn().mockResolvedValue(undefined);
-  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+test("a failed preparation keeps the original view free of grocery controls and allows retry", async () => {
   const original = mockApiFetch.getMockImplementation()!;
-  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => path === '/shopping-list/refine'
-    ? Promise.resolve(new Response(JSON.stringify({ detail: 'Monthly AI allowance reached' }), { status: 503 }))
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => path === "/shopping-list/refine"
+    ? Promise.resolve(new Response(JSON.stringify({ detail: "Monthly AI allowance reached" }), { status: 503 }))
     : original(path, options));
   render(<ShoppingListPage />);
-  fireEvent.click(await screen.findByRole('checkbox', { name: 'shopping.markAlreadyHave Rice' }));
-  fireEvent.click(screen.getByRole('button', { name: 'shopping.copyList' }));
-  await waitFor(() => expect(writeText).toHaveBeenLastCalledWith('Milk — 250 ml'));
-  expect(mockApiFetch.mock.calls.some(([path]) => path === '/shopping-list/refine')).toBe(false);
-  fireEvent.click(screen.getByRole('button', { name: 'Prepare smart shopping list' }));
-  await screen.findByRole('alert');
-  expect(screen.getByRole('checkbox', { name: 'shopping.markStillNeedToBuy Rice' })).toBeChecked();
+  fireEvent.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
+  await screen.findByRole("alert");
+  expect(screen.getByRole("button", { name: "Prepare smart shopping list" })).toBeEnabled();
+  expectOriginalPreparation();
   expectInstacartAbsent();
-  fireEvent.click(screen.getByRole('button', { name: /shopping\.(copyList|copied)/ }));
-  await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
-  expect(writeText).toHaveBeenLastCalledWith('Milk — 250 ml');
 });
 
-test('keeps the basic checklist usable when the optional meal preview fails', async () => {
+test("an unavailable meal preview keeps preparation available without showing raw groceries", async () => {
   const original = mockApiFetch.getMockImplementation()!;
-  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => path.startsWith('/meal-plan?')
-    ? Promise.reject(new Error('Meal preview unavailable')) : original(path, options));
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => path.startsWith("/meal-plan?")
+    ? Promise.reject(new Error("Meal preview unavailable")) : original(path, options));
   render(<ShoppingListPage />);
-  expect(await screen.findByRole('checkbox', { name: 'shopping.markAlreadyHave Rice' })).toBeEnabled();
+  await screen.findByText("shopping.previewUnavailable");
+  expect(screen.getByRole("button", { name: "Prepare smart shopping list" })).toBeEnabled();
+  expectOriginalPreparation();
 });
 
-test('a recovered meal preview clears its warning and retains the basic list', async () => {
+test("returning to the original view hides groceries after a recovered preview", async () => {
   const original = mockApiFetch.getMockImplementation()!;
   let previewCalls = 0;
   mockApiFetch.mockImplementation((path: string, options?: RequestInit) => {
-    if (path.startsWith('/meal-plan?') && ++previewCalls === 1) return Promise.reject(new Error('Offline'));
-    if (path === '/shopping-list/refine') return Promise.resolve(response({ remove: [], likely_pantry: [], purchase_items: [{ name: 'Rice', suggested_purchase: '1 bag' }] }));
+    if (path.startsWith("/meal-plan?") && ++previewCalls === 1) return Promise.reject(new Error("Offline"));
+    if (path === "/shopping-list/refine") return Promise.resolve(response({ remove: [], likely_pantry: [], purchase_items: [{ name: "Rice", suggested_purchase: "1 bag" }] }));
     return original(path, options);
   });
   render(<ShoppingListPage />);
-  await screen.findByText('shopping.previewUnavailable');
-  fireEvent.click(screen.getByRole('button', { name: 'Prepare smart shopping list' }));
-  await screen.findByRole('button', { name: 'shopping.backToOriginalList' });
-  expect(screen.queryByText('shopping.previewUnavailable')).not.toBeInTheDocument();
+  await screen.findByText("shopping.previewUnavailable");
+  fireEvent.click(screen.getByRole("button", { name: "Prepare smart shopping list" }));
+  await screen.findByRole("button", { name: "shopping.backToOriginalList" });
+  expect(screen.queryByText("shopping.previewUnavailable")).not.toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "shopping.markAlreadyHave Rice" })).toBeEnabled();
   expectInstacartAbsent();
-  fireEvent.click(screen.getByRole('button', { name: 'shopping.backToOriginalList' }));
-  expect(screen.getByRole('checkbox', { name: 'shopping.markAlreadyHave Rice' })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "shopping.backToOriginalList" }));
+  expect(screen.getByRole("button", { name: "Prepare smart shopping list" })).toBeEnabled();
+  expectOriginalPreparation();
 });
 
-test('does not carry basic checks into another week', async () => {
+test("changing weeks leaves smart grocery controls behind", async () => {
+  storage.setItem("smartShoppingList:2026-08-10", JSON.stringify({
+    remove: [], likely_pantry: [], purchase_items: [{ name: "Rice", suggested_purchase: "1 bag" }],
+  }));
   const rendered = render(<ShoppingListPage />);
-  fireEvent.click(await screen.findByRole('checkbox', { name: 'shopping.markAlreadyHave Rice' }));
-  mockUseSearchParams.mockReturnValue(new URLSearchParams('week=2026-08-17'));
+  fireEvent.click(await screen.findByRole("checkbox", { name: "shopping.markAlreadyHave Rice" }));
+  expect(screen.getByRole("checkbox", { name: "shopping.markStillNeedToBuy Rice" })).toBeChecked();
+  mockUseSearchParams.mockReturnValue(new URLSearchParams("week=2026-08-17"));
   rendered.rerender(<ShoppingListPage />);
-  expect(await screen.findByRole('checkbox', { name: 'shopping.markAlreadyHave Rice' })).not.toBeChecked();
+  expect(await screen.findByRole("button", { name: "Prepare smart shopping list" })).toBeEnabled();
+  expectOriginalPreparation();
+});
+
+test("smart groceries retain checked-item filtering and clipboard failure recovery", async () => {
+  const writeText = vi.fn().mockRejectedValueOnce(new Error("Clipboard unavailable")).mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  storage.setItem("smartShoppingList:2026-08-10", JSON.stringify({
+    remove: [], likely_pantry: [], purchase_items: [
+      { name: "Rice", suggested_purchase: "1 bag" },
+      { name: "Milk", suggested_purchase: "250 ml" },
+    ],
+  }));
+  render(<ShoppingListPage />);
+  fireEvent.click(await screen.findByRole("checkbox", { name: "shopping.markAlreadyHave Rice" }));
+  fireEvent.click(screen.getByRole("button", { name: "shopping.copyList" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("shopping.copyFailed");
+  fireEvent.click(screen.getByRole("button", { name: "shopping.copyList" }));
+  await screen.findByRole("button", { name: "shopping.copied" });
+  expect(writeText).toHaveBeenLastCalledWith("Milk — 250 ml");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });

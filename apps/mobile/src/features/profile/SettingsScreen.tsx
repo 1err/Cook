@@ -15,6 +15,7 @@ export function SettingsScreen() {
   const { user, logout, logoutAll, deleteAccount, refreshUser } = useAuth();
   const client = useApiClient();
   const t = useT();
+  const verificationRequired = user?.email_verification_required === true && !user.email_verified;
   const [emailAvailable, setEmailAvailable] = useState<boolean | null>(null);
   const [pending, setPending] = useState<Action | null>(null);
   const [errorKey, setErrorKey] = useState<string | null>(null);
@@ -97,6 +98,13 @@ export function SettingsScreen() {
 
   return (
     <Screen scroll padded keyboardAvoiding contentContainerStyle={styles.content}>
+      {verificationRequired ? (
+        <View style={styles.actions}>
+          <Text accessibilityRole="header" style={styles.title}>{t("account.verificationRequired")}</Text>
+          <Text style={styles.help}>{t("account.verificationHelp")}</Text>
+          <Text style={styles.help}>{t("account.checkInboxTips")}</Text>
+        </View>
+      ) : null}
       <View style={styles.row}>
         <View style={styles.iconBubble}>
           <Ionicons name="mail-outline" size={20} color={colors.onPrimaryFixed} />
@@ -168,6 +176,7 @@ const styles = StyleSheet.create({
   actions: { gap: spacing.sm },
   card: { backgroundColor: colors.white, borderRadius: radii.lg, padding: spacing.md, gap: spacing.md },
   heading: { ...typography.headline, color: colors.onSurface },
+  title: { ...typography.title1, color: colors.onSurface },
   help: { ...typography.subhead, color: colors.onSurfaceVariant },
   error: { ...typography.subhead, color: colors.error },
   confirmation: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44 },

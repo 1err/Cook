@@ -92,6 +92,7 @@ export interface User {
   id: string;
   email: string;
   email_verified?: boolean;
+  email_verification_required?: boolean;
   is_library_public: boolean;
   is_admin?: boolean;
 }

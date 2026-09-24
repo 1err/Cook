@@ -78,6 +78,16 @@
   color: var(--cw-color-action);
 }
 
+.deleteAction,
+.deleteAction:hover {
+  color: var(--cw-color-error);
+}
+
+.action:focus-visible {
+  outline: 2px solid var(--cw-color-action);
+  outline-offset: 2px;
+}
+
 .languageItem {
   border-top: 1px solid var(--cw-color-divider);
   display: grid;
