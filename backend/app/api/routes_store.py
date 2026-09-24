@@ -3,7 +3,7 @@ Store product lookup route.
 
 Returns current Weee results with an explicit legacy response shape for old clients.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -36,6 +36,7 @@ class StoreProduct(BaseModel):
 class StoreProductsResponse(BaseModel):
     products: list[StoreProduct]
     expires_at: datetime | None
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class StoreProductsBatchBody(BaseModel):
@@ -51,6 +52,7 @@ class StoreProductsBatchEntryResponse(BaseModel):
 
 class StoreProductsBatchResponse(BaseModel):
     entries: list[StoreProductsBatchEntryResponse]
+    server_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 StoreProductsRouteResponse = StoreProductsResponse | list[StoreProduct]

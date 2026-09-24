@@ -6,7 +6,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import type { StoreProductsBatchResponse, StoreProductsResponse } from "@cooking/api-client";
-import { ApiError, resolveRecipeDetails } from "@cooking/api-client";
+import { ApiError, normalizeStoreProductResponse, resolveRecipeDetails } from "@cooking/api-client";
 import { apiFetch } from "../lib/api";
 import { userLocalStorage, userSessionStorage } from "../lib/userStorage";
 import { RequireAuth } from "../components/RequireAuth";
@@ -126,25 +126,30 @@ async function loadProduct(
   key: string,
   signal?: AbortSignal,
 ): Promise<StoreProductsResponse> {
+  const requestStartedAtMs = Date.now();
   const res = await apiFetch(`/store-products?query=${encodeURIComponent(key)}`, {
     signal,
   });
   if (!res.ok) throw new Error("Failed to load products");
-  const data: unknown = await res.json();
-  return parseStoreProductsResponse(data);
+  const data = (await res.json()) as StoreProductsResponse;
+  return parseStoreProductsResponse(normalizeStoreProductResponse(data, requestStartedAtMs));
 }
 
 async function loadProductBatch(
   queries: string[],
   signal?: AbortSignal,
 ): Promise<StoreProductsBatchResponse> {
+  const requestStartedAtMs = Date.now();
   const res = await apiFetch("/store-products/batch", {
     method: "POST",
     body: JSON.stringify({ queries }),
     signal,
   });
   if (!res.ok) throw new Error("Failed to load cached products");
-  return (await res.json()) as StoreProductsBatchResponse;
+  return normalizeStoreProductResponse(
+    (await res.json()) as StoreProductsBatchResponse,
+    requestStartedAtMs,
+  );
 }
 
 function parseSmartStored(

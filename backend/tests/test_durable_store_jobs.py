@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -6,6 +7,110 @@ import pytest
 from app.jobs import durable_store, worker
 from app.services import store_product_service
 from app.services.weee_scraper import StoreScrapeError
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('database_offset', [-30, 30])
+async def test_positive_completion_uses_current_database_age_in_api_clock(monkeypatch, database_offset):
+    from app.db import repo_store_cache
+
+    host_now = datetime(2026, 9, 24, 17, 41, 40, tzinfo=timezone.utc)
+    database_now = host_now + timedelta(seconds=database_offset)
+    old_product = dict(name='Old tofu', price='$9', image='', url='https://www.sayweee.com/product/tofu')
+    current_product = dict(old_product, name='Tofu', price='$2')
+    state = SimpleNamespace(state='succeeded', result=dict(products=[old_product], cached_at=database_now.isoformat()))
+
+    class Session:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            pass
+
+    class Repo:
+        sessions = Session
+        async def enqueue_lookup(self, *args, **kwargs):
+            return SimpleNamespace(id='job'), True
+        async def get(self, job_id):
+            return state
+
+    async def read_cache(*args, **kwargs):
+        assert kwargs == dict(query='tofu', store='weee', language='en', cache_version='v7', max_age_seconds=86400)
+        # Five seconds old in the DB clock, plus two seconds read transit.
+        return repo_store_cache.CachedStoreProducts(
+            [current_product], database_now-timedelta(seconds=5), database_now, 998.0,
+        )
+
+    monkeypatch.setattr(durable_store, 'repository', lambda: Repo())
+    monkeypatch.setattr(repo_store_cache, 'get_cached_store_products_with_metadata', read_cache)
+    monkeypatch.setattr(store_product_service.time, 'time', lambda: host_now.timestamp())
+    monkeypatch.setattr(store_product_service.time, 'monotonic', lambda: 1000.0)
+
+    result = await durable_store.lookup(store_product_service.prepare_store_query('Tofu'))
+    assert result.cached_at == datetime(2026, 9, 24, 17, 41, 33, tzinfo=timezone.utc)
+    assert result.products == [current_product]
+    assert store_product_service._memory_cache_get_with_metadata(('weee', 'en', 'v7', 'tofu')) == result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('cache_state', ['missing', 'future', 'expired', 'corrupt'])
+async def test_positive_completion_never_replays_invalid_or_stale_cache(monkeypatch, cache_state):
+    from app.db import repo_store_cache
+
+    now = datetime(2026, 9, 24, 17, 41, 40, tzinfo=timezone.utc)
+    product = dict(name='Tofu', price='$2', image='', url='https://www.sayweee.com/product/tofu')
+    timestamp = {'future': now+timedelta(seconds=1), 'expired': now-timedelta(days=1)}.get(cache_state, now)
+    entry = None if cache_state == 'missing' else repo_store_cache.CachedStoreProducts(
+        [] if cache_state == 'corrupt' else [product], timestamp, now, 1000.0,
+    )
+
+    class Session:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            pass
+
+    class Repo:
+        sessions = Session
+        async def enqueue_lookup(self, *args, **kwargs):
+            return SimpleNamespace(id='job'), True
+        async def get(self, job_id):
+            return SimpleNamespace(state='succeeded', result=dict(products=[product], cached_at=now.isoformat()))
+
+    async def read_cache(*args, **kwargs):
+        return entry
+
+    monkeypatch.setattr(durable_store, 'repository', lambda: Repo())
+    monkeypatch.setattr(repo_store_cache, 'get_cached_store_products_with_metadata', read_cache)
+    monkeypatch.setattr(store_product_service.time, 'time', lambda: now.timestamp())
+    monkeypatch.setattr(store_product_service.time, 'monotonic', lambda: 1000.0)
+    with pytest.raises(StoreScrapeError):
+        await durable_store.lookup(store_product_service.prepare_store_query('tofu'))
+
+
+@pytest.mark.asyncio
+async def test_successful_empty_completion_keeps_null_expiry_without_cache_read(monkeypatch):
+    class Repo:
+        async def enqueue_lookup(self, *args, **kwargs):
+            return SimpleNamespace(id='job'), True
+        async def get(self, job_id):
+            return SimpleNamespace(state='succeeded', result=dict(products=[], cached_at=None))
+
+    monkeypatch.setattr(durable_store, 'repository', lambda: Repo())
+    assert await durable_store.lookup(store_product_service.prepare_store_query('tofu')) == store_product_service.StoreProductsResult([], None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('result', [None, {}, {'products': None, 'cached_at': None}, {'products': [], 'cached_at': 'bad'}])
+async def test_malformed_completion_is_retryable_not_an_empty_success(monkeypatch, result):
+    class Repo:
+        async def enqueue_lookup(self, *args, **kwargs):
+            return SimpleNamespace(id='job'), True
+        async def get(self, job_id):
+            return SimpleNamespace(state='succeeded', result=result)
+
+    monkeypatch.setattr(durable_store, 'repository', lambda: Repo())
+    with pytest.raises(StoreScrapeError):
+        await durable_store.lookup(store_product_service.prepare_store_query('tofu'))
 
 
 @pytest.mark.asyncio

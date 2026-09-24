@@ -412,6 +412,67 @@ test("Retry keeps the generic panel error and replaces it with a valid product",
   expect(calls).toBe(2);
 });
 
+test.each(["single", "bulk"])(
+  "%s first load accepts fresh picks when the server clock is ahead and retains them on reload",
+  async (mode) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-24T17:00:00.000Z"));
+    const storage = stubSessionStorage();
+    storage.set("smartShoppingList:2026-08-10", JSON.stringify({
+      remove: [], likely_pantry: [],
+      purchase_items: [{ name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" }],
+      _ui: { hidden: [], checked: [] },
+    }));
+    const products = [{
+      name: "Fresh rice", price: "$2.99", image: "",
+      url: "https://www.sayweee.com/product/fresh-rice",
+    }];
+    const serverTime = "2026-09-24T17:00:16.500Z";
+    const serverExpiry = "2026-09-25T17:00:16.500Z";
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/shopping-list?")) {
+        return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+      }
+      if (path.startsWith("/meal-plan?") || path === "/recipes") return Promise.resolve(jsonResponse([]));
+      if (mode === "single" && path === "/store-products?query=Rice") {
+        // Fifteen seconds of lookup time, with the API clock still 1.5 seconds ahead.
+        vi.setSystemTime(new Date("2026-09-24T17:00:15.000Z"));
+        return Promise.resolve(jsonResponse({ products, expires_at: serverExpiry, server_time: serverTime }));
+      }
+      if (mode === "bulk" && path === "/store-products/batch") {
+        vi.setSystemTime(new Date("2026-09-24T17:00:15.000Z"));
+        return Promise.resolve(jsonResponse({
+          server_time: serverTime,
+          entries: [{ query: "Rice", status: "fresh", products, expires_at: serverExpiry }],
+        }));
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    const user = userEvent.setup();
+    const rendered = render(<ShoppingListPage />);
+    await user.click(await screen.findByRole("button", {
+      name: mode === "single" ? "View products" : "Load top picks from Weee",
+    }));
+
+    expect(await screen.findByText("Fresh rice")).toBeVisible();
+    expect(screen.getByRole("radio", { name: "Fresh rice: Selected for cart" })).toBeChecked();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    const persisted = JSON.parse(storage.get("smartShoppingProducts:2026-08-10:weee") ?? "{}");
+    expect(persisted.lookup.rice).toMatchObject({
+      status: "success",
+      // Request time is charged against freshness; the server offset is not persisted.
+      expiresAt: "2026-09-25T17:00:00.000Z",
+    });
+
+    rendered.unmount();
+    render(<ShoppingListPage />);
+    expect(await screen.findByText("Fresh rice")).toBeVisible();
+    expect(screen.getByRole("radio", { name: "Fresh rice: Selected for cart" })).toBeChecked();
+    expect(mockApiFetch.mock.calls.filter(([path]) => path.startsWith("/store-products"))).toHaveLength(1);
+  },
+);
+
 test("reload requeues an open product panel whose persisted lookup is missing", async () => {
   const storage = stubSessionStorage();
   storage.set(

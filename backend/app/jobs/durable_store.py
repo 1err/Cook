@@ -1,6 +1,5 @@
 """API-side durable admission and bounded polling; never launches a browser."""
 import asyncio
-from datetime import datetime
 
 from app.core.config import settings
 from app.db import session as db_session
@@ -21,7 +20,9 @@ def repository():
 
 
 async def lookup(prepared, *, force_refresh=False):
-    from app.services.store_product_service import CACHE_VERSION, StoreProductsResult
+    from app.services.store_product_service import (
+        CACHE_VERSION, StoreProductsResult, fetch_persisted_store_products_with_metadata,
+    )
     repo = repository()
     try:
         job, _ = await repo.enqueue_lookup(prepared.cache_query, prepared.language, CACHE_VERSION, force_refresh=force_refresh)
@@ -32,7 +33,20 @@ async def lookup(prepared, *, force_refresh=False):
                     raise StoreScrapeError('Store lookup unavailable')
                 if state.state == 'succeeded':
                     result = state.result
-                    return StoreProductsResult(result['products'], datetime.fromisoformat(result['cached_at']) if result['cached_at'] else None)
+                    if not isinstance(result, dict) or not isinstance(result.get('products'), list):
+                        raise StoreScrapeError('Store lookup has an invalid result')
+                    if not result['products']:
+                        if result.get('cached_at', '') is not None:
+                            raise StoreScrapeError('Store lookup has an invalid empty result')
+                        return StoreProductsResult([], None)
+                    # Job timestamps belong to PostgreSQL's clock. Re-read the
+                    # committed cache winner to preserve its age and translate
+                    # expiry into the same API clock as every other cache hit.
+                    async with repo.sessions() as session:
+                        published = await fetch_persisted_store_products_with_metadata(prepared, session)
+                    if published is None:
+                        raise StoreScrapeError('Store lookup cache is no longer fresh; retry shortly')
+                    return published
                 await asyncio.sleep(settings.STORE_JOBS_POLL_SECONDS)
     except TimeoutError as exc:
         # Shared admitted work belongs to the worker and survives this waiter.

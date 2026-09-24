@@ -27,6 +27,40 @@ PRODUCT = {
 CACHED_AT = datetime(2026, 8, 27, tzinfo=timezone.utc)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('batch_request', [False, True])
+async def test_response_server_time_is_stamped_after_lookup_finishes(monkeypatch, batch_request):
+    lookup_finished = False
+    finished_at = datetime(2026, 9, 24, 17, 42, tzinfo=timezone.utc)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            assert lookup_finished, 'response time must be sampled after the lookup'
+            assert tz is timezone.utc
+            return finished_at
+
+    async def fetch(*args, **kwargs):
+        nonlocal lookup_finished
+        lookup_finished = True
+        if batch_request:
+            return [BatchStoreProductsEntry('tofu', 'fresh', [PRODUCT], finished_at-timedelta(seconds=7))]
+        return SimpleNamespace(products=[PRODUCT], cached_at=finished_at-timedelta(seconds=7))
+
+    monkeypatch.setattr(routes_store, 'datetime', Clock)
+    if batch_request:
+        monkeypatch.setattr(routes_store, 'fetch_cached_store_products_batch', fetch)
+        response = await routes_store.store_products_batch(routes_store.StoreProductsBatchBody(queries=['tofu']), session=object(), current_user=object())
+        expires_at = response.entries[0].expires_at
+    else:
+        monkeypatch.setattr(routes_store, 'fetch_store_products_with_metadata', fetch)
+        response = await routes_store.store_products(query='tofu', store=None, session=object(), current_user=object())
+        expires_at = response.expires_at
+    assert response.server_time == finished_at
+    assert (expires_at-response.server_time).total_seconds() == 86393
+    assert response.model_dump(mode='json')['server_time'] == '2026-09-24T17:42:00Z'
+
+
 def authenticated_store_app() -> FastAPI:
     app = FastAPI()
     app.include_router(routes_store.router)
@@ -65,6 +99,7 @@ def test_batch_route_returns_fresh_and_missing_in_cleaned_order(
 
     monkeypatch.setattr(routes_store, "fetch_cached_store_products_batch", batch)
     app = authenticated_store_app()
+    started_at = datetime.now(timezone.utc)
     with TestClient(app) as client:
         response = client.post(
             "/store-products/batch",
@@ -72,7 +107,9 @@ def test_batch_route_returns_fresh_and_missing_in_cleaned_order(
         )
 
     assert response.status_code == 200
-    assert response.json() == {
+    payload = response.json()
+    assert started_at <= datetime.fromisoformat(payload.pop('server_time')) <= datetime.now(timezone.utc)
+    assert payload == {
         "entries": [
             {
                 "query": "Garlic",
@@ -101,12 +138,15 @@ def test_batch_route_accepts_more_than_fifty_inputs_without_live_scraping(
     monkeypatch.setattr(routes_store, "fetch_store_products_with_metadata", unexpected_live_scrape)
     queries = [f"ingredient-{index}" for index in range(75)]
     app = authenticated_store_app()
+    started_at = datetime.now(timezone.utc)
     with TestClient(app) as client:
         response = client.post("/store-products/batch", json={"queries": queries})
 
     assert response.status_code == 200
     assert observed_queries == queries
-    assert response.json() == {
+    payload = response.json()
+    assert started_at <= datetime.fromisoformat(payload.pop('server_time')) <= datetime.now(timezone.utc)
+    assert payload == {
         "entries": [
             {"query": query, "status": "missing", "products": [], "expires_at": None}
             for query in queries
@@ -276,6 +316,7 @@ def test_store_products_http_contract_and_openapi_describe_both_response_shapes(
     app.dependency_overrides[routes_store.get_session] = lambda: object()
     app.dependency_overrides[routes_store.get_current_user] = lambda: object()
 
+    started_at = datetime.now(timezone.utc)
     with TestClient(app) as client:
         modern = client.get("/store-products", params={"query": "silken tofu"})
         legacy = client.get(
@@ -284,7 +325,9 @@ def test_store_products_http_contract_and_openapi_describe_both_response_shapes(
         )
 
     assert modern.status_code == 200
-    assert modern.json() == {
+    payload = modern.json()
+    assert started_at <= datetime.fromisoformat(payload.pop('server_time')) <= datetime.now(timezone.utc)
+    assert payload == {
         "products": [PRODUCT],
         "expires_at": "2026-08-16T12:00:00Z",
     }

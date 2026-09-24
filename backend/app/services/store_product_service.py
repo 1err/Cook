@@ -1038,6 +1038,26 @@ async def _persist_positive_result(
             raise
 
 
+async def fetch_persisted_store_products_with_metadata(
+    prepared: PreparedStoreQuery,
+    session: AsyncSession,
+) -> StoreProductsResult | None:
+    """Read L2 only and translate its authoritative age into this API clock."""
+    database = await repo_store_cache.get_cached_store_products_with_metadata(
+        session, query=prepared.cache_query, store="weee", language=prepared.language,
+        cache_version=CACHE_VERSION, max_age_seconds=CACHE_TTL_SECONDS,
+    )
+    if database is None:
+        return None
+    products = normalize_store_products(database.products)
+    age_seconds = _authoritative_cache_age_seconds(database)
+    if not products or age_seconds is None:
+        return None
+    cache_key: CacheKey = ("weee", prepared.language, CACHE_VERSION, prepared.cache_query)
+    _memory_cache_set_from_database_entry(cache_key, products, database, age_seconds)
+    return _memory_cache_get_with_metadata(cache_key)
+
+
 async def fetch_store_products_with_metadata(
     query: str,
     session: AsyncSession | None = None,
@@ -1066,30 +1086,16 @@ async def fetch_store_products_with_metadata(
             _log_event("memory_hit", cache_key, priority=priority, started_at=started_at, product_count=len(memory.products))
             return memory
         if session is not None:
-            database = await repo_store_cache.get_cached_store_products_with_metadata(
-                session, query=prepared.cache_query, store="weee", language=prepared.language,
-                cache_version=CACHE_VERSION, max_age_seconds=CACHE_TTL_SECONDS,
-            )
-            if database is not None:
-                database_products = normalize_store_products(database.products)
-                database_age = _authoritative_cache_age_seconds(database)
-                if database_products and database_age is not None:
-                    _memory_cache_set_from_database_entry(
-                        cache_key,
-                        database_products,
-                        database,
-                        database_age,
-                    )
-                    winner = _memory_cache_get_with_metadata(cache_key)
-                    if winner is not None:
-                        _log_event(
-                            "postgres_hit",
-                            cache_key,
-                            priority=priority,
-                            started_at=started_at,
-                            product_count=len(winner.products),
-                        )
-                        return winner
+            winner = await fetch_persisted_store_products_with_metadata(prepared, session)
+            if winner is not None:
+                _log_event(
+                    "postgres_hit",
+                    cache_key,
+                    priority=priority,
+                    started_at=started_at,
+                    product_count=len(winner.products),
+                )
+                return winner
             memory = _memory_cache_get_with_metadata(cache_key)
             if memory is not None:
                 _log_event("memory_hit", cache_key, priority=priority, started_at=started_at, product_count=len(memory.products))

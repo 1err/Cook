@@ -12,6 +12,8 @@ import type {
   ShoppingListItem,
   User,
 } from "@cooking/shared";
+import { normalizeStoreProductResponse } from "./storeProductExpiry";
+export { normalizeStoreProductResponse } from "./storeProductExpiry";
 
 export type RecipePageOptions = { limit?: number; cursor?: string | null; q?: string; tags?: RecipeTagSlug[] };
 export function recipePageQuery(options: RecipePageOptions = {}): string {
@@ -60,6 +62,7 @@ export type StoreProduct = { name: string; price: string; image: string; url: st
 export type StoreProductsResponse = {
   products: StoreProduct[];
   expires_at: string | null;
+  server_time?: string;
 };
 export type StoreProductsBatchEntry = {
   query: string;
@@ -69,6 +72,7 @@ export type StoreProductsBatchEntry = {
 };
 export type StoreProductsBatchResponse = {
   entries: StoreProductsBatchEntry[];
+  server_time?: string;
 };
 
 export type ParseLinkPayload = {
@@ -326,13 +330,19 @@ export function createApiClient(options: ApiClientOptions) {
           method: "POST",
           body: JSON.stringify({ items }),
         }),
-      storeProducts: (query: string) =>
-        json<StoreProductsResponse>(`/store-products?query=${encodeURIComponent(query)}`),
-      storeProductsBatch: (queries: string[]) =>
-        json<StoreProductsBatchResponse>("/store-products/batch", {
+      storeProducts: async (query: string) => {
+        const startedAt = Date.now();
+        const response = await json<StoreProductsResponse>(`/store-products?query=${encodeURIComponent(query)}`);
+        return normalizeStoreProductResponse(response, startedAt);
+      },
+      storeProductsBatch: async (queries: string[]) => {
+        const startedAt = Date.now();
+        const response = await json<StoreProductsBatchResponse>("/store-products/batch", {
           method: "POST",
           body: JSON.stringify({ queries }),
-        }),
+        });
+        return normalizeStoreProductResponse(response, startedAt);
+      },
     },
     admin: {
       cachePreview: (params: URLSearchParams) => json(`/admin/cache-preview?${params.toString()}`),
