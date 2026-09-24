@@ -69,7 +69,7 @@ docker compose down && docker compose up --build -d   # then open http://localho
   - `OPENAI_API_KEY=<real key>` — set in the ECS task def env (not in this repo). When unset/empty, extraction reports HTTP 503; shopping refinement and tutorial metadata can use local conservative fallbacks. Production credentials must be supplied outside the image.
 - Database: AWS RDS Postgres at `cooking-db.co944gii0fur.us-east-1.rds.amazonaws.com:5432`, database `postgres`, user `cooking`. `DATABASE_SSL` is **not** set in the task def today; if RDS forces TLS this should be flipped to `true`.
 - Image storage: S3 bucket `cooking-images-930067562682` in `us-east-1`. New recipe uploads are validated by the backend and stored as exactly those bytes under an account-prefixed key when both storage settings are configured. Both storage modes return `upload_url: ""` and `file_url`.
-- Migrations: backend container runs `alembic upgrade head` on startup (`backend/Dockerfile` CMD). New tasks therefore self-migrate; a separate controlled migration job remains a production scaling follow-up. Non-root containers require the uploads bind mount to be writable by UID 1001.
+- Migrations: backend container runs `alembic upgrade head` on startup (`backend/Dockerfile` CMD). The analytics release first applied `20260924_analytics` in a separate advisory-locked ECS task before updating the service; startup migrations were then a no-op. Reuse this controlled migration-first order for future schema changes. Non-root containers require the uploads bind mount to be writable by UID 1001.
 
 **Deploy procedure (single script):**
 

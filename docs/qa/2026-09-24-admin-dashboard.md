@@ -2,7 +2,7 @@
 
 ## Delivery state
 
-Production account reset is complete. Dashboard code and analytics migration are committed on an isolated feature branch for local review; neither has been deployed. Existing application flows and Store cache remain. The account menu replaces Design system with Dashboard while retaining its source.
+Production account reset is complete. The user subsequently approved deployment; the dashboard and analytics migration are now live. See `2026-09-24-admin-dashboard-production.md` for release evidence. Existing application flows and Store cache remain. The account menu replaces Design system with Dashboard while retaining its source.
 
 Local preview: http://localhost:3149/admin/dashboard, API localhost:8159, disposable PostgreSQL localhost:55439. The browser uses a synthetic administrator, `owner@example.com`. No production account data was copied into the preview, tests, screenshots, or Figma.
 

@@ -1,6 +1,6 @@
 # Chef World administrator analytics proposal
 
-Status: approved and implemented in an isolated local preview. Production account reset is complete; dashboard rollout awaits preview review.
+Status: approved and deployed to production on September 24, 2026. Account reset, analytics migration, ECS rollout, and Vercel promotion are verified.
 
 ## Outcome
 

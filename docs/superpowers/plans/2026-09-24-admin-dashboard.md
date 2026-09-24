@@ -96,3 +96,7 @@ The user approved the written scope and explicitly instructed implementation in 
 - Ruling: Figma's Starter tool rate limit prevented canvas work after an empty file was created. A generated visual concept and implemented browser preview provide the review artifact instead. Cost if wrong: there is no editable Figma handoff yet.
 - Deferred minor: aggregate-backed long-range charts remain future work; historical raw user activity cannot be reconstructed.
 - Ruling: production reset was authorized separately; dashboard delivery remains a local review preview under the approved spec. No production analytics migration or dashboard deployment has run.
+
+## Authorized production follow-up
+
+The user approved deployment after reviewing the local preview. Release `b552f5585778580461d562c436795ced7f7923a1` is live on ECS revision 12 and Vercel deployment `dpl_FpoAHbgxwQCGnPtQRjtqKLu9sHDA`. The advisory-locked migration completed before service update, then authenticated admin reporting, health, CORS, browser login redirection, exact deployment identity, and logs passed. See `docs/qa/2026-09-24-admin-dashboard-production.md`.
