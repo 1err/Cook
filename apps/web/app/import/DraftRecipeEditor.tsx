@@ -1,7 +1,7 @@
 "use client";
 
 import { isCompleteRecipeDraft } from "@cooking/shared";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../components/ui/Icon";
 import { apiFetch } from "../lib/api";
 import { useT } from "../lib/i18n";
@@ -33,12 +33,21 @@ export interface DraftRecipeEditorProps {
   draft: Recipe;
   disabled?: boolean;
   requireCompleteRecipe?: boolean;
+  reviewNotice?: ReactNode;
   onChange: (next: Recipe) => void;
   onBack: () => void;
   onSaveSuccess: (savedId: string) => void;
 }
 
-export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requireCompleteRecipe = false, disabled = false }: DraftRecipeEditorProps) {
+function stepTotalMinutes(steps: Recipe["steps"]): number | null {
+  const instructions = steps?.filter(step => step.text.trim()) ?? [];
+  if (!instructions.length || instructions.some(step =>
+    typeof step.duration_seconds !== "number" || !Number.isFinite(step.duration_seconds) || step.duration_seconds <= 0,
+  )) return null;
+  return Math.ceil(instructions.reduce((total, step) => total + step.duration_seconds!, 0) / 60);
+}
+
+export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requireCompleteRecipe = false, disabled = false, reviewNotice }: DraftRecipeEditorProps) {
   const t = useT();
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -46,8 +55,16 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
   const saving = savingRequest || disabled;
   const [error, setError] = useState<string | null>(null);
   const [tutorialValid, setTutorialValid] = useState(true);
+  const [fixedTotalForId, setFixedTotalForId] = useState<string | null>(null);
   const complete = !requireCompleteRecipe || isCompleteRecipeDraft(draft);
   const draftTags = draft.library_tags ?? [];
+  const estimatedTotal = draft.steps?.some(step => step.duration_source === "estimated" || step.duration_source === "fallback");
+  const stepTotal = stepTotalMinutes(draft.steps);
+  // A different source total may include overlapping work or unlisted preparation.
+  // Keep it, and never replace a total explicitly entered in this editor.
+  const automaticTotal = fixedTotalForId !== draft.id
+    && (draft.total_time_minutes == null || draft.total_time_minutes === stepTotal);
+  const displayedTotal = automaticTotal ? stepTotal : draft.total_time_minutes;
 
   function toggleDraftTag(tag: RecipeTagSlug) {
     onChange({
@@ -83,6 +100,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
         method: "POST",
         body: JSON.stringify({
           ...draft,
+          total_time_minutes: displayedTotal ?? null,
           ingredients: draft.ingredients.filter((item) => item.name.trim()),
           ...(requireCompleteRecipe ? { title: draft.title.trim(), steps: draft.steps?.filter(step => step.text.trim()) } : {}),
         }),
@@ -106,8 +124,8 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
 
       <header className={styles.reviewHeader}>
         <div>
-          <h1 className="cw-display">{t("import.reviewRecipe")}</h1>
-          <p>{t("import.reviewPersonalize")}</p>
+          <h1 className="cw-display">{t(requireCompleteRecipe ? "import.writeRecipe" : "import.reviewRecipe")}</h1>
+          <p>{t(requireCompleteRecipe ? "import.writeRecipeHelp" : "import.reviewPersonalize")}</p>
         </div>
         <button
           type="button"
@@ -115,10 +133,11 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
           onClick={() => void handleSaveRecipe()}
           disabled={saving || !tutorialValid || !complete}
         >
-          {saving ? t("common.saving") : t("import.saveRecipe")}
+          {savingRequest ? t("common.saving") : t("import.saveRecipe")}
         </button>
       </header>
 
+      {reviewNotice ? <fieldset className={styles.reviewNotice} disabled={savingRequest}>{reviewNotice}</fieldset> : null}
       {!complete ? <p>{t("import.manualRequired")}</p> : null}
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
 
@@ -151,15 +170,16 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
           </div>
 
           <div className={styles.field}>
-            <label htmlFor="draft-total-time">{t("recipe.totalTime")}</label>
+            <label htmlFor="draft-total-time">{t(estimatedTotal ? "recipe.estimatedTotal" : "recipe.totalTime")}</label>
             <div className={styles.timeField}>
               <input
                 id="draft-total-time"
                 type="number"
                 min={0}
-                value={draft.total_time_minutes ?? ""}
+                value={displayedTotal ?? ""}
                 onChange={(event) => {
                   const raw = event.target.value;
+                  setFixedTotalForId(draft.id);
                   onChange({
                     ...draft,
                     total_time_minutes: raw === "" ? null : Math.max(0, Math.floor(Number(raw) || 0)),
@@ -169,6 +189,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
               />
               <span>{t("recipe.totalTime.minutesSuffix")}</span>
             </div>
+            {estimatedTotal ? <small>{t("recipe.estimatedTotalHelp")}</small> : null}
           </div>
 
           <div className={styles.reviewTags}>
@@ -266,7 +287,13 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
           <StepListEditor
             sourceUrl={draft.source_url}
             steps={draft.steps ?? []}
-            onChange={(steps) => onChange({ ...draft, steps })}
+            onChange={(steps) => {
+              if (!automaticTotal) setFixedTotalForId(draft.id);
+              onChange({ ...draft, steps,
+                ...(automaticTotal ? { total_time_minutes: stepTotalMinutes(steps) } : {}),
+              });
+            }}
+            estimateOnEdit
             onValidityChange={setTutorialValid}
             disabled={saving}
           />

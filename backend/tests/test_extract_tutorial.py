@@ -418,8 +418,8 @@ async def test_nonempty_partial_tutorial_is_audited_and_missing_transfer_is_repa
     assert recipe.steps[2].instruction_source == "source"
     assert recipe.steps[2].source_start_seconds == 10
     assert recipe.steps[2].source_excerpt == "Transfer it to the claypot."
-    assert recipe.steps[2].duration_seconds is None
-    assert recipe.steps[2].duration_source == "unknown"
+    assert 15 <= recipe.steps[2].duration_seconds <= 60
+    assert recipe.steps[2].duration_source == "estimated"
     assert create.await_count == 2
     assert source in create.await_args.kwargs["messages"][0]["content"]
 
@@ -459,7 +459,8 @@ async def test_audit_failure_preserves_valid_initial_draft_and_requires_review(m
     assert recipe.import_review.status == "needs_review"
     assert recipe.import_review.warnings
     assert "secret" not in " ".join(recipe.import_review.warnings)
-    assert recipe.steps[0].duration_seconds is None
+    assert 60 <= recipe.steps[0].duration_seconds <= 180
+    assert recipe.steps[0].duration_source == "estimated"
 
 
 @pytest.mark.asyncio
@@ -556,7 +557,8 @@ async def test_manual_tofu_reference_preserves_order_duration_relationship_and_u
     ]
     assert recipe.steps[2].duration_seconds == 360
     assert recipe.steps[5].duration_seconds == 300
-    assert recipe.steps[3].duration_seconds is None
+    assert 15 <= recipe.steps[3].duration_seconds <= 60
+    assert recipe.steps[3].duration_source == "estimated"
     assert recipe.ingredients[0].quantity == "约400克"
     assert recipe.import_review.status == "needs_review"
     assert "葱白" in " ".join(recipe.import_review.warnings)
@@ -577,7 +579,8 @@ async def test_video_pipeline_uses_same_media_in_both_passes_and_keeps_timestamp
 
     assert recipe.steps[0].instruction_source == "source"
     assert recipe.steps[0].source_start_seconds == 42
-    assert recipe.steps[0].duration_seconds is None
+    assert 15 <= recipe.steps[0].duration_seconds <= 60
+    assert recipe.steps[0].duration_source == "estimated"
     assert recipe.import_review.status == "ready"
     assert recipe.import_review.source_kind == "media"
     assert complete.await_count == 2
@@ -957,8 +960,9 @@ async def test_unstated_cooking_time_cannot_be_labeled_source_stated(monkeypatch
     monkeypatch.setattr(extract_module, "get_openai_client", lambda: client)
     recipe = await extract_recipe_from_text("Fry tofu in a pan.")
     assert recipe.import_review.status == "needs_review"
-    assert recipe.steps[0].duration_source == "unknown"
-    assert recipe.steps[0].duration_seconds is None
+    assert recipe.steps[0].duration_source == "estimated"
+    assert recipe.steps[0].duration_seconds > 0
+    assert any("not stated" in warning for warning in recipe.import_review.warnings)
 
 
 @pytest.mark.asyncio

@@ -54,7 +54,7 @@ describe("ImportPage source errors", () => {
       "TikTok only exposed an attribution caption.",
     );
 
-    await user.type(url, "x");
+    await user.type(screen.getByLabelText("YouTube, TikTok, or RedNote URL"), "x");
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: "Create draft" }));

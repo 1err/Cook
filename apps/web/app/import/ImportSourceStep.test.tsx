@@ -52,7 +52,7 @@ describe("ImportSourceStep", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Create draft" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Prepare draft" })).toBeDisabled();
   });
 
   it("explains public links, copied share text, and the upload fallback", () => {
@@ -180,7 +180,7 @@ describe("ImportSourceStep", () => {
     const input = screen.getByLabelText("YouTube, TikTok, or RedNote URL") as HTMLInputElement;
     expect(input).toHaveValue(shareText);
     expect(input.checkValidity()).toBe(true);
-    await user.click(screen.getByRole("button", { name: "Create draft" }));
+    await user.click(screen.getByRole("button", { name: "Prepare draft" }));
     expect(onSubmit).toHaveBeenCalledOnce();
   });
 
@@ -196,7 +196,7 @@ describe("ImportSourceStep", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Selected: 擂辣椒烧排骨.mp4");
     expect(screen.getByText("Maximum file size: 30 MB.")).toBeVisible();
     expect((screen.getByLabelText("Upload video") as HTMLInputElement).files).toHaveLength(0);
-    await user.click(screen.getByRole("button", { name: "Create draft" }));
+    await user.click(screen.getByRole("button", { name: "Prepare draft" }));
     expect(onSubmit).toHaveBeenCalledOnce();
   });
 
@@ -209,7 +209,7 @@ describe("ImportSourceStep", () => {
         parsing={false} error={null} onChange={vi.fn()} onSubmit={vi.fn()} />,
     );
 
-    expect(screen.getByRole("button", { name: "Create draft" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Prepare draft" })).toBeDisabled();
     await user.upload(screen.getByLabelText("Upload video"), media);
     expect(onMediaChange).toHaveBeenCalledWith(media);
   });
@@ -225,7 +225,7 @@ describe("ImportSourceStep", () => {
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent(message);
-    expect(screen.getByRole("button", { name: "Create draft" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Prepare draft" })).toBeDisabled();
   });
 
   it.each([15 * 1024 * 1024, 30 * 1024 * 1024])("accepts a %i-byte video under the server's 30MiB limit", (size) => {
@@ -235,7 +235,7 @@ describe("ImportSourceStep", () => {
         parsing={false} error={null} onChange={vi.fn()} onSubmit={vi.fn()} />,
     );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create draft" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Prepare draft" })).toBeEnabled();
   });
 
   it("blocks a video one byte over the server's 30MiB limit", () => {
@@ -245,6 +245,6 @@ describe("ImportSourceStep", () => {
         parsing={false} error={null} onChange={vi.fn()} onSubmit={vi.fn()} />,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("This file exceeds the upload limit.");
-    expect(screen.getByRole("button", { name: "Create draft" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Prepare draft" })).toBeDisabled();
   });
 });

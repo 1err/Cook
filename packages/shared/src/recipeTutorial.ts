@@ -224,6 +224,37 @@ function isActionType(value: unknown): value is RecipeActionType {
   return (RECIPE_ACTION_TYPES as readonly unknown[]).includes(value);
 }
 
+/** Local planning estimates, never evidence of a duration stated in the source. */
+export function estimateRecipeStepDuration(text: string): number | null {
+  if (!text.trim()) return null;
+  // Completed cooking describes the ingredient in instructions such as
+  // “把煎好的豆腐转入砂锅”; it must not become another frying timer.
+  const instruction = text.toLowerCase().replace(
+    /(?:煎|炸|炒|炖|燉|焖|燜|煨|煮|蒸|烤)(?:好的|过的|過的|熟的|至[^，。！？；,;.!?\n]{1,16}的)/g,
+    "",
+  );
+  // Actual cooking wins over short operations in a combined instruction, e.g.
+  // “Transfer to the pot, then simmer”. Word boundaries exclude fried/braised.
+  const cooking: readonly [RegExp, number][] = [
+    [/\b(?:bake|roast)\b|烤/, 1_800],
+    [/\b(?:simmer|stew|braise|boil|steam)\b|炖|燉|焖|燜|煨|煮|蒸/, 600],
+    [/\b(?:sear|fry|render)\b|\bbrown\s+(?:the|a|an|some)\b|煎|炒|炸/, 300],
+    [/\b(?:rest|wait|cool|chill)\b|静置|靜置|醒发|醒發|冷却|冷卻|冷藏/, 300],
+    [/\b(?:heat|preheat|warm)\b.{0,24}\b(?:pan|pot|oil|butter|water|oven|skillet|wok)\b|预热|預熱|热锅|熱鍋|烧热|燒熱/, 120],
+  ];
+  // Both “turn off the heat” and “turn the heat off” are brief controls,
+  // not preheating. Removing a pan from heat is another handling action.
+  const heatControl = /\b(?:turn|switch)\s+(?:off\s+(?:the\s+)?(?:heat|burner|stove|oven)|(?:the\s+)?(?:heat|burner|stove|oven)\s+off)\b|\bremove\b[^,.;!?]{0,40}\bfrom\s+(?:the\s+)?heat\b|关火|關火|离火|離火/;
+  const withoutHeatControl = instruction.replace(heatControl, "");
+  for (const [pattern, seconds] of cooking) {
+    if (pattern.test(withoutHeatControl)) return seconds;
+  }
+  if (heatControl.test(instruction) || /\b(?:garnish|sprinkle)\b|撒|点缀|點綴/.test(instruction)) return 15;
+  if (/\b(?:transfer|move|add|pour|return|season|plate|serve)\b|转入|轉入|转移|轉移|移入|盛入|盛出|倒入|倒出|放入|放到|加入|下入|回锅|回鍋|调味|調味|装盘|裝盤|上桌/.test(instruction)) return 30;
+  if (/\b(?:mix|stir|whisk|fold|drain|strain)\b|拌|搅|攪|沥|瀝|滤|濾/.test(instruction)) return 60;
+  return 120;
+}
+
 export function createRecipeStep(
   overrides: RecipeStepOverrides = {},
 ): CanonicalRecipeStep {
@@ -281,12 +312,15 @@ export function formatRecipeStepMetadata(
   ].join(" · ");
 }
 
-/** Editing instructions invalidates extracted evidence and non-user timing. */
-export function editRecipeStepText(step: RecipeStep, text: string): RecipeStep {
+/** Editing invalidates source evidence and refreshes any non-user duration. */
+export function editRecipeStepText(step: RecipeStep, text: string, estimateDuration = false): RecipeStep {
+  const duration = estimateDuration ? estimateRecipeStepDuration(text) : null;
   return {
     ...step, text, instruction_source: "user",
     source_start_seconds: null, source_end_seconds: null, source_excerpt: null,
-    ...(step.duration_source === "user" ? {} : { duration_seconds: null, duration_source: "unknown" as const }),
+    ...(step.duration_source === "user" && canonicalDuration(step.duration_seconds) !== null
+      ? {}
+      : { duration_seconds: duration, duration_source: duration === null ? "unknown" as const : "estimated" as const }),
   };
 }
 

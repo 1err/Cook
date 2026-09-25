@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Recipe } from "../types";
@@ -61,6 +61,7 @@ vi.mock("../lib/i18n", () => ({
       "recipe.tips.addRow": "Add tip",
       "recipe.tips.placeholder": "Tip",
       "recipe.totalTime": "Total time",
+      "recipe.estimatedTotal": "Estimated total",
       "recipe.totalTime.minutesSuffix": "minutes",
     };
     return (messages[key] ?? key).replace(/\{(\w+)\}/g, (_, name: string) => String(vars?.[name] ?? ""));
@@ -105,6 +106,76 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("DraftRecipeEditor", () => {
+  it("labels the total as estimated when the imported method uses rough step timings", () => {
+    render(<DraftRecipeEditor draft={draft} onChange={vi.fn()} onBack={vi.fn()} onSaveSuccess={vi.fn()} />);
+    expect(screen.getByLabelText("Estimated total")).toHaveValue(40);
+  });
+  it("keeps notice cancellation available while an import disables the draft", () => {
+    render(<DraftRecipeEditor draft={draft} disabled reviewNotice={<button type="button">Cancel import</button>}
+      onChange={vi.fn()} onBack={vi.fn()} onSaveSuccess={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Cancel import" })).toBeEnabled();
+  });
+  it("fills a manual draft's total as its first nonblank step receives an estimate", async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValueOnce(new Response(JSON.stringify({ ...draft, id: "saved-manual" })));
+    function ControlledDraft() {
+      const [value, setValue] = useState<Recipe>({ ...draft, total_time_minutes: null,
+        steps: [{ id: "manual-step", text: "", duration_seconds: null, duration_source: "unknown" }] });
+      return <DraftRecipeEditor draft={value} onChange={setValue} onBack={vi.fn()} onSaveSuccess={vi.fn()} />;
+    }
+    render(<ControlledDraft />);
+    fireEvent.change(screen.getByLabelText("Step 1"), { target: { value: "Chop the onion." } });
+    expect(screen.getByLabelText("Estimated total")).toHaveValue(2);
+    await user.click(screen.getByRole("button", { name: "Save recipe" }));
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledOnce());
+    expect(JSON.parse(mockApiFetch.mock.calls[0][1].body).total_time_minutes).toBe(2);
+  });
+
+  it("recalculates an automatic total after a step duration changes", () => {
+    function ControlledDraft() {
+      const [value, setValue] = useState<Recipe>({ ...draft, total_time_minutes: 8 });
+      return <DraftRecipeEditor draft={value} onChange={setValue} onBack={vi.fn()} onSaveSuccess={vi.fn()} />;
+    }
+    render(<ControlledDraft />);
+    fireEvent.change(screen.getByLabelText("Step 1 minutes"), { target: { value: "3" } });
+    expect(screen.getByLabelText("Total time")).toHaveValue(3);
+    fireEvent.change(screen.getByLabelText("Step 1 seconds"), { target: { value: "15" } });
+    expect(screen.getByLabelText("Total time")).toHaveValue(4);
+  });
+
+  it("never replaces a user-entered total even when it initially matches the step sum", () => {
+    function ControlledDraft() {
+      const [value, setValue] = useState<Recipe>({ ...draft, total_time_minutes: 8 });
+      return <DraftRecipeEditor draft={value} onChange={setValue} onBack={vi.fn()} onSaveSuccess={vi.fn()} />;
+    }
+    render(<ControlledDraft />);
+    fireEvent.change(screen.getByLabelText("Estimated total"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Estimated total"), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText("Step 1"), { target: { value: "Garnish with scallions." } });
+    expect(screen.getByLabelText("Estimated total")).toHaveValue(8);
+    fireEvent.change(screen.getByLabelText("Step 1 seconds"), { target: { value: "45" } });
+    expect(screen.getByLabelText("Total time")).toHaveValue(8);
+  });
+
+  it("preserves an initial total that differs from the sum of the tutorial steps", () => {
+    function ControlledDraft() {
+      const [value, setValue] = useState(draft);
+      return <DraftRecipeEditor draft={value} onChange={setValue} onBack={vi.fn()} onSaveSuccess={vi.fn()} />;
+    }
+    render(<ControlledDraft />);
+    fireEvent.change(screen.getByLabelText("Step 1"), { target: { value: "Garnish with scallions." } });
+    expect(screen.getByLabelText("Estimated total")).toHaveValue(40);
+  });
+  it("keeps a separate initial total fixed even when an intermediate edit happens to match it", () => {
+    function ControlledDraft() {
+      const [value, setValue] = useState(draft);
+      return <DraftRecipeEditor draft={value} onChange={setValue} onBack={vi.fn()} onSaveSuccess={vi.fn()} />;
+    }
+    render(<ControlledDraft />);
+    fireEvent.change(screen.getByLabelText("Step 1 minutes"), { target: { value: "40" } });
+    fireEvent.change(screen.getByLabelText("Step 1 minutes"), { target: { value: "3" } });
+    expect(screen.getByLabelText("Total time")).toHaveValue(40);
+  });
   it("lets an optional gram or milliliter conversion be edited without changing the original amount or notes", async () => {
     const user = userEvent.setup();
     mockApiFetch.mockResolvedValueOnce(new Response(JSON.stringify({ ...draft, id: "saved-1" })));
@@ -188,6 +259,7 @@ describe("DraftRecipeEditor", () => {
             observedDraft = next;
             setValue(next);
           }}
+          reviewNotice={<button type="button">Open added text</button>}
           onBack={vi.fn()}
           onSaveSuccess={onSaveSuccess}
         />
@@ -214,6 +286,7 @@ describe("DraftRecipeEditor", () => {
     expect(ingredient).toBeDisabled();
     expect(screen.getByLabelText("Amount in g / ml 1")).toBeDisabled();
     expect(instructions).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Open added text" })).toBeDisabled();
 
     await user.click(ingredient);
     await user.keyboard("{Control>}a{/Control}Unsent ingredient mutation");
@@ -231,7 +304,7 @@ describe("DraftRecipeEditor", () => {
       steps: [{
         ...draft.steps?.[0],
         text: "Captured tutorial step.",
-        duration_seconds: null, duration_source: "unknown", instruction_source: "user",
+        duration_seconds: 120, duration_source: "estimated", instruction_source: "user",
         source_start_seconds: null, source_end_seconds: null, source_excerpt: null,
       }],
     });
@@ -241,6 +314,7 @@ describe("DraftRecipeEditor", () => {
       await pending.promise;
     });
     await waitFor(() => expect(screen.getByRole("button", { name: "Save recipe" })).toBeEnabled());
+    expect(screen.getByRole("button", { name: "Open added text" })).toBeEnabled();
     expect(observedDraft.ingredients[0].name).toBe("Captured tofu");
     expect(observedDraft.steps?.[0].text).toBe("Captured tutorial step.");
     expect(onSaveSuccess).not.toHaveBeenCalled();

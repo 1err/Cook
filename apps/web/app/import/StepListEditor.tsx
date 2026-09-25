@@ -23,6 +23,7 @@ export interface StepListEditorProps {
   uploadImage?: (file: File) => Promise<string>;
   onValidityChange?: (valid: boolean) => void;
   disabled?: boolean;
+  estimateOnEdit?: boolean;
 }
 
 function hasValidDuration(step: RecipeStep): boolean {
@@ -45,6 +46,7 @@ export function StepListEditor({
   uploadImage,
   onValidityChange,
   disabled = false,
+  estimateOnEdit = false,
 }: StepListEditorProps) {
   const t = useT();
   const headingId = useId();
@@ -119,7 +121,7 @@ export function StepListEditor({
                 aria-label={t("recipe.tutorial.editor.stepLabel", { step: index + 1 })}
                 placeholder={t("recipe.step.textPlaceholder")}
                 value={step.text}
-                onChange={(event) => updateAt(index, editRecipeStepText(step, event.target.value))}
+                onChange={(event) => updateAt(index, editRecipeStepText(step, event.target.value, estimateOnEdit))}
               />
               <StepEvidence step={step} sourceUrl={sourceUrl} />
               <div className={styles.stepMetadata}>

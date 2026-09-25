@@ -43,7 +43,7 @@ it("waits for authentication before claiming shared media without auto extractio
 });
 it("submits the shared File to the async media job and retains it on failure", async () => {
   render(<ImportPage />); await screen.findByText(/Shared video ready/);
-  fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+  fireEvent.click(screen.getByRole("button", { name: "Prepare draft" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Try again");
   const form = mocks.media.mock.calls[0][0];
   expect(form.get("file")).toBe(video); expect(form.get("source_url")).toBe(source);
@@ -53,7 +53,7 @@ it("uses Android title-field links without overriding the dish title", async () 
   mocks.read.mockResolvedValue({ id, createdAt: Date.now(), title: source, text: "", url: "", video: null });
   render(<ImportPage />);
   await waitFor(() => expect(screen.getByLabelText("YouTube, TikTok, or RedNote URL")).toHaveValue(source));
-  fireEvent.click(screen.getByRole("button", { name: "Create draft" })); await screen.findByRole("alert");
+  fireEvent.click(screen.getByRole("button", { name: "Prepare draft" })); await screen.findByRole("alert");
   expect(mocks.link).toHaveBeenCalledWith(expect.objectContaining({ mode: "link", url: source, title: undefined }));
 });
 it("discards without an API call and removes the navigation reference", async () => {
@@ -76,7 +76,7 @@ it.each([
   window.history.replaceState({}, "", "/import");
   render(<ImportPage />);
   fireEvent.change(screen.getByLabelText("YouTube, TikTok, or RedNote URL"), { target: { value: `Try this recipe ${url}` } });
-  fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+  fireEvent.click(screen.getByRole("button", { name: "Prepare draft" }));
   await screen.findByRole("alert");
   expect(mocks.link).toHaveBeenCalledWith(expect.objectContaining({ url, mode: "link" }));
 });

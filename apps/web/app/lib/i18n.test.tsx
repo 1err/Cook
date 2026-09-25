@@ -36,8 +36,8 @@ test.each([
   expect(screen.getByText(language === "zh" ? "菜谱信息" : "Recipe details")).toBeVisible();
   expect(screen.getByText(language === "zh" ? "编辑标签" : "Edit tags")).toBeVisible();
   expect(screen.getByText(language === "zh"
-    ? "保存到菜谱库前，你可以先检查并编辑内容。"
-    : "Review and edit before saving to your library.")).toBeVisible();
+    ? "核对并保存后，食谱才会加入你的收藏。"
+    : "Nothing is saved to your library until you review it.")).toBeVisible();
 });
 
 test("keeps a saved Chinese app preference through StrictMode and English public navigation", async () => {

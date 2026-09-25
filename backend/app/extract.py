@@ -20,6 +20,7 @@ from app.services.tutorial_quality import (
 )
 from app.services.video_analysis import complete_video
 from app.services.video_response_schemas import VIDEO_AUDIT_SCHEMA, VIDEO_EXTRACTION_SCHEMA
+from app.services.tutorial_timing import estimate_import_step_durations
 from app.video_import import (
     UnsupportedVideoUrl,
     VideoSource,
@@ -202,6 +203,7 @@ def fetch_transcript_from_video_link(url: str) -> TranscriptFetchResult:
 
 _TUTORIAL_GRANULARITY = """Each action and each tutorial step must describe one distinct operation. Merge adjacent narration fragments only when they describe the same operation. Give separate steps to distinct ingredient preparations, pan preparation, frying, vessel transfers, fat rendering, cooking the next ingredient (such as eggplant), sauce/seasoning additions, and finishing whenever those operations appear in the source. Do not bury these operations inside a long paragraph or semicolon list. Preserve their source order. Let the source determine the number of steps; never invent an operation to fill a category."""
 _CONCISE_OUTPUT = """Keep the JSON concise: short verb-led action descriptions, one concise actionable sentence per step, and the shortest evidence excerpt that supports all claimed details. Include every distinct operation, but do not repeat a full narration in actions, steps, notes and tips. Keep quantities, heat, timing and doneness cues needed to execute the action. No explanations, commentary, markdown or unrequested fields."""
+_TUTORIAL_TIMING = """Give every nonempty step a practical duration_seconds estimate when its cooking duration is not explicitly stated, with duration_source=\"estimated\". Use realistic short estimates for handling: transfers/additions about 15–30 seconds, garnishing about 15 seconds, mixing about 30–60 seconds, and basic washing/chopping about 1–3 minutes. Do not assign a generic five minutes to these brief operations. Consider the exact action and stated quantity for cooking estimates. Keep estimates in timing metadata only; never add them to instruction text or evidence. Never equate clip length or timestamp spans to cooking duration. Keep explicit supported time as duration_source=\"stated\". A six-minute total with three minutes per side is ONE six-minute step, not extra duplicate timers."""
 
 
 def _build_extraction_prompt(transcript: str, *, audiovisual: bool = False) -> str:
@@ -227,13 +229,15 @@ Return one JSON object with:
 - equipment: distinct tools named or clearly shown, or [].
 - actions: ordered list of {{id, text, source_excerpt, source_start_seconds, source_end_seconds, role}}. Use unique stable IDs such as a1, a2. role is main, recap or alternative. {evidence_rule}
 - steps: ordered list of {{id, text, source_action_ids, instruction_source, duration_seconds, duration_source, attention_type, action_type}}. Each needs a unique step ID such as step1 and must reference supporting main action IDs and have instruction_source="source". Merge adjacent fragments only for the same action. Keep distinct operations readable. Return [] if no method is present.
-  - duration_seconds: positive whole seconds from 15 to 86400 only for an explicit time or a defensible estimate. Keep null when unknown, especially brief transfers/garnishes. Never equate clip length or timestamp spans to cooking duration.
-  - duration_source: "stated" for explicit source time, "estimated" for a plausible estimate, "unknown" with null duration. A six-minute total with three minutes per side is ONE six-minute step, not extra duplicate timers.
+  - duration_seconds: positive whole seconds from 15 to 86400 for an explicit time or a practical estimate.
+  - duration_source: "stated" for explicit source time, otherwise "estimated".
   - attention_type: "hands_on" or "passive".
   - action_type: one of {", ".join(sorted(ACTION_TYPES))}.
 - tips: only explicitly supported tips, or [].
 
-Do not introduce new ingredients, quantities, temperatures, techniques, or procedural claims that are not supported by the source. Unknown quantities and times remain unknown. Preserve Chinese ingredients, steps and tips in Chinese. If an ingredient has no explained use, keep it without inventing a use.
+{_TUTORIAL_TIMING}
+
+Do not introduce new ingredients, quantities, temperatures, techniques, or procedural claims that are not supported by the source. Unknown quantities remain unknown; estimated timing must never be claimed as source-stated. Preserve Chinese ingredients, steps and tips in Chinese. If an ingredient has no explained use, keep it without inventing a use.
 
 --- SOURCE / USER NOTES ---
 {transcript.strip() or "(Use the attached media; no additional source text.)"}
@@ -455,7 +459,9 @@ Check EVERY candidate, even when it already contains usable steps. Compare the f
 Split candidate steps that bundle distinct operations, preserving every supported action and its source reference. {_TUTORIAL_GRANULARITY}
 {_CONCISE_OUTPUT}
 
-Do not change the extracted ingredient list, invent ingredient uses, or create a typical cooking method from title/ingredients alone. If no method exists, return steps=[] and audit.method_available=false. If the source leaves an ingredient's use unclear, retain that ambiguity in warnings. Unknown duration_seconds stays null with duration_source="unknown"; preserve supported stated/estimated timing. Source timestamps are not cooking durations.
+Do not change the extracted ingredient list, invent ingredient uses, or create a typical cooking method from title/ingredients alone. If no method exists, return steps=[] and audit.method_available=false. If the source leaves an ingredient's use unclear, retain that ambiguity in warnings. Preserve supported stated timing and reasonable estimates; repair missing or implausible timing as estimated metadata only.
+
+{_TUTORIAL_TIMING}
 
 Return one JSON object with exactly three top-level keys: actions (the complete ordered inventory), steps (the complete repaired tutorial), and audit (a nested object). This is the full outer shape for an empty-method result; populate the action and step arrays whenever a method exists:
 {{"actions": [], "steps": [], "audit": {{"complete": true, "order_valid": true, "method_available": false,
@@ -646,6 +652,7 @@ async def _extract_with_audit(transcript: str, *, kind: str, request, audiovisua
         logger.warning("Recipe completeness audit failed; retaining draft error_type=%s", type(exc).__name__)
         warnings.extend(first_warnings)
 
+    data["steps"] = estimate_import_step_durations(data.get("steps") or [])
     return Recipe(
         id=str(uuid.uuid4()),
         title=data["title"],

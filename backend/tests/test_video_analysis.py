@@ -218,7 +218,8 @@ async def test_video_extraction_retains_first_draft_when_real_provider_audit_tru
     assert recipe.steps[0].instruction_source == "source"
     assert recipe.steps[0].source_start_seconds == 12
     assert recipe.steps[0].source_excerpt == "The cook slices the mushrooms."
-    assert recipe.steps[0].duration_seconds is None
+    assert 60 <= recipe.steps[0].duration_seconds <= 180
+    assert recipe.steps[0].duration_source == "estimated"
     assert recipe.import_review.status == "needs_review"
     assert AUDIT_UNAVAILABLE in recipe.import_review.warnings
     assert [request.url.path.rsplit(":", 1)[-1] for request in requests] == [

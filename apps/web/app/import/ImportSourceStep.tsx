@@ -66,6 +66,10 @@ export function ImportSourceStep({
         onSubmit();
       }}
     >
+      <div className={styles.sourceIntro}>
+        <p>{t("import.sourceEyebrow")}</p>
+        <h2>{t("import.sourceHeading")}</h2>
+      </div>
       <div className={styles.sourceTabs} role="tablist" aria-label="Recipe source">
         <button
           type="button"
@@ -117,7 +121,7 @@ export function ImportSourceStep({
           </small>
         </div>
       ) : values.mode === "media" ? (
-        <div className={styles.field} role="tabpanel">
+        <div className={`${styles.field} ${styles.mediaField}`} role="tabpanel">
           <label htmlFor="import-media">{t("import.uploadVideo")}</label>
           <input id="import-media" type="file" accept="video/*,audio/*" disabled={parsing} onChange={(event) => onMediaChange?.(event.target.files?.[0] ?? null)} />
           {media ? <small role="status">{t("import.mediaSelected", { name: media.name })}</small> : null}
@@ -147,7 +151,7 @@ export function ImportSourceStep({
         onClick={() => setDetailsOpen((open) => !open)}
         disabled={parsing}
       >
-        Optional details <Icon name={detailsOpen ? "chevronDown" : "add"} size={18} />
+        {t("import.extraDetails")} <Icon name={detailsOpen ? "chevronDown" : "add"} size={18} />
       </button>
 
       {detailsOpen ? (

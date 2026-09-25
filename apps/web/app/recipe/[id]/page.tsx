@@ -91,7 +91,7 @@ function RecipeDetailContent() {
             {typeof recipe.total_time_minutes === "number" ? (
               <dl className={styles.meta}>
                 <div>
-                  <dt>{t("recipe.totalTime")}</dt>
+                  <dt>{t(recipe.steps?.some(step => step.duration_source === "estimated" || step.duration_source === "fallback") ? "recipe.estimatedTotal" : "recipe.totalTime")}</dt>
                   <dd>{recipe.total_time_minutes} {t("recipe.totalTime.minutesSuffix")}</dd>
                 </div>
               </dl>

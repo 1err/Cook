@@ -95,7 +95,7 @@ describe("recipe tutorial contract", () => {
     });
 
     expect(formatRecipeStepMetadata(step, translateEnglish)).toBe(
-      "About 8 min · AI estimated · Passive",
+      "About 8 min · Estimated · Passive",
     );
   });
 
