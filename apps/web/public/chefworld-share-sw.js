@@ -4,8 +4,8 @@
 const SHARE_DB = "chefworld-pending-shares-v1";
 const SHARE_STORE = "shares";
 const SHARE_TTL = 15 * 60 * 1000;
-const MAX_VIDEO_BYTES = 14 * 1024 * 1024;
-const MAX_BODY_BYTES = 15 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
+const MAX_BODY_BYTES = 31 * 1024 * 1024;
 const MAX_PENDING_BYTES = 60 * 1024 * 1024;
 const MAX_PENDING_SHARES = 3;
 const SHARE_ID = /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;

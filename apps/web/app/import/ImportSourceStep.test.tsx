@@ -189,12 +189,12 @@ describe("ImportSourceStep", () => {
     const onSubmit = vi.fn();
     const media = new File(["video"], "擂辣椒烧排骨.mp4", { type: "video/mp4" });
     render(
-      <ImportSourceStep values={{ ...values, mode: "media" }} mediaEnabled maxMediaBytes={14 * 1024 * 1024} media={media}
+      <ImportSourceStep values={{ ...values, mode: "media" }} mediaEnabled maxMediaBytes={30 * 1024 * 1024} media={media}
         parsing={false} error={null} onChange={vi.fn()} onSubmit={onSubmit} />,
     );
 
     expect(screen.getByRole("status")).toHaveTextContent("Selected: 擂辣椒烧排骨.mp4");
-    expect(screen.getByText("Maximum file size: 14 MB.")).toBeVisible();
+    expect(screen.getByText("Maximum file size: 30 MB.")).toBeVisible();
     expect((screen.getByLabelText("Upload video") as HTMLInputElement).files).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "Create draft" }));
     expect(onSubmit).toHaveBeenCalledOnce();
@@ -225,6 +225,26 @@ describe("ImportSourceStep", () => {
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent(message);
+    expect(screen.getByRole("button", { name: "Create draft" })).toBeDisabled();
+  });
+
+  it.each([15 * 1024 * 1024, 30 * 1024 * 1024])("accepts a %i-byte video under the server's 30MiB limit", (size) => {
+    render(
+      <ImportSourceStep values={{ ...values, mode: "media" }} mediaEnabled maxMediaBytes={30 * 1024 * 1024}
+        media={new File([new Uint8Array(size)], "recipe.mp4", { type: "video/mp4" })}
+        parsing={false} error={null} onChange={vi.fn()} onSubmit={vi.fn()} />,
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create draft" })).toBeEnabled();
+  });
+
+  it("blocks a video one byte over the server's 30MiB limit", () => {
+    render(
+      <ImportSourceStep values={{ ...values, mode: "media" }} mediaEnabled maxMediaBytes={30 * 1024 * 1024}
+        media={new File([new Uint8Array(30 * 1024 * 1024 + 1)], "recipe.mp4", { type: "video/mp4" })}
+        parsing={false} error={null} onChange={vi.fn()} onSubmit={vi.fn()} />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("This file exceeds the upload limit.");
     expect(screen.getByRole("button", { name: "Create draft" })).toBeDisabled();
   });
 });

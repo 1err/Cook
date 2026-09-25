@@ -6,6 +6,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from app.core.media_limits import MAX_MEDIA_REQUEST_BYTES
+
 
 class HTTPGuardMiddleware:
     def __init__(self, app: ASGIApp, trusted_origins: list[str],
@@ -32,7 +34,7 @@ class HTTPGuardMiddleware:
         limit = self.upload_limit if headers.get("content-type", "").lower().startswith("multipart/form-data") else self.json_limit
         if (scope.get('path') == '/recipes/import-jobs/media'
                 and headers.get('content-type', '').lower().startswith('multipart/form-data')):
-            limit = 15 * 1024 * 1024  # 14 MiB media plus bounded multipart fields.
+            limit = MAX_MEDIA_REQUEST_BYTES
         if scope.get('path') == '/analytics/events':
             limit = min(limit, 4096)
         try:

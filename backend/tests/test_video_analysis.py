@@ -285,7 +285,7 @@ async def test_upload_signature_and_mime_required(provider, monkeypatch, ledger,
 async def test_large_inline_media_rejected_before_network(provider, monkeypatch, ledger, admitted):
     requests = mock_http(monkeypatch, provider, ledger)
     with pytest.raises(AIInputTooLargeError):
-        await provider.complete_video("Extract JSON.", media_data=MP4+b"\x00"*(15*1024*1024), media_type="video/mp4")
+        await provider.complete_video("Extract JSON.", media_data=MP4+b"\x00"*(30*1024*1024+1-len(MP4)), media_type="video/mp4")
     assert not requests and not ledger.reservations
 
 
@@ -371,3 +371,29 @@ async def test_oversize_provider_response_stays_reserved(provider, monkeypatch, 
     with pytest.raises(AIUnavailableError):
         await provider.complete_video("Extract JSON.", source_url=URL)
     assert ledger.finishes == [{"denied": False}]
+
+
+@pytest.mark.asyncio
+async def test_max_media_and_prompt_serialize_below_inline_provider_limit(provider, monkeypatch, ledger, admitted):
+    """Run actual HTTPX encoding at the boundary, without an external request."""
+    size = 30*1024*1024
+    data = MP4 + b'\x00'*(size-len(MP4))
+    requests = []
+    async def handler(request):
+        requests.append((request.url.path.rsplit(':',1)[-1],len(request.content)))
+        assert len(request.content) < 41*1024*1024 < 100_000_000
+        payload = json.loads(request.content)
+        inline = payload['contents'][0]['parts'][0]['inlineData']
+        assert inline['mimeType'] == 'video/mp4'
+        assert len(inline['data']) == 40*1024*1024
+        assert base64.b64decode(inline['data'][:32]) == MP4
+        assert payload['contents'][0]['parts'][1]['text'] == '蒸'*60_000
+        if request.url.path.endswith(':countTokens'):
+            return httpx.Response(200,json={'totalTokens':1200})
+        return httpx.Response(200,json=response_payload())
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(provider.httpx,'AsyncClient',lambda **kwargs:
+        real_client(transport=httpx.MockTransport(handler),**kwargs))
+    await provider.complete_video('蒸'*60_000,media_data=data,media_type='video/mp4')
+    assert [method for method,_ in requests] == ['countTokens','generateContent']
+    assert len(ledger.reservations) == 1 and len(ledger.finishes) == 1

@@ -12,7 +12,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock("../lib/auth", () => ({ useAuth: () => mocks.auth }));
 vi.mock("../components/RequireAuth", () => ({ RequireAuth: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock("../lib/api", () => ({ webApiClient: { recipes: {
-  importCapabilities: async () => ({ media_upload: true, video_analysis: true, max_media_bytes: 14 * 1024 * 1024 }),
+  importCapabilities: async () => ({ media_upload: true, video_analysis: true, max_media_bytes: 30 * 1024 * 1024 }),
   createMediaImportJob: mocks.media, createImportJob: mocks.link, cancelImportJob: vi.fn(),
 } } }));
 vi.mock("../lib/editorialCopy", () => ({ useEditorialCopy: () => ({ "import.tagline": "Import recipes" }) }));

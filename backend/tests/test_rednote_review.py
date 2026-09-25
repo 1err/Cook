@@ -96,7 +96,7 @@ async def test_download_preserves_actionable_size_error(monkeypatch, tmp_path, a
     await asyncio.sleep(0)
     await asyncio.sleep(0)
     assert caught.value.status_code == 413
-    assert "14 MB" in caught.value.detail["message"]
+    assert "Upload a shorter clip" in caught.value.detail["message"]
     assert not destination.exists() or destination.stat().st_size <= 8
 
 
@@ -142,3 +142,24 @@ async def test_bad_media_never_reaches_analysis(data, headers):
     with pytest.raises(HTTPException):
         await rednote.download_rednote_video(MEDIA_URL,
             transport=httpx.MockTransport(lambda request: httpx.Response(200, content=data, headers=headers)))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('size', [15*1024*1024,30*1024*1024], ids=['above-previous-cap','exact-new-cap'])
+async def test_download_accepts_larger_supported_public_video(size):
+    header = b'\x00\x00\x00\x18ftypisom' + b'\x00'*4
+    data = header + b'\x00'*(size-len(header))
+    received,mime = await rednote.download_rednote_video(MEDIA_URL,
+        transport=httpx.MockTransport(lambda request: httpx.Response(200,content=data)))
+    assert len(received) == size and received == data and mime == 'video/mp4'
+
+
+@pytest.mark.asyncio
+async def test_download_announced_size_one_byte_over_new_limit_is_actionable():
+    with pytest.raises(HTTPException) as caught:
+        await rednote.download_rednote_video(MEDIA_URL,
+            transport=httpx.MockTransport(lambda request: httpx.Response(200,
+                headers={'Content-Length':str(30*1024*1024+1)})))
+    assert caught.value.status_code == 413
+    assert caught.value.detail['code'] == 'media_too_large'
+    assert '30 MB' in caught.value.detail['message']

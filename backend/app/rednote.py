@@ -184,11 +184,11 @@ async def download_rednote_video(url: str, *, transport=None) -> tuple[bytes, st
                     if length < 0:
                         break
                     if length > MAX_MEDIA_BYTES:
-                        raise fail("media_too_large", "This video exceeds 14 MB. Upload a shorter clip or paste recipe text.", 413)
+                        raise fail("media_too_large", f"This video exceeds {MAX_MEDIA_BYTES // 1024 // 1024} MB. Upload a shorter clip or paste recipe text.", 413)
                     data = bytearray()
                     async for chunk in response.aiter_bytes(64 * 1024):
                         if len(data) + len(chunk) > MAX_MEDIA_BYTES:
-                            raise fail("media_too_large", "This video exceeds 14 MB. Upload a shorter clip or paste recipe text.", 413)
+                            raise fail("media_too_large", f"This video exceeds {MAX_MEDIA_BYTES // 1024 // 1024} MB. Upload a shorter clip or paste recipe text.", 413)
                         data.extend(chunk)
                     content = bytes(data)
                     mime = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()

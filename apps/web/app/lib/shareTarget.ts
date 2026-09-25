@@ -76,7 +76,7 @@ export function sharedRecipeText(share: Pick<SharedRecipeSource, "title" | "text
 
 export function shareErrorMessage(code: string): string {
   const messages: Record<string, string> = {
-    "too-large": "Shared videos must be 14 MB or smaller.",
+    "too-large": "Shared videos must be 30 MB or smaller.",
     invalid: "Share one MP4, MOV, or WebM video, or a recipe link.",
     storage: "Your browser couldn't keep the shared item. Free some browser storage and share it again.",
     expired: "This shared item has expired. Share it to Chef World again.",

@@ -81,6 +81,12 @@ function textShare(value = "小红书 https://xhslink.com/a/recipe") {
   return form;
 }
 
+function videoShare(bytes: number) {
+  const form = new FormData();
+  form.set("video", new File([new Uint8Array(bytes)], "video.mp4", { type: "video/mp4" }));
+  return form;
+}
+
 describe("installed website share receiver", () => {
   it("keeps full share text locally and returns an opaque redirect until explicitly deleted", async () => {
     const app = worker();
@@ -175,14 +181,14 @@ describe("installed website share receiver", () => {
 
   it("rejects declared oversized body before consuming it", async () => {
     const app = worker();
-    const response = await app.raw(new Request("https://chef-world.test/share-target", { method: "POST", headers: { "Content-Length": String(52 * 1024 * 1024), "Content-Type": "multipart/form-data; boundary=x" }, body: "ignored" }));
+    const response = await app.raw(new Request("https://chef-world.test/share-target", { method: "POST", headers: { "Content-Length": String(31 * 1024 * 1024 + 1), "Content-Type": "multipart/form-data; boundary=x" }, body: "ignored" }));
     expect(response!.headers.get("location")).toContain("shareError=too-large");
     expect(app.rows.size).toBe(0);
   });
 
   it("rejects streamed oversized body when no Content-Length is supplied", async () => {
     const app = worker();
-    const response = await app.raw(new Request("https://chef-world.test/share-target", { method: "POST", headers: { "Content-Type": "multipart/form-data; boundary=x" }, body: new Uint8Array(52 * 1024 * 1024) }));
+    const response = await app.raw(new Request("https://chef-world.test/share-target", { method: "POST", headers: { "Content-Type": "multipart/form-data; boundary=x" }, body: new Uint8Array(31 * 1024 * 1024 + 1) }));
     expect(response!.headers.get("location")).toContain("shareError=too-large");
     expect(app.rows.size).toBe(0);
   });
@@ -224,11 +230,32 @@ describe("installed website share receiver", () => {
     expect(app.rows.size).toBe(0);
   });
 
-  it("rejects a 14MiB+1 file even when multipart body remains within transport bound", async () => {
+  it("accepts exact 30MiB videos and evicts the oldest when file plus metadata exceeds the 60MiB budget", async () => {
     const app = worker();
-    const form = textShare();
-    form.set("video", new File([new Uint8Array(14 * 1024 * 1024 + 1)], "video.mp4", { type: "video/mp4" }));
-    const response = await app.share(form);
+    const ids: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const response = await app.share(videoShare(30 * 1024 * 1024));
+      const location = new URL(response!.headers.get("location")!);
+      expect(location.searchParams.has("shareError")).toBe(false);
+      const id = location.searchParams.get("share")!;
+      ids.push(id);
+      const result = await app.message("chefworld:get-share", id);
+      expect(result.share.video.size).toBe(30 * 1024 * 1024);
+    }
+    expect(app.rows.has(ids[0])).toBe(false);
+    expect(app.rows.has(ids[1])).toBe(true);
+    expect(app.rows.size).toBe(1);
+    expect([...app.rows.values()].reduce((sum, row) => sum + row.bytes, 0)).toBeGreaterThan(30 * 1024 * 1024);
+
+    await app.share(videoShare(1));
+    expect(app.rows.has(ids[1])).toBe(true);
+    expect(app.rows.size).toBe(2);
+    expect([...app.rows.values()].reduce((sum, row) => sum + row.bytes, 0)).toBeLessThanOrEqual(60 * 1024 * 1024);
+  });
+
+  it("rejects a 30MiB+1 file even when multipart body remains within transport bound", async () => {
+    const app = worker();
+    const response = await app.share(videoShare(30 * 1024 * 1024 + 1));
     expect(response!.headers.get("location")).toContain("shareError=too-large");
     expect(app.rows.size).toBe(0);
   });

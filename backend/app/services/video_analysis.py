@@ -19,11 +19,10 @@ import httpx
 from app.core.ai_context import current_ai_request, finish_provider_call, reserve_provider_call
 from app.core.ai_cost import GEMINI_INPUT_TOKEN_BOUND, GEMINI_OUTPUT_TOKEN_BOUND, configured_video_price
 from app.core.config import settings
+from app.core.media_limits import MAX_MEDIA_BYTES
 from app.core.llm import AIInputTooLargeError, AIUnavailableError, MAX_PROMPT_CHARACTERS
 
 logger = logging.getLogger(__name__)
-# Base64 plus the bounded UTF-8 prompt stays below the documented 20 MB limit.
-MAX_MEDIA_BYTES = 14 * 1024 * 1024
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _CANONICAL_YOUTUBE = re.compile(r'https://www\.youtube\.com/watch\?v=[A-Za-z0-9_-]{11}\Z')
 _API_ROOT = 'https://generativelanguage.googleapis.com/v1beta/models/'
@@ -44,7 +43,7 @@ def validate_media_input(media_data: bytes, media_type: str | None) -> str:
     if not isinstance(media_data, bytes) or not media_data:
         raise ValueError('Attach a nonempty supported video or audio file.')
     if len(media_data) > MAX_MEDIA_BYTES:
-        raise AIInputTooLargeError('Attach a video or audio file smaller than 14 MB.')
+        raise AIInputTooLargeError(f'Attach a video or audio file at most {MAX_MEDIA_BYTES // 1024 // 1024} MB.')
     mime = (media_type or '').split(';', 1)[0].strip().lower()
     mime = {'video/quicktime': 'video/mov', 'audio/mp4': 'audio/m4a',
             'audio/x-m4a': 'audio/m4a', 'audio/mp3': 'audio/mpeg'}.get(mime, mime)

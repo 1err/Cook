@@ -34,7 +34,7 @@ async function mockImportApi(page: Page, signedIn = true) {
       await route.fulfill({ status: state.signedIn ? 200 : 401, headers,
         json: state.signedIn ? user : { detail: "Sign in" } });
     } else if (path === "/recipes/import-capabilities") {
-      await route.fulfill({ headers, json: { video_analysis: true, media_upload: true, max_media_bytes: 14 * 1024 * 1024 } });
+      await route.fulfill({ headers, json: { video_analysis: true, media_upload: true, max_media_bytes: 30 * 1024 * 1024 } });
     } else if (path === "/recipes/import-jobs/media") {
       state.uploads.push(request.postDataBuffer()?.toString() ?? "");
       await route.fulfill({ headers, json: { id: "media-job", status: "completed", recipe: RECIPE } });
@@ -94,7 +94,7 @@ test("manual video upload keeps the existing import layout and creates a reviewa
   await expect(page.getByRole("heading", { name: "Import recipe", exact: true })).toBeVisible();
   await expectCompactSourceLayout(page);
   await page.getByRole("tab", { name: "Upload video", exact: true }).click();
-  await expect(page.getByText("Maximum file size: 14 MB.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Maximum file size: 30 MB.", { exact: true })).toBeVisible();
   await page.getByLabel("Upload video", { exact: true }).setInputFiles({
     name: "recipe.mp4", mimeType: "video/mp4", buffer: Buffer.from(VIDEO_BYTES),
   });
@@ -108,6 +108,21 @@ test("manual video upload keeps the existing import layout and creates a reviewa
   expect(state.uploads[0]).toContain('name="file"; filename="recipe.mp4"');
   expect(state.uploads[0]).toContain(VIDEO_BYTES);
   await expect(page.getByLabel("Recipe title", { exact: true })).toHaveValue(RECIPE.title);
+});
+
+test("manual upload accepts a video above the old limit and blocks one byte above 30MiB", async ({ page }) => {
+  const state = await mockImportApi(page);
+  await page.goto("/import");
+  await page.getByRole("tab", { name: "Upload video", exact: true }).click();
+  const picker = page.getByLabel("Upload video", { exact: true });
+  await picker.setInputFiles({ name: "recipe-15mb.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(15 * 1024 * 1024) });
+  await expect(page.getByText("Selected: recipe-15mb.mp4", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create draft", exact: true })).toBeEnabled();
+
+  await picker.setInputFiles({ name: "recipe-too-large.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(30 * 1024 * 1024 + 1) });
+  await expect(page.getByRole("alert")).toHaveText("This file exceeds the upload limit. Choose a shorter or smaller file.");
+  await expect(page.getByRole("button", { name: "Create draft", exact: true })).toBeDisabled();
+  expect(state.uploads).toHaveLength(0);
 });
 
 test("full copied RedNote share text submits without changing the one-line source layout", async ({ page }) => {
