@@ -9,6 +9,7 @@ export * from "./instacart";
 export * from "./i18n";
 export * from "./recipeTags";
 export * from "./recipeTutorial";
+export { getVisibleImportWarnings } from "./importReviewWarnings";
 export * from "./cookingSession";
 export * from "./cookingSessionQueue";
 export * from "./uuid";

@@ -4,7 +4,7 @@ import * as ImagePicker from "expo-image-picker";
 import { runRecipeImport } from "@cooking/api-client";
 import type { CompositeScreenProps } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { createManualRecipeDraft, isCompleteRecipeDraft, type Recipe, type RecipeImportCapabilities, type RecipeTagSlug } from "@cooking/shared";
+import { createManualRecipeDraft, getVisibleImportWarnings, isCompleteRecipeDraft, type Recipe, type RecipeImportCapabilities, type RecipeTagSlug } from "@cooking/shared";
 import { useT } from "../../lib/i18n";
 import { useApiClient } from "../../lib/api";
 import { Button, EmptyState } from "../../components";
@@ -220,7 +220,7 @@ export function ImportModalScreen({ navigation, route }: Props) {
         {state.draft.import_review?.status === "needs_review" ? <View style={styles.notice}>
           <Text style={styles.heading}>{t("import.partialTitle")}</Text>
           <Text style={styles.body}>{t("import.partialHelp")}</Text>
-          {state.draft.import_review.warnings.map((warning, index) => <Text key={index} style={styles.body}>{warning}</Text>)}
+          {getVisibleImportWarnings(state.draft.import_review.warnings).map(warning => <Text key={warning} style={styles.body}>{warning}</Text>)}
           {capabilities?.video_analysis && state.draft.import_review.can_analyze_video ?
             <Button title={t("import.analyzeVideo")} variant="secondary" disabled={busy} onPress={() => void handlePreview(true)} /> :
             <Text style={styles.body}>{t("import.videoUnavailable")}</Text>}

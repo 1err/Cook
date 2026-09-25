@@ -136,6 +136,26 @@ async def test_parse_link_explicit_user_title_wins_over_source_title(monkeypatch
     assert result.title == "My chili noodles"
 
 
+@pytest.mark.parametrize("user_title,expected", [("", "葱油鸡"), ("我的蔥油雞", "我的蔥油雞")])
+@pytest.mark.asyncio
+async def test_parse_link_simplifies_source_fallback_but_preserves_user_title(monkeypatch, user_title, expected):
+    _mock_successful_tiktok_import(monkeypatch, source_title="蔥油雞", recipe_title="Imported Recipe")
+    result = await routes_recipes.parse_from_link(
+        routes_recipes.ParseLinkBody(url=RAW_URL, title=user_title), _user=object()
+    )
+    assert result.title == expected
+
+
+@pytest.mark.asyncio
+async def test_parse_link_preserves_japanese_kanji_fallback_title(monkeypatch):
+    _mock_successful_tiktok_import(monkeypatch, source_title="醤油鶏鍋", recipe_title="Imported Recipe")
+    monkeypatch.setattr(routes_recipes, "extract_recipe_from_text", AsyncMock(return_value=_recipe(
+        title="Imported Recipe", steps=["鶏肉を鍋に入れて煮ます。"],
+    )))
+    result = await routes_recipes.parse_from_link(routes_recipes.ParseLinkBody(url=RAW_URL), _user=object())
+    assert result.title == "醤油鶏鍋"
+
+
 @pytest.mark.asyncio
 async def test_parse_link_rejects_unsupported_url_with_bad_request(monkeypatch):
     monkeypatch.setattr(

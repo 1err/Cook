@@ -31,6 +31,7 @@ from app.extract import (
 )
 from app.models import IngredientItem, Recipe, RecipeStep, RecipePage, ImportReview, coerce_steps
 from app.services.video_analysis import video_analysis_available
+from app.services.recipe_language import normalize_import_display_fields
 from app.rednote import download_rednote_video
 from app.api.recipe_pages import RecipePageQuery, read_page
 from app.services.storage_service import (
@@ -178,7 +179,10 @@ async def parse_from_link(
     }
     source_title = (text_result.title or "").strip() if text_result else ""
     if source_title and recipe.title.strip().casefold() in {"", "untitled recipe", "imported recipe"}:
-        updates["title"] = source_title
+        updates["title"] = normalize_import_display_fields({
+            "title": source_title, "description": recipe.description,
+            "steps": [{"text": step.text} for step in recipe.steps],
+        }, source_text=text_result.text)["title"]
     recipe = recipe.model_copy(update=updates)
     return _apply_import_overrides(recipe, body.title, body.library_tags)
 

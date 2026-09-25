@@ -4,6 +4,8 @@ from __future__ import annotations
 import math
 import re
 
+from app.services.recipe_language import chinese_comparison_text
+
 SOURCE_KINDS = frozenset({"captions", "description", "video", "media", "text"})
 AUDIT_UNAVAILABLE = "The tutorial completeness check could not finish. Review the method against the source."
 MISSING_METHOD = "The source did not provide a usable cooking method. Add the missing steps before cooking."
@@ -79,6 +81,7 @@ _INGREDIENT_HEADING = re.compile(r"\bingredients?\s*:|食材\s*[：:]|配料\s*[
 def _action_groups(text: object) -> set[int]:
     if not isinstance(text, str):
         return set()
+    text = chinese_comparison_text(text)
     # Narration/visual observations use inflected verbs (transfers, browned,
     # simmering); instructions usually use imperatives. Compare both forms.
     stems = []
@@ -127,7 +130,7 @@ _NUMBER_UNIT = re.compile(r"(?P<number>\d+(?:\.\d+)?)\s*(?:°\s*)?(?P<unit>" +
 def _numeric_claims(text: str) -> set[tuple[str, float]]:
     # Compare explicit amounts across common English/Chinese units. Caption
     # locations are not evidence for cooking times or ingredient quantities.
-    text = re.sub(r"\[s\d+ \d+(?:\.\d+)?-\d+(?:\.\d+)?s\]", "", text.casefold())
+    text = re.sub(r"\[s\d+ \d+(?:\.\d+)?-\d+(?:\.\d+)?s\]", "", chinese_comparison_text(text).casefold())
     text = re.sub(r"\b(?:" + "|".join(_NUMBER_WORDS) + r")\b",
                   lambda match: str(_NUMBER_WORDS[match.group()]), text)
 
@@ -156,11 +159,12 @@ def _ingredient_aliases(ingredients: object) -> list[list[str]]:
     for item in ingredients:
         name = item.get("name") if isinstance(item, dict) else item
         if isinstance(name, str):
-            aliases.append([part.strip() for part in re.split(r"[()（）/]", name.casefold()) if part.strip()])
+            aliases.append([part.strip() for part in re.split(r"[()（）/]", chinese_comparison_text(name).casefold()) if part.strip()])
     return aliases
 
 
 def _ingredient_mentions(text: str, aliases: list[list[str]]) -> set[int]:
+    text = chinese_comparison_text(text)
     return {index for index, names in enumerate(aliases)
             if any(re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", text.casefold())
                    if name.isascii() else name in text.casefold() for name in names)}
@@ -178,7 +182,7 @@ def _prepared_ingredient_warnings(steps: list[dict], aliases: list[list[str]]) -
     prepared, used = set(), set()
     use_texts = []
     for step in steps:
-        text = str(step.get("text", ""))
+        text = chinese_comparison_text(str(step.get("text", "")))
         groups = _action_groups(text)
         mentioned = _ingredient_mentions(text, aliases)
         # The first two action families are preparation and cutting. Do not
@@ -203,15 +207,15 @@ def _prepared_ingredient_warnings(steps: list[dict], aliases: list[list[str]]) -
 
 
 def _ingredient_only_evidence(excerpt: str, source_text: str, ingredients: object) -> bool:
-    clean = _normalized_text(excerpt).strip(" .,;:。；，：")
+    clean = _normalized_text(chinese_comparison_text(excerpt)).strip(" .,;:。；，：")
     if isinstance(ingredients, list):
         for item in ingredients:
             name = item.get("name") if isinstance(item, dict) else item
-            if isinstance(name, str) and clean == _normalized_text(name):
+            if isinstance(name, str) and clean == _normalized_text(chinese_comparison_text(name)):
                 return True
     for line in source_text.splitlines():
         heading = _INGREDIENT_HEADING.search(line)
-        if heading and clean and clean in _normalized_text(line[heading.end():]):
+        if heading and clean and clean in _normalized_text(chinese_comparison_text(line[heading.end():])):
             return True
     return bool(_INGREDIENT_HEADING.search(source_text) and not _action_groups(source_text))
 

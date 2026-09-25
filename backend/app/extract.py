@@ -21,6 +21,7 @@ from app.services.tutorial_quality import (
 from app.services.video_analysis import complete_video
 from app.services.video_response_schemas import VIDEO_AUDIT_SCHEMA, VIDEO_EXTRACTION_SCHEMA
 from app.services.tutorial_timing import estimate_import_step_durations
+from app.services.recipe_language import normalize_import_display_fields
 from app.video_import import (
     UnsupportedVideoUrl,
     VideoSource,
@@ -207,6 +208,7 @@ def fetch_transcript_from_video_link(url: str) -> TranscriptFetchResult:
 _TUTORIAL_GRANULARITY = """Each action and each tutorial step must describe one distinct operation. Merge adjacent narration fragments only when they describe the same operation. Give separate steps to distinct ingredient preparations, pan preparation, frying, vessel transfers, fat rendering, cooking the next ingredient (such as eggplant), sauce/seasoning additions, and finishing whenever those operations appear in the source. Do not bury these operations inside a long paragraph or semicolon list. Preserve their source order. Let the source determine the number of steps; never invent an operation to fill a category."""
 _CONCISE_OUTPUT = """Keep the JSON concise: short verb-led action descriptions, one concise actionable sentence per step, and the shortest evidence excerpt that supports all claimed details. Include every distinct operation, but do not repeat a full narration in actions, steps, notes and tips. Keep quantities, heat, timing and doneness cues needed to execute the action. No explanations, commentary, markdown or unrequested fields."""
 _TUTORIAL_TIMING = """Give every nonempty step a practical duration_seconds estimate when its cooking duration is not explicitly stated, with duration_source=\"estimated\". Use realistic short estimates for handling: transfers/additions about 15–30 seconds, garnishing about 15 seconds, mixing about 30–60 seconds, and basic washing/chopping about 1–3 minutes. Do not assign a generic five minutes to these brief operations. Consider the exact action and stated quantity for cooking estimates. Keep estimates in timing metadata only; never add them to instruction text or evidence. Never equate clip length or timestamp spans to cooking duration. Keep explicit supported time as duration_source=\"stated\". A six-minute total with three minutes per side is ONE six-minute step, not extra duplicate timers."""
+_IMPORT_LANGUAGE = """Write all Chinese recipe display text in Simplified Chinese, even when the source uses Traditional Chinese: title, description, ingredient names/amounts/notes, tutorial step text, tips and equipment. Preserve non-Chinese languages, including Japanese and Korean, and the non-Chinese portions of bilingual wording. Keep source_excerpt verbatim in its original language and script; never simplify or translate quoted evidence. Do not change URLs, IDs, amounts, durations or source timestamps as part of script normalization."""
 _INGREDIENT_QUANTITIES = """Keep each ingredient's source amount as one concise quantity, including useful counts, household units, ranges and approximation words. Put preparation, cut size and descriptive qualifiers in notes, not quantity; preserve any other source amount in notes when it cannot fit the main amount or metric_quantity. Never replace a stated count or household amount with guessed grams. metric_quantity is optional: include it only for a source-stated metric equivalent or an unambiguous unit-to-unit mass/volume conversion; otherwise use null. Do not guess food size, density, spoon fullness or bowl size to manufacture an exact metric conversion. Keep approximate equivalents marked approx. or 约. For example, four garlic cloves stays quantity=\"4 cloves\" with no guessed gram value; two bowls of hot water stays quantity=\"two bowls\" and notes=\"hot water\" unless the source also gives a volume.
 Estimate a missing ingredient amount only when it is needed to follow the recipe and the available context supports a useful rough amount. Clearly prefix every inferred amount with approx. (English) or 约 (Chinese), use sensible rounded amounts, and keep the estimate in ingredient metadata only, never source evidence or source-grounded instructions. When context is insufficient, leave the amount unknown. Preserve vague seasoning amounts such as salt/oil to taste, as needed, 少许 or 适量; do not turn them into fabricated precise grams. Preserve the language of the source."""
 
@@ -225,9 +227,10 @@ First inventory EVERY atomic cooking action in actual source order, including fr
 
 {_TUTORIAL_GRANULARITY}
 {_CONCISE_OUTPUT}
+{_IMPORT_LANGUAGE}
 
 Return one JSON object with:
-- title: short dish name; preserve the source language (Chinese remains Chinese).
+- title: short dish name; preserve the source language, using Simplified Chinese for Chinese.
 - description: at most two sentences, or null if unavailable.
 - total_time_minutes: source-stated integer total, or null if unclear.
 - ingredients: list of {{name, quantity, metric_quantity, notes}}. Keep the source amount primary and preparation in notes; metric_quantity is optional.
@@ -243,7 +246,7 @@ Return one JSON object with:
 {_TUTORIAL_TIMING}
 {_INGREDIENT_QUANTITIES}
 
-Do not introduce new ingredients, temperatures, techniques, or procedural claims that are not supported by the source. Any necessary ingredient estimate follows the labeling rules above; estimated timing or quantities must never be claimed as source-stated. Preserve Chinese ingredients, steps and tips in Chinese. If an ingredient has no explained use, keep it without inventing a use.
+Do not introduce new ingredients, temperatures, techniques, or procedural claims that are not supported by the source. Any necessary ingredient estimate follows the labeling rules above; estimated timing or quantities must never be claimed as source-stated. Write Chinese ingredients, steps and tips in Simplified Chinese. If an ingredient has no explained use, keep it without inventing a use.
 
 --- SOURCE / USER NOTES ---
 {transcript.strip() or "(Use the attached media; no additional source text.)"}
@@ -465,6 +468,7 @@ Check EVERY candidate, even when it already contains usable steps. Compare the f
 
 Split candidate steps that bundle distinct operations, preserving every supported action and its source reference. {_TUTORIAL_GRANULARITY}
 {_CONCISE_OUTPUT}
+{_IMPORT_LANGUAGE}
 
 Do not change the extracted ingredient list, invent ingredient uses, or create a typical cooking method from title/ingredients alone. If no method exists, return steps=[] and audit.method_available=false. If the source leaves an ingredient's use unclear, retain that ambiguity in warnings. Preserve supported stated timing and reasonable estimates; repair missing or implausible timing as estimated metadata only.
 
@@ -474,7 +478,7 @@ Return one JSON object with exactly three top-level keys: actions (the complete 
 {{"actions": [], "steps": [], "audit": {{"complete": true, "order_valid": true, "method_available": false,
   "missing_action_ids": [], "unsupported_step_ids": [], "warnings": []}}}}
 Keep all six audit fields present, using JSON booleans for complete/order_valid/method_available and arrays for missing_action_ids/unsupported_step_ids/warnings, including empty arrays. Do not flatten audit fields into the outer object or wrap steps inside a recipe object.
-The audit describes the REPAIRED result; unresolved problems must remain explicit. Each action needs id, text, source_excerpt, source_start_seconds, source_end_seconds and role. Text source_excerpt must be verbatim. Visual observations must have timestamps. Each step needs a unique id, text, source_action_ids, instruction_source="source", duration_seconds, duration_source, attention_type, action_type. Use the source language. Do not return only a verdict or a patch.
+The audit describes the REPAIRED result; unresolved problems must remain explicit. Each action needs id, text, source_excerpt, source_start_seconds, source_end_seconds and role. Text source_excerpt must be verbatim. Visual observations must have timestamps. Each step needs a unique id, text, source_action_ids, instruction_source="source", duration_seconds, duration_source, attention_type, action_type. Use the source language, with Simplified Chinese for Chinese display text only. Do not return only a verdict or a patch.
 
 --- CANDIDATE AND ACTION INVENTORY ---
 {json.dumps(initial, ensure_ascii=False)}
@@ -659,6 +663,7 @@ async def _extract_with_audit(transcript: str, *, kind: str, request, audiovisua
         logger.warning("Recipe completeness audit failed; retaining draft error_type=%s", type(exc).__name__)
         warnings.extend(first_warnings)
 
+    data = normalize_import_display_fields(data, source_text=transcript)
     data["steps"] = estimate_import_step_durations(data.get("steps") or [])
     return Recipe(
         id=str(uuid.uuid4()),

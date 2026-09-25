@@ -179,6 +179,33 @@ test("review details collapse and deduplicate repeated warnings", async () => {
   expect(screen.getByText("Check the heat.")).toBeVisible();
 });
 
+test("hides internal-only review details while keeping the positive draft and raw diagnostics", async () => {
+  const diagnostics = ["Garlic is prepared but no later use is explained; check the source.", "The completeness check omitted or changed previously identified source actions."];
+  mocks.createImportJob.mockResolvedValueOnce({ id: "internal", status: "completed", recipe: {
+    ...partial, import_review: { ...partial.import_review!, warnings: diagnostics },
+  } });
+  await importPartial();
+  expect(screen.getByText("Your draft is ready")).toBeVisible();
+  expect(screen.queryByText("Details to check")).not.toBeInTheDocument();
+  for (const warning of diagnostics) expect(screen.queryByText(warning)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
+  await waitFor(() => expect(mocks.apiFetch).toHaveBeenCalled());
+  expect(JSON.parse(mocks.apiFetch.mock.calls[0][1].body).import_review.warnings).toEqual(diagnostics);
+});
+
+test("review details retain actionable notices among internal diagnostics", async () => {
+  const useful = "The source did not provide a usable cooking method. Add the missing steps before cooking.";
+  const internal = "Some instructions could not be verified against source evidence.";
+  mocks.createImportJob.mockResolvedValueOnce({ id: "mixed", status: "completed", recipe: {
+    ...partial, import_review: { ...partial.import_review!, warnings: [internal, useful, "The amount of salt is not specified."] },
+  } });
+  await importPartial();
+  fireEvent.click(screen.getByText("Details to check"));
+  expect(screen.getByText(useful)).toBeVisible();
+  expect(screen.getByText("The amount of salt is not specified.")).toBeVisible();
+  expect(screen.queryByText(internal)).not.toBeInTheDocument();
+});
+
 test("preparing replaces the source form and cancellation restores its inputs", async () => {
   let resolve!: (job: RecipeImportJob) => void;
   mocks.createImportJob.mockImplementation(() => new Promise(done => { resolve = done; }));

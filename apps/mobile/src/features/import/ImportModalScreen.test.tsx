@@ -93,6 +93,32 @@ beforeEach(() => {
 
 afterEach(() => { globalThis.FormData = originalFormData; });
 
+test("keeps internal-only diagnostics out of review while preserving them on the saved draft", async () => {
+  const diagnostics = ["Garlic is prepared but no later use is explained; check the source.", "The tutorial completeness check could not finish. Review the method against the source."];
+  mockParseLink.mockResolvedValueOnce({ ...parsedDraft, import_review: { ...parsedDraft.import_review!, warnings: diagnostics } });
+  await render(<ImportModalScreen navigation={navigation().value as never} route={{} as never} />);
+  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), "https://youtu.be/example");
+  await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
+  expect(await screen.findByText("Your draft is ready")).toBeOnTheScreen();
+  expect(screen.queryByRole("button", { name: "Details to check" })).not.toBeOnTheScreen();
+  for (const diagnostic of diagnostics) expect(screen.queryByText(diagnostic)).not.toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole("button", { name: "Save recipe" }));
+  await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+  expect(mockCreate.mock.calls[0][0].import_review.warnings).toEqual(diagnostics);
+});
+
+test("shows only actionable deduplicated review notices", async () => {
+  const missing = "The source did not provide a usable cooking method. Add the missing steps before cooking.";
+  const internal = "The completeness check omitted or changed previously identified source actions.";
+  mockParseLink.mockResolvedValueOnce({ ...parsedDraft, import_review: { ...parsedDraft.import_review!, warnings: [internal, missing, "  The amount of salt is not specified.  ", "The amount of salt is not specified."] } });
+  await render(<ImportModalScreen navigation={navigation().value as never} route={{} as never} />);
+  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), "https://youtu.be/example");
+  await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
+  expect(await screen.findByText(missing)).toBeOnTheScreen();
+  expect(screen.getAllByText("The amount of salt is not specified.")).toHaveLength(1);
+  expect(screen.queryByText(internal)).not.toBeOnTheScreen();
+});
+
 test("reviews imported tutorial metadata and saves user edits without dropping hidden images", async () => {
   const nav = navigation();
   await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
@@ -245,7 +271,7 @@ test("partial drafts keep the source and edits while reviewing a replacement", a
   await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
   await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), parsedDraft.source_url!);
   await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
-  expect(await screen.findByText("Review incomplete tutorial")).toBeOnTheScreen();
+  expect(await screen.findByText("Your draft is ready")).toBeOnTheScreen();
   expect(screen.getByText("Finishing steps could not be verified.")).toBeOnTheScreen();
   await fireEvent.changeText(screen.getByLabelText("Title"), "My carefully edited noodles");
   await fireEvent.press(screen.getByRole("button", { name: "Add recipe text" }));
@@ -306,7 +332,7 @@ test("unavailable video analysis leaves transcript recovery available", async ()
   await render(<ImportModalScreen navigation={nav.value as never} route={{ params: { initialUrl: parsedDraft.source_url } } as never} />);
   await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
   expect(await screen.findByText("Video analysis is unavailable. Paste recipe text or add the missing steps.")).toBeOnTheScreen();
-  expect(screen.queryByRole("button", { name: "Analyze video" })).not.toBeOnTheScreen();
+  expect(screen.queryByRole("button", { name: "Read steps from video" })).not.toBeOnTheScreen();
   await fireEvent.press(screen.getByRole("button", { name: "Add recipe text" }));
   expect(screen.getByLabelText("Transcript")).toBeOnTheScreen();
   expect(screen.getByText("The original source link will be kept.")).toBeOnTheScreen();
@@ -319,7 +345,7 @@ test("applies a reviewed candidate only after explicit acceptance", async () => 
   await screen.findByLabelText("Title");
   await fireEvent.changeText(screen.getByLabelText("Title"), "My existing draft");
   mockParseLink.mockResolvedValueOnce({ ...parsedDraft, title: "New video result", source_url: null });
-  await fireEvent.press(screen.getByRole("button", { name: "Analyze video" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Read steps from video" }));
   expect(await screen.findByRole("button", { name: "Apply new draft" })).toBeOnTheScreen();
   expect(screen.getByLabelText("Title")).toHaveDisplayValue("My existing draft");
   await fireEvent.press(screen.getByRole("button", { name: "Apply new draft" }));

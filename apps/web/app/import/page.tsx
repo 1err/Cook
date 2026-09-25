@@ -1,6 +1,6 @@
 "use client";
 
-import { createManualRecipeDraft, extractSharedVideoUrl, formatStepDuration, recipeSourceMomentUrl, type RecipeImportCapabilities } from "@cooking/shared";
+import { createManualRecipeDraft, extractSharedVideoUrl, formatStepDuration, getVisibleImportWarnings, recipeSourceMomentUrl, type RecipeImportCapabilities } from "@cooking/shared";
 import { runRecipeImport } from "@cooking/api-client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -229,10 +229,7 @@ function ImportPageContent({ userId }: { userId: string }) {
   }
 
   const review = draftRecipe?.import_review;
-  const warnings = Array.from(new Map((review?.warnings ?? [])
-    .map(warning => warning.trim().replace(/\s+/g, " "))
-    .filter(Boolean)
-    .map(warning => [warning.toLocaleLowerCase(), warning])).values());
+  const warnings = getVisibleImportWarnings(review?.warnings);
   const canAnalyzeVideo = Boolean(capabilities?.video_analysis && review?.can_analyze_video
     && review.source_kind !== "video" && review.source_kind !== "media"
     && recipeSourceMomentUrl(draftRecipe?.source_url, 0));
