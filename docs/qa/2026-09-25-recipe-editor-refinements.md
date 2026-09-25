@@ -11,8 +11,9 @@ by these checks.
   desktop/phone layouts. Existing illustration choices and assets are unchanged.
 - Detail tutorials omit instruction-authorship badges and label validated moment links
   "Source". Suggested-step cautions remain in editors.
-- Ingredient rows show one primary source amount with preparation notes underneath. An
-  expandable section preserves all original text and alternate measurements. Import review
+- Ingredient detail rows show only the ingredient name and one primary source amount, without
+  preparation-note subtitles. Notes remain available when editing, and an expandable section
+  preserves all original text and alternate measurements. Import review
   keeps notes and optional grams/mL equivalents behind per-ingredient disclosures. Extraction
   preserves source units and labels necessary estimates as approximate.
 - Cover uploads are available during import/manual creation, full editing, and directly on

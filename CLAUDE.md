@@ -544,8 +544,9 @@ Import/manual review exposes tag selection and cover uploads. Saved recipes also
 cover-photo change that PATCHes only the thumbnail. Pending image uploads block saving, failed
 uploads retain the previous cover, and applying a later text/video candidate preserves the current
 cover and tags. Ingredient quantities keep source units first; grams/mL equivalents are optional,
-and estimates must remain approximate. Concise detail rows separate preparation notes from the
-main amount and retain untouched source text and alternate units in "Original amounts & notes".
+and estimates must remain approximate. Concise detail rows show only the ingredient name and
+primary amount, without preparation-note subtitles. Notes remain available when editing;
+untouched source text and alternate units remain in "Original amounts & notes".
 Import ingredient rows keep notes and optional metric equivalents in a disclosure.
 
 ### Recipe view skin (sub-project E)

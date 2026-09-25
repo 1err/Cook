@@ -142,10 +142,7 @@ function RecipeDetailContent() {
               <ul>
                 {ingredientRows.map(({ ingredient, display }, index) => (
                   <li key={`${ingredient.name}-${index}`}>
-                    <div className={styles.ingredientName}>
-                      <span>{ingredient.name.trim()}</span>
-                      {display.preparation.length ? <small>{display.preparation.join(" · ")}</small> : null}
-                    </div>
+                    <span className={styles.ingredientName}>{ingredient.name.trim()}</span>
                     <strong>{display.amount || "—"}</strong>
                   </li>
                 ))}
