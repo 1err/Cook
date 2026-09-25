@@ -17,7 +17,8 @@ by these checks.
   keeps notes and optional grams/mL equivalents behind per-ingredient disclosures. Extraction
   preserves source units and labels necessary estimates as approximate.
 - Cover uploads are available during import/manual creation, full editing, and directly on
-  saved detail. Upload/save errors retain the previous cover. Pending uploads block saving.
+  saved detail through a compact camera icon with an accessible label and tooltip. Import/full
+  edit retain labeled buttons. Upload/save errors retain the previous cover. Pending uploads block saving.
 - Import tags are visible and selectable by category. Applying contextual extraction preserves
   the latest cover and tags, including changes made after the candidate was prepared.
 - Step-image upload completion merges by stable step identity into current state, preserving

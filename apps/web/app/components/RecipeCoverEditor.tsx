@@ -69,8 +69,13 @@ export function RecipeCoverEditor({ value, onChange, disabled = false, onBusyCha
       {variant === "editor" ? <span className={styles.label}>{t("recipe.coverImage")}</span> : null}
       <div className={styles.preview}>
         {cover ? <img src={cover} alt={t("recipe.coverImage")} /> : <span className="cw-display" aria-hidden>CW</span>}
-        {variant === "hero" ? <button type="button" className={styles.changeButton} disabled={disabled || busy} onClick={() => input.current?.click()}>
-          {busy ? t("recipe.uploading") : t(cover ? "recipe.cover.change" : "recipe.cover.add")}
+        {variant === "hero" ? <button type="button" className={styles.changeButton} disabled={disabled || busy} onClick={() => input.current?.click()}
+          aria-label={busy ? t("recipe.uploading") : t(cover ? "recipe.cover.change" : "recipe.cover.add")}
+          title={busy ? t("recipe.uploading") : t(cover ? "recipe.cover.change" : "recipe.cover.add")}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M9 4h6l1.5 3H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3.5L9 4Z" />
+            <circle cx="12" cy="13.5" r="3.5" />
+          </svg>
         </button> : null}
       </div>
       <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,image/gif" aria-label={t("recipe.coverImage")}

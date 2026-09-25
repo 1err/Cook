@@ -541,7 +541,8 @@ timestamp links are labeled "Source"; authorship badges are hidden on recipe det
 cautions remain visible while editing. Illustration choices and assets are unchanged.
 
 Import/manual review exposes tag selection and cover uploads. Saved recipes also offer a direct
-cover-photo change that PATCHes only the thumbnail. Pending image uploads block saving, failed
+cover-photo change through a compact camera icon that PATCHes only the thumbnail. Import/full
+edit retain labeled upload buttons. Pending image uploads block saving, failed
 uploads retain the previous cover, and applying a later text/video candidate preserves the current
 cover and tags. Ingredient quantities keep source units first; grams/mL equivalents are optional,
 and estimates must remain approximate. Concise detail rows show only the ingredient name and
