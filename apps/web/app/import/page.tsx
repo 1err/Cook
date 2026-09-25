@@ -80,6 +80,8 @@ function preserveDraftDetails(original: Recipe, candidate: Recipe): Recipe {
   return {
     ...candidate,
     source_url: original.source_url || candidate.source_url,
+    thumbnail_url: original.thumbnail_url || candidate.thumbnail_url,
+    library_tags: original.library_tags ?? candidate.library_tags,
     description: candidate.description?.trim() ? candidate.description : original.description,
     tips: candidate.tips?.some(tip => tip.trim()) ? candidate.tips : original.tips,
     equipment: candidate.equipment?.some(item => item.trim()) ? candidate.equipment : original.equipment,
@@ -159,6 +161,18 @@ function ImportPageContent({ userId }: { userId: string }) {
 
   function cancelImport() {
     active.current?.abort(); active.current = null; setLoading(false);
+  }
+
+  function applyCandidate() {
+    if (!candidate) return;
+    // A method update must not replace personalization changed while reviewing it.
+    setDraftRecipe(current => current ? {
+      ...candidate,
+      thumbnail_url: current.thumbnail_url,
+      library_tags: current.library_tags,
+    } : candidate);
+    setCandidate(null);
+    setManual(false);
   }
 
   async function handleImportPreview(analyzeVideo = false, recipeText?: string) {
@@ -269,7 +283,7 @@ function ImportPageContent({ userId }: { userId: string }) {
             {candidate.tips?.length ? <><h4>{t("recipe.tips")}</h4><ul>{candidate.tips.map((tip, index) => <li key={index}>{tip}</li>)}</ul></> : null}
             {candidate.equipment?.length ? <><h4>{t("recipe.equipment")}</h4><ul>{candidate.equipment.map((item, index) => <li key={index}>{item}</li>)}</ul></> : null}
             <div className={styles.recoveryActions}>
-              <button type="button" disabled={loading} onClick={() => { setDraftRecipe(candidate); setCandidate(null); setManual(false); }}>{t("import.applyCandidate")}</button>
+              <button type="button" disabled={loading} onClick={applyCandidate}>{t("import.applyCandidate")}</button>
               <button type="button" disabled={loading} onClick={() => setCandidate(null)}>{t("import.keepDraft")}</button>
             </div>
           </section> : null}

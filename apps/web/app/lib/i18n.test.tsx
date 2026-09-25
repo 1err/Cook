@@ -25,8 +25,8 @@ function IngredientCopyProbe() {
 }
 
 test.each([
-  ["en", "Amount in g / ml", "Optional conversion, e.g. 400 g or 250 ml."],
-  ["zh", "用量（克 / 毫升）", "可选换算，例如 400 克或 250 毫升。"],
+  ["en", "Metric equivalent (optional)", "Keep source amounts. Add grams or milliliters only when useful, and mark estimates with “about”."],
+  ["zh", "公制换算（选填）", "保留原始用量。需要时再补充克或毫升，估算值请标注“约”。"],
 ])("explains the optional ingredient conversion in %s", async (language, label, help) => {
   vi.stubGlobal("localStorage", { getItem: () => language, setItem: vi.fn() });
   usePathname.mockReturnValue("/import");

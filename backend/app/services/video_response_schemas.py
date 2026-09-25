@@ -34,6 +34,7 @@ VIDEO_EXTRACTION_SCHEMA = _object({
     "total_time_minutes": {"type": ["integer", "null"]},
     "ingredients": {"type": "array", "items": _object({
         "name": {"type": "string"}, "quantity": {"type": "string"},
+        "metric_quantity": {"type": ["string", "null"]},
         "notes": {"type": ["string", "null"]},
     }, ["name", "quantity"])},
     "equipment": _STRINGS,

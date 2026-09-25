@@ -1,0 +1,31 @@
+.sourceLink {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 1.75rem;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--cw-color-muted-ink);
+  font: inherit;
+  line-height: 1.5;
+  text-decoration: underline;
+  text-decoration-color: var(--cw-color-divider);
+  text-underline-offset: 0.2em;
+}
+
+.sourceLink:hover {
+  color: var(--cw-color-action);
+  text-decoration-color: currentColor;
+}
+
+.sourceLink:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--cw-color-action);
+  outline-offset: 3px;
+}
+
+.suggestedWarning {
+  margin: 0;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}

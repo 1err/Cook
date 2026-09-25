@@ -38,12 +38,15 @@ from app.tutorial import (
 
 logger = logging.getLogger(__name__)
 
+_QUANTITY_NUMBER = r"(?:\d+(?:\.\d+)?(?:/\d+)?|[一二两三四五六七八九十半]+)"
 _METRIC_SEGMENT_RE = re.compile(
-    r"(?P<metric>(?:\d+(?:\.\d+)?|[一二两三四五六七八九十半]+(?:/\d+)?)\s*(?:g|kg|ml|l|克|千克|公斤|毫升|升))$",
+    r"(?P<metric>(?:(?:approximately|approx\.?|about|around|roughly)\s*|大约|大概|约|[~≈])?"
+    rf"{_QUANTITY_NUMBER}(?:\s*(?:[-–—]|to|至|到)\s*{_QUANTITY_NUMBER})?\s*"
+    r"(?:g|kg|ml|l|克|千克|公斤|毫升|升))\s*[)）]?$",
     re.IGNORECASE,
 )
 _NON_METRIC_UNIT_RE = re.compile(
-    r"(杯|个|块|勺|汤匙|茶匙|片|瓣|把|根|条|袋|盒|罐|颗|clove|cup|cups|tbsp|tsp|piece|pieces|slice|slices)",
+    r"(杯|碗|个|块|勺|汤匙|茶匙|片|瓣|把|根|条|袋|盒|罐|颗|clove|cup|cups|tbsp|tsp|piece|pieces|slice|slices)",
     re.IGNORECASE,
 )
 _UNUSABLE_STEP_TEXTS = frozenset(
@@ -204,6 +207,8 @@ def fetch_transcript_from_video_link(url: str) -> TranscriptFetchResult:
 _TUTORIAL_GRANULARITY = """Each action and each tutorial step must describe one distinct operation. Merge adjacent narration fragments only when they describe the same operation. Give separate steps to distinct ingredient preparations, pan preparation, frying, vessel transfers, fat rendering, cooking the next ingredient (such as eggplant), sauce/seasoning additions, and finishing whenever those operations appear in the source. Do not bury these operations inside a long paragraph or semicolon list. Preserve their source order. Let the source determine the number of steps; never invent an operation to fill a category."""
 _CONCISE_OUTPUT = """Keep the JSON concise: short verb-led action descriptions, one concise actionable sentence per step, and the shortest evidence excerpt that supports all claimed details. Include every distinct operation, but do not repeat a full narration in actions, steps, notes and tips. Keep quantities, heat, timing and doneness cues needed to execute the action. No explanations, commentary, markdown or unrequested fields."""
 _TUTORIAL_TIMING = """Give every nonempty step a practical duration_seconds estimate when its cooking duration is not explicitly stated, with duration_source=\"estimated\". Use realistic short estimates for handling: transfers/additions about 15–30 seconds, garnishing about 15 seconds, mixing about 30–60 seconds, and basic washing/chopping about 1–3 minutes. Do not assign a generic five minutes to these brief operations. Consider the exact action and stated quantity for cooking estimates. Keep estimates in timing metadata only; never add them to instruction text or evidence. Never equate clip length or timestamp spans to cooking duration. Keep explicit supported time as duration_source=\"stated\". A six-minute total with three minutes per side is ONE six-minute step, not extra duplicate timers."""
+_INGREDIENT_QUANTITIES = """Keep each ingredient's source amount as one concise quantity, including useful counts, household units, ranges and approximation words. Put preparation, cut size and descriptive qualifiers in notes, not quantity; preserve any other source amount in notes when it cannot fit the main amount or metric_quantity. Never replace a stated count or household amount with guessed grams. metric_quantity is optional: include it only for a source-stated metric equivalent or an unambiguous unit-to-unit mass/volume conversion; otherwise use null. Do not guess food size, density, spoon fullness or bowl size to manufacture an exact metric conversion. Keep approximate equivalents marked approx. or 约. For example, four garlic cloves stays quantity=\"4 cloves\" with no guessed gram value; two bowls of hot water stays quantity=\"two bowls\" and notes=\"hot water\" unless the source also gives a volume.
+Estimate a missing ingredient amount only when it is needed to follow the recipe and the available context supports a useful rough amount. Clearly prefix every inferred amount with approx. (English) or 约 (Chinese), use sensible rounded amounts, and keep the estimate in ingredient metadata only, never source evidence or source-grounded instructions. When context is insufficient, leave the amount unknown. Preserve vague seasoning amounts such as salt/oil to taste, as needed, 少许 or 适量; do not turn them into fabricated precise grams. Preserve the language of the source."""
 
 
 def _build_extraction_prompt(transcript: str, *, audiovisual: bool = False) -> str:
@@ -225,7 +230,7 @@ Return one JSON object with:
 - title: short dish name; preserve the source language (Chinese remains Chinese).
 - description: at most two sentences, or null if unavailable.
 - total_time_minutes: source-stated integer total, or null if unclear.
-- ingredients: list of {{name, quantity, notes}}. Preserve source quantities and ingredient names; do not invent amounts.
+- ingredients: list of {{name, quantity, metric_quantity, notes}}. Keep the source amount primary and preparation in notes; metric_quantity is optional.
 - equipment: distinct tools named or clearly shown, or [].
 - actions: ordered list of {{id, text, source_excerpt, source_start_seconds, source_end_seconds, role}}. Use unique stable IDs such as a1, a2. role is main, recap or alternative. {evidence_rule}
 - steps: ordered list of {{id, text, source_action_ids, instruction_source, duration_seconds, duration_source, attention_type, action_type}}. Each needs a unique step ID such as step1 and must reference supporting main action IDs and have instruction_source="source". Merge adjacent fragments only for the same action. Keep distinct operations readable. Return [] if no method is present.
@@ -236,8 +241,9 @@ Return one JSON object with:
 - tips: only explicitly supported tips, or [].
 
 {_TUTORIAL_TIMING}
+{_INGREDIENT_QUANTITIES}
 
-Do not introduce new ingredients, quantities, temperatures, techniques, or procedural claims that are not supported by the source. Unknown quantities remain unknown; estimated timing must never be claimed as source-stated. Preserve Chinese ingredients, steps and tips in Chinese. If an ingredient has no explained use, keep it without inventing a use.
+Do not introduce new ingredients, temperatures, techniques, or procedural claims that are not supported by the source. Any necessary ingredient estimate follows the labeling rules above; estimated timing or quantities must never be claimed as source-stated. Preserve Chinese ingredients, steps and tips in Chinese. If an ingredient has no explained use, keep it without inventing a use.
 
 --- SOURCE / USER NOTES ---
 {transcript.strip() or "(Use the attached media; no additional source text.)"}
@@ -253,7 +259,7 @@ def _split_dual_quantity(quantity: str) -> tuple[str, str | None]:
     if not metric_match:
         return raw, None
     metric = metric_match.group("metric").strip()
-    primary = raw[: metric_match.start()].strip()
+    primary = raw[: metric_match.start()].strip().rstrip(" ,，/（(").strip()
     if not primary or not _NON_METRIC_UNIT_RE.search(primary):
         return raw, None
     return primary, metric
@@ -327,9 +333,10 @@ def parse_llm_recipe_response(raw: str) -> dict:
             name = _clean_ingredient_name(i.get("name"))
             if not name:
                 continue
-            quantity, metric_quantity = _split_dual_quantity(
-                _extraction_string(i.get("quantity"))
-            )
+            quantity = _extraction_string(i.get("quantity"))
+            metric_quantity = _extraction_optional_string(i.get("metric_quantity"))
+            if not metric_quantity:
+                quantity, metric_quantity = _split_dual_quantity(quantity)
             ingredients.append({
                 "name": name,
                 "quantity": quantity,

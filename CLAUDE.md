@@ -534,6 +534,20 @@ details" explicitly estimates fallback/unknown timing in local editor state thro
 endpoint; Cancel performs no PATCH, and Save PATCHes the steps. Reading a recipe or opening a
 cooking flow must never silently rewrite tutorial metadata.
 
+The September 25 recipe-editor refinements are local, not part of the production release recorded
+above. The web tutorial editor uses consistent scoped step cards with aligned duration, attention,
+and illustration controls, a cooking-plan summary, and responsive phone layouts. Source-backed
+timestamp links are labeled "Source"; authorship badges are hidden on recipe detail. Suggested-step
+cautions remain visible while editing. Illustration choices and assets are unchanged.
+
+Import/manual review exposes tag selection and cover uploads. Saved recipes also offer a direct
+cover-photo change that PATCHes only the thumbnail. Pending image uploads block saving, failed
+uploads retain the previous cover, and applying a later text/video candidate preserves the current
+cover and tags. Ingredient quantities keep source units first; grams/mL equivalents are optional,
+and estimates must remain approximate. Concise detail rows separate preparation notes from the
+main amount and retain untouched source text and alternate units in "Original amounts & notes".
+Import ingredient rows keep notes and optional metric equivalents in a disclosure.
+
 ### Recipe view skin (sub-project E)
 
 Recipe detail uses the cross-platform Culinary Workbench system from the UI reset. Web

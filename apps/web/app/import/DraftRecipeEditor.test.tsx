@@ -25,6 +25,11 @@ vi.mock("../lib/i18n", () => ({
       "import.editTags": "Edit tags",
       "import.untitledRecipe": "Untitled recipe",
       "recipe.coverImage": "Cover image",
+      "recipe.cover.add": "Add cover photo",
+      "recipe.cover.change": "Change cover photo",
+      "recipe.uploading": "Uploading…",
+      "recipe.ingredientDetails": "Notes & unit conversion",
+      "import.tagCategory": "Tag category",
       "recipe.description": "Description",
       "recipe.equipment": "Equipment",
       "recipe.equipment.addRow": "Add equipment",
@@ -185,6 +190,7 @@ describe("DraftRecipeEditor", () => {
       return <DraftRecipeEditor draft={value} onChange={setValue} onBack={vi.fn()} onSaveSuccess={onSaveSuccess} />;
     }
     render(<ControlledDraft />);
+    await user.click(screen.getByText("Notes & unit conversion"));
     const conversion = screen.getByLabelText("Amount in g / ml 1");
     expect(conversion).toHaveValue("400 g");
     expect(conversion).toHaveAccessibleDescription("Optional conversion, e.g. 400 g or 250 ml.");
@@ -319,4 +325,46 @@ describe("DraftRecipeEditor", () => {
     expect(observedDraft.steps?.[0].text).toBe("Captured tutorial step.");
     expect(onSaveSuccess).not.toHaveBeenCalled();
   });
+});
+
+
+it("keeps saving and recovery locked until a chosen cover finishes uploading", async () => {
+  const user = userEvent.setup();
+  const upload = deferred<Response>();
+  mockApiFetch.mockImplementation((path: string) => path === "/recipes/upload-image" ? upload.promise
+    : Promise.resolve(new Response(JSON.stringify({ ...draft, id: "saved-with-cover" }))));
+  function ControlledDraft() {
+    const [value, setValue] = useState(draft);
+    return <DraftRecipeEditor draft={value} onChange={setValue} onBack={vi.fn()} onSaveSuccess={vi.fn()}
+      reviewNotice={<button type="button">Add recipe text</button>} />;
+  }
+  render(<ControlledDraft />);
+  fireEvent.change(screen.getByLabelText("Recipe title"), { target: { value: "My family recipe" } });
+  await user.upload(screen.getByLabelText("Cover image"), new File(["image"], "cover.jpg", { type: "image/jpeg" }));
+  expect(screen.getByRole("button", { name: "Save recipe" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Back to source" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Add recipe text" })).toBeDisabled();
+  await act(async () => upload.resolve(new Response(JSON.stringify({ file_url: "https://example.com/my-cover.jpg", upload_url: "" }))));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Save recipe" })).toBeEnabled());
+  expect(screen.getByLabelText("Recipe title")).toHaveValue("My family recipe");
+  await user.click(screen.getByRole("button", { name: "Save recipe" }));
+  const saved = JSON.parse(mockApiFetch.mock.calls.find(([path]) => path === "/recipes")![1].body);
+  expect(saved).toMatchObject({ title: "My family recipe", thumbnail_url: "https://example.com/my-cover.jpg" });
+});
+
+it("saves tags chosen from multiple groups alongside source amounts", async () => {
+  const user = userEvent.setup();
+  mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ ...draft, id: "saved-tags" })));
+  function ControlledDraft() {
+    const [value, setValue] = useState(draft);
+    return <DraftRecipeEditor draft={value} onChange={setValue} onBack={vi.fn()} onSaveSuccess={vi.fn()} />;
+  }
+  render(<ControlledDraft />);
+  await user.click(screen.getByRole("button", { name: "Chinese" }));
+  await user.selectOptions(screen.getByLabelText("Tag category"), "dish");
+  await user.click(screen.getByRole("button", { name: "Soup" }));
+  await user.click(screen.getByRole("button", { name: "Save recipe" }));
+  const saved = JSON.parse(mockApiFetch.mock.calls[0][1].body);
+  expect(saved.library_tags).toEqual(["weeknight", "chinese", "soup"]);
+  expect(saved.ingredients).toEqual(draft.ingredients);
 });

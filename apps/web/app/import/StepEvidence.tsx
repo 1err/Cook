@@ -1,14 +1,27 @@
 "use client";
 import { recipeSourceMomentUrl, type RecipeStep } from "@cooking/shared";
 import { useT } from "../lib/i18n";
-import styles from "./ImportFlow.module.css";
+import styles from "./StepEvidence.module.css";
 
-export function StepEvidence({ step, sourceUrl }: { step: RecipeStep; sourceUrl?: string | null }) {
+export function StepEvidence({
+  step,
+  sourceUrl,
+  showSuggestedWarning = false,
+}: {
+  step: RecipeStep;
+  sourceUrl?: string | null;
+  showSuggestedWarning?: boolean;
+}) {
   const t = useT();
   const moment = step.instruction_source === "source" ? recipeSourceMomentUrl(sourceUrl, step.source_start_seconds) : null;
-  if (!step.instruction_source && !moment) return null;
-  return <div className={styles.stepEvidence}>
-    {step.instruction_source ? <small>{t(`recipe.tutorial.evidence.${step.instruction_source}`)}</small> : null}
-    {moment ? <p><a href={moment} target="_blank" rel="noopener noreferrer">{t("recipe.tutorial.evidence.moment")}</a></p> : null}
-  </div>;
+  if (moment) {
+    return <a className={styles.sourceLink} href={moment} target="_blank" rel="noopener noreferrer">
+      {t("recipe.tutorial.evidence.moment")}
+      <span aria-hidden="true">↗</span>
+    </a>;
+  }
+  if (showSuggestedWarning && step.instruction_source === "suggested") {
+    return <p className={styles.suggestedWarning}>{t("recipe.tutorial.evidence.suggested")}</p>;
+  }
+  return null;
 }

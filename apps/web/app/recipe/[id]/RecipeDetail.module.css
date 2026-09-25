@@ -467,3 +467,17 @@
   .actions > a, .actions button { padding-inline: 1rem; }
   .utilityActions { margin-top: 1.25rem; gap: 1rem; }
 }
+
+/* One source amount per ingredient; preparation stays beside its ingredient. */
+.ingredients > ul > li { display:grid; grid-template-columns:minmax(0,1fr) minmax(3rem,auto); align-items:start; gap:1.25rem; min-height:3.25rem; padding:.85rem 0; }
+.ingredientName { display:grid; gap:.3rem; min-width:0; }
+.ingredientName > span { line-height:1.5; }
+.ingredientName small { color:var(--cw-color-muted-ink); font-size:.8rem; line-height:1.5; }
+.ingredients strong { padding-top:.1rem; max-width:10rem; text-align:right; white-space:normal; overflow-wrap:anywhere; line-height:1.5; }
+.ingredientOriginals { margin-top:.75rem; color:var(--cw-color-muted-ink); font-size:.8125rem; }
+.ingredientOriginals summary { min-height:44px; padding:.7rem 0; cursor:pointer; }
+.ingredientOriginals dl { margin:.2rem 0 0; padding:.4rem .9rem; border:1px solid var(--cw-color-divider); border-radius:8px; background:var(--cw-color-subtle-surface); }
+.ingredientOriginals dl > div { padding:.65rem 0; border-bottom:1px solid var(--cw-color-divider); }
+.ingredientOriginals dl > div:last-child { border-bottom:0; }
+.ingredientOriginals dt { color:var(--cw-color-ink); font-weight:500; }
+.ingredientOriginals dd { margin:.3rem 0 0; line-height:1.55; overflow-wrap:anywhere; }

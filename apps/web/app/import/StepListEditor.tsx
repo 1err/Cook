@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   createRecipeStep,
+  createUuid,
   editRecipeStepText,
   RECIPE_ACTION_MESSAGE_KEYS,
   RECIPE_ACTION_TYPES,
@@ -14,7 +15,7 @@ import {
 import { useT } from "../lib/i18n";
 import { StepEvidence } from "./StepEvidence";
 import { DurationField } from "./DurationField";
-import styles from "./ImportFlow.module.css";
+import styles from "./StepListEditor.module.css";
 
 export interface StepListEditorProps {
   steps: RecipeStep[];
@@ -50,11 +51,18 @@ export function StepListEditor({
 }: StepListEditorProps) {
   const t = useT();
   const headingId = useId();
-  const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
+  const [uploadingIds, setUploadingIds] = useState<Set<string>>(() => new Set());
+  const [imageErrors, setImageErrors] = useState<Record<string, string>>({});
+  const pendingUploads = useRef(new Set<string>());
+  const mounted = useRef(true);
+  const latest = useRef({ steps, onChange, disabled });
+  latest.current = { steps, onChange, disabled };
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [invalidStepKeys, setInvalidStepKeys] = useState<Set<string>>(() => new Set());
   const durationsValid = steps.every(
     (step, index) => hasValidDuration(step) && !invalidStepKeys.has(stepKey(step, index)),
   );
+  const hasPendingImages = steps.some(step => step.id && uploadingIds.has(step.id));
   const updateAt = (index: number, next: RecipeStep) => {
     const updated = steps.slice();
     updated[index] = next;
@@ -79,17 +87,41 @@ export function StepListEditor({
   }, []);
 
   useEffect(() => {
-    onValidityChange?.(durationsValid);
-  }, [durationsValid, onValidityChange]);
+    // Parent save controls wait for the chosen images as well as valid timers.
+    onValidityChange?.(durationsValid && !hasPendingImages);
+  }, [durationsValid, hasPendingImages, onValidityChange]);
 
   async function onPickImage(index: number, file: File) {
-    if (!uploadImage) return;
-    setUploadingIndex(index);
+    const current = latest.current;
+    const step = current.steps[index];
+    if (!uploadImage || current.disabled || !step) return;
+    const needsId = !step.id || current.steps.filter(item => item.id === step.id).length !== 1;
+    const id = needsId ? createUuid() : step.id!;
+    if (pendingUploads.current.has(id)) return;
+    if (needsId) {
+      const identified = current.steps.map((item, itemIndex) => itemIndex === index ? { ...item, id } : item);
+      latest.current = { ...current, steps: identified };
+      current.onChange(identified);
+    }
+    pendingUploads.current.add(id);
+    setUploadingIds(new Set(pendingUploads.current));
+    setImageErrors(errors => { const next = { ...errors }; delete next[id]; return next; });
     try {
       const imageUrl = await uploadImage(file);
-      updateAt(index, { ...steps[index], image_url: imageUrl });
+      if (!mounted.current) return;
+      const updated = latest.current;
+      // The user can edit, reorder or remove steps while storage is pending.
+      if (updated.steps.filter(item => item.id === id).length !== 1) return;
+      const next = updated.steps.map(item => item.id === id ? { ...item, image_url: imageUrl } : item);
+      latest.current = { ...updated, steps: next };
+      updated.onChange(next);
+    } catch {
+      if (mounted.current && latest.current.steps.some(item => item.id === id)) {
+        setImageErrors(errors => ({ ...errors, [id]: t("recipe.step.imageUploadFailed") }));
+      }
     } finally {
-      setUploadingIndex(null);
+      pendingUploads.current.delete(id);
+      if (mounted.current) setUploadingIds(new Set(pendingUploads.current));
     }
   }
 
@@ -97,7 +129,7 @@ export function StepListEditor({
     <fieldset
       aria-busy={disabled || undefined}
       aria-labelledby={headingId}
-      className={`${styles.editorSection} ${styles.editorFieldset}`}
+      className={styles.editor}
       disabled={disabled}
     >
       <div className={styles.sectionHeader}>
@@ -113,8 +145,15 @@ export function StepListEditor({
       {steps.length === 0 ? <p className={styles.muted}>{t("recipe.steps.empty")}</p> : null}
       <ol className={styles.stepRows}>
         {steps.map((step, index) => (
-          <li key={stepKey(step, index)}>
-            <span className={styles.stepIndex}>{index + 1}</span>
+          <li key={stepKey(step, index)} className={styles.stepCard}>
+            <div className={styles.stepHeader}>
+              <span className={styles.stepHeading}>{t("recipe.tutorial.editor.stepLabel", { step: index + 1 })}</span>
+              <div className={styles.rowActions}>
+                <button type="button" disabled={index === 0} onClick={() => swap(index, index - 1)} aria-label={t("recipe.tutorial.editor.moveUp", { step: index + 1 })}>↑</button>
+                <button type="button" disabled={index === steps.length - 1} onClick={() => swap(index, index + 1)} aria-label={t("recipe.tutorial.editor.moveDown", { step: index + 1 })}>↓</button>
+                <button type="button" onClick={() => removeAt(index)} aria-label={t("recipe.tutorial.editor.remove", { step: index + 1 })}>×</button>
+              </div>
+            </div>
             <div className={styles.stepBody}>
               <textarea
                 rows={3}
@@ -123,27 +162,29 @@ export function StepListEditor({
                 value={step.text}
                 onChange={(event) => updateAt(index, editRecipeStepText(step, event.target.value, estimateOnEdit))}
               />
-              <StepEvidence step={step} sourceUrl={sourceUrl} />
+              <StepEvidence step={step} sourceUrl={sourceUrl} showSuggestedWarning />
               <div className={styles.stepMetadata}>
-                <div className={styles.stepMetadataField}>
-                  <span>{t("recipe.tutorial.editor.duration")}</span>
-                  <span className={styles.metadataSource}>
-                    {t(RECIPE_DURATION_SOURCE_MESSAGE_KEYS[step.duration_source ?? "unknown"])}
-                  </span>
+                <div className={styles.durationControl}>
+                  <div className={styles.metadataLabel}>
+                    <span>{t("recipe.tutorial.editor.duration")}</span>
+                    <span className={styles.metadataSource}>
+                      {t(RECIPE_DURATION_SOURCE_MESSAGE_KEYS[step.duration_source ?? "unknown"])}
+                    </span>
+                  </div>
+                  <DurationField
+                    seconds={step.duration_seconds ?? null}
+                    onChange={(next) => updateAt(index, {
+                      ...step,
+                      duration_seconds: next,
+                      duration_source: next == null ? "unknown" : "user",
+                    })}
+                    ariaLabel={t("recipe.tutorial.editor.durationLabel", { step: index + 1 })}
+                    minutesAriaLabel={t("recipe.tutorial.editor.durationMinutes", { step: index + 1 })}
+                    secondsAriaLabel={t("recipe.tutorial.editor.durationSeconds", { step: index + 1 })}
+                    validationMessage={t("recipe.tutorial.editor.durationInvalid")}
+                    onValidityChange={(valid) => reportDurationValidity(stepKey(step, index), valid)}
+                  />
                 </div>
-                <DurationField
-                  seconds={step.duration_seconds ?? null}
-                  onChange={(next) => updateAt(index, {
-                    ...step,
-                    duration_seconds: next,
-                    duration_source: next == null ? "unknown" : "user",
-                  })}
-                  ariaLabel={t("recipe.tutorial.editor.durationLabel", { step: index + 1 })}
-                  minutesAriaLabel={t("recipe.tutorial.editor.durationMinutes", { step: index + 1 })}
-                  secondsAriaLabel={t("recipe.tutorial.editor.durationSeconds", { step: index + 1 })}
-                  validationMessage={t("recipe.tutorial.editor.durationInvalid")}
-                  onValidityChange={(valid) => reportDurationValidity(stepKey(step, index), valid)}
-                />
 
                 <fieldset className={styles.attentionControl}>
                   <legend>{t("recipe.tutorial.editor.attention")}</legend>
@@ -195,20 +236,21 @@ export function StepListEditor({
                     <input
                       type="file"
                       accept="image/*"
+                      aria-label={t("recipe.step.imageUploadLabel", { step: index + 1 })}
+                      disabled={uploadingIds.has(step.id ?? "")}
                       onChange={(event) => {
                         const file = event.target.files?.[0];
+                        event.currentTarget.value = "";
                         if (file) void onPickImage(index, file);
                       }}
                     />
-                    {uploadingIndex === index ? "Uploading…" : t("recipe.step.uploadImage")}
+                    <span role={uploadingIds.has(step.id ?? "") ? "status" : undefined}>
+                      {uploadingIds.has(step.id ?? "") ? t("recipe.uploading") : t("recipe.step.uploadImage")}
+                    </span>
                   </label>
                 )
               ) : null}
-            </div>
-            <div className={styles.rowActions}>
-              <button type="button" onClick={() => swap(index, index - 1)} aria-label={t("recipe.tutorial.editor.moveUp", { step: index + 1 })}>↑</button>
-              <button type="button" onClick={() => swap(index, index + 1)} aria-label={t("recipe.tutorial.editor.moveDown", { step: index + 1 })}>↓</button>
-              <button type="button" onClick={() => removeAt(index)} aria-label={t("recipe.tutorial.editor.remove", { step: index + 1 })}>×</button>
+              {imageErrors[step.id ?? ""] ? <p role="alert">{imageErrors[step.id ?? ""]}</p> : null}
             </div>
           </li>
         ))}

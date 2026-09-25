@@ -3,6 +3,7 @@
 import { isCompleteRecipeDraft } from "@cooking/shared";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../components/ui/Icon";
+import { RecipeCoverEditor } from "../components/RecipeCoverEditor";
 import { apiFetch } from "../lib/api";
 import { useT } from "../lib/i18n";
 import { RECIPE_TAG_GROUPS, type RecipeTagSlug } from "../lib/recipeCategories";
@@ -52,7 +53,11 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [savingRequest, setSaving] = useState(false);
-  const saving = savingRequest || disabled;
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [tagGroup, setTagGroup] = useState("cuisine");
+  const latestDraft = useRef(draft);
+  latestDraft.current = draft;
+  const saving = savingRequest || disabled || coverUploading;
   const [error, setError] = useState<string | null>(null);
   const [tutorialValid, setTutorialValid] = useState(true);
   const [fixedTotalForId, setFixedTotalForId] = useState<string | null>(null);
@@ -75,7 +80,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
     });
   }
 
-  function updateDraftIngredient(index: number, field: "quantity" | "name" | "metric_quantity", value: string) {
+  function updateDraftIngredient(index: number, field: "quantity" | "name" | "metric_quantity" | "notes", value: string) {
     const nextIngredients = [...draft.ingredients];
     if (!nextIngredients[index]) return;
     nextIngredients[index] = { ...nextIngredients[index], [field]: value };
@@ -137,14 +142,15 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
         </button>
       </header>
 
-      {reviewNotice ? <fieldset className={styles.reviewNotice} disabled={savingRequest}>{reviewNotice}</fieldset> : null}
+      {reviewNotice ? <fieldset className={styles.reviewNotice} disabled={savingRequest || coverUploading}>{reviewNotice}</fieldset> : null}
       {!complete ? <p>{t("import.manualRequired")}</p> : null}
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
 
       <div className={styles.reviewColumns}>
         <aside className={styles.overviewColumn}>
           <h2 className={styles.overviewHeading}>{t("import.recipeDetails")}</h2>
-          {draft.thumbnail_url ? <div className={styles.reviewImage}><img src={draft.thumbnail_url} alt="" /></div> : null}
+          <RecipeCoverEditor value={draft.thumbnail_url} disabled={saving} onBusyChange={setCoverUploading}
+            onChange={(url) => onChange({ ...latestDraft.current, thumbnail_url: url })} />
 
           <div className={styles.field}>
             <label htmlFor="draft-title">{t("recipe.recipeTitle")}</label>
@@ -192,38 +198,33 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
             {estimatedTotal ? <small>{t("recipe.estimatedTotalHelp")}</small> : null}
           </div>
 
-          <div className={styles.reviewTags}>
-            <p>{t("common.tags")}</p>
+          <section className={styles.reviewTags} aria-label={t("common.tags")}>
+            <div className={styles.tagHeading}>
+              <h3>{t("import.chooseTags")}</h3>
+              <span>{draftTags.length}</span>
+            </div>
+            <p className={styles.tagHelp}>{t("import.tagsHelp")}</p>
             {draftTags.length > 0 ? (
               <div className={styles.selectedTags}>
-                {RECIPE_TAG_GROUPS.flatMap((group) => group.tags)
-                  .filter((tag) => draftTags.includes(tag.id))
-                  .map((tag) => <span key={tag.id}>{tag.label}</span>)}
+                {RECIPE_TAG_GROUPS.flatMap(group => group.tags).filter(tag => draftTags.includes(tag.id)).map(tag => (
+                  <button key={tag.id} type="button" onClick={() => toggleDraftTag(tag.id)} disabled={saving}
+                    aria-label={t("import.removeTag", { tag: tag.label })}>{tag.label}<Icon name="close" size={12} /></button>
+                ))}
               </div>
             ) : null}
-            <details>
-              <summary>{t("import.editTags")}</summary>
-              <fieldset className={styles.tagPicker} aria-label={t("common.tags")} disabled={saving}>
-                {RECIPE_TAG_GROUPS.map((group) => (
-                  <div key={group.id}>
-                    <p>{group.label}</p>
-                    <div>
-                      {group.tags.map((tag) => (
-                        <button
-                          key={tag.id}
-                          type="button"
-                          aria-pressed={draftTags.includes(tag.id)}
-                          onClick={() => toggleDraftTag(tag.id)}
-                        >
-                          {tag.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+            <select className={styles.tagCategory} value={tagGroup} onChange={event => setTagGroup(event.target.value)}
+              aria-label={t("import.tagCategory")} disabled={saving}>
+              {RECIPE_TAG_GROUPS.map(group => <option key={group.id} value={group.id}>{group.label}</option>)}
+            </select>
+            <fieldset className={styles.tagPicker} aria-label={t("common.tags")} disabled={saving}>
+              <div><div>
+                {RECIPE_TAG_GROUPS.find(group => group.id === tagGroup)?.tags.map(tag => (
+                  <button key={tag.id} type="button" aria-pressed={draftTags.includes(tag.id)}
+                    onClick={() => toggleDraftTag(tag.id)}>{tag.label}</button>
                 ))}
-              </fieldset>
-            </details>
-          </div>
+              </div></div>
+            </fieldset>
+          </section>
         </aside>
 
         <div className={styles.contentColumn}>
@@ -235,50 +236,40 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
             <p className={styles.conversionHint} id="draft-conversion-help">{t("recipe.metricQtyHelp")}</p>
             <div className={styles.ingredientRows}>
               {draft.ingredients.map((ingredient, index) => (
-                <div key={`${draft.id}-${index}`} className={styles.ingredientRow}>
-                  <label>
-                    <span>{t("recipe.originalAmount")}</span>
-                    <input
-                      type="text"
-                      aria-label={`${t("recipe.originalAmount")} ${index + 1}`}
-                      placeholder={t("recipe.originalAmount")}
-                      value={ingredient.quantity}
-                      onChange={(event) => updateDraftIngredient(index, "quantity", event.target.value)}
-                      disabled={saving}
-                    />
-                  </label>
-                  <label>
-                    <span>{t("recipe.ingredient")}</span>
-                    <input
-                      type="text"
-                      aria-label={`${t("recipe.ingredient")} ${index + 1}`}
-                      placeholder={t("recipe.ingredient")}
-                      value={ingredient.name}
-                      onChange={(event) => updateDraftIngredient(index, "name", event.target.value)}
-                      disabled={saving}
-                    />
-                  </label>
-                  <label className={styles.conversionField}>
-                    <span>{t("recipe.metricQty")}</span>
-                    <input
-                      type="text"
-                      aria-label={`${t("recipe.metricQty")} ${index + 1}`}
-                      aria-describedby="draft-conversion-help"
-                      placeholder="—"
-                      value={ingredient.metric_quantity ?? ""}
-                      onChange={(event) => updateDraftIngredient(index, "metric_quantity", event.target.value)}
-                      disabled={saving}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className={styles.removeButton}
-                    onClick={() => removeDraftIngredient(index)}
-                    aria-label={t("recipe.removeIngredient")}
-                    disabled={saving}
-                  >
-                    <Icon name="close" size={16} />
-                  </button>
+                <div key={`${draft.id}-${index}`} className={styles.ingredientItem}>
+                  <div className={styles.ingredientRow}>
+                    <label>
+                      <span>{t("recipe.ingredient")}</span>
+                      <input type="text" aria-label={`${t("recipe.ingredient")} ${index + 1}`}
+                        placeholder={t("recipe.ingredient")} value={ingredient.name}
+                        onChange={event => updateDraftIngredient(index, "name", event.target.value)} disabled={saving} />
+                    </label>
+                    <label>
+                      <span>{t("recipe.originalAmount")}</span>
+                      <input type="text" aria-label={`${t("recipe.originalAmount")} ${index + 1}`}
+                        placeholder={t("recipe.originalAmount")} value={ingredient.quantity}
+                        onChange={event => updateDraftIngredient(index, "quantity", event.target.value)} disabled={saving} />
+                    </label>
+                    <button type="button" className={styles.removeButton} onClick={() => removeDraftIngredient(index)}
+                      aria-label={t("recipe.removeIngredient")} disabled={saving}><Icon name="close" size={16} /></button>
+                  </div>
+                  <details className={styles.ingredientExtras}>
+                    <summary>{t("recipe.ingredientDetails")}</summary>
+                    <div className={styles.ingredientExtraFields}>
+                      <label>
+                        <span>{t("recipe.preparationNote")}</span>
+                        <input type="text" aria-label={`${t("recipe.preparationNote")} ${index + 1}`}
+                          placeholder={t("recipe.preparationPlaceholder")} value={ingredient.notes ?? ""}
+                          onChange={event => updateDraftIngredient(index, "notes", event.target.value)} disabled={saving} />
+                      </label>
+                      <label>
+                        <span>{t("recipe.metricQty")}</span>
+                        <input type="text" aria-label={`${t("recipe.metricQty")} ${index + 1}`}
+                          aria-describedby="draft-conversion-help" placeholder="—" value={ingredient.metric_quantity ?? ""}
+                          onChange={event => updateDraftIngredient(index, "metric_quantity", event.target.value)} disabled={saving} />
+                      </label>
+                    </div>
+                  </details>
                 </div>
               ))}
             </div>

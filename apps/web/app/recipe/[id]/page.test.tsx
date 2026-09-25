@@ -4,10 +4,11 @@ import type React from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import RecipeDetailPage from "./page";
 
-const { mockActive, mockApiFetch, mockPush, translate } = vi.hoisted(() => ({
+const { mockActive, mockApiFetch, mockPush, mockUploadRecipeImage, translate } = vi.hoisted(() => ({
   mockActive: vi.fn(),
   mockApiFetch: vi.fn(),
   mockPush: vi.fn(),
+  mockUploadRecipeImage: vi.fn(),
   translate: (key: string, vars?: Record<string, string | number>) => {
     const messages: Record<string, string> = {
       "common.delete": "Delete",
@@ -17,6 +18,10 @@ const { mockActive, mockApiFetch, mockPush, translate } = vi.hoisted(() => ({
       "nav.library": "Library",
       "recipe.mealPlanner": "Meal planner",
       "recipe.originalVideo": "Original video",
+      "recipe.coverImage": "Cover image",
+      "recipe.cover.change": "Change cover photo",
+      "recipe.cover.saveFailed": "Your cover photo could not be saved. Please try again.",
+      "recipe.cover.updated": "Cover photo updated",
       "recipe.steps": "Steps",
       "recipe.tutorial.edit": "Edit tutorial",
       "recipe.tutorial.duration.aboutMinutes": "About {minutes} min",
@@ -44,8 +49,10 @@ vi.mock("../../lib/api", () => ({
   webApiClient: { cooking: { active: mockActive } },
 }));
 vi.mock("../../lib/i18n", () => ({ useT: () => translate }));
+vi.mock("../../lib/uploadRecipeImage", () => ({ uploadRecipeImage: mockUploadRecipeImage }));
 
 beforeEach(() => {
+  mockUploadRecipeImage.mockReset();
   mockActive.mockResolvedValue(null);
   mockApiFetch.mockReset().mockResolvedValue(new Response(JSON.stringify({
     id: "recipe-1",
@@ -63,6 +70,21 @@ beforeEach(() => {
       image_url: null,
     }],
   }), { status: 200, headers: { "Content-Type": "application/json" } }));
+});
+
+it.each([true, false])("changes only the saved cover and preserves the prior cover on save failure (success=%s)", async (success) => {
+  const recipe = { id: "recipe-1", title: "Tomato noodles", thumbnail_url: "https://images.example/old.jpg", ingredients: [], steps: [] };
+  mockUploadRecipeImage.mockResolvedValue("https://images.example/new.jpg");
+  mockApiFetch.mockImplementation(async (_url: string, options?: RequestInit) => options?.method === "PATCH"
+    ? new Response(JSON.stringify({ ...recipe, thumbnail_url: "https://images.example/new.jpg" }), { status: success ? 200 : 503 })
+    : new Response(JSON.stringify(recipe)));
+  render(<RecipeDetailPage />);
+  expect(await screen.findByRole("heading", { name: recipe.title })).toBeVisible();
+  await userEvent.upload(screen.getByLabelText("Cover image"), new File(["photo"], "dish.jpg", { type: "image/jpeg" }));
+  if (success) expect(await screen.findByText("Cover photo updated")).toBeVisible();
+  else expect(await screen.findByRole("alert")).toHaveTextContent("Your cover photo could not be saved");
+  expect(screen.getByRole("img", { name: "Cover image" })).toHaveAttribute("src", success ? "https://images.example/new.jpg" : recipe.thumbnail_url);
+  expect(mockApiFetch).toHaveBeenCalledWith("/recipes/recipe-1", { method: "PATCH", body: JSON.stringify({ thumbnail_url: "https://images.example/new.jpg" }) });
 });
 
 it("keeps destructive actions behind an explicit overflow control", async () => {

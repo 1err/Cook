@@ -1014,3 +1014,27 @@
  .sourceIntro h2 { font-size: 1.55rem; }
  .sourceIntro { margin-bottom: 1rem; }
 }
+
+/* Recipe details stay compact; extra ingredient units are optional. */
+.tagHeading { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
+.tagHeading h3 { margin:0; font-size:.9rem; font-weight:600; }
+.tagHeading > span { display:grid; place-items:center; width:1.6rem; height:1.6rem; border-radius:50%; background:var(--cw-color-subtle-surface); font-size:.75rem; color:var(--cw-color-muted-ink); }
+.reviewTags .tagHelp { margin:0; color:var(--cw-color-muted-ink); font-size:.8rem; font-weight:400; line-height:1.5; }
+.tagCategory { width:100%; min-height:2.75rem; padding:.6rem .7rem; border:1px solid var(--cw-color-divider); border-radius:var(--cw-radius-control); color:var(--cw-color-ink); background:var(--cw-color-surface); font:inherit; font-size:.8125rem; }
+.selectedTags button { display:inline-flex; align-items:center; gap:.35rem; min-height:2rem; padding:.3rem .55rem; border:1px solid transparent; border-radius:5px; background:color-mix(in srgb,var(--cw-color-action) 8%,var(--cw-color-surface)); color:var(--cw-color-action); cursor:pointer; font:inherit; font-size:.75rem; }
+.selectedTags button:disabled { opacity:.5; cursor:default; }
+.reviewTags .tagPicker { margin:0; }
+.ingredientItem { padding:.7rem 0; border-bottom:1px solid var(--cw-color-divider); }
+.ingredientItem:last-child { border-bottom:0; }
+.ingredientRow { grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) 2.75rem; padding:0; }
+.ingredientRow label > span { display:block; }
+.ingredientItem:not(:first-child) .ingredientRow label > span { display:none; }
+.ingredientExtras { margin-top:.1rem; }
+.ingredientExtras summary { display:flex; align-items:center; gap:.35rem; min-height:2.4rem; width:fit-content; list-style:none; color:var(--cw-color-muted-ink); cursor:pointer; font-size:.75rem; }
+.ingredientExtras summary::-webkit-details-marker { display:none; }
+.ingredientExtras summary::before { content:'+'; font-size:1rem; }
+.ingredientExtras[open] summary::before { content:'−'; }
+.ingredientExtraFields { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:.65rem; padding:.5rem 0 .25rem; }
+.ingredientExtraFields label { display:grid; gap:.4rem; min-width:0; font-size:.75rem; color:var(--cw-color-muted-ink); }
+.ingredientExtraFields input { width:100%; min-width:0; min-height:2.75rem; padding:.6rem .75rem; border:1px solid var(--cw-color-divider); border-radius:var(--cw-radius-control); background:var(--cw-color-canvas); color:var(--cw-color-ink); font:inherit; font-size:.875rem; }
+@media (max-width:540px) { .ingredientRow { gap:.4rem; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) 2.25rem; } .ingredientRow .removeButton { width:2.25rem; } .ingredientExtraFields { grid-template-columns:minmax(0,1fr); } }

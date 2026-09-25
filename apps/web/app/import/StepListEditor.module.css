@@ -1,0 +1,304 @@
+.editor {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  container-type: inline-size;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.sectionHeader h2 {
+  margin: 0;
+  color: var(--cw-color-ink);
+  font-family: var(--cw-font-display);
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.sectionHeader button {
+  min-height: 2.75rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-surface);
+  color: var(--cw-color-action);
+  cursor: pointer;
+  font: 600 0.8125rem/1.4 var(--cw-font-body);
+  white-space: nowrap;
+}
+
+.stepRows {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stepCard {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 0.65rem;
+  padding: 1rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: 12px;
+  background: var(--cw-color-surface);
+}
+
+.stepHeader {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.stepHeading {
+  color: var(--cw-color-ink);
+  font-family: var(--cw-font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.rowActions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.15rem;
+}
+
+.rowActions button {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--cw-radius-control);
+  place-items: center;
+  background: transparent;
+  color: var(--cw-color-muted-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.05rem;
+}
+
+.rowActions button:hover:not(:disabled),
+.sectionHeader button:hover:not(:disabled) {
+  background: var(--cw-color-canvas);
+  color: var(--cw-color-action);
+}
+
+.rowActions button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.stepBody {
+  display: grid;
+  min-width: 0;
+  gap: 0.85rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.stepBody textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 6.25rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-field);
+  outline: 0;
+  background: var(--cw-color-canvas);
+  color: var(--cw-color-ink);
+  font: inherit;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  resize: vertical;
+}
+
+.stepMetadata {
+  display: grid;
+  min-width: 0;
+  align-items: start;
+  gap: 1.15rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--cw-color-divider);
+  grid-template-columns: minmax(0, 1fr);
+  color: var(--cw-color-muted-ink);
+  font-size: 0.8125rem;
+}
+
+.durationControl,
+.attentionControl,
+.actionControl {
+  display: grid;
+  min-width: 0;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.metadataLabel {
+  display: flex;
+  min-height: 1.2rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.metadataSource {
+  color: var(--cw-color-muted-ink);
+  font-size: 0.7rem;
+  font-weight: 400;
+}
+
+.durationControl [role="group"] {
+  display: grid;
+  width: 100%;
+  max-width: 15rem;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0.4rem;
+}
+
+.durationControl input {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  background: var(--cw-color-surface);
+  font-size: 0.875rem;
+}
+
+.attentionControl legend {
+  margin-bottom: 0.5rem;
+  padding: 0;
+  font-weight: 600;
+  line-height: 1.2rem;
+}
+
+.actionControl > span {
+  font-weight: 600;
+  line-height: 1.2rem;
+}
+
+.attentionControl > div {
+  display: grid;
+  min-width: 0;
+  gap: 0.4rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.attentionControl button,
+.actionControl select {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-surface);
+  color: var(--cw-color-ink);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1.4;
+}
+
+.attentionControl button[aria-pressed="true"] {
+  border-color: var(--cw-color-action);
+  background: color-mix(in srgb, var(--cw-color-action) 6%, var(--cw-color-surface));
+  color: var(--cw-color-action);
+  font-weight: 600;
+}
+
+.editor button:focus-visible,
+.editor select:focus-visible,
+.stepBody textarea:focus,
+.stepUpload:focus-within {
+  outline: 2px solid var(--cw-color-action);
+  outline-offset: 3px;
+}
+
+.editor button:disabled,
+.editor input:disabled,
+.editor select:disabled,
+.editor textarea:disabled {
+  cursor: default;
+}
+
+.stepImage {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.stepImage img {
+  width: 5rem;
+  height: 4rem;
+  border-radius: var(--cw-radius-control);
+  object-fit: cover;
+}
+
+.stepImage button,
+.stepUpload {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 2.75rem;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cw-color-action);
+  cursor: pointer;
+  font: 500 0.8125rem/1.4 var(--cw-font-body);
+}
+
+.stepUpload {
+  position: relative;
+}
+
+.stepUpload input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.muted {
+  color: var(--cw-color-muted-ink);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+@container (min-width: 38rem) {
+  .stepCard {
+    padding: 1.15rem 1.4rem 1.35rem;
+  }
+
+  .stepMetadata {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 24rem) {
+  .stepCard {
+    padding: 0.9rem;
+  }
+
+  .stepBody textarea,
+  .durationControl input,
+  .actionControl select {
+    font-size: 1rem;
+  }
+}

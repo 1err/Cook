@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RecipeStep } from "@cooking/shared";
@@ -12,6 +12,10 @@ vi.mock("../lib/i18n", () => ({
       "recipe.steps.empty": "No steps",
       "recipe.step.addRow": "Add step",
       "recipe.step.textPlaceholder": "Step instructions",
+      "recipe.step.uploadImage": "Add image",
+      "recipe.step.imageUploadLabel": "Step {step} image",
+      "recipe.step.imageUploadFailed": "Could not upload this step image. Try again.",
+      "recipe.uploading": "Uploading…",
       "recipe.tutorial.editor.duration": "Duration",
       "recipe.tutorial.editor.attention": "Attention",
       "recipe.tutorial.editor.illustration": "Illustration",
@@ -28,6 +32,8 @@ vi.mock("../lib/i18n", () => ({
       "recipe.tutorial.source.estimated": "AI estimated",
       "recipe.tutorial.source.user": "Adjusted",
       "recipe.tutorial.source.fallback": "Rough estimate",
+      "recipe.tutorial.evidence.moment": "Source",
+      "recipe.tutorial.evidence.suggested": "Suggested step — review before cooking",
       "recipe.tutorial.attention.handsOn": "Hands-on",
       "recipe.tutorial.attention.passive": "Passive",
       "recipe.tutorial.action.prep": "Prep",
@@ -63,11 +69,13 @@ function EditorHarness({
   onChange = () => undefined,
   onValidityChange,
   disabled = false,
+  uploadImage,
 }: {
   initialSteps: RecipeStep[];
   onChange?: (steps: RecipeStep[]) => void;
   onValidityChange?: (valid: boolean) => void;
   disabled?: boolean;
+  uploadImage?: (file: File) => Promise<string>;
 }) {
   const [steps, setSteps] = useState(initialSteps);
   return (
@@ -79,13 +87,95 @@ function EditorHarness({
       }}
       onValidityChange={onValidityChange}
       disabled={disabled}
+      uploadImage={uploadImage}
     />
   );
 }
 
 afterEach(cleanup);
 
+describe("step image uploads", () => {
+  it.each([true, false])("preserves edits and reordering while targeting the original step (has ID: %s)", async (withId) => {
+    let finish!: (url: string) => void;
+    const uploadImage = vi.fn().mockReturnValue(new Promise<string>(resolve => { finish = resolve; }));
+    const onChange = vi.fn();
+    const onValidityChange = vi.fn();
+    const secondStep = { ...estimatedStep, id: "second-step", text: "Serve the dish.", image_url: null };
+    render(<EditorHarness initialSteps={[{ ...estimatedStep, id: withId ? estimatedStep.id : undefined, image_url: null }, secondStep]}
+      uploadImage={uploadImage} onChange={onChange} onValidityChange={onValidityChange} />);
+    const user = userEvent.setup();
+    await user.upload(screen.getByLabelText("Step 1 image"), new File(["image"], "step.png", { type: "image/png" }));
+    expect(onValidityChange).toHaveBeenLastCalledWith(false);
+    expect(screen.getByLabelText("Step 1 image")).toBeDisabled();
+    await user.type(screen.getByRole("textbox", { name: "Step 1" }), " Stir once.");
+    await user.type(screen.getByRole("textbox", { name: "Step 2" }), " Add herbs.");
+    await user.click(screen.getByRole("button", { name: "Move step 1 down" }));
+    await act(async () => { finish("https://images.example/step.png"); });
+    const saved = onChange.mock.calls.at(-1)![0];
+    expect(saved.map((step: RecipeStep) => step.text)).toEqual(["Serve the dish. Add herbs.", "Simmer until glossy. Stir once."]);
+    expect(saved[0]).toMatchObject({ id: secondStep.id, image_url: null });
+    expect(saved[1]).toMatchObject({ image_url: "https://images.example/step.png", instruction_source: "user" });
+    expect(saved[1].id).toBeTruthy();
+    expect(onValidityChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("shows upload failures and lets the same file be retried", async () => {
+    const uploadImage = vi.fn().mockRejectedValueOnce(new Error("Storage unavailable")).mockResolvedValueOnce("https://images.example/retry.png");
+    const onChange = vi.fn();
+    render(<EditorHarness initialSteps={[{ ...estimatedStep, image_url: null }]} uploadImage={uploadImage} onChange={onChange} />);
+    const user = userEvent.setup();
+    const file = new File(["image"], "step.png", { type: "image/png" });
+    await user.upload(screen.getByLabelText("Step 1 image"), file);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not upload this step image. Try again.");
+    expect(screen.getByLabelText("Step 1 image")).toBeEnabled();
+    expect(onChange).not.toHaveBeenCalled();
+    await user.upload(screen.getByLabelText("Step 1 image"), file);
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    expect(onChange.mock.calls.at(-1)![0][0]).toMatchObject({ ...estimatedStep, image_url: "https://images.example/retry.png" });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it.each(["removed", "unmounted"])("ignores a late upload result after its step is %s", async (action) => {
+    let finish!: (url: string) => void;
+    const uploadImage = vi.fn().mockReturnValue(new Promise<string>(resolve => { finish = resolve; }));
+    const onChange = vi.fn();
+    const onValidityChange = vi.fn();
+    const view = render(<EditorHarness initialSteps={[{ ...estimatedStep, image_url: null }]}
+      uploadImage={uploadImage} onChange={onChange} onValidityChange={onValidityChange} />);
+    const user = userEvent.setup();
+    await user.upload(screen.getByLabelText("Step 1 image"), new File(["image"], "step.png", { type: "image/png" }));
+    if (action === "removed") {
+      await user.click(screen.getByRole("button", { name: "Remove step 1" }));
+      expect(onValidityChange).toHaveBeenLastCalledWith(true);
+    }
+    else view.unmount();
+    onChange.mockClear();
+    await act(async () => { finish("https://images.example/late.png"); });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
 describe("StepListEditor", () => {
+  it("keeps source access and suggested-step reminders without authorship labels", () => {
+    render(<StepListEditor
+      sourceUrl="https://youtu.be/A6bByqI_TH8"
+      steps={[
+        { ...estimatedStep, instruction_source: "source", source_start_seconds: 12 },
+        { ...estimatedStep, id: "user-step", instruction_source: "user" },
+        { ...estimatedStep, id: "suggested-step", instruction_source: "suggested", source_start_seconds: 12 },
+      ]}
+      onChange={() => undefined}
+    />);
+
+    expect(screen.getByRole("link", { name: "Source" })).toHaveAttribute("href", "https://www.youtube.com/watch?v=A6bByqI_TH8&t=12s");
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.queryByText("From source")).not.toBeInTheDocument();
+    expect(screen.queryByText("Edited by you")).not.toBeInTheDocument();
+    expect(screen.getByText("Suggested step — review before cooking")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Move step 1 up" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Move step 3 down" })).toBeDisabled();
+  });
+
   it("disables every draft mutation while a parent request is pending", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn<(steps: RecipeStep[]) => void>();

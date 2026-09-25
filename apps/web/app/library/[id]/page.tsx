@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { isSafeExternalUrl } from "@cooking/shared";
 import { useParams, useRouter } from "next/navigation";
@@ -8,6 +8,7 @@ import { apiFetch } from "../../lib/api";
 import { uploadRecipeImage } from "../../lib/uploadRecipeImage";
 import { RequireAuth } from "../../components/RequireAuth";
 import { PageShell } from "../../components/PageShell";
+import { RecipeCoverEditor } from "../../components/RecipeCoverEditor";
 import { useT } from "../../lib/i18n";
 import {
   CATEGORY_LABELS,
@@ -42,7 +43,6 @@ function RecipeEditContent() {
   const [catalogSaving, setCatalogSaving] = useState(false);
   const [canManageCatalog, setCanManageCatalog] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const t = useT();
 
   useEffect(() => {
@@ -117,24 +117,8 @@ function RecipeEditContent() {
     setLibraryTags((prev) => (prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]));
   }
 
-  async function handleImageFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setError(null);
-    setUploadingImage(true);
-    try {
-      const file_url = await uploadRecipeImage(file, t("common.upload"));
-      setThumbnailUrl(file_url ?? "");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setUploadingImage(false);
-      e.target.value = "";
-    }
-  }
-
   async function handleSave() {
-    if (!id || !stepsValid) return;
+    if (!id || !stepsValid || saving || uploadingImage || deleting) return;
     setSaving(true);
     setError(null);
     try {
@@ -163,7 +147,7 @@ function RecipeEditContent() {
   }
 
   async function handleDelete() {
-    if (!id || !recipe) return;
+    if (!id || !recipe || uploadingImage || saving || deleting) return;
     if (!confirm(`Delete “${recipe.title}”?`)) return;
     setDeleting(true);
     setError(null);
@@ -219,7 +203,7 @@ function RecipeEditContent() {
             type="button"
             className={styles.saveButton}
             onClick={handleSave}
-            disabled={saving || !stepsValid}
+            disabled={saving || uploadingImage || deleting || !stepsValid}
           >
             {saving ? t("common.saving") : t("common.save")}
           </button>
@@ -285,31 +269,7 @@ function RecipeEditContent() {
             </div>
 
             <div className={styles.coverEditor}>
-              <span className={styles.controlLabel}>{t("recipe.coverImage")}</span>
-              <div className={styles.coverPreview}>
-                {thumbnailUrl.trim() ? (
-                  <img src={thumbnailUrl.trim()} alt="" />
-                ) : (
-                  <span aria-hidden>CW</span>
-                )}
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageFile}
-                className={styles.hiddenInput}
-                tabIndex={-1}
-                aria-hidden
-              />
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingImage}
-              >
-                {uploadingImage ? t("recipe.uploading") : t("common.upload")}
-              </button>
+              <RecipeCoverEditor key={id} value={thumbnailUrl} onChange={setThumbnailUrl} onBusyChange={setUploadingImage} disabled={saving || deleting} />
               <details className={styles.imageUrlDisclosure}>
                 <summary>{t("recipe.imageUrl")}</summary>
                 <input
@@ -317,6 +277,7 @@ function RecipeEditContent() {
                   aria-label={t("recipe.imageUrl")}
                   value={thumbnailUrl}
                   onChange={(event) => setThumbnailUrl(event.target.value)}
+                  disabled={uploadingImage || saving || deleting}
                   placeholder="https://…"
                 />
               </details>
@@ -478,7 +439,7 @@ function RecipeEditContent() {
             <strong>{t("recipe.deleteRecipe")}</strong>
             <p>{recipe.title}</p>
           </div>
-          <button type="button" onClick={handleDelete} disabled={deleting}>
+          <button type="button" onClick={handleDelete} disabled={deleting || saving || uploadingImage}>
             {deleting ? t("recipe.deleting") : t("common.delete")}
           </button>
         </section>

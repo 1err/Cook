@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import type { RecipeStep } from "@cooking/shared";
+import Link from "next/link";
+import { isSafeExternalUrl, type RecipeStep } from "@cooking/shared";
 import { PageShell } from "../../../../components/PageShell";
 import { RequireAuth } from "../../../../components/RequireAuth";
 import { Button } from "../../../../components/ui/Button";
@@ -22,6 +23,7 @@ function TutorialEditContent() {
   const id = params?.id as string;
   const t = useT();
   const [recipeTitle, setRecipeTitle] = useState("");
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [draftSteps, setDraftSteps] = useState<RecipeStep[]>([]);
   const [stepsValid, setStepsValid] = useState(true);
@@ -45,6 +47,7 @@ function TutorialEditContent() {
         const recipe = (await response.json()) as Recipe;
         if (!cancelled) {
           setRecipeTitle(recipe.title);
+          setCoverUrl(recipe.thumbnail_url ?? null);
           setSourceUrl(recipe.source_url ?? null);
           setDraftSteps(copySteps(recipe.steps));
         }
@@ -62,7 +65,7 @@ function TutorialEditContent() {
   }, [id]);
 
   async function handleEstimate() {
-    if (!id || !canEstimate || estimating) return;
+    if (!id || !canEstimate || estimating || saving) return;
     setEstimateError(null);
     setEstimating(true);
     try {
@@ -83,7 +86,7 @@ function TutorialEditContent() {
   }
 
   async function handleSave() {
-    if (!id || !stepsValid || saving) return;
+    if (!id || !stepsValid || saving || estimating) return;
     setSaveError(null);
     setSaving(true);
     try {
@@ -113,39 +116,24 @@ function TutorialEditContent() {
     );
   }
 
+  const activeSteps = draftSteps.filter(step => step.text.trim());
+  const totalSeconds = activeSteps.length && activeSteps.every(step => typeof step.duration_seconds === "number" && step.duration_seconds > 0)
+    ? activeSteps.reduce((total, step) => total + step.duration_seconds!, 0) : null;
+
   return (
-    <PageShell className={styles.page} size="narrow">
+    <PageShell className={styles.page}>
+      <Link className={styles.back} href={detailHref} aria-disabled={saving || estimating || undefined}
+        tabIndex={saving || estimating ? -1 : undefined} onClick={event => { if (saving || estimating) event.preventDefault(); }}>← {t("recipe.tutorial.editor.back")}</Link>
       <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>{recipeTitle}</p>
+        <div className={styles.heading}>
           <h1 className="cw-display">{t("recipe.tutorial.edit")}</h1>
+          <p>{t("recipe.tutorial.editor.subtitle")}</p>
         </div>
         <div className={styles.actions}>
-          <Button
-            disabled={!canEstimate || estimating || saving}
-            loading={estimating}
-            onClick={() => void handleEstimate()}
-            size="lg"
-            variant="secondary"
-          >
-            {estimating
-              ? t("recipe.tutorial.editor.estimating")
-              : t("recipe.tutorial.editor.estimate")}
-          </Button>
-          <Button
-            disabled={saving}
-            onClick={() => router.push(detailHref)}
-            size="lg"
-            variant="ghost"
-          >
+          <Button disabled={saving || estimating} onClick={() => router.push(detailHref)} size="lg" variant="ghost">
             {t("recipe.tutorial.cancel")}
           </Button>
-          <Button
-            disabled={!stepsValid || estimating}
-            loading={saving}
-            onClick={() => void handleSave()}
-            size="lg"
-          >
+          <Button disabled={!stepsValid || estimating} loading={saving} onClick={() => void handleSave()} size="lg">
             {t("recipe.tutorial.save")}
           </Button>
         </div>
@@ -154,13 +142,33 @@ function TutorialEditContent() {
       {estimateError ? <p className={styles.error} role="alert">{estimateError}</p> : null}
       {saveError ? <p className={styles.error} role="alert">{saveError}</p> : null}
 
-      <StepListEditor
-        disabled={estimating || saving}
-        onChange={setDraftSteps}
-        onValidityChange={setStepsValid}
-        steps={draftSteps}
-        sourceUrl={sourceUrl}
-      />
+      <div className={styles.layout}>
+        <div className={styles.method}>
+          <StepListEditor disabled={estimating || saving} onChange={setDraftSteps}
+            onValidityChange={setStepsValid} steps={draftSteps} sourceUrl={sourceUrl} />
+          <p className={styles.saveHint}>{t("recipe.tutorial.editor.saveHint")}</p>
+        </div>
+        <aside className={styles.context} aria-label={t("recipe.tutorial.editor.overview")}>
+          <div className={styles.recipePreview}>
+            {coverUrl ? <img src={coverUrl} alt="" className={styles.cover} /> : null}
+            <div>
+              <p className={styles.eyebrow}>{t("recipe.tutorial.editor.overview")}</p>
+              <h2 className="cw-display">{recipeTitle}</h2>
+              {isSafeExternalUrl(sourceUrl) ? <a className={styles.source} href={sourceUrl} target="_blank" rel="noopener noreferrer">{t("recipe.originalVideo")} ↗</a> : null}
+            </div>
+          </div>
+          <div className={styles.summary}>
+            <span>{t("recipe.tutorial.editor.stepCount", { count: activeSteps.length })}</span>
+            {totalSeconds ? <span>{t("recipe.tutorial.duration.aboutMinutes", { minutes: Math.ceil(totalSeconds / 60) })}</span> : null}
+          </div>
+          <p className={styles.contextHint}>{t(canEstimate ? "recipe.tutorial.editor.estimateHint" : "recipe.tutorial.editor.timingHint")}</p>
+          {canEstimate ? (
+            <Button disabled={estimating || saving} loading={estimating} onClick={() => void handleEstimate()} size="lg" variant="secondary">
+              {estimating ? t("recipe.tutorial.editor.estimating") : t("recipe.tutorial.editor.estimate")}
+            </Button>
+          ) : null}
+        </aside>
+      </div>
     </PageShell>
   );
 }

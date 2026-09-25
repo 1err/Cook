@@ -218,7 +218,7 @@ describe("TutorialEditPage", () => {
     await waitFor(() => expect(screen.getByText("AI estimated")).toBeVisible());
     expect(instructions).toHaveValue("Simmer the edited sauce.");
     expect(screen.getByLabelText("Step 1 minutes")).toHaveValue(8);
-    expect(screen.getByRole("button", { name: "Estimate missing tutorial details" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Estimate missing tutorial details" })).not.toBeInTheDocument();
     expect(requestOptionsAt("POST")).toMatchObject({
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -258,12 +258,12 @@ async function requestAdditionalCandidate(recipe: Recipe) {
 
 test.each([{ total: 45, expectedTotal: 45 }, { total: 2, expectedTotal: 2 }])("applying additional text preserves omitted edits, verified moments and manual timers (total $total)", async ({ total, expectedTotal }) => {
   mocks.createImportJob.mockResolvedValueOnce({ id: "detailed", status: "completed", recipe: {
-    ...partial, description: "Original description", tips: ["Dry the tofu well."], equipment: ["Cast iron pan"],
+    ...partial, thumbnail_url: "https://example.com/my-cover.jpg", library_tags: ["chinese", "weeknight"], description: "Original description", tips: ["Dry the tofu well."], equipment: ["Cast iron pan"],
     ingredients: [{ name: "Tofu", quantity: "1 block", metric_quantity: "200 g" }], steps: [reviewedStep], total_time_minutes: total,
   } });
   await importPartial();
   fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Family version" } });
-  fireEvent.change(screen.getByLabelText("Amount in g / ml 1"), { target: { value: "300 g" } });
+  fireEvent.change(screen.getByLabelText("Metric equivalent (optional) 1"), { target: { value: "300 g" } });
   await requestAdditionalCandidate({
     ...partial, id: "updated", description: null, tips: [], equipment: [], total_time_minutes: 3,
     ingredients: [{ name: "Tofu", quantity: "1 block", metric_quantity: "" }],
@@ -280,12 +280,12 @@ test.each([{ total: 45, expectedTotal: 45 }, { total: 2, expectedTotal: 2 }])("a
   expect(preview).toHaveTextContent(`Total time: ${expectedTotal} min`);
   fireEvent.click(screen.getByRole("button", { name: "Apply new draft" }));
   expect(screen.getByLabelText("Description")).toHaveValue("Family version");
-  expect(screen.getByLabelText("Amount in g / ml 1")).toHaveValue("300 g");
+  expect(screen.getByLabelText("Metric equivalent (optional) 1")).toHaveValue("300 g");
   expect(screen.getByLabelText("Total time")).toHaveValue(expectedTotal);
   fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
   await waitFor(() => expect(mocks.apiFetch).toHaveBeenCalled());
   const saved = JSON.parse(mocks.apiFetch.mock.calls[0][1].body);
-  expect(saved).toMatchObject({ description: "Family version", tips: ["Dry the tofu well."], equipment: ["Cast iron pan"], total_time_minutes: expectedTotal, steps: [reviewedStep] });
+  expect(saved).toMatchObject({ thumbnail_url: "https://example.com/my-cover.jpg", library_tags: ["chinese", "weeknight"], description: "Family version", tips: ["Dry the tofu well."], equipment: ["Cast iron pan"], total_time_minutes: expectedTotal, steps: [reviewedStep] });
 });
 
 test("changed candidate instructions do not inherit old source moments or timers", async () => {
@@ -306,6 +306,36 @@ test("changed candidate instructions do not inherit old source moments or timers
   expect(saved.steps[0]).toMatchObject({ id: "new-step", text: "Simmer tofu in sauce.", duration_seconds: 300, duration_source: "estimated" });
   expect(saved.steps[0].source_start_seconds ?? null).toBeNull();
   expect(saved.steps[0].source_excerpt ?? null).toBeNull();
+});
+
+test.each(["additional text", "video analysis"])("applying %s keeps cover and tag choices made after the candidate is ready", async (mode) => {
+  mocks.createImportJob.mockResolvedValueOnce({ id: "original", status: "completed", recipe: {
+    ...partial, thumbnail_url: "https://example.com/original-cover.jpg", library_tags: ["chinese"],
+  } });
+  mocks.apiFetch.mockImplementation((path: string) => Promise.resolve(new Response(JSON.stringify(path === "/recipes/upload-image"
+    ? { upload_url: "", file_url: "https://example.com/latest-cover.jpg" }
+    : { id: "saved" }))));
+  await importPartial();
+  const replacement: Recipe = { ...partial, id: "updated", title: "Updated method", thumbnail_url: "https://example.com/model-cover.jpg", library_tags: ["weeknight"] };
+  if (mode === "additional text") await requestAdditionalCandidate(replacement);
+  else {
+    mocks.createImportJob.mockResolvedValueOnce({ id: "analyzed", status: "completed", recipe: replacement });
+    fireEvent.click(screen.getByRole("button", { name: "Read steps from video" }));
+    await screen.findByRole("button", { name: "Apply new draft" });
+  }
+
+  // An intentionally empty tag selection must remain empty after applying a method update.
+  fireEvent.click(screen.getByRole("button", { name: "Chinese" }));
+  fireEvent.change(screen.getByLabelText("Cover image"), { target: { files: [new File(["photo"], "dish.jpg", { type: "image/jpeg" })] } });
+  await screen.findByText("Cover photo updated");
+  fireEvent.click(screen.getByRole("button", { name: "Apply new draft" }));
+  expect(screen.getByRole("img", { name: "Cover image" })).toHaveAttribute("src", "https://example.com/latest-cover.jpg");
+  expect(screen.getByRole("button", { name: "Chinese" })).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByLabelText("Recipe title")).toHaveValue("Updated method");
+  fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
+  await waitFor(() => expect(mocks.apiFetch.mock.calls.some(([path]) => path === "/recipes")).toBe(true));
+  const saved = JSON.parse(mocks.apiFetch.mock.calls.find(([path]) => path === "/recipes")![1].body);
+  expect(saved).toMatchObject({ thumbnail_url: "https://example.com/latest-cover.jpg", library_tags: [] });
 });
 
 test("ambiguous repeated instructions do not copy a source moment or manual timer to the wrong step", async () => {

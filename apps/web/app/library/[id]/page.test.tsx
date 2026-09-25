@@ -1,12 +1,13 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import RecipeEditPage from "./page";
 
-const { mockApiFetch, mockPush } = vi.hoisted(() => ({
+const { mockApiFetch, mockPush, mockUploadRecipeImage } = vi.hoisted(() => ({
   mockApiFetch: vi.fn(),
   mockPush: vi.fn(),
+  mockUploadRecipeImage: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -19,7 +20,7 @@ vi.mock("../../components/RequireAuth", () => ({
 }));
 
 vi.mock("../../lib/api", () => ({ apiFetch: mockApiFetch }));
-vi.mock("../../lib/uploadRecipeImage", () => ({ uploadRecipeImage: vi.fn() }));
+vi.mock("../../lib/uploadRecipeImage", () => ({ uploadRecipeImage: mockUploadRecipeImage }));
 vi.mock("../../lib/i18n", () => ({
   useT: () => (key: string, vars?: Record<string, string | number>) => {
     const messages: Record<string, string> = {
@@ -98,6 +99,7 @@ const recipe = {
 };
 
 beforeEach(() => {
+  mockUploadRecipeImage.mockReset();
   mockPush.mockReset();
   mockApiFetch.mockReset().mockImplementation((path: string, options?: RequestInit) => {
     if (options?.method === "PATCH") {
@@ -111,6 +113,27 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+it("blocks Save while uploading a cover and keeps newer text edits when it finishes", async () => {
+  let finishUpload!: (url: string) => void;
+  mockUploadRecipeImage.mockReturnValue(new Promise<string>(resolve => { finishUpload = resolve; }));
+  const user = userEvent.setup();
+  render(<RecipeEditPage />);
+  const title = await screen.findByLabelText("Recipe title");
+  await user.upload(screen.getByLabelText("Cover image"), new File(["photo"], "dish.jpg", { type: "image/jpeg" }));
+  const save = screen.getByRole("button", { name: "Save" });
+  expect(save).toBeDisabled();
+  await user.clear(title);
+  await user.type(title, "My braised tofu");
+  await user.click(save);
+  expect(mockApiFetch.mock.calls.some(([, options]) => options?.method === "PATCH")).toBe(false);
+  await act(async () => { finishUpload("https://images.example/new.jpg"); });
+  expect(save).toBeEnabled();
+  expect(title).toHaveValue("My braised tofu");
+  await user.click(save);
+  const saveOptions = mockApiFetch.mock.calls.find(([, options]) => options?.method === "PATCH")![1];
+  expect(JSON.parse(saveOptions.body)).toMatchObject({ title: "My braised tofu", thumbnail_url: "https://images.example/new.jpg" });
+});
 
 describe("full recipe editor tutorial validity", () => {
   it("keeps a cleared duration visible and blocks PATCH until corrected", async () => {
