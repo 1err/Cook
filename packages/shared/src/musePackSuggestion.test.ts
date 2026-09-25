@@ -16,6 +16,31 @@ test("recommends enough packs and explains the total and spare amount", () => {
   });
 });
 
+test.each([
+  ["牛肉 2磅", "500g", 1, "907.18 g"],
+  ["牛肉 16盎司", "600g", 2, "453.59 g"],
+  ["Beef 8 oz", "1磅", 2, "226.8 g"],
+  ["Beef 1 lb", "24盎司", 2, "453.59 g"],
+])("matches explicit Chinese mass labels to compatible needs: %s", (name, needed, packs, packageAmount) => {
+  expect(getMusePackSuggestion(item(name, [needed]))).toMatchObject({
+    status: "suggested", packs, packageAmount,
+  });
+});
+
+test.each(["牛肉 约2磅", "牛肉 1–2磅", "牛肉 16盎司-1磅", "牛肉 16盎司至1磅", "牛肉 16盎司～1磅", "牛肉 2斤"])(
+  "abstains from approximate, ranged, or unsupported Chinese mass labels: %s",
+  (name) => expect(getMusePackSuggestion(item(name, ["500g"]))).toEqual({ status: "unavailable", reason: "package-size" }),
+);
+
+test.each(["饮料 16液盎司", "饮料 16液体盎司", "饮料 液体盎司规格 16盎司", "饮料 16盎司（液量盎司）", "饮料 液量盎司规格 16盎司", "饮料 16盎司（液 量 盎司）"])(
+  "does not reinterpret Chinese fluid ounce labels as mass: %s",
+  (name) => expect(getMusePackSuggestion(item(name, ["500g"]))).toEqual({ status: "unavailable", reason: "package-size" }),
+);
+
+test.each(["16液盎司", "16液体盎司"])("does not reinterpret Chinese fluid ounce needs as mass: %s", (needed) => {
+  expect(getMusePackSuggestion(item("Beef 1lb", [needed]))).toEqual({ status: "unavailable", reason: "ingredient-amount" });
+});
+
 test("sums all ingredient needs before rounding a shared product to packs", () => {
   expect(getMusePackSuggestion(item("Rice 350g", ["100 g", "100 g"]))).toEqual({
     status: "suggested", packs: 1,

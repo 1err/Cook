@@ -8,15 +8,15 @@ type Dimension = "mass" | "volume" | "item" | "bag" | "bottle" | "can" | "jar" |
 type Amount = { dimension: Dimension; value: number };
 type Measurement = Amount & { start: number; end: number; unitScale: number };
 const NUMBER = "(?:\\d+\\s+\\d+\\s*/\\s*\\d+|\\d+\\s*/\\s*\\d+|\\d+(?:\\.\\d+)?|\\.\\d+)";
-const UNIT = "fl\\.?\\s*oz\\.?|fluid\\s+ounces?|kilograms?|kgs?|grams?|g|ounces?|oz|pounds?|lbs?|millilit(?:er|re)s?|ml|lit(?:er|re)s?|l|tablespoons?|tbsp|tbs|teaspoons?|tsp|cups?|dozen|counts?|ct|pieces?|pcs?|each|whole|eggs?|bags?|bottles?|cans?|jars?|packs?|blocks?|bunch(?:es)?|cloves?|bulbs?|stalks?|千克|公斤|克|毫升|升|个|枚|只|颗|袋|瓶|罐|包";
+const UNIT = "fl\\.?\\s*oz\\.?|fluid\\s+ounces?|kilograms?|kgs?|grams?|g|ounces?|oz|pounds?|lbs?|millilit(?:er|re)s?|ml|lit(?:er|re)s?|l|tablespoons?|tbsp|tbs|teaspoons?|tsp|cups?|dozen|counts?|ct|pieces?|pcs?|each|whole|eggs?|bags?|bottles?|cans?|jars?|packs?|blocks?|bunch(?:es)?|cloves?|bulbs?|stalks?|千克|公斤|克|磅|盎司|毫升|升|个|枚|只|颗|袋|瓶|罐|包";
 const UNITS: Record<string, [Dimension, number]> = {};
 function units(names: string[], dimension: Dimension, factor: number) {
   for (const name of names) UNITS[name] = [dimension, factor];
 }
 units(["g", "gram", "grams", "克"], "mass", 1);
 units(["kg", "kgs", "kilogram", "kilograms", "千克", "公斤"], "mass", 1000);
-units(["oz", "ounce", "ounces"], "mass", 28.349523125);
-units(["lb", "lbs", "pound", "pounds"], "mass", 453.59237);
+units(["oz", "ounce", "ounces", "盎司"], "mass", 28.349523125);
+units(["lb", "lbs", "pound", "pounds", "磅"], "mass", 453.59237);
 units(["ml", "milliliter", "milliliters", "millilitre", "millilitres", "毫升"], "volume", 1);
 units(["l", "liter", "liters", "litre", "litres", "升"], "volume", 1000);
 // US customary culinary volumes; never infer a mass/volume density.
@@ -45,11 +45,13 @@ function numeric(text: string): number {
 }
 
 function uncertain(text: string): boolean {
-  return text.length > 1000 || /[~≈+约]|左右|估计|平均|\b(?:about|approx(?:imately)?|around|avg|average|estimated|or|to)\b/.test(text)
-    || /\d[\d.\s/a-z]*[-–—]\s*\d|(?:^|\s)-\s*\d/.test(text);
+  return text.length > 1000 || /[~～≈+约]|左右|估计|平均|\b(?:about|approx(?:imately)?|around|avg|average|estimated|or|to)\b/.test(text)
+    || /\d[\d.\s/a-z磅盎司]*[-–—至到]\s*\d|(?:^|\s)-\s*\d/.test(text);
 }
 
 function measurements(text: string): Measurement[] | null {
+  // Chinese fluid-ounce labels are not mass aliases; their regional volume is unspecified.
+  if (/液\s*(?:体|量)?\s*盎司/.test(text)) return null;
   const expression = new RegExp(`(^|[^0-9./+-])(${NUMBER})\\s*-?\\s*(${UNIT})(?![a-z])`, "g");
   const results: Measurement[] = [];
   let match: RegExpExecArray | null;
