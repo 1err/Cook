@@ -9,6 +9,7 @@ import { uploadRecipeImage } from "../../lib/uploadRecipeImage";
 import { RequireAuth } from "../../components/RequireAuth";
 import { PageShell } from "../../components/PageShell";
 import { RecipeCoverEditor } from "../../components/RecipeCoverEditor";
+import { RecipeImageGenerator } from "../../components/RecipeImageGenerator";
 import { useT } from "../../lib/i18n";
 import {
   CATEGORY_LABELS,
@@ -281,6 +282,8 @@ function RecipeEditContent() {
                   placeholder="https://…"
                 />
               </details>
+              <RecipeImageGenerator key={id} recipe={{ title, description, ingredients, steps }} headingLevel={3}
+                disabled={saving || deleting || uploadingImage} onAccept={setThumbnailUrl} />
             </div>
           </div>
         </section>

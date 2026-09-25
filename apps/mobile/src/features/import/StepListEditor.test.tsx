@@ -45,7 +45,7 @@ test("shows transparent metadata and marks a valid duration edit as user adjuste
   expect(badgeStyle.height).toBeUndefined();
   expect(badgeStyle.minHeight).toBeGreaterThanOrEqual(28);
   expect(badgeStyle.paddingVertical).toBeGreaterThan(0);
-  expect(screen.getByText("About 5 min · AI estimated · Passive")).toBeOnTheScreen();
+  expect(screen.getByText("About 5 min · Estimated · Passive")).toBeOnTheScreen();
   expect(screen.getByRole("button", { name: "Passive" })).toBeSelected();
 
   await fireEvent.changeText(screen.getByLabelText("Step 1 minutes"), "3");

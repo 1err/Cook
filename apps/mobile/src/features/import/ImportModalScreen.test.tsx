@@ -245,7 +245,7 @@ test("partial drafts keep the source and edits while reviewing a replacement", a
   await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
   await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), parsedDraft.source_url!);
   await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
-  expect(await screen.findByText("Review incomplete tutorial")).toBeOnTheScreen();
+  expect(await screen.findByText("Your draft is ready")).toBeOnTheScreen();
   expect(screen.getByText("Finishing steps could not be verified.")).toBeOnTheScreen();
   await fireEvent.changeText(screen.getByLabelText("Title"), "My carefully edited noodles");
   await fireEvent.press(screen.getByRole("button", { name: "Add recipe text" }));
@@ -306,7 +306,7 @@ test("unavailable video analysis leaves transcript recovery available", async ()
   await render(<ImportModalScreen navigation={nav.value as never} route={{ params: { initialUrl: parsedDraft.source_url } } as never} />);
   await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
   expect(await screen.findByText("Video analysis is unavailable. Paste recipe text or add the missing steps.")).toBeOnTheScreen();
-  expect(screen.queryByRole("button", { name: "Analyze video" })).not.toBeOnTheScreen();
+  expect(screen.queryByRole("button", { name: "Read steps from video" })).not.toBeOnTheScreen();
   await fireEvent.press(screen.getByRole("button", { name: "Add recipe text" }));
   expect(screen.getByLabelText("Transcript")).toBeOnTheScreen();
   expect(screen.getByText("The original source link will be kept.")).toBeOnTheScreen();
@@ -319,7 +319,7 @@ test("applies a reviewed candidate only after explicit acceptance", async () => 
   await screen.findByLabelText("Title");
   await fireEvent.changeText(screen.getByLabelText("Title"), "My existing draft");
   mockParseLink.mockResolvedValueOnce({ ...parsedDraft, title: "New video result", source_url: null });
-  await fireEvent.press(screen.getByRole("button", { name: "Analyze video" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Read steps from video" }));
   expect(await screen.findByRole("button", { name: "Apply new draft" })).toBeOnTheScreen();
   expect(screen.getByLabelText("Title")).toHaveDisplayValue("My existing draft");
   await fireEvent.press(screen.getByRole("button", { name: "Apply new draft" }));

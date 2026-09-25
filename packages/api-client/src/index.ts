@@ -7,6 +7,7 @@ import type {
   InstacartItem,
   MealPlanDay,
   Recipe,
+  RecipeImageInput,
   RecipePage,
   RecipeStep,
   RecipeTagSlug,
@@ -103,6 +104,24 @@ export type RecipeImportPayload = {
 };
 
 export type UploadImageResult = { upload_url: string; file_url: string };
+
+export type RecipeImageAccess = {
+  enabled: boolean;
+  allowed: boolean;
+  reason: "disabled" | "membership_required" | "daily_limit" | "unavailable" | "global_limit" | null;
+  daily_limit: number;
+  remaining: number;
+  resets_at: string;
+};
+
+export type GenerateRecipeImagePayload = RecipeImageInput & { request_id: string };
+
+export type RecipeImageGeneration = {
+  request_id: string;
+  status: "completed" | "pending" | "failed";
+  file_url: string | null;
+  error_code?: string | null;
+};
 
 type RequestOptions = RequestInit & { skipJsonContentType?: boolean };
 
@@ -271,6 +290,16 @@ export function createApiClient(options: ApiClientOptions) {
         json<Recipe>("/recipes/parse/transcript", { method: "POST", body: JSON.stringify(payload) }),
       uploadImage: (formData: FormData) =>
         json<UploadImageResult>("/recipes/upload-image", { method: "POST", body: formData }),
+      imageGenerationAccess: (options?: { signal?: AbortSignal }) =>
+        json<RecipeImageAccess>("/recipes/image-generation/access", { signal: options?.signal }),
+      generateImage: (payload: GenerateRecipeImagePayload, options?: { signal?: AbortSignal }) =>
+        json<RecipeImageGeneration>("/recipes/generate-image", {
+          method: "POST", body: JSON.stringify(payload), signal: options?.signal,
+        }),
+      imageGenerationStatus: (requestId: string, options?: { signal?: AbortSignal }) =>
+        json<RecipeImageGeneration>(`/recipes/image-generation/${encodeURIComponent(requestId)}`, {
+          signal: options?.signal,
+        }),
     },
     users: {
       searchByEmail: (email: string) =>

@@ -12,6 +12,7 @@ export * from "./recipeTutorial";
 export * from "./cookingSession";
 export * from "./cookingSessionQueue";
 export * from "./uuid";
+export * from "./recipeImage";
 export * from "./authRedirect";
 export * from "./externalUrl";
 export { formatStepDuration } from "./formatStepDuration";

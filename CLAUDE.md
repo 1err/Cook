@@ -23,6 +23,14 @@ Visible Instacart controls are removed from web and mobile for the beta release 
 - `backend/` — FastAPI + async SQLAlchemy + Alembic. **Postgres only** (asyncpg).
 - `scripts/` — manual cache warming and cleanup utilities, plus `docker-up.sh`.
 
+## AI recipe covers and cost reporting
+
+Recipe import review and full recipe editing on web and native offer **Generate with AI**. Generation creates a preview; users choose **Use image** or **Discard**, then save the recipe normally. Applying a cover preserves concurrent text edits. Requests use account-owned UUIDs and status recovery to avoid billing a duplicate request after a lost response. The backend owns access, counters, ownership and storage. Signed-in users receive 3 admitted image attempts per UTC day; administrator accounts receive 100. These are maximum allowances, subject to shared monthly AI and cumulative storage safeguards. The entitlement/access-mode switch supports a later paid-member rollout without accepting client-side membership claims.
+
+Images use the existing server-side OpenAI key with a bounded `gpt-image-2` request (one low-quality 1024-square PNG). Image calls join the existing durable AI monetary ledger, using reviewed standard token pricing and conservative reservations before provider work. Successful provider usage is reconciled even if subsequent validation or storage fails; missing usage and uncertain failures retain a reservation. Regular accounts share their existing monthly allowance; administrator image calls can use the configured global monthly allowance, while every account still shares the same global ceiling. Existing text and video budgets are preserved.
+
+The administrator dashboard's **Costs** tab reports the current UTC month's app-recorded AI estimates, tokens, call counts, model/operation breakdown, image outcomes and remaining monthly allocation. Unpriced or in-flight calls and reserved amounts stay separate from known estimates; the first ledger record is shown and earlier spending is not reconstructed. OpenAI invoices and usage outside this app, provider discounts, credits, taxes and hosting may differ from the ledger. An independently cached AWS Cost Explorer report shows estimated account-wide unblended costs and service breakdown; it is not claimed as app-only spending. AWS reads use the existing task role with only `ce:GetCostAndUsage`, bounded timeouts and caching. Unavailable AWS/Vercel data is never presented as zero. Provider billing links remain the authority for invoices. Native code requires a separate native release; deploying the website does not publish an iOS binary.
+
 ## Deployment (last recorded production context)
 
 The September 25 recipe-editor refinement release is deployed from application commit `63ddb1848d9970e9ab2bafe2d7dd084144b0775d`. The verified live revisions are API `cooking-backend:20` (image `sha256:a689027cba1418fe40899e9d1705e74f86961001d4079dd8cd0ecd0e3eb05f91`) and Vercel `dpl_E4wVbZRN2a1LtG2ird75WNbY3FyH` on both `chef-world.com` and `www.chef-world.com`. Worker `cooking-store-worker:2` is unchanged. This preserves the earlier onboarding, shopping, import-review, estimated timing, video-quality, RedNote/sharing, and 30 MiB upload changes. Configuration fingerprints verified preservation of credentials, all eight Gemini settings, budgets, and service configuration. The redesigned tutorial editor, source-first ingredient amounts, tag selection, and compact cover controls are live. The website was rebuilt with `NEXT_PUBLIC_API_BASE=https://api.chef-world.com`; all 23 checked live assets across import/detail/tutorial routes match the staged build and contain no local preview markers.
@@ -270,6 +278,11 @@ Mounted in `backend/app/main.py`. Protected routes use `get_current_user`. Publi
 | POST | `/admin/cache-refresh` | `{stale_only: bool}` — kicks the warmer task |
 | GET | `/admin/cache-refresh-status` | Background task progress |
 | POST | `/admin/cache-refresh-one` | Force-refresh a single (query, store) row |
+| GET | `/recipes/image-generation/access` | Authenticated image access, daily allowance and UTC reset |
+| POST | `/recipes/generate-image` | Durable, idempotent AI cover preview; never saves the recipe |
+| GET | `/recipes/image-generation/{request_id}` | Recover an owned image-generation request |
+| GET | `/admin/ai-costs` | UTC-month recorded AI estimates, tokens, outcomes, reservations and coverage |
+| GET | `/admin/infrastructure-costs` | Cached AWS account-wide month-to-date estimated costs and service breakdown |
 | GET | `/admin/ai-usage` | UTC-month modeled costs/reservations, tokens and bounded account page |
 | GET | `/admin/operating-limits` | Configured cost/AI/upload/job ceilings and cumulative upload reservations; not billing verification |
 | GET | `/ready` | 200 when required schema/database available; bounded 503 otherwise |
