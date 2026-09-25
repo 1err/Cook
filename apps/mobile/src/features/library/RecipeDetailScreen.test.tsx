@@ -110,7 +110,7 @@ test("shows transparent tutorial metadata and opens focused tutorial editing", a
     />,
   );
 
-  expect(await screen.findByText("About 8 min · AI estimated · Passive")).toBeOnTheScreen();
+  expect(await screen.findByText("About 8 min · Estimated · Passive")).toBeOnTheScreen();
   expect(screen.queryByText(/⏱/)).not.toBeOnTheScreen();
   expect(screen.getByRole("image", { name: "Simmer illustration" })).toBeOnTheScreen();
   const badgeStyle = StyleSheet.flatten(screen.getByText("1").props.style);

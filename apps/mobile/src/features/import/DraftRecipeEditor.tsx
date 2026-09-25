@@ -14,6 +14,7 @@ import { TagPicker } from "./TagPicker";
 import { TotalTimeField } from "./TotalTimeField";
 import { useImageUpload } from "./useImageUpload";
 import { resolveImageUrl } from "../../lib/imageUrl";
+import { RecipeImageGenerator } from "./RecipeImageGenerator";
 
 export type DraftRecipeEditorProps = {
   draft: Recipe;
@@ -54,6 +55,8 @@ export function DraftRecipeEditor({
 }: DraftRecipeEditorProps) {
   const t = useT();
   const upload = useImageUpload(draft.thumbnail_url);
+  const latestDraft = React.useRef(draft);
+  latestDraft.current = draft;
   const [tutorialValid, setTutorialValid] = useState(true);
   const tutorialOnly = focus === "tutorial";
   const busy = saving || estimating || disabled;
@@ -114,6 +117,15 @@ export function DraftRecipeEditor({
               contentFit="cover"
             />
           ) : null}
+
+          <RecipeImageGenerator
+            recipe={draft}
+            disabled={busy || upload.isUploading}
+            onUse={(thumbnail_url) => {
+              upload.setThumbnailUrl(thumbnail_url);
+              onChange({ ...latestDraft.current, thumbnail_url });
+            }}
+          />
 
           <TextField
             label="Title"

@@ -238,6 +238,17 @@ class Settings(BaseSettings):
             raise ValueError("Production requires shared auth and upload admission")
         return self
 
+    # Optional recipe-cover generation has separate, deliberately small quotas.
+    AI_IMAGE_GENERATION_ENABLED: bool = True
+    AI_IMAGE_ACCESS_MODE: Literal["registered", "members"] = "registered"
+    OPENAI_IMAGE_MODEL: str = Field("gpt-image-2", min_length=1, max_length=128)
+    OPENAI_IMAGE_TIMEOUT_SECONDS: float = Field(45.0, gt=0, le=120)
+    AI_IMAGE_USER_REQUESTS_PER_MINUTE: int = Field(1, ge=1)
+    AI_IMAGE_USER_REQUESTS_PER_DAY: int = Field(3, ge=1)
+    AI_IMAGE_ADMIN_REQUESTS_PER_DAY: int = Field(100, ge=1)
+    AI_IMAGE_GLOBAL_REQUESTS_PER_MINUTE: int = Field(10, ge=1)
+    AI_IMAGE_GLOBAL_REQUESTS_PER_DAY: int = Field(100, ge=1)
+
     # S3 uploads (optional). If unset, images save under LOCAL_IMAGE_UPLOAD_DIR.
     AWS_REGION: str = ""
     S3_BUCKET_NAME: str = ""

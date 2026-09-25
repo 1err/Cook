@@ -1,0 +1,111 @@
+.panel {
+  display: grid;
+  min-width: 0;
+  gap: 0.7rem;
+  padding: 1rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-field);
+  background: var(--cw-color-surface);
+}
+
+.title {
+  margin: 0;
+  color: var(--cw-color-ink);
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.description,
+.details p,
+.error {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.description {
+  color: var(--cw-color-muted-ink);
+  font-size: 0.82rem;
+}
+
+.details {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.75rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.actions button {
+  min-height: 2.65rem;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.actions button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.actions button:focus-visible {
+  outline: 2px solid var(--cw-color-action);
+  outline-offset: 3px;
+}
+
+.actions .primary {
+  border-color: var(--cw-color-action);
+  background: var(--cw-color-action);
+  color: var(--cw-color-on-action, #fff);
+}
+
+.secondary {
+  background: var(--cw-color-surface);
+  color: var(--cw-color-ink);
+}
+
+.actions .textButton {
+  padding-inline: 0.2rem;
+  border-color: transparent;
+  background: transparent;
+  color: var(--cw-color-action);
+}
+
+.candidate {
+  position: relative;
+  overflow: hidden;
+  margin: 0;
+  border-radius: var(--cw-radius-field);
+  background: var(--cw-color-subtle-surface);
+}
+
+.candidate img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.candidate figcaption {
+  position: absolute;
+  inset: auto auto 0.6rem 0.6rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-surface);
+  color: var(--cw-color-ink);
+  font-size: 0.7rem;
+}
+
+.error {
+  color: var(--cw-color-error, #a1392e);
+  font-size: 0.8rem;
+}

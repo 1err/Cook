@@ -3,11 +3,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "../../lib/api";
 import { AudienceChart, BreakdownTable, Funnel } from "./Charts";
 import { UserDialog, UserTable } from "./UserDirectory";
+import { CostsPanel } from "./CostsPanel";
+import { InfrastructureCosts } from "./InfrastructureCosts";
 import type { Account, Detail, Overview, UsersPage } from "./types";
 import { dateLabel, eventLabel } from "./types";
 import styles from "./Dashboard.module.css";
 
-const tabs = ["Overview", "Users", "Acquisition", "Engagement"] as const;
+const tabs = ["Overview", "Users", "Acquisition", "Engagement", "Costs"] as const;
 type Tab = (typeof tabs)[number];
 const today = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n: number) =>
@@ -184,7 +186,7 @@ export default function Dashboard() {
           <p>Understand who arrives, what they do, and who comes back.</p>
         </div>
         <div className={styles.controls}>
-          <label className={styles.srOnly} htmlFor="report-range">
+          {tab !== "Costs" ? <><label className={styles.srOnly} htmlFor="report-range">
             Date range
           </label>
           <select
@@ -198,16 +200,17 @@ export default function Dashboard() {
             <option value="90">Last 90 days</option>
             <option value="custom">Custom dates</option>
           </select>
+          </> : null}
           <button
             className={`${styles.button} ${styles.primary}`}
-            disabled={loading || !rangeValid}
+            disabled={tab !== "Costs" && (loading || !rangeValid)}
             onClick={() => setReload((x) => x + 1)}
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {loading && tab !== "Costs" ? "Refreshing…" : "Refresh"}
           </button>
         </div>
       </header>
-      {preset === "custom" && (
+      {tab !== "Costs" && preset === "custom" && (
         <div className={styles.customDates}>
           <label>
             From
@@ -246,7 +249,7 @@ export default function Dashboard() {
                 e.preventDefault();
                 const next =
                   tabs[
-                    (tabs.indexOf(t) + (e.key === "ArrowRight" ? 1 : 3)) % 4
+                    (tabs.indexOf(t) + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length
                   ];
                 setTab(next);
                 document.getElementById(`tab-${next}`)?.focus();
@@ -257,7 +260,7 @@ export default function Dashboard() {
           </button>
         ))}
       </div>
-      {error && (
+      {tab !== "Costs" && error && (
         <div className={styles.error} role="alert">
           {error}
           <button
@@ -268,12 +271,16 @@ export default function Dashboard() {
           </button>
         </div>
       )}
-      {!data && loading && (
+      {tab !== "Costs" && !data && loading && (
         <div className={styles.loading} role="status">
           Gathering your audience insights…
         </div>
       )}
-      {data && total && users && (
+      {tab === "Costs" ? <section id="dashboard-panel" role="tabpanel" aria-labelledby="tab-Costs">
+        <CostsPanel refreshToken={reload} />
+        <InfrastructureCosts refreshToken={reload} />
+      </section> : null}
+      {tab !== "Costs" && data && total && users && (
         <>
           <div className={styles.reporting}>
             <p className={styles.notice}>

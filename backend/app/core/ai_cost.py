@@ -24,6 +24,21 @@ GEMINI_REVIEWED_MODEL = 'gemini-3.5-flash-lite'
 GEMINI_INPUT_TOKEN_BOUND = 1_048_576
 GEMINI_OUTPUT_TOKEN_BOUND = 65_536
 
+# Reviewed 2026-09-25 against the standard (not Batch) Image API prices:
+# https://developers.openai.com/api/docs/guides/image-generation
+# Text-only prompt: $5/M input; $30/M image output. Low 1024 square estimates
+# 196 output tokens; reserve 512 to leave conservative format/framing margin.
+# No image inputs, automatic quality/size, partial images, or other models.
+IMAGE_SUPPORTED_MODELS = {'gpt-image-2', 'gpt-image-2-2026-04-21'}
+IMAGE_OUTPUT_TOKEN_BOUND = 512
+
+
+def configured_image_price(settings) -> 'Price':
+    if settings.OPENAI_IMAGE_MODEL not in IMAGE_SUPPORTED_MODELS:
+        raise ValueError('Image AI pricing is not reviewed for this model')
+    return Price(settings.OPENAI_IMAGE_MODEL, 'openai-images-standard-2026-09-25',
+                 Decimal('5'), Decimal('30'))
+
 
 @dataclass(frozen=True)
 class Price:

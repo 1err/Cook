@@ -59,6 +59,39 @@ class AuthIdentityModel(Base):
     user: Mapped["UserModel"] = relationship(back_populates="auth_identities")
 
 
+class FeatureEntitlementModel(Base):
+    """Trusted server grants; clients cannot grant themselves paid features."""
+    __tablename__ = "feature_entitlements"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    feature_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    expires_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+
+
+class RecipeImageGenerationModel(Base):
+    """A consumed request ID is never sent to the image provider again."""
+    __tablename__ = "recipe_image_generations"
+    __table_args__ = (
+        sa.CheckConstraint("status IN ('pending', 'completed', 'failed')", name="ck_recipe_image_status"),
+        sa.CheckConstraint("(status = 'completed' AND file_url IS NOT NULL) OR "
+                           "(status <> 'completed' AND file_url IS NULL)", name="ck_recipe_image_result"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    request_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    ledger_call_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    file_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now())
+    deadline_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+
+
 class RecipeModel(Base):
     __tablename__ = "recipes"
 

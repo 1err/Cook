@@ -120,7 +120,7 @@ test("keeps Estimate preview-only and applies it to an independent local tutoria
   await fireEvent.changeText(instructions, "Simmer the edited sauce.");
   await fireEvent.press(screen.getByRole("button", { name: "Estimate missing tutorial details" }));
 
-  await waitFor(() => expect(screen.getByText("About 8 min · AI estimated · Passive")).toBeOnTheScreen());
+  await waitFor(() => expect(screen.getByText("About 8 min · Estimated · Passive")).toBeOnTheScreen());
   expect(instructions).toHaveProp("value", "Simmer the edited sauce.");
   expect(mockEstimateTutorial).toHaveBeenCalledWith(recipe.id, [{
     ...fallbackStep,

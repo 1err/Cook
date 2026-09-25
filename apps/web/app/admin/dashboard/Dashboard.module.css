@@ -69,11 +69,13 @@
 }
 .tabs {
   display: flex;
+  overflow-x: auto;
   gap: 18px;
   border-bottom: 1px solid var(--cw-color-divider);
   margin-bottom: 18px;
 }
 .tabs button {
+  flex-shrink: 0;
   border-radius: 0;
   border: 0;
   border-bottom: 2px solid transparent;

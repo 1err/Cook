@@ -4,6 +4,7 @@ import { isCompleteRecipeDraft } from "@cooking/shared";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../components/ui/Icon";
 import { RecipeCoverEditor } from "../components/RecipeCoverEditor";
+import { RecipeImageGenerator } from "../components/RecipeImageGenerator";
 import { apiFetch } from "../lib/api";
 import { useT } from "../lib/i18n";
 import { RECIPE_TAG_GROUPS, type RecipeTagSlug } from "../lib/recipeCategories";
@@ -151,6 +152,8 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
           <h2 className={styles.overviewHeading}>{t("import.recipeDetails")}</h2>
           <RecipeCoverEditor value={draft.thumbnail_url} disabled={saving} onBusyChange={setCoverUploading}
             onChange={(url) => onChange({ ...latestDraft.current, thumbnail_url: url })} />
+          <RecipeImageGenerator key={draft.id} recipe={draft} headingLevel={3} disabled={saving}
+            onAccept={(thumbnail_url) => onChange({ ...latestDraft.current, thumbnail_url })} />
 
           <div className={styles.field}>
             <label htmlFor="draft-title">{t("recipe.recipeTitle")}</label>

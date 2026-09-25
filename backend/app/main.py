@@ -27,6 +27,7 @@ from app.core.readiness import database_ready
 from app.core.llm import AIInputTooLargeError, AIUnavailableError, close_openai_client
 from app.db.session import dispose_engine, init_engine
 from app.api.auth import router as auth_router
+from app.api.routes_recipe_images import router as recipe_images_router
 from app.api.routes_recipes import router as recipes_router
 from app.api.routes_imports import router as imports_router
 from app.jobs.recipe_imports import import_worker_loop
@@ -38,6 +39,8 @@ from app.api.routes_users import router as users_router
 from app.api.routes_cooking import router as cooking_router
 from app.api.admin import router as admin_router
 from app.api.admin_usage import router as admin_usage_router
+from app.api.admin_costs import router as admin_costs_router
+from app.api.routes_infrastructure_costs import router as infrastructure_costs_router
 from app.api.analytics import router as analytics_router
 from app.api.admin_analytics import router as admin_analytics_router
 from app.analytics.middleware import AnalyticsMiddleware
@@ -167,6 +170,7 @@ from app.api.account_routes import router as account_router
 app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(imports_router)
+app.include_router(recipe_images_router)
 app.include_router(recipes_router)
 app.include_router(mealplan_router)
 app.include_router(shopping_router)
@@ -176,6 +180,8 @@ app.include_router(users_router)
 app.include_router(cooking_router)
 app.include_router(admin_router)
 app.include_router(admin_usage_router)
+app.include_router(admin_costs_router)
+app.include_router(infrastructure_costs_router)
 app.include_router(analytics_router)
 app.include_router(admin_analytics_router)
 

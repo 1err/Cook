@@ -284,6 +284,7 @@ async def test_delete_preserves_copied_assets_and_global_spend(account_client, a
             session.add(RecipeModel(id=str(uuid4()), user_id=UUID(owner["id"]), title="Shared", ingredients="[]", thumbnail_url=url))
         session.add(AIMonthlyBudgetModel(scope=money_scope, month=date.today().replace(day=1), reserved_nano=42, spent_nano=99))
         session.add(AIUsageCounterModel(scope=f"user:{user['id']}", window_seconds=60, window_start=1, request_count=1))
+        session.add(AIUsageCounterModel(scope=f"image:user:{user['id']}", window_seconds=86400, window_start=1, request_count=1))
         session.add(UploadBudgetModel(scope=f"user:{user['id']}", object_count=1, byte_count=9))
     assert (await client.request("DELETE", "/auth/account", headers=headers(user), json={"password": "initial-password"})).status_code == 200
     async with account_db.begin() as session:
@@ -296,6 +297,7 @@ async def test_delete_preserves_copied_assets_and_global_spend(account_client, a
         assert (money.reserved_nano, money.spent_nano) == (42, 99)
         assert await session.get(UploadBudgetModel, f"user:{user['id']}") is None
         assert await session.get(AIUsageCounterModel, (f"user:{user['id']}", 60)) is None
+        assert await session.get(AIUsageCounterModel, (f"image:user:{user['id']}", 86400)) is None
 
 
 @pytest.mark.asyncio
