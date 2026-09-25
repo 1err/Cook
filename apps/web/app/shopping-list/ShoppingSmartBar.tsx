@@ -21,6 +21,7 @@ type ShoppingSmartBarProps = {
   onCopy: () => void;
   onLoadProducts: () => void;
   onReviewCart: () => void;
+  onPrepareMuse: () => void;
 };
 
 export function ShoppingSmartBar({
@@ -39,6 +40,7 @@ export function ShoppingSmartBar({
   onCopy,
   onLoadProducts,
   onReviewCart,
+  onPrepareMuse,
 }: ShoppingSmartBarProps) {
   const t = useT();
   const checkedCount = Math.max(0, totalCount - itemCount);
@@ -85,6 +87,9 @@ export function ShoppingSmartBar({
             {t("shopping.reviewCart", { count: cartReadyCount })}
           </button>
         ) : null}
+        <button type="button" aria-haspopup="dialog" onClick={onPrepareMuse} disabled={itemCount === 0 || refining}>
+          {t("shopping.museEntry")}
+        </button>
         <button type="button" className={styles.backButton} onClick={onBack}>
           {t("shopping.backToOriginalList")}
         </button>
