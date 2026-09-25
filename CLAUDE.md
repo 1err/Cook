@@ -25,9 +25,9 @@ Visible Instacart controls are removed from web and mobile for the beta release 
 
 ## Deployment (last recorded production context)
 
-The September 25 import experience release is deployed from application commit `e630e61f02e5d15696920c41e408137f3112309c`. The verified live revisions are API `cooking-backend:19` (image `sha256:f2258a015a6c5a384ee843b4cacb39879fac466740a5ed63ab289b01e78efd9e`) and Vercel `dpl_JBWUVJGDgRFfyBLf8o8p3D7f2Vdk` on both `chef-world.com` and `www.chef-world.com`. Worker `cooking-store-worker:2` is unchanged. This includes the existing onboarding, shopping, video-quality, RedNote/sharing, and 30 MiB upload changes. Configuration fingerprints verified preservation of credentials, all eight Gemini settings, budgets, and service configuration. New import/manual UI, contextual text recovery, and estimated step/total timing are live. The website was rebuilt with `NEXT_PUBLIC_API_BASE=https://api.chef-world.com`; its 19 live assets match the staged build and contain no local fixture API address.
+The September 25 recipe-editor refinement release is deployed from application commit `63ddb1848d9970e9ab2bafe2d7dd084144b0775d`. The verified live revisions are API `cooking-backend:20` (image `sha256:a689027cba1418fe40899e9d1705e74f86961001d4079dd8cd0ecd0e3eb05f91`) and Vercel `dpl_E4wVbZRN2a1LtG2ird75WNbY3FyH` on both `chef-world.com` and `www.chef-world.com`. Worker `cooking-store-worker:2` is unchanged. This preserves the earlier onboarding, shopping, import-review, estimated timing, video-quality, RedNote/sharing, and 30 MiB upload changes. Configuration fingerprints verified preservation of credentials, all eight Gemini settings, budgets, and service configuration. The redesigned tutorial editor, source-first ingredient amounts, tag selection, and compact cover controls are live. The website was rebuilt with `NEXT_PUBLIC_API_BASE=https://api.chef-world.com`; all 23 checked live assets across import/detail/tutorial routes match the staged build and contain no local preview markers.
 
-The release migration, exact ECS revision/digest, health/readiness, protected routes, CORS, and bounded error scans passed. No new schema or provider call was introduced. Detailed evidence, rollback references, and the limits of this release's verification are recorded in [import experience release](docs/qa/2026-09-25-import-experience-release.md). This release did not perform a fresh live provider extraction. These are recorded deployment facts; recheck live state before another release. Local capacity tests do not establish production capacity.
+The release migration, exact ECS revision/digest, health/readiness, protected routes, CORS, and bounded error scans passed. No new schema or additional provider call was introduced. Detailed evidence, rollback references, and verification limits are recorded in [recipe editor release](docs/qa/2026-09-25-recipe-editor-release.md). No fresh authenticated live provider extraction or image upload was performed in this release. These are recorded deployment facts; recheck live state before another release. Local capacity tests do not establish production capacity.
 
 The user's typical local dev loop:
 
@@ -534,7 +534,7 @@ details" explicitly estimates fallback/unknown timing in local editor state thro
 endpoint; Cancel performs no PATCH, and Save PATCHes the steps. Reading a recipe or opening a
 cooking flow must never silently rewrite tutorial metadata.
 
-The September 25 recipe-editor refinements are local, not part of the production release recorded
+The September 25 recipe-editor refinements are included in the production release recorded
 above. The web tutorial editor uses consistent scoped step cards with aligned duration, attention,
 and illustration controls, a cooking-plan summary, and responsive phone layouts. Source-backed
 timestamp links are labeled "Source"; authorship badges are hidden on recipe detail. Suggested-step

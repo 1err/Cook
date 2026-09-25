@@ -1,8 +1,8 @@
 # Recipe editor refinements — local verification
 
-Status: implemented and verified locally; not deployed. The recorded API19/web production
-release is unchanged. No credentials, migrations, live recipes, or provider calls were changed
-by these checks.
+Status: local verification completed, followed by the user-authorized production deployment
+recorded in [recipe editor release](2026-09-25-recipe-editor-release.md). No credentials,
+migrations, live recipes, or provider calls were changed by the local checks below.
 
 ## Result
 
@@ -53,6 +53,6 @@ in `/private/tmp/recipe-polish-preview`, outside the repository.
 ## Release boundary
 
 This preview proves UI behavior with example data; it does not prove a new live video
-extraction. Before publishing, rebuild the website with the production API base, then use
-the existing frontend/backend release checks. Never deploy the preview's local build or
-temporary fixture services.
+extraction. The production release rebuilt from committed source with the production API
+base and passed the existing frontend/backend release checks. The preview's local build
+and temporary fixture services were not deployed.
