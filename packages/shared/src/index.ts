@@ -5,6 +5,8 @@ export * from "./week";
 export * from "./mealPlan";
 export * from "./store";
 export * from "./cartAssistant";
+export * from "./museShopping";
+export * from "./musePackSuggestion";
 export * from "./instacart";
 export * from "./i18n";
 export * from "./recipeTags";

@@ -8,7 +8,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import type { StoreProductsBatchResponse, StoreProductsResponse } from "@cooking/api-client";
 import { ApiError, normalizeStoreProductResponse, resolveRecipeDetails } from "@cooking/api-client";
 import { apiFetch } from "../lib/api";
-import { userLocalStorage, userSessionStorage } from "../lib/userStorage";
+import { getAuthGeneration, userLocalStorage, userSessionStorage } from "../lib/userStorage";
 import { RequireAuth } from "../components/RequireAuth";
 import { PageHeader, PageShell } from "../components/PageShell";
 import { useI18n, useT } from "../lib/i18n";
@@ -33,6 +33,7 @@ import {
 import { ShoppingCategorySection } from "./ShoppingCategorySection";
 import { ShoppingSmartBar } from "./ShoppingSmartBar";
 import { CartAssistantDialog } from "./CartAssistantDialog";
+import { MuseShoppingDialog } from "./MuseShoppingDialog";
 import styles from "./ShoppingList.module.css";
 import {
   buildVisualProductQueue,
@@ -228,6 +229,7 @@ function ShoppingListPageContent() {
   const [confirmedCartTokens, setConfirmedCartTokens] = useState<Set<string>>(new Set());
   const [skippedCartTokens, setSkippedCartTokens] = useState<Set<string>>(new Set());
   const [cartDialogOpen, setCartDialogOpen] = useState(false);
+  const [museDialogOpen, setMuseDialogOpen] = useState(false);
   const [cartHydratedWeek, setCartHydratedWeek] = useState<string | null>(null);
   const [cartProductsHydratedWeek, setCartProductsHydratedWeek] = useState<string | null>(null);
   const cartLoadProductsRef = useRef<HTMLButtonElement>(null);
@@ -269,6 +271,7 @@ function ShoppingListPageContent() {
 
   useEffect(() => {
     setCartDialogOpen(false);
+    setMuseDialogOpen(false);
     setSkippedCartTokens(new Set());
     setSelectedUrlByIngredient({});
     setConfirmedCartTokens(new Set());
@@ -610,6 +613,7 @@ function ShoppingListPageContent() {
 
   function clearCartAssistantState(removeStored: boolean) {
     closeCartDialog();
+    setMuseDialogOpen(false);
     setSelectedUrlByIngredient({});
     setConfirmedCartTokens(new Set());
     if (removeStored) {
@@ -1171,6 +1175,7 @@ function ShoppingListPageContent() {
           onCopy={handleCopyList}
           onLoadProducts={() => void handleLoadAllProducts()}
           onReviewCart={() => setCartDialogOpen(true)}
+          onPrepareMuse={() => setMuseDialogOpen(true)}
         />
       ) : null}
 
@@ -1229,6 +1234,15 @@ function ShoppingListPageContent() {
             onUndoConfirm={handleUndoCartItem}
             onSkip={handleSkipCartItem}
             onFindMatch={handleFindCartMatch}
+          />
+
+          <MuseShoppingDialog
+            open={museDialogOpen}
+            draft={cartDraft}
+            pendingIngredients={pendingCartIngredients}
+            scopeKey={`${start}:${getAuthGeneration()}`}
+            stale={smartListStale || refining}
+            onClose={() => setMuseDialogOpen(false)}
           />
 
           {activeRefinedData.remove.length ? (
