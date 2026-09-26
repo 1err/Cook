@@ -239,7 +239,6 @@
   white-space: nowrap;
 }
 
-.equipment,
 .tips {
   margin-top: 2rem;
   padding: 1.25rem;
@@ -247,13 +246,11 @@
   background: color-mix(in srgb, var(--cw-color-sage) 7%, var(--cw-color-surface));
 }
 
-.equipment h3,
 .tips h3 {
   margin: 0 0 0.7rem;
   font-size: 1rem;
 }
 
-.equipment ul,
 .tips ul {
   margin: 0;
   padding-left: 1.1rem;

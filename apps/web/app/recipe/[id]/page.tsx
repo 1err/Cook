@@ -164,12 +164,6 @@ function RecipeDetailContent() {
               </details>
             ) : null}
 
-            {(recipe.equipment ?? []).length ? (
-              <section className={styles.equipment}>
-                <h3>{t("recipe.equipment")}</h3>
-                <ul>{recipe.equipment!.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>
-              </section>
-            ) : null}
           </aside>
 
           <div className={styles.method}>

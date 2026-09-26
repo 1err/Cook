@@ -94,7 +94,7 @@ const recipe = {
     image_url: null,
   }],
   tips: [],
-  equipment: [],
+  equipment: ["Legacy stockpot"],
   library_tags: [],
 };
 
@@ -120,6 +120,7 @@ it("blocks Save while uploading a cover and keeps newer text edits when it finis
   const user = userEvent.setup();
   render(<RecipeEditPage />);
   const title = await screen.findByLabelText("Recipe title");
+  expect(screen.queryByText(/^Equipment/)).not.toBeInTheDocument();
   await user.upload(screen.getByLabelText("Cover image"), new File(["photo"], "dish.jpg", { type: "image/jpeg" }));
   const save = screen.getByRole("button", { name: "Save" });
   expect(save).toBeDisabled();
@@ -132,6 +133,7 @@ it("blocks Save while uploading a cover and keeps newer text edits when it finis
   expect(title).toHaveValue("My braised tofu");
   await user.click(save);
   const saveOptions = mockApiFetch.mock.calls.find(([, options]) => options?.method === "PATCH")![1];
+  expect(JSON.parse(saveOptions.body)).not.toHaveProperty("equipment");
   expect(JSON.parse(saveOptions.body)).toMatchObject({ title: "My braised tofu", thumbnail_url: "https://images.example/new.jpg" });
 });
 

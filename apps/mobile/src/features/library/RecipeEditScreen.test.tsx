@@ -328,15 +328,17 @@ test("locks tutorial mutations and navigation until a pending Save settles", asy
   });
 });
 
-test("retains the existing full recipe PATCH payload outside tutorial focus", async () => {
+test("saves full recipe edits without displaying or resending legacy equipment", async () => {
   const nav = navigation();
   await render(<RecipeEditScreen navigation={nav as never} route={route("recipe")} />);
 
-  await screen.findByLabelText("Title");
+  await fireEvent.changeText(await screen.findByLabelText("Title"), "Weeknight braised tofu");
+  expect(screen.queryByText("Equipment")).not.toBeOnTheScreen();
+  expect(screen.queryByRole("button", { name: "Add equipment" })).not.toBeOnTheScreen();
   await fireEvent.press(screen.getByRole("button", { name: "Save changes" }));
 
   await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(recipe.id, {
-    title: recipe.title,
+    title: "Weeknight braised tofu",
     thumbnail_url: recipe.thumbnail_url,
     ingredients: recipe.ingredients,
     library_tags: recipe.library_tags,
@@ -344,8 +346,9 @@ test("retains the existing full recipe PATCH payload outside tutorial focus", as
     total_time_minutes: recipe.total_time_minutes,
     steps: recipe.steps,
     tips: recipe.tips,
-    equipment: recipe.equipment,
   }));
+  expect(recipe.equipment).toEqual(["Pot"]);
+  expect(nav.goBack).toHaveBeenCalledTimes(1);
 });
 
 test("preserves a useful transport error when full recipe saving fails", async () => {

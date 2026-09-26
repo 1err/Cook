@@ -1027,3 +1027,37 @@ async def test_prepared_ingredient_warning_requires_exact_preparation_without_re
     assert [step.text for step in recipe.steps] == texts
     assert recipe.import_review.status == "ready"
     assert recipe.import_review.warnings == []
+
+
+def test_import_parser_discards_legacy_equipment_without_rewriting_tool_instructions():
+    payload = {
+        "title": "Tofu", "description": "A simple dish", "total_time_minutes": 2,
+        "ingredients": [{"name": "Tofu", "quantity": "400 g", "notes": "cubed"}],
+        "equipment": ["Pan", "Spatula"],
+        "steps": [{"text": "Fry tofu in a pan for two minutes.",
+                   "duration_seconds": 120, "duration_source": "stated"}],
+        "tips": ["Use a spatula to turn the tofu."],
+    }
+    parsed = parse_llm_recipe_response(json.dumps(payload))
+    assert parsed["equipment"] == []
+    assert parsed["title"] == payload["title"]
+    assert parsed["description"] == payload["description"]
+    assert parsed["total_time_minutes"] == 2
+    assert parsed["ingredients"][0]["quantity"] == "400 g"
+    assert parsed["steps"][0]["text"] == payload["steps"][0]["text"]
+    assert parsed["steps"][0]["duration_seconds"] == 120
+    assert parsed["steps"][0]["duration_source"] == "stated"
+    assert parsed["tips"] == payload["tips"]
+
+
+def test_extraction_and_quality_contracts_do_not_request_retired_equipment():
+    from app.services.video_response_schemas import VIDEO_EXTRACTION_SCHEMA
+    candidate = {"title": "Tofu", "equipment": ["Pan"],
+                 "steps": [{"text": "Fry tofu in a pan."}]}
+    prompt = _build_extraction_prompt("Fry tofu in a pan.")
+    audit_prompt = extract_module._build_tutorial_audit_prompt("Fry tofu in a pan.", candidate)
+    assert "equipment" not in prompt
+    assert "equipment" not in VIDEO_EXTRACTION_SCHEMA["properties"]
+    assert "equipment" not in audit_prompt
+    assert "Fry tofu in a pan." in audit_prompt
+    assert candidate["equipment"] == ["Pan"]

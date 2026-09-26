@@ -78,6 +78,9 @@ test("keeps the editorial recipe hero readable and responsive", async ({ page },
   const heroHeader = title.locator("xpath=..");
   await expect(title).toBeVisible();
   await expect(page.getByText("Failed to fetch", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Equipment", exact: true })).toHaveCount(0);
+  await expect(page.getByText(recipe.equipment[0], { exact: true })).toHaveCount(0);
+  await expect(page.getByText(recipe.steps[0].text, { exact: true })).toBeVisible();
 
   const layout = await heroHeader.evaluate((header) => {
     const heading = header.querySelector("h1")!;
@@ -124,7 +127,9 @@ test("presents recipe editing as one clear, functional workflow", async ({ page 
   ]);
   await expect(page.getByText("Update the cover, tags, and ingredients.")).toHaveCount(0);
   await expect(page.locator("details").filter({ hasText: "Tips" })).not.toHaveAttribute("open", "");
-  await expect(page.locator("details").filter({ hasText: "Equipment" })).not.toHaveAttribute("open", "");
+  await expect(page.getByText(/^Equipment/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add equipment", exact: true })).toHaveCount(0);
+  await expect(page.getByPlaceholder("Add a pan or tool", { exact: true })).toHaveCount(0);
   await expect(page.locator("details").filter({ hasText: "Tags" })).not.toHaveAttribute("open", "");
 
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
@@ -141,7 +146,17 @@ test("presents recipe editing as one clear, functional workflow", async ({ page 
   await page.getByLabel("Recipe title").fill("Updated scallion pockets");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL(/\/library$/);
-  expect(saveCapture.current?.title).toBe("Updated scallion pockets");
+  expect(saveCapture.current).not.toHaveProperty("equipment");
+  expect(saveCapture.current).toMatchObject({
+    title: "Updated scallion pockets",
+    thumbnail_url: recipe.thumbnail_url,
+    ingredients: recipe.ingredients,
+    library_tags: recipe.library_tags,
+    description: recipe.description,
+    total_time_minutes: recipe.total_time_minutes,
+    steps: recipe.steps,
+    tips: recipe.tips,
+  });
 
   if (testInfo.project.name !== "desktop") {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

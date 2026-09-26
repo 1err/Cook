@@ -60,7 +60,7 @@ async def test_all_import_paths_simplify_display_only_after_grounding(monkeypatc
         "name": "鸡蛋 / Eggs", "quantity": "两个", "metric_quantity": "约100克", "notes": "搅拌均匀",
     }
     assert recipe.tips == ["保持锅盖密合。", "Serve warm."]
-    assert recipe.equipment == ["平底锅", "Bowl"]
+    assert recipe.equipment == []  # Legacy provider fields must not reintroduce the retired feature.
     assert [step.text for step in recipe.steps] == ["搅拌鸡蛋。", "焖煮两分钟。"]
     assert [step.id for step in recipe.steps] == ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"]
     assert recipe.steps[1].duration_seconds == 120
@@ -102,6 +102,7 @@ async def test_audit_failure_still_normalizes_the_grounded_initial_draft():
     assert recipe.steps[1].duration_seconds == 120 and recipe.steps[1].duration_source == "stated"
     assert recipe.steps[1].source_excerpt == "燜煮兩分鐘。"
     assert recipe.import_review.status == "needs_review"
+    assert recipe.equipment == []
 
 
 def test_chinese_recipe_keeps_japanese_field_and_all_non_display_metadata():
@@ -120,7 +121,7 @@ def test_chinese_recipe_keeps_japanese_field_and_all_non_display_metadata():
     assert normalized["title"] == "葱油鸡"
     assert normalized["ingredients"] == [{"name": "醤油（しょうゆ）", "quantity": "两勺", "notes": "日文标签"}]
     assert normalized["tips"] == ["See https://example.com/雞?鍋=蔥 for details; 洒上葱花。"]
-    assert normalized["equipment"] == ["锅"]
+    assert normalized["equipment"] == data["equipment"]  # Retired metadata is not a display-language field.
     assert normalized["steps"][0] == {**data["steps"][0], "text": "加入酱油。"}
     for key in ("id", "description", "source_url", "raw_extraction_text", "thumbnail_url", "total_time_minutes"):
         assert normalized[key] == data[key]

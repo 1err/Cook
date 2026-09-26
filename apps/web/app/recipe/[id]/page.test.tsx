@@ -23,6 +23,7 @@ const { mockActive, mockApiFetch, mockPush, mockUploadRecipeImage, translate } =
       "recipe.cover.saveFailed": "Your cover photo could not be saved. Please try again.",
       "recipe.cover.updated": "Cover photo updated",
       "recipe.steps": "Steps",
+      "recipe.equipment": "Equipment",
       "recipe.tutorial.edit": "Edit tutorial",
       "recipe.tutorial.duration.aboutMinutes": "About {minutes} min",
       "recipe.tutorial.source.estimated": "AI estimated",
@@ -60,6 +61,7 @@ beforeEach(() => {
     source_url: "https://example.com/video",
     thumbnail_url: null,
     ingredients: [],
+    equipment: ["Legacy stockpot"],
     steps: [{
       id: "d042d265-8ac1-46cf-9d26-0c459538b8bb",
       text: "Simmer the sauce.",
@@ -108,6 +110,8 @@ it("integrates the timed tutorial without losing existing recipe actions", async
 
   expect(await screen.findByRole("heading", { name: "Tomato noodles" })).toBeVisible();
   expect(screen.getByText("About 8 min · AI estimated · Passive")).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "Equipment" })).not.toBeInTheDocument();
+  expect(screen.queryByText("Legacy stockpot")).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Edit tutorial" })).toHaveAttribute(
     "href",
     "/recipe/recipe-1/tutorial/edit",

@@ -37,7 +37,6 @@ VIDEO_EXTRACTION_SCHEMA = _object({
         "metric_quantity": {"type": ["string", "null"]},
         "notes": {"type": ["string", "null"]},
     }, ["name", "quantity"])},
-    "equipment": _STRINGS,
     "actions": _ACTIONS,
     "steps": _STEPS,
     "tips": _STRINGS,

@@ -48,6 +48,7 @@ const recipe: Recipe = {
   total_time_minutes: 30,
   thumbnail_url: null,
   ingredients: [],
+  equipment: ["Legacy simmering pot"],
   steps: [{
     id: "78dc04ac-a838-41f5-b3eb-74835098aff9",
     text: "Simmer gently.",
@@ -113,6 +114,8 @@ test("shows transparent tutorial metadata and opens focused tutorial editing", a
   expect(await screen.findByText("About 8 min · Estimated · Passive")).toBeOnTheScreen();
   expect(screen.queryByText(/⏱/)).not.toBeOnTheScreen();
   expect(screen.getByRole("image", { name: "Simmer illustration" })).toBeOnTheScreen();
+  expect(screen.queryByText("Equipment")).not.toBeOnTheScreen();
+  expect(screen.queryByText("Legacy simmering pot")).not.toBeOnTheScreen();
   const badgeStyle = StyleSheet.flatten(screen.getByText("1").props.style);
   expect(badgeStyle.height).toBeUndefined();
   expect(badgeStyle.minHeight).toBeGreaterThanOrEqual(26);

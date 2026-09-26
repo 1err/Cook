@@ -282,20 +282,6 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
           )}
         </View>
 
-        {(recipe.equipment ?? []).length > 0 ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Equipment</Text>
-            <View style={styles.list}>
-              {recipe.equipment!.map((item, index) => (
-                <View key={`${item}-${index}`} style={styles.ingredient}>
-                  <View style={styles.bullet} />
-                  <Text style={styles.bulletText}>{item}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        ) : null}
-
         <View style={styles.card}>
           <View style={styles.tutorialHeader}>
             <Text style={styles.sectionTitle}>{t("recipe.steps")}</Text>

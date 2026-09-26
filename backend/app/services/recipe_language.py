@@ -60,7 +60,6 @@ def normalize_import_display_fields(data: dict, *, source_text: str = "") -> dic
         ]
     if "steps" in data:
         result["steps"] = [{**step, "text": _display_text(step.get("text"))} for step in data["steps"]]
-    for key in ("tips", "equipment"):
-        if key in data:
-            result[key] = [_display_text(text) for text in data[key]]
+    if "tips" in data:
+        result["tips"] = [_display_text(text) for text in data["tips"]]
     return result

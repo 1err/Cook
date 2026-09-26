@@ -183,7 +183,9 @@ export function ImportModalScreen({ navigation, route }: Props) {
     if (!state.draft || state.saving || state.parsing || (manual && !isCompleteRecipeDraft(state.draft))) return;
     dispatch({ type: "saveStarted" });
     try {
-      const saved = await apiClient.recipes.create({ ...state.draft,
+      // Older import jobs may still include the retired equipment field.
+      const { equipment: _equipment, ...recipeDraft } = state.draft;
+      const saved = await apiClient.recipes.create({ ...recipeDraft,
         ingredients: state.draft.ingredients.filter(ingredient => ingredient.name.trim()),
         ...(manual ? { title: state.draft.title.trim(), steps: state.draft.steps?.filter(step => step.text.trim()) } : {}),
       });

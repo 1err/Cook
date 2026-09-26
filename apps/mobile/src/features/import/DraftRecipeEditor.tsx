@@ -183,14 +183,6 @@ export function DraftRecipeEditor({
             values={draft.tips ?? []}
             onChange={(tips: string[]) => onChange({ ...draft, tips })}
           />
-          <StringListEditor
-            label="Equipment"
-            addLabel="Add equipment"
-            placeholder="Add a pan or tool"
-            values={draft.equipment ?? []}
-            onChange={(equipment: string[]) => onChange({ ...draft, equipment })}
-          />
-
           <Text style={styles.sectionLabel}>Tags</Text>
           <TagPicker
             disabled={busy}

@@ -300,7 +300,8 @@ test.each([{ total: 45, expectedTotal: 45 }, { total: 2, expectedTotal: 2 }])("a
   expect(request.transcript).toContain("Family version");
   expect(request.transcript).toContain("300 g");
   expect(request.transcript).toContain("Dry the tofu well.");
-  expect(request.transcript).toContain("Cast iron pan");
+  expect(request.transcript).not.toContain("Cast iron pan");
+  expect(request.transcript).not.toContain("Equipment:");
   expect(request.transcript).not.toContain("75");
   const preview = screen.getByRole("region", { name: /New analysis is ready/ });
   expect(within(preview).getByText("1:15 · Adjusted")).toBeVisible();
@@ -312,7 +313,8 @@ test.each([{ total: 45, expectedTotal: 45 }, { total: 2, expectedTotal: 2 }])("a
   fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
   await waitFor(() => expect(mocks.apiFetch).toHaveBeenCalled());
   const saved = JSON.parse(mocks.apiFetch.mock.calls[0][1].body);
-  expect(saved).toMatchObject({ thumbnail_url: "https://example.com/my-cover.jpg", library_tags: ["chinese", "weeknight"], description: "Family version", tips: ["Dry the tofu well."], equipment: ["Cast iron pan"], total_time_minutes: expectedTotal, steps: [reviewedStep] });
+  expect(saved).not.toHaveProperty("equipment");
+  expect(saved).toMatchObject({ thumbnail_url: "https://example.com/my-cover.jpg", library_tags: ["chinese", "weeknight"], description: "Family version", tips: ["Dry the tofu well."], total_time_minutes: expectedTotal, steps: [reviewedStep] });
 });
 
 test("changed candidate instructions do not inherit old source moments or timers", async () => {
@@ -325,11 +327,13 @@ test("changed candidate instructions do not inherit old source moments or timers
   const preview = screen.getByRole("region", { name: /New analysis is ready/ });
   expect(within(preview).getByText("5:00 · Estimated")).toBeVisible();
   expect(preview).toHaveTextContent("Estimated total: 5 min");
+  expect(preview).not.toHaveTextContent("Wok");
   fireEvent.click(screen.getByRole("button", { name: "Apply new draft" }));
   fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
   await waitFor(() => expect(mocks.apiFetch).toHaveBeenCalled());
   const saved = JSON.parse(mocks.apiFetch.mock.calls[0][1].body);
-  expect(saved).toMatchObject({ description: "New description", tips: ["New tip"], equipment: ["Wok"], total_time_minutes: 5 });
+  expect(saved).not.toHaveProperty("equipment");
+  expect(saved).toMatchObject({ description: "New description", tips: ["New tip"], total_time_minutes: 5 });
   expect(saved.steps[0]).toMatchObject({ id: "new-step", text: "Simmer tofu in sauce.", duration_seconds: 300, duration_source: "estimated" });
   expect(saved.steps[0].source_start_seconds ?? null).toBeNull();
   expect(saved.steps[0].source_excerpt ?? null).toBeNull();
@@ -375,6 +379,7 @@ test("ambiguous repeated instructions do not copy a source moment or manual time
   fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
   await waitFor(() => expect(mocks.apiFetch).toHaveBeenCalled());
   const saved = JSON.parse(mocks.apiFetch.mock.calls[0][1].body);
+  expect(saved).not.toHaveProperty("equipment");
   expect(saved.steps[0]).toMatchObject({ id: "new-step", duration_seconds: 180, duration_source: "estimated" });
   expect(saved.steps[0].source_start_seconds ?? null).toBeNull();
 });

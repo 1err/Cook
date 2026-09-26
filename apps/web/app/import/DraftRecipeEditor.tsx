@@ -102,10 +102,12 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
     setError(null);
     setSaving(true);
     try {
+      // Do not carry retired equipment metadata from an older import job into a new recipe.
+      const { equipment: _equipment, ...recipeDraft } = draft;
       const response = await apiFetch("/recipes", {
         method: "POST",
         body: JSON.stringify({
-          ...draft,
+          ...recipeDraft,
           total_time_minutes: displayedTotal ?? null,
           ingredients: draft.ingredients.filter((item) => item.name.trim()),
           ...(requireCompleteRecipe ? { title: draft.title.trim(), steps: draft.steps?.filter(step => step.text.trim()) } : {}),
@@ -302,15 +304,6 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
             disabled={saving}
           />
 
-          <StringListEditor
-            label={t("recipe.equipment")}
-            addLabel={t("recipe.equipment.addRow")}
-            placeholder={t("recipe.equipment.placeholder")}
-            values={draft.equipment ?? []}
-            onChange={(equipment) => onChange({ ...draft, equipment })}
-            collapsed
-            disabled={saving}
-          />
         </div>
       </div>
     </div>

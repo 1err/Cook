@@ -31,8 +31,6 @@ function draftWithAdditionalText(draft: Recipe, text: string): string {
     ...(draft.steps ?? []).map((step, index) => `${index + 1}. ${step.text}`),
     "Tips:",
     ...(draft.tips ?? []),
-    "Equipment:",
-    ...(draft.equipment ?? []),
     "Additional recipe text:",
     text.trim(),
   ].join("\n");
@@ -84,7 +82,6 @@ function preserveDraftDetails(original: Recipe, candidate: Recipe): Recipe {
     library_tags: original.library_tags ?? candidate.library_tags,
     description: candidate.description?.trim() ? candidate.description : original.description,
     tips: candidate.tips?.some(tip => tip.trim()) ? candidate.tips : original.tips,
-    equipment: candidate.equipment?.some(item => item.trim()) ? candidate.equipment : original.equipment,
     ingredients,
     steps,
     total_time_minutes: originalTotalIsDistinct ? original.total_time_minutes
@@ -278,7 +275,6 @@ function ImportPageContent({ userId }: { userId: string }) {
               <p>{formatStepDuration(step.duration_seconds) ? `${formatStepDuration(step.duration_seconds)} · ${t(`recipe.tutorial.source.${step.duration_source ?? "fallback"}`)}` : t("recipe.tutorial.source.unknown")}</p>
             </li>)}</ol>
             {candidate.tips?.length ? <><h4>{t("recipe.tips")}</h4><ul>{candidate.tips.map((tip, index) => <li key={index}>{tip}</li>)}</ul></> : null}
-            {candidate.equipment?.length ? <><h4>{t("recipe.equipment")}</h4><ul>{candidate.equipment.map((item, index) => <li key={index}>{item}</li>)}</ul></> : null}
             <div className={styles.recoveryActions}>
               <button type="button" disabled={loading} onClick={applyCandidate}>{t("import.applyCandidate")}</button>
               <button type="button" disabled={loading} onClick={() => setCandidate(null)}>{t("import.keepDraft")}</button>

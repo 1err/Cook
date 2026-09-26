@@ -99,43 +99,46 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("imports a TikTok link, then saves the streamlined Review draft", async ({ page }, testInfo) => {
-  await expect(page.getByRole("heading", { name: "Import recipe" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add a recipe", exact: true })).toBeVisible();
   const sourcePanel = await page.locator("main form").evaluate((form) => {
-    const rect = form.getBoundingClientRect();
+    const rect = form.closest('[class*="importWorkspace"]')!.getBoundingClientRect();
     return { width: rect.width, center: rect.x + rect.width / 2, viewport: window.innerWidth };
   });
-  expect(sourcePanel.width).toBeLessThanOrEqual(720);
+  expect(sourcePanel.width).toBeLessThanOrEqual(1040);
   expect(Math.abs(sourcePanel.center - sourcePanel.viewport / 2)).toBeLessThanOrEqual(1);
   await expect(page.getByLabel("Title (optional)")).toHaveCount(0);
   await page.getByRole("button", { name: "Optional details" }).click();
   await expect(page.getByLabel("Title (optional)")).toBeVisible();
   await page.getByRole("button", { name: "Optional details" }).click();
 
-  await page.getByLabel("YouTube or TikTok URL").fill("https://www.tiktok.com/@chef/video/7412345678901234567");
+  await page.getByLabel("YouTube, TikTok, or RedNote URL").fill("https://www.tiktok.com/@chef/video/7412345678901234567");
   const parseRequest = page.waitForRequest(
     (request) => request.method() === "POST" && new URL(request.url()).pathname === "/recipes/import-jobs",
   );
-  await page.getByRole("button", { name: "Create draft" }).click();
+  await page.getByRole("button", { name: "Prepare draft" }).click();
   expect((await parseRequest).postDataJSON()).toMatchObject({
     url: "https://www.tiktok.com/@chef/video/7412345678901234567",
   });
 
   await expect(page.getByRole("button", { name: "Back to source" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Review recipe" })).toBeVisible();
+  await expect(page.getByText(/^Equipment/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add equipment", exact: true })).toHaveCount(0);
+  await expect(page.getByPlaceholder("Add a pan or tool", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Image URL")).toHaveCount(0);
   await expect(page.getByPlaceholder(/Notes/i)).toHaveCount(0);
   await expect(page.getByText(/Add image/i)).toHaveCount(0);
   await expect(page.getByText(/Errors stay local/i)).toHaveCount(0);
   await expect(page.getByLabel("Original amount 1")).toHaveValue("1 block");
   await expect(page.getByLabel("Ingredient 1", { exact: true })).toHaveValue("Firm tofu");
-  const conversion = page.getByLabel("Amount in g / ml 1", { exact: true });
+  await page.getByText("Notes & unit conversion", { exact: true }).first().click();
+  const conversion = page.getByLabel("Metric equivalent (optional) 1", { exact: true });
   await expect(conversion).toHaveValue("400 g");
-  await expect(conversion).toHaveAccessibleDescription("Optional conversion, e.g. 400 g or 250 ml.");
+  await expect(conversion).toHaveAccessibleDescription("Keep source amounts. Add grams or milliliters only when useful, and mark estimates with “about”.");
   await conversion.fill("450 g");
-  await page.getByText("Edit tags", { exact: true }).click();
+  await page.getByLabel("Tag category", { exact: true }).selectOption("time");
   await page.getByRole("button", { name: "Quick", exact: true }).click();
-  await page.getByText("Edit tags", { exact: true }).click();
-  await expect(page.getByText("AI estimated", { exact: true })).toBeVisible();
+  await expect(page.getByText("Estimated", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Passive" }).first()).toHaveAttribute(
     "aria-pressed",
     "true",
@@ -162,6 +165,14 @@ test("imports a TikTok link, then saves the streamlined Review draft", async ({ 
   );
   await page.getByRole("button", { name: "Save recipe" }).click();
   const saved = (await saveRequest).postDataJSON();
+  expect(saved).not.toHaveProperty("equipment");
+  expect(saved).toMatchObject({
+    title: draftRecipe.title,
+    source_url: draftRecipe.source_url,
+    thumbnail_url: draftRecipe.thumbnail_url,
+    description: draftRecipe.description,
+    tips: draftRecipe.tips,
+  });
   expect(saved.ingredients).toEqual([
     { ...draftRecipe.ingredients[0], metric_quantity: "450 g" },
     draftRecipe.ingredients[1],
@@ -189,16 +200,18 @@ test("imports a TikTok link, then saves the streamlined Review draft", async ({ 
   ]);
   await expect(page).toHaveURL(/\/recipe\/saved-1$/);
   await expect(page.getByRole("heading", { name: "Braised tofu" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Equipment", exact: true })).toHaveCount(0);
+  await expect(page.getByText(draftRecipe.equipment[0], { exact: true })).toHaveCount(0);
   await expect(page.getByText("Sear the tofu until golden.")).toBeVisible();
   await expect(page.getByText("About 9 min · Adjusted · Hands-on")).toBeVisible();
 });
 
 test("sends YouTube links to the link parser", async ({ page }) => {
-  await page.getByLabel("YouTube or TikTok URL").fill("https://www.youtube.com/watch?v=recipe");
+  await page.getByLabel("YouTube, TikTok, or RedNote URL").fill("https://www.youtube.com/watch?v=recipe");
   const parseRequest = page.waitForRequest(
     (request) => request.method() === "POST" && new URL(request.url()).pathname === "/recipes/import-jobs",
   );
-  await page.getByRole("button", { name: "Create draft" }).click();
+  await page.getByRole("button", { name: "Prepare draft" }).click();
   expect((await parseRequest).postDataJSON()).toMatchObject({
     url: "https://www.youtube.com/watch?v=recipe",
   });
@@ -215,7 +228,7 @@ test("keeps pasted text and optional metadata when returning from review", async
   const parseRequest = page.waitForRequest(
     (request) => request.method() === "POST" && new URL(request.url()).pathname === "/recipes/import-jobs",
   );
-  await page.getByRole("button", { name: "Create draft" }).click();
+  await page.getByRole("button", { name: "Prepare draft" }).click();
   expect((await parseRequest).postDataJSON()).toEqual({
     mode: "text",
     transcript: "Sear one block of tofu, then simmer with soy sauce.",

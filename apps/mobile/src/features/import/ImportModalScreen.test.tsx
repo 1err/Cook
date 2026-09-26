@@ -9,6 +9,7 @@ const parsedDraft: Recipe = {
   source_url: "https://www.youtube.com/watch?v=A6bByqI_TH8",
   import_review: { status: "needs_review", warnings: ["Finishing steps could not be verified."], source_kind: "captions", can_analyze_video: true },
   thumbnail_url: null,
+  equipment: ["Legacy noodle pot"],
   ingredients: [{ name: "Noodles", quantity: "200g" }],
   steps: [{
     id: "8b407c84-3888-435a-94a7-88bf4f80fa66",
@@ -127,11 +128,14 @@ test("reviews imported tutorial metadata and saves user edits without dropping h
   await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
 
   expect(await screen.findByText("About 5 min · Rough estimate · Hands-on")).toBeOnTheScreen();
+  expect(screen.queryByText("Equipment")).not.toBeOnTheScreen();
+  expect(screen.queryByDisplayValue("Legacy noodle pot")).not.toBeOnTheScreen();
   await fireEvent.press(screen.getByRole("button", { name: "Passive" }));
   await fireEvent.press(screen.getByRole("button", { name: "Save recipe" }));
 
   await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
   const saved = mockCreate.mock.calls[0][0] as Recipe;
+  expect(saved).not.toHaveProperty("equipment");
   expect(saved.steps?.[0]).toEqual({
     ...parsedDraft.steps?.[0],
     attention_type: "passive",

@@ -36,7 +36,6 @@ function RecipeEditContent() {
   const [steps, setSteps] = useState<RecipeStep[]>([]);
   const [stepsValid, setStepsValid] = useState(true);
   const [tips, setTips] = useState<string[]>([]);
-  const [equipment, setEquipment] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -65,7 +64,6 @@ function RecipeEditContent() {
           setTotalTimeMinutes(typeof data.total_time_minutes === "number" ? data.total_time_minutes : null);
           setSteps(Array.isArray(data.steps) ? data.steps.map((s) => ({ ...s })) : []);
           setTips(Array.isArray(data.tips) ? [...data.tips] : []);
-          setEquipment(Array.isArray(data.equipment) ? [...data.equipment] : []);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load");
@@ -132,7 +130,6 @@ function RecipeEditContent() {
         total_time_minutes: totalTimeMinutes,
         steps,
         tips,
-        equipment,
       };
       const res = await apiFetch(`/recipes/${id}`, {
         method: "PATCH",
@@ -359,14 +356,6 @@ function RecipeEditContent() {
               placeholder={t("recipe.tips.placeholder")}
               values={tips}
               onChange={setTips}
-              collapsed
-            />
-            <StringListEditor
-              label={t("recipe.equipment")}
-              addLabel={t("recipe.equipment.addRow")}
-              placeholder={t("recipe.equipment.placeholder")}
-              values={equipment}
-              onChange={setEquipment}
               collapsed
             />
             <details className={styles.tagsDisclosure}>

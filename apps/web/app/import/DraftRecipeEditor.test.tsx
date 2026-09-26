@@ -191,6 +191,7 @@ describe("DraftRecipeEditor", () => {
     }
     render(<ControlledDraft />);
     await user.click(screen.getByText("Notes & unit conversion"));
+    expect(screen.queryByText(/^Equipment/)).not.toBeInTheDocument();
     const conversion = screen.getByLabelText("Amount in g / ml 1");
     expect(conversion).toHaveValue("400 g");
     expect(conversion).toHaveAccessibleDescription("Optional conversion, e.g. 400 g or 250 ml.");
@@ -200,6 +201,7 @@ describe("DraftRecipeEditor", () => {
     await user.click(screen.getByRole("button", { name: "Save recipe" }));
     await waitFor(() => expect(onSaveSuccess).toHaveBeenCalledWith("saved-1"));
     const [, request] = mockApiFetch.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(request.body))).not.toHaveProperty("equipment");
     expect(JSON.parse(String(request.body)).ingredients).toEqual([
       { ...draft.ingredients[0], metric_quantity: "450 g" },
     ]);
@@ -300,8 +302,9 @@ describe("DraftRecipeEditor", () => {
     await user.keyboard("{Control>}a{/Control}Unsent tutorial mutation");
 
     const [, request] = mockApiFetch.mock.calls[0] as [string, RequestInit];
+    const { equipment: _equipment, ...retainedDraft } = draft;
     expect(JSON.parse(String(request.body))).toEqual({
-      ...draft,
+      ...retainedDraft,
       title: "Captured braise",
       ingredients: [{
         ...draft.ingredients[0],

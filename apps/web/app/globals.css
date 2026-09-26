@@ -4844,8 +4844,8 @@ button:disabled {
 .recipe-total-time-chip { display:inline-flex; gap:.35rem; align-items:center; background:var(--recipe-accent-soft); color:var(--recipe-accent); padding:.3rem .7rem; border-radius:999px; font-size:.85rem; font-weight:700; }
 .recipe-main { display:flex; flex-direction:column; gap:1.5rem; }
 .recipe-main__empty { text-align:center; padding:2rem 0; }
-.recipe-steps, .recipe-equipment, .recipe-tips { background:var(--recipe-card); border:1px solid var(--recipe-line); border-radius:1rem; box-shadow:var(--recipe-card-shadow); padding:1.5rem; }
-.recipe-steps h3, .recipe-equipment h3, .recipe-tips h3 { margin:0 0 1rem; font-family:var(--recipe-serif); font-size:1.4rem; font-weight:800; color:var(--recipe-ink); }
+.recipe-steps, .recipe-tips { background:var(--recipe-card); border:1px solid var(--recipe-line); border-radius:1rem; box-shadow:var(--recipe-card-shadow); padding:1.5rem; }
+.recipe-steps h3, .recipe-tips h3 { margin:0 0 1rem; font-family:var(--recipe-serif); font-size:1.4rem; font-weight:800; color:var(--recipe-ink); }
 .recipe-step { display:flex; flex-direction:column; gap:.4rem; margin-bottom:1.5rem; }
 .recipe-step:last-child { margin-bottom:0; }
 .recipe-step__header { display:flex; align-items:center; gap:.6rem; font-weight:600; }
@@ -4853,8 +4853,8 @@ button:disabled {
 .recipe-step__chip { background:var(--recipe-accent-soft); color:var(--recipe-accent); border-radius:999px; padding:.15rem .6rem; font-size:.75rem; font-weight:700; }
 .recipe-step__text { margin:.1rem 0; color:var(--recipe-ink); line-height:1.6; }
 .recipe-step__image { max-width:100%; max-height:340px; border-radius:12px; margin-top:.3rem; }
-.recipe-equipment ul, .recipe-tips ul { padding-left:1.2rem; margin:0; color:var(--recipe-ink); }
-.recipe-equipment li, .recipe-tips li { margin:.35rem 0; }
+.recipe-tips ul { padding-left:1.2rem; margin:0; color:var(--recipe-ink); }
+.recipe-tips li { margin:.35rem 0; }
 .recipe-tips { background:#fdf5e3; border-left:4px solid var(--recipe-accent); }
 .recipe-steps ol { padding-left:0; margin:0; list-style:none; }
 .recipe-editorial__footer { display:flex; flex-wrap:wrap; gap:.75rem; justify-content:center; margin-top:2.5rem; }

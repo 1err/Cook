@@ -15,6 +15,7 @@ def _recipe() -> Recipe:
     return Recipe(
         id="recipe-1",
         title="Soup",
+        equipment=["Legacy stockpot"],
         ingredients=[],
         total_time_minutes=10,
         steps=[
@@ -103,6 +104,7 @@ async def test_estimate_route_canonicalizes_owned_recipe_draft_without_persistin
     ]
     assert save_calls == []
     assert recipe.model_dump() == original_recipe
+    assert "equipment" not in result.model_dump()
 
 
 @pytest.mark.asyncio

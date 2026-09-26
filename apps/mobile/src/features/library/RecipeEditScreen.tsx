@@ -28,7 +28,6 @@ function copyRecipe(recipe: Recipe): Recipe {
     library_tags: recipe.library_tags ? [...recipe.library_tags] : undefined,
     steps: copySteps(recipe.steps),
     tips: recipe.tips ? [...recipe.tips] : undefined,
-    equipment: recipe.equipment ? [...recipe.equipment] : undefined,
   };
 }
 
@@ -138,7 +137,6 @@ export function RecipeEditScreen({ navigation, route }: Props) {
           total_time_minutes: submittedDraft.total_time_minutes,
           steps: submittedDraft.steps,
           tips: submittedDraft.tips,
-          equipment: submittedDraft.equipment,
         });
       }
       setNavigateAfterSave(true);
