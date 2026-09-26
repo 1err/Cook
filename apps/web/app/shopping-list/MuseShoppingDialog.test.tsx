@@ -4,10 +4,12 @@ import { afterEach, expect, test, vi } from "vitest";
 import { I18nProvider } from "../lib/i18n";
 import { MuseShoppingDialog, type MuseShoppingDialogProps } from "./MuseShoppingDialog";
 
+const productName = "Firm tofu 350 g";
+const copiedMessage = "Copied. Open Muse and paste your request.";
 const draft: CartAssistantDraft = {
   selections: [{
     ingredientKey: "tofu", ingredientName: "Tofu", suggestedPurchase: "600 g",
-    product: { name: "Firm tofu 350 g", price: "$2.50", image: "", url: "https://www.sayweee.com/product/tofu" },
+    product: { name: productName, price: "$2.50", image: "", url: "https://www.sayweee.com/product/tofu" },
     confirmationToken: "tofu-token", confirmed: false,
   }],
   unmatched: [{ key: "ginger", name: "Ginger", suggestedPurchase: "1 knob" }],
@@ -16,7 +18,8 @@ const draft: CartAssistantDraft = {
 
 function setup(overrides: Partial<MuseShoppingDialogProps> = {}) {
   let props: MuseShoppingDialogProps = {
-    open: true, draft, pendingIngredients: [], scopeKey: "account:week-one", onClose: vi.fn(), ...overrides,
+    open: true, draft, pendingIngredients: [], scopeKey: "account:week-one", onClose: vi.fn(),
+    onRefresh: vi.fn(), refreshing: false, refreshError: null, ...overrides,
   };
   const view = render(<I18nProvider><MuseShoppingDialog {...props} /></I18nProvider>);
   return { ...view, props, update(next: Partial<MuseShoppingDialogProps>) {
@@ -25,233 +28,365 @@ function setup(overrides: Partial<MuseShoppingDialogProps> = {}) {
   } };
 }
 
-function enterPacks(value = "2") {
-  fireEvent.change(screen.getByRole("spinbutton", { name: "Total packs of Firm tofu 350 g" }), { target: { value } });
+function packs(name = productName) {
+  return screen.getByRole("spinbutton", { name: `Total packs of ${name}` });
+}
+function enterPacks(value: string, name = productName) {
+  fireEvent.change(packs(name), { target: { value } });
+}
+function confirmButton() {
+  return screen.getByRole("button", { name: "Confirm quantities & copy" });
+}
+function openDetails(name = productName) {
+  const summary = screen.getByLabelText(`Details for ${name}`);
+  if (!summary.closest("details")?.open) fireEvent.click(summary);
+  return summary.closest("details")!;
+}
+function openPreferences() {
+  const summary = screen.getByLabelText("Shopping preferences");
+  if (!summary.closest("details")?.open) fireEvent.click(summary);
+  return summary;
+}
+function clipboardSuccess() {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  return writeText;
+}
+function requestProducts(request: string) {
+  return JSON.parse(request.split("SHOPPING_DATA_JSON = ")[1]).products as Array<{
+    productName: string; totalPacksInCart: number; quantitySource: string; reviewedPackageSize?: string;
+  }>;
 }
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-test("suggests enough packs with the calculation and exports the suggested quantity", async () => {
-  const writeText = vi.fn().mockResolvedValue(undefined);
-  vi.stubGlobal("navigator", { clipboard: { writeText } });
+test("confirms and copies the displayed counts in one click before offering the request export", async () => {
+  const writeText = clipboardSuccess();
   setup({ pendingIngredients: [{ key: "milk", name: "Milk", suggestedPurchase: "1 carton" }] });
-  expect(screen.getByRole("spinbutton", { name: "Total packs of Firm tofu 350 g" })).toHaveValue(2);
-  expect(screen.getByText("Suggested: 2 packs")).toBeVisible();
-  expect(screen.getByText("600 g on your list · 350 g per pack")).toBeVisible();
-  expect(screen.getByText(/700 g.*100 g/)).toBeVisible();
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeEnabled();
-  fireEvent.click(screen.getByRole("button", { name: "Copy for Muse" }));
-  await screen.findByText("Request copied. Open Muse and paste it into your conversation.");
+  expect(packs()).toHaveValue(2);
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Your request for Muse")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Save request as text", hidden: true })).not.toBeInTheDocument();
+  expect(confirmButton()).toBeEnabled();
+  fireEvent.click(confirmButton());
+  // Clipboard writing must happen in the click, not after a state-change effect.
+  expect(writeText).toHaveBeenCalledTimes(1);
+  await screen.findByText(copiedMessage);
   const request = writeText.mock.calls[0][0] as string;
+  expect(requestProducts(request)).toMatchObject([{ productName, totalPacksInCart: 2, quantitySource: "calculated" }]);
   expect(request).toContain("https://www.sayweee.com/product/tofu");
-  expect(request).toContain("600 g");
-  expect(request).toContain("350 g");
-  expect(request).toContain('"totalPacksInCart":2');
   expect(request).toContain("Ginger");
   expect(request).toContain("Milk");
-  expect(screen.getByRole("link", { name: /Open Muse/ })).toHaveAttribute("href", "https://muse.ai/");
-  expect(screen.getByText(/Chef World has not added anything/)).toBeVisible();
+  expect(screen.getByRole("link", { name: "Open Muse" })).toHaveAttribute("href", "https://muse.ai/");
+  expect(screen.getByRole("button", { name: "Copy again" })).toBeEnabled();
+  expect(screen.getByLabelText("Your request for Muse")).toHaveValue(request);
+  fireEvent.click(screen.getByRole("button", { name: "Copy again" }));
+  expect(writeText).toHaveBeenCalledTimes(2);
 });
 
-test("rejects invalid quantities and budgets and prevents stale-list exports", () => {
-  const view = setup();
+test("keeps calculations and optional preferences collapsed until requested", () => {
+  setup();
+  const details = screen.getByLabelText(`Details for ${productName}`).closest("details")!;
+  expect(details).not.toHaveAttribute("open");
+  expect(screen.getByLabelText("Shopping preferences").closest("details")).not.toHaveAttribute("open");
+  openDetails();
+  expect(screen.getByText("600 g on your list · 350 g per pack")).toBeVisible();
+  expect(screen.getByText(/700 g.*100 g/)).toBeVisible();
+  expect(screen.getByRole("textbox", { name: `Package size for ${productName}` })).toBeVisible();
+});
+
+test.each([
+  ["约600 g", "Firm tofu 350 g", 2, "estimated"],
+  ["600 g", "Firm tofu", 1, "starting"],
+  ["2 cups", "Firm tofu 350 g", 1, "starting"],
+])("confirms %s against %s without a separate checkbox", async (amount, name, count, source) => {
+  const writeText = clipboardSuccess();
+  setup({ draft: { ...draft, selections: [{ ...draft.selections[0], suggestedPurchase: amount as string,
+    product: { ...draft.selections[0].product, name: name as string } }] } });
+  expect(packs(name as string)).toHaveValue(count);
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Your request for Muse")).not.toBeInTheDocument();
+  fireEvent.click(confirmButton());
+  expect(writeText).toHaveBeenCalledTimes(1);
+  await screen.findByText(copiedMessage);
+  expect(requestProducts(writeText.mock.calls[0][0])).toMatchObject([{ totalPacksInCart: count, quantitySource: source }]);
+});
+
+test("fix quantities focuses the invalid count without exporting a request", () => {
+  const writeText = clipboardSuccess();
+  setup();
   for (const value of ["0", "1.5", "100", ""]) {
     enterPacks(value);
-    expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
+    const fix = screen.getByRole("button", { name: "Fix quantities" });
+    expect(fix).toBeEnabled();
+    fireEvent.click(fix);
+    expect(packs()).toHaveFocus();
+    expect(screen.queryByLabelText("Your request for Muse")).not.toBeInTheDocument();
   }
-  enterPacks();
+  expect(writeText).not.toHaveBeenCalled();
+  enterPacks("2");
+  expect(confirmButton()).toBeEnabled();
+});
+
+test("fix quantities goes to the first invalid row rather than a valid preceding product", () => {
+  const writeText = clipboardSuccess();
+  setup({ draft: { ...draft, selections: [...draft.selections, {
+    ...draft.selections[0], ingredientKey: "rice", ingredientName: "Rice", confirmationToken: "rice-token",
+    product: { ...draft.selections[0].product, name: "Rice bag", url: "https://www.sayweee.com/product/rice" },
+  }] } });
+  enterPacks("", "Rice bag");
+  fireEvent.click(screen.getByRole("button", { name: "Fix quantities" }));
+  expect(packs("Rice bag")).toHaveFocus();
+  expect(writeText).not.toHaveBeenCalled();
+});
+
+test("fix budget opens preferences and focuses the invalid budget without copying", () => {
+  const writeText = clipboardSuccess();
+  setup();
+  const summary = openPreferences();
   const budget = screen.getByRole("textbox", { name: /Budget for these products/ });
   fireEvent.change(budget, { target: { value: "-1" } });
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
+  fireEvent.click(summary);
+  fireEvent.click(screen.getByRole("button", { name: "Fix budget" }));
+  expect(budget).toBeVisible();
+  expect(budget).toHaveFocus();
+  expect(writeText).not.toHaveBeenCalled();
   fireEvent.change(budget, { target: { value: "25.00" } });
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeEnabled();
-  view.update({ stale: true });
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
-  expect(screen.getByText(/Refresh your smart list/)).toBeVisible();
+  expect(confirmButton()).toBeEnabled();
 });
 
-test("offers selectable full request when clipboard access fails", async () => {
+test("updates a stale list and exposes retryable refresh errors without exporting", () => {
+  const writeText = clipboardSuccess();
+  const onRefresh = vi.fn();
+  const view = setup({ stale: true, onRefresh });
+  expect(screen.queryByRole("button", { name: "Confirm quantities & copy" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Update shopping list" }));
+  expect(onRefresh).toHaveBeenCalledTimes(1);
+  expect(writeText).not.toHaveBeenCalled();
+  view.update({ refreshing: true });
+  expect(screen.getByRole("button", { name: "Updating…" })).toBeDisabled();
+  expect(screen.getByRole("dialog")).toBeVisible();
+  view.update({ refreshing: false, refreshError: "Could not refresh your current planner list" });
+  expect(screen.getByText("Could not refresh your current planner list")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Update shopping list" }));
+  expect(onRefresh).toHaveBeenCalledTimes(2);
+  expect(screen.queryByLabelText("Your request for Muse")).not.toBeInTheDocument();
+  expect(writeText).not.toHaveBeenCalled();
+  view.update({ stale: false, refreshError: null });
+  expect(confirmButton()).toBeEnabled();
+});
+
+test("refreshing independently blocks copying even if stale has already cleared", () => {
+  const writeText = clipboardSuccess();
+  setup({ stale: false, refreshing: true });
+  expect(screen.getByRole("button", { name: "Updating…" })).toBeDisabled();
+  expect(screen.queryByLabelText("Your request for Muse")).not.toBeInTheDocument();
+  expect(writeText).not.toHaveBeenCalled();
+});
+
+test("offers the confirmed request for selection and download when clipboard access fails", async () => {
   vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) } });
-  setup(); enterPacks();
-  fireEvent.click(screen.getByRole("button", { name: "Copy for Muse" }));
-  await screen.findByRole("alert");
-  const request = screen.getByRole("textbox", { name: "Your request for Muse" });
+  setup({ draft: { ...draft, selections: [{ ...draft.selections[0], suggestedPurchase: "some" }] } });
+  expect(screen.queryByLabelText("Your request for Muse")).not.toBeInTheDocument();
+  fireEvent.click(confirmButton());
+  const request = await screen.findByRole("textbox", { name: "Your request for Muse" });
   expect(request).toBeVisible();
   expect(request).toHaveAttribute("readonly");
-  expect((request as HTMLTextAreaElement).value).toContain("https://www.sayweee.com/product/tofu");
+  await waitFor(() => expect(request).toHaveFocus());
+  expect((request as HTMLTextAreaElement).selectionEnd).toBe((request as HTMLTextAreaElement).value.length);
+  expect(requestProducts((request as HTMLTextAreaElement).value)).toMatchObject([{ totalPacksInCart: 1, quantitySource: "starting" }]);
+  expect(screen.getByRole("button", { name: "Save request as text" })).toBeVisible();
+  expect(screen.queryByText(copiedMessage)).not.toBeInTheDocument();
 });
 
-test("does not report a stale asynchronous copy as the current request", async () => {
+test("does not report a pending copy after the quantity changes", async () => {
   let finish!: () => void;
-  vi.stubGlobal("navigator", { clipboard: { writeText: () => new Promise<void>((resolve) => { finish = resolve; }) } });
-  setup(); enterPacks();
-  fireEvent.click(screen.getByRole("button", { name: "Copy for Muse" }));
+  vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn(() => new Promise<void>((resolve) => { finish = resolve; })) } });
+  setup();
+  fireEvent.click(confirmButton());
   enterPacks("3");
   await act(async () => { finish(); });
-  expect(screen.queryByText("Request copied. Open Muse and paste it into your conversation.")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeEnabled();
+  expect(screen.queryByText(copiedMessage)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Your request for Muse")).not.toBeInTheDocument();
+  expect(confirmButton()).toBeEnabled();
 });
 
-test("retains edits on reopen and recalculates when scope or shopping amounts change", async () => {
+test("does not resurrect pending-copy confirmation after an edit is reverted", async () => {
+  let finish!: () => void;
+  vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn(() => new Promise<void>((resolve) => { finish = resolve; })) } });
+  setup({ draft: { ...draft, selections: [{ ...draft.selections[0], suggestedPurchase: "some" }] } });
+  fireEvent.click(confirmButton());
+  openPreferences();
+  const budget = screen.getByRole("textbox", { name: /Budget for these products/ });
+  fireEvent.change(budget, { target: { value: "25" } });
+  fireEvent.change(budget, { target: { value: "" } });
+  await act(async () => { finish(); });
+  expect(screen.queryByText(copiedMessage)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Your request for Muse")).not.toBeInTheDocument();
+  expect(confirmButton()).toBeEnabled();
+});
+
+test.each(["stale", "refreshing"] as const)("invalidates a pending request when the list becomes %s", async (state) => {
+  let finish!: () => void;
+  vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn(() => new Promise<void>((resolve) => { finish = resolve; })) } });
+  const view = setup();
+  fireEvent.click(confirmButton());
+  view.update({ [state]: true });
+  await act(async () => { finish(); });
+  expect(screen.queryByText(copiedMessage)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Your request for Muse")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Copy again" })).not.toBeInTheDocument();
+});
+
+test("ignores a pending clipboard result after closing and reopening the review", async () => {
+  let finish!: () => void;
+  vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn(() => new Promise<void>((resolve) => { finish = resolve; })) } });
+  const view = setup();
+  fireEvent.click(confirmButton());
+  view.update({ open: false });
+  view.update({ open: true });
+  await act(async () => { finish(); });
+  expect(screen.queryByText(copiedMessage)).not.toBeInTheDocument();
+  expect(confirmButton()).toBeEnabled();
+});
+
+test("ignores a rejected clipboard operation from an unmounted review", async () => {
+  let reject!: (reason: Error) => void;
+  vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn(() => new Promise<void>((_resolve, fail) => { reject = fail; })) } });
+  const oldView = setup();
+  fireEvent.click(confirmButton());
+  oldView.unmount();
+  setup({ scopeKey: "different-account:week-one" });
+  await act(async () => { reject(new Error("clipboard denied after unmount")); });
+  expect(screen.queryByText(copiedMessage)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Your request for Muse")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+test("retains edits on reopen and recalculates when scope or shopping amounts change", () => {
   const view = setup(); enterPacks("4");
   view.update({ open: false });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   view.update({ open: true });
-  expect(screen.getByRole("spinbutton", { name: "Total packs of Firm tofu 350 g" })).toHaveValue(4);
+  expect(packs()).toHaveValue(4);
   view.update({ scopeKey: "account:week-two" });
-  expect(screen.getByRole("spinbutton", { name: "Total packs of Firm tofu 350 g" })).toHaveValue(2);
+  expect(packs()).toHaveValue(2);
   enterPacks("4");
   view.update({ draft: { ...draft, selections: [{ ...draft.selections[0], suggestedPurchase: "900 g" }] } });
-  expect(screen.getByRole("spinbutton", { name: "Total packs of Firm tofu 350 g" })).toHaveValue(3);
+  expect(packs()).toHaveValue(3);
   view.update({ draft });
-  expect(screen.getByRole("spinbutton", { name: "Total packs of Firm tofu 350 g" })).toHaveValue(2);
+  expect(packs()).toHaveValue(2);
 });
 
-test("keeps a cleared quantity blank until the customer restores the suggestion", () => {
+test("keeps a cleared quantity blank until the customer restores its suggestion", () => {
   const view = setup();
   enterPacks("");
   view.update({ pendingIngredients: [{ key: "milk", name: "Milk", suggestedPurchase: "1 carton" }] });
-  view.update({ open: false });
-  view.update({ open: true });
-  expect(screen.getByRole("spinbutton", { name: "Total packs of Firm tofu 350 g" })).toHaveValue(null);
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
-  fireEvent.click(screen.getByRole("button", { name: "Use suggested quantity for Firm tofu 350 g" }));
-  expect(screen.getByRole("spinbutton", { name: "Total packs of Firm tofu 350 g" })).toHaveValue(2);
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeEnabled();
+  view.update({ open: false }); view.update({ open: true });
+  expect(packs()).toHaveValue(null);
+  expect(screen.getByRole("button", { name: "Fix quantities" })).toBeEnabled();
+  openDetails();
+  fireEvent.click(screen.getByRole("button", { name: `Use suggested quantity for ${productName}` }));
+  expect(packs()).toHaveValue(2);
+  expect(confirmButton()).toBeEnabled();
 });
 
-test("copies the customer's override instead of silently replacing it with a suggestion", async () => {
-  const writeText = vi.fn().mockResolvedValue(undefined);
-  vi.stubGlobal("navigator", { clipboard: { writeText } });
+test("copies a manual override without replacing it when unrelated matches change", async () => {
+  const writeText = clipboardSuccess();
   const view = setup(); enterPacks("3");
   view.update({ pendingIngredients: [{ key: "milk", name: "Milk", suggestedPurchase: "1 carton" }] });
-  fireEvent.click(screen.getByRole("button", { name: "Copy for Muse" }));
-  await screen.findByText("Request copied. Open Muse and paste it into your conversation.");
-  expect(writeText.mock.calls[0][0]).toContain('"totalPacksInCart":3');
-  fireEvent.click(screen.getByRole("button", { name: "Use suggested quantity for Firm tofu 350 g" }));
-  expect(screen.queryByText("Request copied. Open Muse and paste it into your conversation.")).not.toBeInTheDocument();
+  fireEvent.click(confirmButton());
+  await screen.findByText(copiedMessage);
+  expect(requestProducts(writeText.mock.calls[0][0])).toMatchObject([{ totalPacksInCart: 3, quantitySource: "manual" }]);
+  openDetails();
+  fireEvent.click(screen.getByRole("button", { name: `Use suggested quantity for ${productName}` }));
+  expect(screen.queryByText(copiedMessage)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Your request for Muse")).not.toBeInTheDocument();
 });
 
-test("offers one starting pack for missing sizes and incompatible measures, requiring review", () => {
-  const view = setup({ draft: { ...draft, selections: [{ ...draft.selections[0], product: { ...draft.selections[0].product, name: "Firm tofu" } }] } });
-  expect(screen.getByRole("spinbutton")).toHaveValue(1);
-  expect(screen.getByText("Start with 1 pack")).toBeVisible();
-  expect(screen.getByText(/Package size isn’t listed/)).toBeVisible();
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
-  fireEvent.click(screen.getByRole("checkbox", { name: "I’ve reviewed the estimated and starting quantities." }));
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeEnabled();
-  view.update({ draft: { ...draft, selections: [{ ...draft.selections[0], suggestedPurchase: "2 cups" }] } });
-  expect(screen.getByRole("spinbutton")).toHaveValue(1);
-  expect(screen.getByText(/different measurements/)).toBeVisible();
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
-  enterPacks("");
-  enterPacks("1");
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeEnabled();
-});
-
-test("labels approximate calculations and carries their basis into the reviewed request", async () => {
-  const writeText = vi.fn().mockResolvedValue(undefined);
-  vi.stubGlobal("navigator", { clipboard: { writeText } });
-  setup({ draft: { ...draft, selections: [{ ...draft.selections[0], suggestedPurchase: "约600 g" }] } });
-  expect(screen.getByRole("spinbutton")).toHaveValue(2);
-  expect(screen.getByText("Estimated: 2 packs")).toBeVisible();
-  expect(screen.queryByText(/Suggested quantity provides/)).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
-  fireEvent.click(screen.getByRole("checkbox", { name: "I’ve reviewed the estimated and starting quantities." }));
-  fireEvent.click(screen.getByRole("button", { name: "Copy for Muse" }));
-  await screen.findByText("Request copied. Open Muse and paste it into your conversation.");
-  expect(writeText.mock.calls[0][0]).toContain('"quantitySource":"estimated"');
-});
-
-test("invalidates starting-quantity review on package edits and preserves an explicitly cleared count", () => {
-  const view = setup({ draft: { ...draft, selections: [{ ...draft.selections[0], suggestedPurchase: "some" }] } });
-  const review = () => screen.getByRole("checkbox", { name: "I’ve reviewed the estimated and starting quantities." });
-  fireEvent.click(review());
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeEnabled();
-  fireEvent.click(screen.getByRole("button", { name: "Edit package size for Firm tofu 350 g" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Package size for Firm tofu 350 g" }), { target: { value: "500 g" } });
-  expect(review()).not.toBeChecked();
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
-  enterPacks("");
-  view.update({ open: false }); view.update({ open: true });
-  expect(screen.getByRole("spinbutton")).toHaveValue(null);
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
-  fireEvent.click(screen.getByRole("button", { name: "Use suggested quantity for Firm tofu 350 g" }));
-  expect(screen.getByRole("spinbutton")).toHaveValue(1);
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
-});
-
-test("keeps review required for other starting counts after manually editing one item", () => {
+test("keeps manual and starting quantity sources distinct in the same confirmation", async () => {
+  const writeText = clipboardSuccess();
   setup({ draft: { ...draft, selections: [
     { ...draft.selections[0], suggestedPurchase: "some" },
-    { ...draft.selections[0], ingredientKey: "rice", ingredientName: "Rice", suggestedPurchase: "some", product: { ...draft.selections[0].product, name: "Rice bag", url: "https://www.sayweee.com/product/rice" } },
+    { ...draft.selections[0], ingredientKey: "rice", ingredientName: "Rice", suggestedPurchase: "some", confirmationToken: "rice-token",
+      product: { ...draft.selections[0].product, name: "Rice bag", url: "https://www.sayweee.com/product/rice" } },
   ] } });
   enterPacks("2");
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
-  fireEvent.change(screen.getByRole("spinbutton", { name: "Total packs of Rice bag" }), { target: { value: "" } });
-  fireEvent.change(screen.getByRole("spinbutton", { name: "Total packs of Rice bag" }), { target: { value: "1" } });
-  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeEnabled();
+  fireEvent.click(confirmButton());
+  await screen.findByText(copiedMessage);
+  expect(requestProducts(writeText.mock.calls[0][0])).toMatchObject([
+    { productName, totalPacksInCart: 2, quantitySource: "manual" },
+    { productName: "Rice bag", totalPacksInCart: 1, quantitySource: "starting" },
+  ]);
 });
 
-test("revoking estimate review invalidates a pending copy and changing a request resets review", async () => {
-  let finish!: () => void;
-  vi.stubGlobal("navigator", { clipboard: { writeText: () => new Promise<void>((resolve) => { finish = resolve; }) } });
-  setup({ draft: { ...draft, selections: [{ ...draft.selections[0], suggestedPurchase: "some" }] } });
-  const review = () => screen.getByRole("checkbox", { name: "I’ve reviewed the estimated and starting quantities." });
-  fireEvent.click(review());
-  fireEvent.click(screen.getByRole("button", { name: "Copy for Muse" }));
-  fireEvent.click(review());
-  await act(async () => { finish(); });
-  expect(screen.queryByText("Request copied. Open Muse and paste it into your conversation.")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
-  fireEvent.click(review());
-  const budget = screen.getByRole("textbox", { name: /Budget for these products/ });
-  fireEvent.change(budget, { target: { value: "25" } });
-  fireEvent.change(budget, { target: { value: "" } });
-  expect(review()).not.toBeChecked();
+test("invalidates completed confirmation after a package-size edit even when reverted", async () => {
+  clipboardSuccess();
+  setup();
+  fireEvent.click(confirmButton());
+  await screen.findByText(copiedMessage);
+  openDetails();
+  const size = screen.getByRole("textbox", { name: `Package size for ${productName}` });
+  fireEvent.change(size, { target: { value: "500 g" } });
+  fireEvent.change(size, { target: { value: "" } });
+  expect(screen.queryByText(copiedMessage)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Your request for Muse")).not.toBeInTheDocument();
+  expect(confirmButton()).toBeEnabled();
 });
 
-test("calculates from a customer supplied package size and includes it in the Muse request", async () => {
-  const writeText = vi.fn().mockResolvedValue(undefined);
-  vi.stubGlobal("navigator", { clipboard: { writeText } });
-  const view = setup({ draft: { ...draft, selections: [{ ...draft.selections[0], product: { ...draft.selections[0].product, name: "Firm tofu" } }] } });
-  fireEvent.change(screen.getByRole("textbox", { name: "Package size for Firm tofu" }), { target: { value: "350 g" } });
-  expect(screen.getByRole("spinbutton")).toHaveValue(2);
-  expect(screen.getByText("600 g on your list · 350 g per pack")).toBeVisible();
-  fireEvent.click(screen.getByRole("button", { name: "Copy for Muse" }));
-  await screen.findByText("Request copied. Open Muse and paste it into your conversation.");
-  expect(writeText.mock.calls[0][0]).toContain('"reviewedPackageSize":"350 g"');
+test("calculates and exports a customer-supplied package size retained across reopening", async () => {
+  const writeText = clipboardSuccess();
+  const name = "Firm tofu";
+  const view = setup({ draft: { ...draft, selections: [{ ...draft.selections[0], product: { ...draft.selections[0].product, name } }] } });
+  openDetails(name);
+  fireEvent.change(screen.getByRole("textbox", { name: `Package size for ${name}` }), { target: { value: "350 g" } });
+  expect(packs(name)).toHaveValue(2);
+  fireEvent.click(confirmButton());
+  await screen.findByText(copiedMessage);
+  expect(requestProducts(writeText.mock.calls[0][0])).toMatchObject([{ totalPacksInCart: 2, reviewedPackageSize: "350 g" }]);
   view.update({ open: false }); view.update({ open: true });
-  expect(screen.getByRole("textbox", { name: "Package size for Firm tofu" })).toHaveValue("350 g");
-  fireEvent.change(screen.getByRole("textbox", { name: "Package size for Firm tofu" }), { target: { value: "500 g" } });
-  expect(screen.getByText("600 g on your list · 500 g per pack")).toBeVisible();
-  expect(screen.queryByText("Request copied. Open Muse and paste it into your conversation.")).not.toBeInTheDocument();
+  openDetails(name);
+  expect(screen.getByRole("textbox", { name: `Package size for ${name}` })).toHaveValue("350 g");
 });
 
-test("allows correcting a listed size without overwriting an explicit pack count", () => {
+test("corrects a listed size without overwriting an explicit count", () => {
   setup(); enterPacks("4");
-  fireEvent.click(screen.getByRole("button", { name: "Edit package size for Firm tofu 350 g" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Package size for Firm tofu 350 g" }), { target: { value: "200 g" } });
-  expect(screen.getByRole("spinbutton")).toHaveValue(4);
-  expect(screen.getByText("Suggested: 3 packs")).toBeVisible();
-  fireEvent.click(screen.getByRole("button", { name: "Use suggested quantity for Firm tofu 350 g" }));
-  expect(screen.getByRole("spinbutton")).toHaveValue(3);
+  openDetails();
+  fireEvent.change(screen.getByRole("textbox", { name: `Package size for ${productName}` }), { target: { value: "200 g" } });
+  expect(packs()).toHaveValue(4);
+  fireEvent.click(screen.getByRole("button", { name: `Use suggested quantity for ${productName}` }));
+  expect(packs()).toHaveValue(3);
 });
 
-test("requires a cart check when a product also serves an ingredient already marked added", () => {
+test("quantity step controls keep counts within bounds and make edits explicit", async () => {
+  const writeText = clipboardSuccess();
+  setup();
+  const increase = screen.getByRole("button", { name: `Increase packs of ${productName}` });
+  const decrease = screen.getByRole("button", { name: `Decrease packs of ${productName}` });
+  fireEvent.click(increase); expect(packs()).toHaveValue(3);
+  fireEvent.click(decrease); expect(packs()).toHaveValue(2);
+  fireEvent.click(confirmButton());
+  await screen.findByText(copiedMessage);
+  expect(requestProducts(writeText.mock.calls[0][0])).toMatchObject([{ totalPacksInCart: 2, quantitySource: "manual" }]);
+  enterPacks("99"); fireEvent.click(increase); expect(packs()).toHaveValue(99);
+  enterPacks("1"); fireEvent.click(decrease); expect(packs()).toHaveValue(1);
+});
+
+test("requires an explicit total when the product also serves an ingredient marked added", () => {
   setup({ draft: { ...draft, selections: [
     { ...draft.selections[0], confirmed: true },
     { ...draft.selections[0], ingredientKey: "more-tofu", suggestedPurchase: "350 g" },
   ] } });
-  expect(screen.getByRole("spinbutton")).toHaveValue(null);
+  expect(packs()).toHaveValue(null);
+  fireEvent.click(screen.getByRole("button", { name: "Fix quantities" }));
+  expect(packs()).toHaveFocus();
+  openDetails();
   expect(screen.getByText(/Check its current cart quantity/)).toBeVisible();
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
   enterPacks("3");
-  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeEnabled();
+  expect(confirmButton()).toBeEnabled();
 });
 
-test("closes on Escape and returns focus to the element that opened it", async () => {
+test("closes on Escape and returns focus to the opener", async () => {
   const trigger = document.createElement("button"); trigger.textContent = "Prepare";
   document.body.appendChild(trigger); trigger.focus();
   const view = setup();

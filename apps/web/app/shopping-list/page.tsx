@@ -1241,7 +1241,10 @@ function ShoppingListPageContent() {
             draft={cartDraft}
             pendingIngredients={pendingCartIngredients}
             scopeKey={`${start}:${getAuthGeneration()}`}
-            stale={smartListStale || refining}
+            stale={smartListStale || activeRefinedData._quantityVersion !== SHOPPING_QUANTITY_VERSION}
+            refreshing={refining}
+            refreshError={refineError}
+            onRefresh={() => void handlePrepareSmartList()}
             onClose={() => setMuseDialogOpen(false)}
           />
 
