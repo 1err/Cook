@@ -5,13 +5,13 @@ from app.services import shopping_service
 
 
 @pytest.mark.parametrize(("name", "quantity", "expected"), [
-    ("盐", "1 茶勺; 7 g; 少许; 适量", "约 13 g，另按口味添加"),
-    ("生抽", "100 g; 3 勺", "约 145 g（按每勺1汤匙估算）"),
-    ("白糖", "9 g; 0.5 勺", "约 15.2 g（按每勺1汤匙估算）"),
-    ("老抽", "20 g; 0.5 勺; 少许; 适量", "约 27.5 g（按每勺1汤匙估算），另按口味添加"),
-    ("蚝油", "60 g; 2 勺; 适量", "约 98 g（按每勺1汤匙估算），另按口味添加"),
+    ("盐", "1 茶勺; 7 g; 少许; 适量", "约 13 g"),
+    ("生抽", "100 g; 3 勺", "约 145 g"),
+    ("白糖", "9 g; 0.5 勺", "约 15.2 g"),
+    ("老抽", "20 g; 0.5 勺; 少许; 适量", "约 27.5 g"),
+    ("蚝油", "60 g; 2 勺; 适量", "约 98 g"),
     ("八角", "1 个; 6", "7 个"),
-    ("MSG", "5 g; to taste; as needed", "5 g, plus more to taste"),
+    ("MSG", "5 g; to taste; as needed", "5 g"),
     ("味精", "适量; 少许", "适量"),
     ("Almond flour", "100 g; 1 cup", "100 g + 1 cup"),
     ("Kosher salt", "1 tsp; 7 g", "1 tsp + 7 g"),
@@ -19,7 +19,7 @@ from app.services import shopping_service
     ("Salt", "1-2 tsp; 7 g", "7 g; 1-2 tsp"),
     ("中筋面粉", "2; 0.25 杯", "约 30 g；2（单位待确认）"),
     ("中筋面粉", "2", "2（单位待确认）"),
-    ("Salt", "1 tsp; 7 g; to taste", "about 13 g, plus more to taste"),
+    ("Salt", "1 tsp; 7 g; to taste", "about 13 g"),
     ("Milk", "100 ml; 0.5 l", "600 ml"),
     ("Onion", "2 pieces", "2 pieces"),
 ])
@@ -52,8 +52,9 @@ def test_reprocessing_estimates_does_not_apply_density_or_spoon_assumptions_twic
     normalize = getattr(shopping_service, "normalize_purchase_quantity", None)
     assert normalize is not None, "Purchase quantity normalization is not implemented"
     total = "约 65 g（按每勺1汤匙估算），另按口味添加"
-    assert normalize("生抽", total) == total
-    assert normalize("生抽", total + "; 10g") == "约 75 g（按每勺1汤匙估算），另按口味添加"
+    assert normalize("生抽", total) == "约 65 g"
+    assert normalize("生抽", normalize("生抽", total)) == "约 65 g"
+    assert normalize("生抽", total + "; 10g") == "约 75 g"
     incomplete = "约 30 g；2（单位待确认）"
     assert normalize("中筋面粉", incomplete) == incomplete
 

@@ -59,8 +59,8 @@ Rules:
 6) Quantities are attached by the application. Do not return quantity fields.
    Do not invent purchase amounts, pack sizes, or numeric values for "as needed",
    "to taste", "适量", "少许", or other uncertain quantities.
-   Preserve approximate totals marked "about"/"约", spoon assumptions, missing-unit
-   notes, and extra-to-taste notes. Do not perform further unit conversions.
+   Preserve approximate totals marked "about"/"约" and missing-unit notes.
+   Do not add taste or conversion explanations or perform further unit conversions.
    Separate unsupported quantities remain separate.
    Parentheses may describe an equivalent measure, not another amount to add.
    Never count the same quantity twice or repeat an equivalent parenthetical amount.

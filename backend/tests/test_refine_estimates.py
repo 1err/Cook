@@ -29,7 +29,7 @@ async def test_screenshot_estimates_survive_successful_renaming(monkeypatch):
         {"source_name": "盐", "name": "食盐", "suggested_purchase": "1 jar", "grocery_category": "Pantry & Dry Goods"}
     ]})))
     result = await refine.refine_shopping_list([{"name": "盐", "quantity": "1 茶勺; 7 g; 少许; 适量"}])
-    assert result["purchase_items"][0]["suggested_purchase"] == "约 13 g，另按口味添加"
+    assert result["purchase_items"][0]["suggested_purchase"] == "约 13 g"
     assert result["purchase_items"][0]["name"] == "食盐"
 
 @pytest.mark.asyncio

@@ -367,7 +367,7 @@ def _format_purchase_estimate(value: Fraction) -> str:
 
 
 def normalize_purchase_quantity(name: str, quantity: str) -> str:
-    """Consolidate purchase amounts, marking trusted density/spoon assumptions.
+    """Consolidate purchase amounts with concise, explicitly approximate totals.
 
     Recorded equivalents take precedence. Bounds, ranges, unknown densities and
     numeric annotations keep the exact parser's conservative behavior.
@@ -375,7 +375,7 @@ def normalize_purchase_quantity(name: str, quantity: str) -> str:
     chinese = bool(re.search(r"[\u3400-\u9fff]", name or ""))
     density = _GRAMS_PER_TABLESPOON.get((name or "").strip().casefold())
     inputs: list[str] = []
-    vague = assumed_spoon = False
+    vague = False
     for text in _split_amounts(_normalize_text(quantity or "")):
         if text.casefold() in _VAGUE_PURCHASE_AMOUNTS:
             vague = True
@@ -383,7 +383,6 @@ def normalize_purchase_quantity(name: str, quantity: str) -> str:
         for note in _SPOON_ASSUMPTIONS:
             if density is not None and text.endswith(note):
                 text = text[:-len(note)].strip()
-                assumed_spoon = True
                 break
         inputs.append(_explicit_purchase_mass(text) if density is not None else text)
 
@@ -401,7 +400,6 @@ def normalize_purchase_quantity(name: str, quantity: str) -> str:
         estimated = measure.qualifier == "approx"
         if density is not None and unit.label in {"勺", "平勺"}:
             unit = _Unit("volume", Fraction(15), "tbsp")
-            assumed_spoon = True
         amount = measure.amount
         if density is not None and unit.family in {"volume", "cup"}:
             # Metric kitchen spoons stay 5 / 15 ml. The ingredient weight chart
@@ -435,13 +433,11 @@ def normalize_purchase_quantity(name: str, quantity: str) -> str:
         part = f"{number} {unit.label}".strip()
         parts.append((("约 " if chinese else "about ") if family in approximate else "") + part)
     result = " + ".join(parts)
-    if assumed_spoon and result:
-        result += "（按每勺1汤匙估算）" if chinese else " (assuming 1 tablespoon per spoon)"
-    if vague:
-        result += ("，另按口味添加" if chinese else ", plus more to taste") if result else ("适量" if chinese else "to taste")
     if missing:
         number = _format_number(sum((row.amount for row in missing), Fraction()))
         retained.append(f"{number}（单位待确认）" if chinese else f"{number} (unit missing)")
+    if vague and not result and not retained:
+        result = "适量" if chinese else "to taste"
     return ("；" if chinese else "; ").join(filter(None, [result, *retained]))
 
 
