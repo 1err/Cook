@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { RecipePage } from '@cooking/shared';
 import LibraryPage from './page';
 const { mine, catalog, query } = vi.hoisted(() => ({mine:vi.fn(),catalog:vi.fn(),query:{value:""}}));
+vi.mock('../lib/auth', () => ({ useAuth: () => ({ user: { id: 'account-a' } }) }));
 vi.mock('next/navigation', () => ({useSearchParams: () => new URLSearchParams(query.value)}));
 vi.mock('../components/RequireAuth', () => ({RequireAuth: ({children}: {children:ReactNode}) => <>{children}</>}));
 vi.mock('../lib/i18n', () => ({useT: () => (key:string) => key, useI18n: () => ({language:'en'})}));

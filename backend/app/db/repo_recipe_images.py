@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 from types import SimpleNamespace
+from typing import Literal
 
 from sqlalchemy import DateTime, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -13,15 +14,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.admin import is_admin
-from app.core.ai_cost import configured_image_price, IMAGE_OUTPUT_TOKEN_BOUND, usd_to_nano
+from app.core.ai_cost import configured_image_price, IMAGE_OUTPUT_TOKEN_BOUND, MENU_ARTWORK_OUTPUT_TOKEN_BOUND, usd_to_nano
 from app.db import repo_ai_cost
 from app.db.ai_cost_models import AIMonthlyBudgetModel
 from app.db.upload_budget_models import UploadBudgetModel
 from app.db.models import AIUsageCounterModel, FeatureEntitlementModel, RecipeImageGenerationModel
 from app.db.repo_ai_usage import counter_statement, AIUsageLimitExceeded
 from app.services.recipe_image_service import ImageGenerationError, image_input_bound
+from app.services.menu_artwork_service import menu_artwork_input_bound
 
 FEATURE_KEY = "recipe_image_generation"
+ImagePurpose = Literal["recipe_cover", "menu_artwork"]
+ImageStorageKind = Literal["local", "s3"]
 
 
 def image_admin(user_id: UUID) -> bool:
@@ -118,32 +122,72 @@ async def image_access(session: AsyncSession, user_id: UUID) -> dict:
     }
 
 
-async def find_request(session: AsyncSession, user_id: UUID, request_id: UUID,
-                       *, now: datetime | None = None) -> RecipeImageGenerationModel | None:
-    now = now or await database_now(session)
-    where = (RecipeImageGenerationModel.user_id == user_id, RecipeImageGenerationModel.request_id == request_id)
-    # Conditional UPDATE cannot overwrite a completion that committed while this
-    # read waited. A process crash/ambiguous timeout never authorizes a retry.
-    await session.execute(update(RecipeImageGenerationModel).where(
-        *where, RecipeImageGenerationModel.status == "pending", RecipeImageGenerationModel.deadline_at <= now,
-    ).values(status="failed", error_code="generation_interrupted"))
+async def _find_existing_request(
+    session: AsyncSession,
+    user_id: UUID,
+    request_id: UUID,
+) -> RecipeImageGenerationModel | None:
+    where = (
+        RecipeImageGenerationModel.user_id == user_id,
+        RecipeImageGenerationModel.request_id == request_id,
+    )
     return (await session.execute(select(RecipeImageGenerationModel).where(*where)
                                   .execution_options(populate_existing=True))).scalar_one_or_none()
 
 
-def _validate_replay(row: RecipeImageGenerationModel, digest: str) -> None:
+async def find_request(session: AsyncSession, user_id: UUID, request_id: UUID,
+                       *, purpose: ImagePurpose = "recipe_cover",
+                       now: datetime | None = None) -> RecipeImageGenerationModel | None:
+    now = now or await database_now(session)
+    where = (
+        RecipeImageGenerationModel.user_id == user_id,
+        RecipeImageGenerationModel.request_id == request_id,
+        RecipeImageGenerationModel.purpose == purpose,
+    )
+    # Conditional UPDATE cannot overwrite a completion that committed while this
+    # read waited. A process crash/ambiguous timeout never authorizes a retry.
+    await session.execute(
+        update(RecipeImageGenerationModel)
+        .where(
+            *where,
+            RecipeImageGenerationModel.status == "pending",
+            RecipeImageGenerationModel.deadline_at <= now,
+        )
+        .values(status="failed", error_code="generation_interrupted")
+        .execution_options(synchronize_session=False)
+    )
+    return (await session.execute(select(RecipeImageGenerationModel).where(*where)
+                                  .execution_options(populate_existing=True))).scalar_one_or_none()
+
+
+def _validate_replay(row: RecipeImageGenerationModel, digest: str, purpose: ImagePurpose) -> None:
+    if row.purpose != purpose:
+        raise ImageGenerationError(
+            "request_conflict",
+            "This image request ID was already used for a different image request.",
+            409,
+        )
     if row.request_hash != digest:
-        raise ImageGenerationError("request_conflict", "This image request ID was already used for a different recipe.", 409)
+        raise ImageGenerationError(
+            "request_conflict",
+            "This image request ID was already used for a different recipe.",
+            409,
+        )
 
 
 async def begin_generation(session: AsyncSession, user_id: UUID, request_id: UUID,
-                           recipe: dict) -> tuple[RecipeImageGenerationModel, bool]:
+                           recipe: dict, *, purpose: ImagePurpose = "recipe_cover",
+                           ) -> tuple[RecipeImageGenerationModel, bool]:
     """Caller commits before provider work; every rejection rolls back all caps."""
     now = await database_now(session)
     digest = request_hash(recipe)
-    existing = await find_request(session, user_id, request_id, now=now)
+    existing = await _find_existing_request(session, user_id, request_id)
     if existing is not None:
-        _validate_replay(existing, digest)
+        _validate_replay(existing, digest, purpose)
+        existing = await find_request(
+            session, user_id, request_id, purpose=purpose, now=now
+        )
+        assert existing is not None
         return existing, False
     reason = _configured_access()
     if reason is not None:
@@ -154,15 +198,17 @@ async def begin_generation(session: AsyncSession, user_id: UUID, request_id: UUI
 
     ledger_call_id = uuid4()
     created = await session.execute(insert(RecipeImageGenerationModel).values(
-        user_id=user_id, request_id=request_id, request_hash=digest, status="pending", created_at=now,
-        ledger_call_id=ledger_call_id,
+        user_id=user_id, request_id=request_id, request_hash=digest, purpose=purpose,
+        status="pending", created_at=now, ledger_call_id=ledger_call_id,
         deadline_at=now + timedelta(seconds=settings.OPENAI_IMAGE_TIMEOUT_SECONDS + 75),
     ).on_conflict_do_nothing(index_elements=["user_id", "request_id"]).returning(RecipeImageGenerationModel.request_id))
     if created.scalar_one_or_none() is None:
         # A contender may have committed between our read and atomic INSERT.
-        existing = await find_request(session, user_id, request_id)
+        existing = await _find_existing_request(session, user_id, request_id)
         assert existing is not None
-        _validate_replay(existing, digest)
+        _validate_replay(existing, digest, purpose)
+        existing = await find_request(session, user_id, request_id, purpose=purpose)
+        assert existing is not None
         return existing, False
 
     timestamp = int(now.timestamp())
@@ -189,27 +235,39 @@ async def begin_generation(session: AsyncSession, user_id: UUID, request_id: UUI
         raise ImageGenerationError('rate_limited', 'AI generation is busy. Please try again shortly.', 429, exc.retry_after) from None
     try:
         await repo_ai_cost.reserve_call(session, call_id=ledger_call_id, request_id=request_id,
-            account_id=str(user_id), operation=FEATURE_KEY, price=configured_image_price(settings),
-            input_bound=image_input_bound(recipe), output_bound=IMAGE_OUTPUT_TOKEN_BOUND,
+            account_id=str(user_id), operation="menu_artwork" if purpose == "menu_artwork" else FEATURE_KEY,
+            price=configured_image_price(settings),
+            input_bound=menu_artwork_input_bound(recipe) if purpose == "menu_artwork" else image_input_bound(recipe),
+            output_bound=MENU_ARTWORK_OUTPUT_TOKEN_BOUND if purpose == "menu_artwork" else IMAGE_OUTPUT_TOKEN_BOUND,
             global_cap=usd_to_nano(settings.AI_MONTHLY_BUDGET_USD),
             account_cap=usd_to_nano(settings.AI_MONTHLY_BUDGET_USD if image_admin(user_id)
                                     else settings.AI_ACCOUNT_MONTHLY_BUDGET_USD))
     except AIUsageLimitExceeded as exc:
         raise ImageGenerationError('budget_limit', 'The monthly AI allowance cannot cover another image. Please try again after it resets.', 429, exc.retry_after) from None
-    row = await find_request(session, user_id, request_id, now=now)
+    row = await find_request(session, user_id, request_id, purpose=purpose, now=now)
     assert row is not None
     return row, True
 
 
 async def finish_generation(session: AsyncSession, user_id: UUID, request_id: UUID,
-                            *, file_url: str | None = None, error_code: str | None = None) -> RecipeImageGenerationModel:
+                            *, purpose: ImagePurpose = "recipe_cover",
+                            file_url: str | None = None, error_code: str | None = None,
+                            storage_kind: ImageStorageKind | None = None,
+                            storage_key: str | None = None) -> RecipeImageGenerationModel:
     now = await database_now(session)
     await session.execute(update(RecipeImageGenerationModel).where(
         RecipeImageGenerationModel.user_id == user_id,
         RecipeImageGenerationModel.request_id == request_id,
+        RecipeImageGenerationModel.purpose == purpose,
         RecipeImageGenerationModel.status == "pending",
         RecipeImageGenerationModel.deadline_at > now,
-    ).values(status="completed" if file_url else "failed", file_url=file_url, error_code=error_code))
-    row = await find_request(session, user_id, request_id, now=now)
+    ).values(
+        status="completed" if file_url else "failed",
+        file_url=file_url,
+        error_code=error_code,
+        storage_kind=storage_kind,
+        storage_key=storage_key,
+    ).execution_options(synchronize_session=False))
+    row = await find_request(session, user_id, request_id, purpose=purpose, now=now)
     assert row is not None
     return row

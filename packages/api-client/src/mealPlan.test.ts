@@ -20,5 +20,5 @@ test("planner sends zero and existing revisions while retaining explicit legacy 
 test("planner exposes the server conflict code so clients can reload safely", async () => {
   vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ detail: { code: "meal_plan_conflict", message: "Plan changed" } }), { status: 409 }));
   const client = createApiClient({ baseUrl: "https://api.example", auth: { kind: "cookie" } });
-  await expect(client.mealPlan.updateDay("2026-09-18", { breakfast: [], lunch: [], dinner: [] }, 2)).rejects.toMatchObject<ApiError>({ status: 409, code: "meal_plan_conflict" } as ApiError);
+  await expect(client.mealPlan.updateDay("2026-09-18", { breakfast: [], lunch: [], dinner: [] }, 2)).rejects.toMatchObject({ status: 409, code: "meal_plan_conflict" } satisfies Partial<ApiError>);
 });

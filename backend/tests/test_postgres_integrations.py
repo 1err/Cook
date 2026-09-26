@@ -6,6 +6,8 @@ the app's DATABASE_URL or connects to a developer/production database implicitly
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import os
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
@@ -30,7 +32,7 @@ async def pg_sessions():
     parsed = make_url(database_url)
     assert parsed.drivername == "postgresql+asyncpg"
     assert parsed.database in {"cooking_audit_test", "chef_beta_budget_20260922",
-                               "chef_beta_accounts_20260922", "chef_beta_full_20260922"}
+                               "chef_beta_accounts_20260922", "chef_beta_full_20260922", "cooking_menu_release_test"}
     effective_host = str(parsed.query.get("host", parsed.host or ""))
     assert effective_host in {"localhost", "127.0.0.1", "::1"} or effective_host.startswith(
         "/private/tmp/cooking-disposable-db-"
@@ -259,7 +261,45 @@ async def reset_image_counters(factory):
 
 
 @pytest.mark.asyncio
-async def test_concurrent_image_replays_are_admitted_and_charged_once(pg_sessions, monkeypatch):
+async def test_legacy_recipe_hash_replays_after_menu_artwork_migration(pg_sessions, monkeypatch):
+    from app.db import repo_recipe_images
+    from app.db.models import RecipeImageGenerationModel
+
+    configure_image_tests(monkeypatch)
+    await reset_image_counters(pg_sessions)
+    owner = await add_user(pg_sessions)
+    request_id = uuid4()
+    payload = {"title": "Soup", "description": "", "ingredients": [], "steps": []}
+    legacy = repo_recipe_images.request_hash(payload)
+    assert legacy == hashlib.sha256(json.dumps(
+        payload,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode()).hexdigest()
+    async with pg_sessions.begin() as session:
+        now = await repo_recipe_images.database_now(session)
+        session.add(RecipeImageGenerationModel(
+            user_id=owner,
+            request_id=request_id,
+            request_hash=legacy,
+            status="pending",
+            created_at=now,
+            deadline_at=now + timedelta(minutes=2),
+        ))
+
+    async with pg_sessions.begin() as session:
+        row, admitted = await repo_recipe_images.begin_generation(
+            session, owner, request_id, payload,
+        )
+
+    assert admitted is False
+    assert row.purpose == "recipe_cover"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("purpose", ["recipe_cover", "menu_artwork"])
+async def test_concurrent_image_replays_are_admitted_and_charged_once(pg_sessions, monkeypatch, purpose):
     from app.db import repo_recipe_images
     from app.db.models import RecipeImageGenerationModel
     configure_image_tests(monkeypatch)
@@ -270,7 +310,7 @@ async def test_concurrent_image_replays_are_admitted_and_charged_once(pg_session
     async def reserve():
         async with pg_sessions.begin() as session:
             row, admitted = await repo_recipe_images.begin_generation(
-                session, owner, request_id, {"title": "Tofu casserole"})
+                session, owner, request_id, ({"style_id": "cozy-cafe", "instructions": ""} if purpose == "menu_artwork" else {"title": "Tofu casserole"}), purpose=purpose)
             return row.status, admitted
 
     responses = await asyncio.gather(*(reserve() for _ in range(12)))
@@ -284,6 +324,91 @@ async def test_concurrent_image_replays_are_admitted_and_charged_once(pg_session
         assert len(rows) == 1
         assert len(counters) == 4
         assert all(row.request_count == 1 for row in counters)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_image_cross_purpose_id_collision_is_charged_once(pg_sessions, monkeypatch):
+    from app.db import repo_recipe_images
+    from app.db.models import RecipeImageGenerationModel
+    from app.services.recipe_image_service import ImageGenerationError
+
+    configure_image_tests(monkeypatch)
+    await reset_image_counters(pg_sessions)
+    owner = await add_user(pg_sessions)
+    request_id = uuid4()
+
+    async def reserve(purpose):
+        async with pg_sessions() as session:
+            try:
+                _, admitted = await repo_recipe_images.begin_generation(
+                    session,
+                    owner,
+                    request_id,
+                    {"operation": purpose, "style_id": "cozy-cafe", "instructions": ""},
+                    purpose=purpose,
+                )
+                await session.commit()
+                return admitted, None
+            except ImageGenerationError as exc:
+                await session.rollback()
+                return False, exc.code
+
+    results = await asyncio.gather(reserve("recipe_cover"), reserve("menu_artwork"))
+
+    assert sum(admitted for admitted, _ in results) == 1
+    assert sorted(code for _, code in results if code) == ["request_conflict"]
+    async with pg_sessions() as session:
+        rows = (await session.execute(select(RecipeImageGenerationModel).where(
+            RecipeImageGenerationModel.user_id == owner,
+            RecipeImageGenerationModel.request_id == request_id,
+        ))).scalars().all()
+        counters = (await session.execute(select(AIUsageCounterModel).where(
+            AIUsageCounterModel.scope.like("image:%"),
+        ))).scalars().all()
+        assert len(rows) == 1
+        assert len(counters) == 4
+        assert all(counter.request_count == 1 for counter in counters)
+
+
+@pytest.mark.asyncio
+async def test_cover_and_menu_compete_for_last_global_allowance(pg_sessions, monkeypatch):
+    from app.db import repo_recipe_images
+    from app.db.models import RecipeImageGenerationModel
+    from app.services.recipe_image_service import ImageGenerationError
+
+    configure_image_tests(monkeypatch, AI_IMAGE_GLOBAL_REQUESTS_PER_DAY=1)
+    await reset_image_counters(pg_sessions)
+    owners = await asyncio.gather(add_user(pg_sessions), add_user(pg_sessions))
+
+    async def reserve(owner, purpose):
+        async with pg_sessions() as session:
+            try:
+                _, admitted = await repo_recipe_images.begin_generation(
+                    session, owner, uuid4(), {"operation": purpose, "style_id": "cozy-cafe", "instructions": ""}, purpose=purpose,
+                )
+                await session.commit()
+                return admitted, None
+            except ImageGenerationError as exc:
+                await session.rollback()
+                return False, exc.code
+
+    results = await asyncio.gather(
+        reserve(owners[0], "recipe_cover"),
+        reserve(owners[1], "menu_artwork"),
+    )
+
+    assert sum(admitted for admitted, _ in results) == 1
+    assert sorted(code for _, code in results if code) == ["global_limit"]
+    async with pg_sessions() as session:
+        rows = (await session.execute(select(RecipeImageGenerationModel).where(
+            RecipeImageGenerationModel.user_id.in_(owners),
+        ))).scalars().all()
+        global_daily = (await session.execute(select(AIUsageCounterModel).where(
+            AIUsageCounterModel.scope == "image:global",
+            AIUsageCounterModel.window_seconds == 86400,
+        ))).scalar_one()
+        assert len(rows) == 1
+        assert global_daily.request_count == 1
 
 
 @pytest.mark.asyncio

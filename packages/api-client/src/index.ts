@@ -42,6 +42,17 @@ export async function resolveRecipeDetails(get: (id: string) => Promise<Recipe>,
   return found;
 }
 
+export * from "./menuArtwork";
+
+export type MenuCreationAccess = {
+  allowed: boolean;
+  is_admin: boolean;
+  daily_limit: number | null;
+  remaining: number | null;
+  resets_at: string;
+};
+export type MenuCreationResult = { request_id: string; created_at: string };
+
 export type AuthStrategy =
   | { kind: "cookie" }
   | { kind: "bearer"; getToken: () => string | null | undefined };
@@ -298,6 +309,28 @@ export function createApiClient(options: ApiClientOptions) {
         }),
       imageGenerationStatus: (requestId: string, options?: { signal?: AbortSignal }) =>
         json<RecipeImageGeneration>(`/recipes/image-generation/${encodeURIComponent(requestId)}`, {
+          signal: options?.signal,
+        }),
+    },
+    menus: {
+      access: (options?: { signal?: AbortSignal }) =>
+        json<MenuCreationAccess>("/menus/access", { signal: options?.signal }),
+      create: (payload: { request_id: string }, options?: { signal?: AbortSignal }) =>
+        json<MenuCreationResult>("/menus/creations", {
+          method: "POST", body: JSON.stringify(payload), signal: options?.signal,
+        }),
+      artworkAccess: (options?: { signal?: AbortSignal }) =>
+        json<RecipeImageAccess>("/menus/artwork/access", { signal: options?.signal }),
+      generateArtwork: (payload: import("./menuArtwork").GenerateMenuArtworkPayload, options?: { signal?: AbortSignal }) =>
+        json<import("./menuArtwork").MenuArtworkResult>("/menus/artwork", {
+          method: "POST", body: JSON.stringify(payload), signal: options?.signal,
+        }),
+      artworkStatus: (requestId: string, options?: { signal?: AbortSignal }) =>
+        json<import("./menuArtwork").MenuArtworkResult>(`/menus/artwork/${encodeURIComponent(requestId)}`, {
+          signal: options?.signal,
+        }),
+      artworkFile: (requestId: string, options?: { signal?: AbortSignal }) =>
+        request(`/menus/artwork/${encodeURIComponent(requestId)}/file`, {
           signal: options?.signal,
         }),
     },

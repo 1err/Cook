@@ -13,6 +13,8 @@ import { Ionicons } from "@expo/vector-icons";
 import type { CompositeScreenProps } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
+import type { Recipe, RecipeSummary } from "@cooking/shared";
+import { useAuth } from "../../lib/auth";
 import { useApiClient } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { useRecipePage } from "../../lib/useRecipePage";
@@ -37,7 +39,12 @@ type Props = CompositeScreenProps<
 
 type LibraryView = "mine" | "catalog";
 
-export function LibraryListScreen({ navigation }: Props) {
+export function LibraryListScreen(props: Props) {
+  const { user } = useAuth();
+  return <LibraryListContent key={user?.id ?? "signed-out"} {...props} />;
+}
+
+function LibraryListContent({ navigation }: Props) {
   const t = useT();
   const apiClient = useApiClient();
   const mounted = useRef(true);
@@ -45,6 +52,26 @@ export function LibraryListScreen({ navigation }: Props) {
   const [catalogVisited, setCatalogVisited] = useState(false);
   const [view, setView] = useState<LibraryView>("mine");
   const [search, setSearch] = useState("");
+  const [selecting, setSelecting] = useState(false);
+  const [menuRecipes, setMenuRecipes] = useState<Recipe[]>([]);
+  const [menuLoading, setMenuLoading] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const menuLoadVersion = useRef(0);
+  const beginSelection = async () => {
+    const version = ++menuLoadVersion.current;
+    setMenuLoading(true); setError(null);
+    try {
+      // Normal browsing stays paginated. An explicit menu action loads the full
+      // owned library so Select all includes recipes beyond the visible page.
+      const rows = await apiClient.recipes.list();
+      if (!mounted.current || version !== menuLoadVersion.current) return;
+      setMenuRecipes(rows); setSelecting(true);
+    } catch {
+      if (mounted.current && version === menuLoadVersion.current) setError(t("menu.selection.loadFailed"));
+    } finally {
+      if (mounted.current && version === menuLoadVersion.current) setMenuLoading(false);
+    }
+  };
   const minePage = useRecipePage("mine", { q: search });
   const catalogPage = useRecipePage("catalog", { q: search }, catalogVisited);
   const page = view === "mine" ? minePage : catalogPage;
@@ -93,11 +120,12 @@ export function LibraryListScreen({ navigation }: Props) {
 
 
 
-  const data = page.items;
+  const menuSelecting = selecting && view === "mine";
+  const data = menuSelecting ? menuRecipes.filter(recipe => recipe.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())) : page.items;
   const visibleError = error || page.error;
 
   return (
-    <FlatList
+    <FlatList<Recipe | RecipeSummary>
       data={data}
       numColumns={2}
       keyExtractor={(item) => item.id}
@@ -107,7 +135,7 @@ export function LibraryListScreen({ navigation }: Props) {
         <RefreshControl refreshing={refreshing} onRefresh={() => void load()} tintColor={colors.primary} />
       }
       ItemSeparatorComponent={() => <View style={styles.separator} />}
-      ListFooterComponent={page.next ? <Button title={t("common.loadMoreRecipes")} disabled={page.loading} onPress={() => void page.more()} /> : null}
+      ListFooterComponent={!menuSelecting && page.next ? <Button title={t("common.loadMoreRecipes")} disabled={page.loading} onPress={() => void page.more()} /> : null}
       columnWrapperStyle={styles.columns}
       ListHeaderComponent={
         <View>
@@ -116,6 +144,17 @@ export function LibraryListScreen({ navigation }: Props) {
           <SegmentPill label="My Library" active={view === "mine"} onPress={() => setView("mine")} />
           <SegmentPill label="Public Library" active={view === "catalog"} onPress={() => { setCatalogVisited(true); setView("catalog"); }} />
         </View>
+        {view === "mine" && (selecting ? <View style={styles.menuControls}>
+          <Text style={styles.menuCount} accessibilityLiveRegion="polite">{t("menu.selection.count", { count: selected.length })}</Text>
+          <View style={styles.menuRow}>
+            <Button title={t("menu.selection.selectAll")} variant="secondary" disabled={!menuRecipes.length} onPress={() => setSelected(menuRecipes.map(recipe => recipe.id))} />
+            <Button title={t("menu.selection.clear")} variant="ghost" onPress={() => setSelected([])} />
+          </View>
+          <Button title={t("menu.selection.continue")} disabled={!selected.length} onPress={() => navigation.navigate("MenuMaker", { recipeIds: selected })} />
+          <Button title={t("menu.close")} variant="ghost" onPress={() => { setSelecting(false); setSelected([]); }} />
+        </View> : <View style={styles.menuControls}>
+          <Button title={t("menu.make")} variant="secondary" loading={menuLoading} onPress={() => void beginSelection()} />
+        </View>)}
         {visibleError ? <Text accessibilityRole="alert">{visibleError}</Text> : null}
         {page.error ? <Button title={t("library.retry")} disabled={page.loading} onPress={() => void load()} /> : null}
         </View>
@@ -149,7 +188,10 @@ export function LibraryListScreen({ navigation }: Props) {
         if (view === "mine") {
           return (
             <Pressable
-              onPress={() => navigation.navigate("RecipeDetail", { recipeId: item.id })}
+              accessibilityRole={menuSelecting ? "checkbox" : "button"}
+              accessibilityState={menuSelecting ? { checked: selected.includes(item.id) } : undefined}
+              accessibilityLabel={menuSelecting ? t("menu.selection.selectDish", { name: item.title }) : item.title}
+              onPress={() => menuSelecting ? setSelected(ids => ids.includes(item.id) ? ids.filter(id => id !== item.id) : [...ids, item.id]) : navigation.navigate("RecipeDetail", { recipeId: item.id })}
               style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
             >
               {resolveImageUrl(item.thumbnail_url) ? (
@@ -164,11 +206,12 @@ export function LibraryListScreen({ navigation }: Props) {
                   {item.title}
                 </Text>
                 <RecipeListMeta recipe={item} />
+                {menuSelecting && <Ionicons name={selected.includes(item.id) ? "checkbox" : "square-outline"} size={24} color={colors.primary} />}
               </View>
             </Pressable>
           );
         }
-        const owned = item.already_saved || savedPublicIds.has(item.id);
+        const owned = ("already_saved" in item && item.already_saved) || savedPublicIds.has(item.id);
         return (
           <View style={styles.card}>
             {item.thumbnail_url ? (
@@ -220,6 +263,9 @@ function SegmentPill({ label, active, onPress }: { label: string; active: boolea
 }
 
 const styles = StyleSheet.create({
+  menuControls: { marginBottom: spacing.md, gap: spacing.sm },
+  menuRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  menuCount: { ...typography.footnote, color: colors.mutedInk },
   loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
   listContent: { paddingTop: spacing.md, paddingBottom: spacing["2xl"], paddingHorizontal: spacing.lg },
   emptyContent: { flexGrow: 1, justifyContent: "center", paddingHorizontal: spacing.lg },

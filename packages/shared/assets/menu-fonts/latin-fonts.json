@@ -1,0 +1,26 @@
+[
+  {
+    "file": "Inter-400.ttf",
+    "package": "@expo-google-fonts/inter",
+    "version": "0.4.2",
+    "sha256": "a414b48aa577ef2c62ebb135341ddeef33ee26a4f5dc9f787f93c1aab08ebb50"
+  },
+  {
+    "file": "Inter-600.ttf",
+    "package": "@expo-google-fonts/inter",
+    "version": "0.4.2",
+    "sha256": "f30e9d2574c3bec5144347ff965f9841c8f06857f0b7383000f8c9489a161841"
+  },
+  {
+    "file": "SourceSerif4-400.ttf",
+    "package": "@expo-google-fonts/source-serif-4",
+    "version": "0.4.1",
+    "sha256": "d47da11c5f55f031d9ec54c3172865d76009b2cbab5c706dfa73866b00096639"
+  },
+  {
+    "file": "SourceSerif4-600.ttf",
+    "package": "@expo-google-fonts/source-serif-4",
+    "version": "0.4.1",
+    "sha256": "d31cd1fb273e5399efc04691e9ac14b581eae836d783f6cf3c560225ebcf95c0"
+  }
+]

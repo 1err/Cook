@@ -25,6 +25,14 @@ Visible Instacart controls are removed from web and mobile for the beta release 
 - `backend/` — FastAPI + async SQLAlchemy + Alembic. **Postgres only** (asyncpg).
 - `scripts/` — manual cache warming and cleanup utilities, plus `docker-up.sh`.
 
+## Library menu creation
+
+My Library offers **Make a menu** on web and native. Normal recipe browsing remains paginated; opening menu selection loads the complete owned library so Select all includes hidden and later-page recipes. Six templates and optional decorative AI artwork use editable menu text without changing saved recipes. Menu drafts remain session-only, reset on account changes, and warn before leaving. Web exports individual PNG pages or Letter Print/PDF; native shares a Letter PDF using bundled fonts and the same measured layout. Ordinary dish names and descriptions stay together; oversized content continues without clipping.
+
+Non-admin accounts may start one new menu session per UTC day. `GET /menus/access` returns the server allowance and reset; `POST /menus/creations` atomically admits an owner-scoped request UUID when the user first continues into the editor. Retries replay the same UUID before quota checks; Back, edits and exports do not admit again. Admin UUIDs from `ADMIN_USER_IDS` are exempt from this creation limit. This does not bypass existing image-generation rate, monetary, storage or global controls. Lost drafts are not saved to a server; a new editor session is a new creation.
+
+Menu artwork uses `/menus/artwork` access/generation/status/authenticated-file endpoints with explicit candidate acceptance. Prompt payloads contain only a fixed style and up to 300 visual-preference characters. Preserve the existing provider ledger, leases, price reconciliation, owned-image receipts and account-deletion cleanup. Menu portrait generation reserves its separately reviewed token bound; recipe-cover request hashes and square behavior remain unchanged. Migrations are `20260925_menu_artwork` then `20260926_menu_creation`, following the existing image migration. Shared fonts and licenses live in `packages/shared/assets/menu-fonts`; regenerate/check the shared renderer runtime after source changes. Native print/sharing/WebView modules require a rebuilt app. See `docs/qa/2026-09-26-menu-release.md` for release evidence and limits.
+
 ## AI recipe covers and cost reporting
 
 Recipe import review and full recipe editing on web and native offer **Generate with AI**. Generation creates a preview; users choose **Use image** or **Discard**, then save the recipe normally. Applying a cover preserves concurrent text edits. Requests use account-owned UUIDs and status recovery to avoid billing a duplicate request after a lost response. The backend owns access, counters, ownership and storage. Signed-in users receive 3 admitted image attempts per UTC day; administrator accounts receive 100. These are maximum allowances, subject to shared monthly AI and cumulative storage safeguards. The entitlement/access-mode switch supports a later paid-member rollout without accepting client-side membership claims.
@@ -283,6 +291,12 @@ Mounted in `backend/app/main.py`. Protected routes use `get_current_user`. Publi
 | POST | `/admin/cache-refresh` | `{stale_only: bool}` — kicks the warmer task |
 | GET | `/admin/cache-refresh-status` | Background task progress |
 | POST | `/admin/cache-refresh-one` | Force-refresh a single (query, store) row |
+| GET | `/menus/access` | Daily menu creation allowance; admin exemption and UTC reset |
+| POST | `/menus/creations` | Admit one owner-scoped menu session, idempotently |
+| GET | `/menus/artwork/access` | Existing image access policy for menu decoration |
+| POST | `/menus/artwork` | Generate an explicitly accepted portrait artwork candidate |
+| GET | `/menus/artwork/{request_id}` | Recover this account's menu artwork result |
+| GET | `/menus/artwork/{request_id}/file` | Return bounded authenticated PNG bytes |
 | GET | `/recipes/image-generation/access` | Authenticated image access, daily allowance and UTC reset |
 | POST | `/recipes/generate-image` | Durable, idempotent AI cover preview; never saves the recipe |
 | GET | `/recipes/image-generation/{request_id}` | Recover an owned image-generation request |

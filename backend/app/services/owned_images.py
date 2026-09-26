@@ -2,6 +2,7 @@
 import mimetypes
 import uuid
 from datetime import timedelta
+from typing import Literal
 
 from fastapi import HTTPException
 from sqlalchemy import case, func, select, update
@@ -12,10 +13,13 @@ from app.db.account_models import OwnedImageModel
 from app.db.repo_accounts import lock_user
 
 
-async def reserve_owned_image(user_id, auth_version: int, content_type: str, base_url: str):
+async def reserve_owned_image(user_id, auth_version: int, content_type: str, base_url: str,
+                              *, namespace: Literal["recipes", "menu-artwork"] = "recipes"):
+    if namespace not in {"recipes", "menu-artwork"} or (namespace == "menu-artwork" and content_type != "image/png"):
+        raise ValueError("Invalid owned image namespace")
     image_id = uuid.uuid4()
     ext = mimetypes.guess_extension(content_type) or ".bin"
-    key = f"recipes/{user_id}/{image_id.hex}{ext}"
+    key = f"{namespace}/{user_id}/{image_id.hex}{ext}"
     bucket, region = settings.S3_BUCKET_NAME, settings.AWS_REGION
     kind = "s3" if bucket and region else "local"
     file_url = (f"https://{bucket}.s3.{region}.amazonaws.com/{key}" if kind == "s3"

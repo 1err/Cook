@@ -1,5 +1,9 @@
 import React from "react";
-jest.mock("../../lib/i18n", () => ({useT: () => (key: string) => key}));
+jest.mock("../../lib/auth", () => ({ useAuth: () => ({ user: { id: "account" } }) }));
+jest.mock("../../lib/i18n", () => {
+  const { MESSAGE_MAP } = require("@cooking/shared");
+  return { useT: () => (key: string, vars?: Record<string, unknown>) => key.startsWith("menu.") ? (MESSAGE_MAP.en[key] ?? key).replace(/\{(\w+)\}/g, (_: string, token: string) => String(vars?.[token] ?? "")) : key };
+});
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { LibraryListScreen } from "./LibraryListScreen";
 
@@ -21,6 +25,7 @@ const mockList = jest.fn(async () => recipes);
 const mockCatalog = jest.fn<Promise<unknown[]>, []>(async () => []);
 const mockApiClient = {
   recipes: {
+    list: jest.fn(async () => recipes),
     page: async () => ({items: await mockList(), next_cursor:null}),
     catalogPage: async () => ({items: await mockCatalog(), next_cursor:null}),
     copyCatalog: jest.fn(),
@@ -32,6 +37,7 @@ jest.mock("../../lib/api", () => ({
 }));
 
 beforeEach(() => {
+  mockApiClient.recipes.list.mockReset().mockResolvedValue(recipes);
   mockList.mockReset().mockResolvedValue(recipes);
   mockCatalog.mockReset().mockResolvedValue([]);
   mockApiClient.recipes.copyCatalog.mockReset().mockResolvedValue({ id: "copy-1" });
@@ -166,4 +172,37 @@ test('a late catalog copy does not refresh after the account view unmounts', asy
   await rendered.unmount();
   await act(async () => { finish(); });
   expect(mockList).toHaveBeenCalledTimes(1);
+});
+
+
+test("menu selection loads the whole owned library only on request and selects all under a search", async () => {
+  const navigate = jest.fn();
+  mockApiClient.recipes.list.mockResolvedValueOnce([...recipes, { ...recipes[0], id: "recipe-2", title: "Soup" }]);
+  await render(<LibraryListScreen navigation={{ addListener: jest.fn(() => jest.fn()), navigate } as never} route={{ key: "library", name: "LibraryList" }} />);
+  await screen.findByText("Tomato egg stir-fry");
+  expect(mockApiClient.recipes.list).not.toHaveBeenCalled();
+  await fireEvent.press(screen.getByRole("button", { name: "Make a menu" }));
+  await fireEvent.press(await screen.findByRole("checkbox", { name: "Select Soup" }));
+  expect(screen.getByText("1 dishes selected")).toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole("button", { name: "Choose a style" }));
+  expect(navigate).toHaveBeenLastCalledWith("MenuMaker", { recipeIds: ["recipe-2"] });
+  await fireEvent.changeText(screen.getByPlaceholderText("Search recipes"), "Soup");
+  expect(screen.queryByRole("checkbox", { name: "Select Tomato egg stir-fry" })).toBeNull();
+  await fireEvent.press(screen.getByRole("button", { name: "Select all recipes" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Choose a style" }));
+  expect(navigate).toHaveBeenLastCalledWith("MenuMaker", { recipeIds: ["recipe-1", "recipe-2"] });
+  await fireEvent.press(screen.getByRole("button", { name: "Public Library" }));
+  expect(screen.queryByRole("button", { name: "Make a menu" })).toBeNull();
+  expect(screen.queryByRole("checkbox")).toBeNull();
+});
+
+test("menu load failure keeps library browsing available and supports retry", async () => {
+  mockApiClient.recipes.list.mockRejectedValueOnce(new Error("Offline"));
+  await render(<LibraryListScreen navigation={{ addListener: jest.fn(() => jest.fn()), navigate: jest.fn() } as never} route={{ key: "library", name: "LibraryList" }} />);
+  await screen.findByText("Tomato egg stir-fry");
+  await fireEvent.press(screen.getByRole("button", { name: "Make a menu" }));
+  await screen.findByRole("alert");
+  expect(screen.getByText("Tomato egg stir-fry")).toBeOnTheScreen();
+  await fireEvent.press(screen.getByRole("button", { name: "Make a menu" }));
+  expect(await screen.findByRole("checkbox", { name: "Select Tomato egg stir-fry" })).toBeOnTheScreen();
 });

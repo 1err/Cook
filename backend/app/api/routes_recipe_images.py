@@ -98,7 +98,9 @@ async def image_generation_status(request_id: UUID, response: Response,
                                    session: AsyncSession = Depends(get_session),
                                    user: UserModel = Depends(get_current_user)):
     try:
-        row = await repo_recipe_images.find_request(session, user.id, request_id)
+        row = await repo_recipe_images.find_request(
+            session, user.id, request_id, purpose="recipe_cover"
+        )
         await session.commit()
         if row is None:
             raise HTTPException(404, {"code": "not_found", "message": "Image request not found."})
@@ -152,7 +154,8 @@ async def _generate_image_operation(body, request, response, session, user, dead
     auth_version = user.auth_version
     recipe = body.model_dump(mode="json", exclude={"request_id"})
     try:
-        row, admitted = await repo_recipe_images.begin_generation(session, user_id, body.request_id, recipe)
+        row, admitted = await repo_recipe_images.begin_generation(
+            session, user_id, body.request_id, recipe, purpose="recipe_cover")
         if admitted:
             state['lease_id'] = row.ledger_call_id
         await session.commit()
@@ -197,6 +200,7 @@ async def _generate_image_operation(body, request, response, session, user, dead
 
     try:
         row = await repo_recipe_images.finish_generation(session, user_id, body.request_id,
+                                                         purpose="recipe_cover",
                                                          file_url=file_url, error_code=error_code)
         await session.commit()
         return _result(row, response)

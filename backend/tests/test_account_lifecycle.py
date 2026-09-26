@@ -61,3 +61,18 @@ def test_cleanup_never_follows_local_symlinks_to_other_account_files(monkeypatch
 def test_cleanup_rejects_arbitrary_targets(key):
     with pytest.raises(ValueError):
         delete_owned_object({"owner_id": uuid4(), "object_key": key, "storage_kind": "local"})
+
+
+@pytest.mark.parametrize('namespace', ['recipes', 'menu-artwork'])
+def test_cleanup_deletes_only_owned_image_namespace(monkeypatch, tmp_path, namespace):
+    from app.jobs import account_cleanup
+    owner = uuid4()
+    key = f'{namespace}/{owner}/{uuid4().hex}.png'
+    target = tmp_path / key
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b'owned')
+    monkeypatch.setattr(account_cleanup.settings, 'LOCAL_IMAGE_UPLOAD_DIR', str(tmp_path))
+    delete_owned_object({'owner_id': owner, 'object_key': key, 'storage_kind': 'local'})
+    assert not target.exists()
+    with pytest.raises(ValueError):
+        delete_owned_object({'owner_id': uuid4(), 'object_key': key, 'storage_kind': 'local'})

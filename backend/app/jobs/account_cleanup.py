@@ -21,7 +21,8 @@ _stop = None
 def delete_owned_object(item):
     # Coordinates must remain a server-generated namespace even if an operator
     # accidentally writes an invalid queue entry. Never fetch/delete a URL.
-    pattern = rf"recipes/{re.escape(str(item['owner_id']))}/[a-f0-9]{{32}}\.(?:png|jpg|jpeg|gif|webp)"
+    owner = re.escape(str(item["owner_id"]))
+    pattern = rf"(?:recipes/{owner}/[a-f0-9]{{32}}\.(?:png|jpg|jpeg|gif|webp)|menu-artwork/{owner}/[a-f0-9]{{32}}\.png)"
     if not re.fullmatch(pattern, item["object_key"]):
         raise ValueError("Invalid owned object key")
     if item["storage_kind"] == "local":

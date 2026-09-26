@@ -2,6 +2,8 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
+import { useAuth } from "../lib/auth";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
@@ -16,7 +18,11 @@ import { useRecipePage } from "../lib/useRecipePage";
 import { LibraryMasonry } from "./LibraryMasonry";
 import styles from "./LibraryPage.module.css";
 
+const MenuMaker = dynamic(() => import("./menu/MenuLibraryLoader").then(module => module.MenuLibraryLoader), { ssr: false });
+
 function LibraryPageContent() {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
   const searchParams = useSearchParams();
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -73,9 +79,14 @@ function LibraryPageContent() {
   const hasFilters = Boolean(search.trim()) || (view === "mine" ? mineFilters.length > 0 : publicFilter !== "all");
   const activeList = view === "mine" ? filteredMine : filteredPublic;
 
+  if (menuOpen) return <MenuMaker initialSearch={search} initialFilters={mineFilters} onClose={() => { setMenuOpen(false); requestAnimationFrame(() => menuTrigger.current?.focus()); }} />;
+
   return (
     <>
-      <PageHeader title={t("library.title")} description={copy["library.tagline"]} />
+      <div className={styles.headingRow}>
+        <PageHeader title={t("library.title")} description={copy["library.tagline"]} />
+        {view === "mine" ? <button ref={menuTrigger} type="button" className={styles.menuButton} onClick={() => setMenuOpen(true)}>{t("menu.make")}</button> : null}
+      </div>
 
       <div className={styles.tabs} role="tablist" aria-label={t("library.views")}>
         <button
@@ -223,11 +234,12 @@ function LibraryPageContent() {
 }
 
 export default function LibraryPage() {
+  const { user } = useAuth();
   return (
     <RequireAuth>
       <PageShell>
         <Suspense fallback={<p className={styles.status}>Loading...</p>}>
-          <LibraryPageContent />
+          <LibraryPageContent key={user?.id ?? "signed-out"} />
         </Suspense>
       </PageShell>
     </RequireAuth>

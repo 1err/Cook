@@ -44,7 +44,7 @@ async def delete_user_and_queue_cleanup(session, user) -> None:
         OwnedImageModel.state != "deleted").values(cleanup_requested=True))
     account = str(user.id)
     await session.execute(delete(AIUsageCounterModel).where(AIUsageCounterModel.scope.in_(
-        [f"user:{account}", f"image:user:{account}"])))
+        [f"user:{account}", f"image:user:{account}", f"menu:create:user:{account}"])))
     await session.execute(delete(UploadBudgetModel).where(UploadBudgetModel.scope == f"user:{account}"))
     # Monetary ledgers and account/global money reservations remain untouched so
     # already-admitted calls can reconcile and deletion cannot refund app spend.
@@ -114,7 +114,7 @@ async def sweep_deleted_counters(session):
         return
     account = str(row.user_id)
     await session.execute(delete(AIUsageCounterModel).where(AIUsageCounterModel.scope.in_(
-        [f"user:{account}", f"image:user:{account}"])))
+        [f"user:{account}", f"image:user:{account}", f"menu:create:user:{account}"])))
     await session.execute(delete(UploadBudgetModel).where(UploadBudgetModel.scope == f"user:{account}"))
     await session.execute(delete(RequestLimitModel).where(RequestLimitModel.scope.in_(row.request_scopes)))
     row.next_attempt_at = func.clock_timestamp() + timedelta(hours=24)

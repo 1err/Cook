@@ -8,6 +8,8 @@ For engineering review, start with the [architecture](docs/architecture.md), [da
 
 Shopping now includes **Shop on Instacart** alongside the existing Weee experience on web and iOS. It exports ingredients to an Instacart review page; a backend developer key is required for real shopping links. See the [Instacart setup guide](docs/qa/2026-09-14-instacart-setup.md).
 
+**Make a menu** turns selected recipes, or the whole private library, into a restaurant-style menu. Choose one of six styles, edit dish names and sections, and optionally generate decorative AI artwork. Non-admins can start one new menu per UTC day; admins are exempt. Editing and exporting the current menu do not count again. Menu edits are separate from saved recipes. Drafts last for the current editing session; web exports PNG pages or Print/PDF, and mobile shares a PDF. See the [menu implementation and verification notes](docs/qa/2026-09-25-library-menu-maker.md).
+
 ## Setup
 
 ### Backend (FastAPI)

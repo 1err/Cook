@@ -49,17 +49,21 @@ def _usage_field(usage, key):
 
 
 async def generate_recipe_image(recipe: dict, *, ledger_call_id=None) -> bytes:
-    client = get_openai_client()
+    return await generate_png(get_openai_client(), image_prompt(recipe),
+                              size="1024x1024", ledger_call_id=ledger_call_id)
+
+
+async def generate_png(client, prompt: str, *, size: str, ledger_call_id) -> bytes:
+    """One reserved provider call; reconcile even invalid images and cancellation."""
     if client is None or ledger_call_id is None:
         raise ImageGenerationError("unavailable", "AI images are temporarily unavailable.")
-    prompt = image_prompt(recipe)
     try:
         async with asyncio.timeout(settings.OPENAI_IMAGE_TIMEOUT_SECONDS):
             response = await client.images.generate(
                 model=settings.OPENAI_IMAGE_MODEL,
                 prompt=prompt,
                 n=1,
-                size="1024x1024",
+                size=size,
                 quality="low",
                 extra_body={"output_format": "png"},
                 timeout=settings.OPENAI_IMAGE_TIMEOUT_SECONDS,

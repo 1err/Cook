@@ -2,6 +2,7 @@ import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { FriendLibraryScreen } from "../../features/library/FriendLibraryScreen";
 import { FriendSearchScreen } from "../../features/library/FriendSearchScreen";
+import { MenuMakerScreen } from "../../features/menu/MenuMakerScreen";
 import { LibraryListScreen } from "../../features/library/LibraryListScreen";
 import { RecipeDetailScreen } from "../../features/library/RecipeDetailScreen";
 import { RecipeEditScreen } from "../../features/library/RecipeEditScreen";
@@ -36,6 +37,7 @@ export function LibraryStack() {
           ),
         })}
       />
+      <Stack.Screen name="MenuMaker" component={MenuMakerScreen} options={{ title: t("menu.make"), headerLargeTitle: false }} />
       <Stack.Screen
         name="RecipeDetail"
         component={RecipeDetailScreen}

@@ -31,6 +31,8 @@ from app.api.routes_recipe_images import router as recipe_images_router
 from app.api.routes_recipes import router as recipes_router
 from app.api.routes_imports import router as imports_router
 from app.jobs.recipe_imports import import_worker_loop
+from app.api.routes_menu_artwork import router as menu_artwork_router
+from app.api.routes_menu_creations import router as menu_creations_router
 from app.api.routes_mealplan import router as mealplan_router
 from app.api.routes_shopping import router as shopping_router
 from app.api.routes_instacart import router as instacart_router
@@ -171,6 +173,8 @@ app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(imports_router)
 app.include_router(recipe_images_router)
+app.include_router(menu_artwork_router)
+app.include_router(menu_creations_router)
 app.include_router(recipes_router)
 app.include_router(mealplan_router)
 app.include_router(shopping_router)

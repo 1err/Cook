@@ -1,6 +1,11 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  outputFileTracingRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."),
+  outputFileTracingIncludes: { "/menu-fonts/*": ["../../packages/shared/assets/menu-fonts/*"] },
   devIndicators: false,
   transpilePackages: ["@cooking/shared", "@cooking/api-client"],
   async headers() {

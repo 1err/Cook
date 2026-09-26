@@ -31,6 +31,10 @@ GEMINI_OUTPUT_TOKEN_BOUND = 65_536
 # No image inputs, automatic quality/size, partial images, or other models.
 IMAGE_SUPPORTED_MODELS = {'gpt-image-2', 'gpt-image-2-2026-04-21'}
 IMAGE_OUTPUT_TOKEN_BOUND = 512
+# Reviewed 2026-09-26 at the same official URL: low 1024x1536 is $0.005
+# output at $30/M (about 167 tokens). Reserve 1024 as a conservative bound;
+# menu generation fixes this size/quality, with no image inputs or partials.
+MENU_ARTWORK_OUTPUT_TOKEN_BOUND = 1024
 
 
 def configured_image_price(settings) -> 'Price':

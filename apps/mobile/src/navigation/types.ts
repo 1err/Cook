@@ -8,6 +8,7 @@ export type AuthStackParamList = {
 
 export type LibraryStackParamList = {
   LibraryList: undefined;
+  MenuMaker: { recipeIds: string[] };
   RecipeDetail: { recipeId: string };
   RecipeEdit: { recipeId?: string; focus?: "recipe" | "tutorial" } | undefined;
   FriendSearch: undefined;

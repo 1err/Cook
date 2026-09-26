@@ -82,9 +82,9 @@ def image_app(monkeypatch, tmp_path):
             global_bytes=settings.UPLOAD_GLOBAL_TOTAL_BYTES, account_bytes=settings.UPLOAD_ACCOUNT_TOTAL_BYTES)
         database.commit()
     monkeypatch.setattr(routes, 'reserve_upload_allowance', storage_budget)
-    async def owned_image(account, auth_version, content_type, base):
+    async def owned_image(account, auth_version, content_type, base, *, namespace="recipes"):
         assert account == user_id and auth_version == 1
-        key = f'recipes/{account}/{uuid4().hex}.png'
+        key = f'{namespace}/{account}/{uuid4().hex}.png'
         return {'id': uuid4(), 'object_key': key, 'file_url': f'{base.rstrip("/")}/uploads/{key}', 'storage_kind': 'local'}
     monkeypatch.setattr(routes, 'reserve_owned_image', owned_image)
     async def finish_image(image_id):
@@ -107,7 +107,7 @@ def image_app(monkeypatch, tmp_path):
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=user_id, auth_version=1)
     app.dependency_overrides[get_session] = lambda: AsyncSessionAdapter()
     context = SimpleNamespace(app=app, database=database, user_id=user_id, now=now,
-                              routes=routes, repo=repo, service=service, directory=tmp_path)
+                              routes=routes, repo=repo, service=service, directory=tmp_path, session=AsyncSessionAdapter())
     yield context
     database.close()
     engine.dispose()
@@ -271,6 +271,33 @@ async def test_result_lookup_is_scoped_to_account(image_app):
     image_app.database.commit()
     async with client_for(image_app) as client:
         response = await client.get(f"/recipes/image-generation/{request_id}")
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "not_found"
+
+
+@pytest.mark.asyncio
+async def test_recipe_status_route_hides_menu_artwork_requests(image_app):
+    """Breaks if the legacy recipe status route leaks a menu-artwork candidate."""
+    from app.db.models import RecipeImageGenerationModel
+
+    request_id = uuid4()
+    image_app.database.add(RecipeImageGenerationModel(
+        user_id=image_app.user_id,
+        request_id=request_id,
+        request_hash="a" * 64,
+        purpose="menu_artwork",
+        status="completed",
+        file_url="https://test.invalid/menu.png",
+        storage_kind="s3",
+        storage_key=f"menu-artwork/{image_app.user_id}/candidate.png",
+        created_at=image_app.now[0],
+        deadline_at=image_app.now[0] + timedelta(seconds=120),
+    ))
+    image_app.database.commit()
+
+    async with client_for(image_app) as client:
+        response = await client.get(f"/recipes/image-generation/{request_id}")
+
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "not_found"
 
