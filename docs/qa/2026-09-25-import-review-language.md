@@ -1,6 +1,6 @@
 # Import review and Chinese script follow-up
 
-Status: locally verified; not deployed. Production remains the recipe-editor release recorded in `CLAUDE.md`.
+Status: deployed on September 25, 2026 (Chicago time). See [production release evidence](2026-09-25-import-review-language-release.md) for the merged source, final test counts, deployment identity, and live checks. The verification below records the original implementation stage.
 
 ## Behavior
 
@@ -20,4 +20,4 @@ Status: locally verified; not deployed. Production remains the recipe-editor rel
 - Next.js build passed. Browser review used a clearly labeled local sample API: all four requested diagnostic examples were absent, Your draft is ready remained, Details to check was absent, and no browser errors were captured.
 - OpenCC macOS arm64 Python 3.12 conversion and dependency check passed. Offline Linux amd64 Python 3.12 runtime passed five conversion/preservation checks using the pinned wheel. The initial test's noexec temporary mount was corrected before successful native loading.
 
-These are local deterministic tests and a fixture-based UI check, not a fresh authenticated production/video-provider extraction. No deployment was performed.
+These implementation-stage checks are local deterministic tests and a fixture-based UI check, not a fresh authenticated production/video-provider extraction. Subsequent deployment is recorded in the linked release evidence.
