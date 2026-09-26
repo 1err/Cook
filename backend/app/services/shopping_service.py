@@ -303,6 +303,15 @@ def aggregate_quantities(quantities: list[str]) -> str:
     return "; ".join(parts)
 
 
+# Exact shopping synonyms only. Distinct sauces, flavored oils, and modifiers
+# stay separate; this is not substring or model-based ingredient matching.
+_PURCHASE_NAME_ALIASES = {
+    "生抽酱油": "生抽", "鲜味生抽": "生抽",
+    "老抽酱油": "老抽",
+    "油": "食用油", "植物油": "食用油",
+}
+
+
 # These estimates apply only to explicitly named ingredients, never as a generic
 # milliliters-to-grams conversion. The exact aggregator above does not use them.
 # Salt/sugar/flour: https://www.kingarthurbaking.com/learn/ingredient-weight-chart
@@ -317,6 +326,12 @@ _GRAMS_PER_TABLESPOON = {
     **dict.fromkeys(("oil", "vegetable oil", "cooking oil", "油", "植物油", "食用油"), Fraction(14)),
     **dict.fromkeys(("soy sauce", "light soy sauce", "dark soy sauce", "酱油", "生抽", "生抽酱油", "老抽", "老抽酱油"), Fraction(15)),
     **dict.fromkeys(("oyster sauce", "蚝油", "蠔油"), Fraction(19)),
+}
+# Raw garlic: 1 clove = 3 g. Use only to reconcile cloves with a recorded weight.
+# https://food-nutrition.canada.ca/cnf-fce/serving-portion?id=2394
+_GRAMS_PER_PIECE = {
+    name: {"瓣": Fraction(3), "clove": Fraction(3)}
+    for name in ("大蒜", "蒜", "garlic")
 }
 _PURCHASE_UNITS = {
     "茶勺": _Unit("volume", Fraction(5), "茶勺"),
@@ -373,7 +388,10 @@ def normalize_purchase_quantity(name: str, quantity: str) -> str:
     numeric annotations keep the exact parser's conservative behavior.
     """
     chinese = bool(re.search(r"[\u3400-\u9fff]", name or ""))
-    density = _GRAMS_PER_TABLESPOON.get((name or "").strip().casefold())
+    name = (name or "").strip()
+    key = _PURCHASE_NAME_ALIASES.get(name, name).casefold()
+    density = _GRAMS_PER_TABLESPOON.get(key)
+    piece_weights = _GRAMS_PER_PIECE.get(key, {})
     inputs: list[str] = []
     vague = False
     for text in _split_amounts(_normalize_text(quantity or "")):
@@ -384,12 +402,18 @@ def normalize_purchase_quantity(name: str, quantity: str) -> str:
             if density is not None and text.endswith(note):
                 text = text[:-len(note)].strip()
                 break
-        inputs.append(_explicit_purchase_mass(text) if density is not None else text)
+        inputs.append(_explicit_purchase_mass(text) if density is not None or piece_weights else text)
 
     groups: dict[str, list[_Measure]] = defaultdict(list)
     approximate: set[str] = set()
     retained: list[str] = []
-    for text in _split_amounts(aggregate_quantities(inputs)):
+    parts = _split_amounts(aggregate_quantities(inputs))
+    has_mass = bool(piece_weights) and any(
+        (measure := _parse_measure(text)) is not None
+        and measure.unit.family == "mass" and measure.qualifier in {"", "approx"}
+        for text in parts
+    )
+    for text in parts:
         measure = _parse_measure(text)
         if measure is None or measure.qualifier not in {"", "approx"}:
             if chinese:
@@ -401,7 +425,11 @@ def normalize_purchase_quantity(name: str, quantity: str) -> str:
         if density is not None and unit.label in {"勺", "平勺"}:
             unit = _Unit("volume", Fraction(15), "tbsp")
         amount = measure.amount
-        if density is not None and unit.family in {"volume", "cup"}:
+        if has_mass and unit.label.casefold() in piece_weights:
+            amount *= piece_weights[unit.label.casefold()]
+            unit = _Unit("mass", Fraction(1), "g")
+            estimated = True
+        elif density is not None and unit.family in {"volume", "cup"}:
             # Metric kitchen spoons stay 5 / 15 ml. The ingredient weight chart
             # defines a cup as 16 tablespoons for these purchase estimates.
             amount *= density * (unit.factor / 15 if unit.family == "volume" else 16)
@@ -455,8 +483,10 @@ def aggregate_ingredients(
         name = (name or "").strip()
         if not name:
             continue
+        if for_purchase:
+            name = _PURCHASE_NAME_ALIASES.get(name, name)
         key = name.casefold()
-        if for_purchase and key in _GRAMS_PER_TABLESPOON:
+        if for_purchase and (key in _GRAMS_PER_TABLESPOON or key in _GRAMS_PER_PIECE):
             # Keep recorded weights before the exact aggregator can select a
             # shared volume equivalent across different recipe contributions.
             qty = "; ".join(_explicit_purchase_mass(part) for part in _split_amounts(_normalize_text(qty or "")))
