@@ -12,6 +12,8 @@ Users can also assign recipes to days of the week in the planner (breakfast / lu
 
 Positive cache rows are shared across all users: after one user triggers a successful scrape and the result is committed to PostgreSQL, subsequent users can receive that fresh row immediately. A serial background warmer opportunistically force-refreshes the configured common queries every 24 hours while the process remains alive; its interval resets on restart and there is no durable catch-up. Backend startup does not launch a warming sweep.
 
+Smart shopping quantities are consolidated deterministically before the model organizes names/categories. The exact parser preserves fractions, bounds, repeated recipes, and explicit alternate measurements. A separate purchase normalizer may estimate one metric total for supported pantry ingredients (salt, sugar, all-purpose flour, cooking oil, soy sauces, and oyster sauce), always marked `about`/`约`; unspecified spoon estimates retain their tablespoon assumption. Extra-to-taste amounts become one note, and missing units remain flagged. Saved complete metric equivalents replace eligible primary measurements once; they do not override an already metric, cleared, bare, or uncertain primary quantity. Existing compiled lists remain cached until the customer explicitly prepares them again; checkmarks and selections are not silently reset. These estimates do not change Muse's conservative pack calculation rules.
+
 ## Repo shape (npm workspaces + Python)
 
 Visible Instacart controls are removed from web and mobile for the beta release at the owner’s request. The unused panel components, shared helpers, and backend export endpoint remain for possible future integration; they do not alter Weee lookup, cart selections, or progress.

@@ -14,7 +14,7 @@ from app.db.models import UserModel
 from app.db.session import get_session
 from app.models import ShoppingListItem
 from app.refine import refine_shopping_list
-from app.services.shopping_service import aggregate_ingredients
+from app.services.shopping_service import aggregate_ingredients, preferred_shopping_quantity
 
 router = APIRouter(tags=["shopping"])
 
@@ -74,9 +74,9 @@ async def shopping_list(
             if r:
                 for i in r.ingredients:
                     name = (i.name or "").strip()
-                    qty = (i.quantity or "").strip()
+                    qty = preferred_shopping_quantity(i.quantity, i.metric_quantity)
                     all_ingredients.append((name, qty))
-    return aggregate_ingredients(all_ingredients)
+    return aggregate_ingredients(all_ingredients, for_purchase=True)
 
 
 @router.post("/shopping-list/refine", response_model=RefineResponse, dependencies=[Depends(enforce_ai_budget)])

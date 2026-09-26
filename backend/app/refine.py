@@ -8,7 +8,7 @@ from collections import Counter
 from typing import Any
 
 from app.core.llm import complete_chat, get_openai_client
-from app.services.shopping_service import aggregate_ingredients
+from app.services.shopping_service import aggregate_ingredients, normalize_purchase_quantity
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def _normalize_grocery_category(raw: str | None) -> str:
 
 def _build_system_prompt() -> str:
     return """You are generating a grocery shopping list for a week of cooking.
-These ingredients come from multiple recipes. Their exact quantities have already
+These ingredients come from multiple recipes. Their quantities have already
 been aggregated deterministically; the supplied quantity is authoritative.
 
 Your task is to generate a clean, practical shopping list a real person would use.
@@ -59,8 +59,9 @@ Rules:
 6) Quantities are attached by the application. Do not return quantity fields.
    Do not invent purchase amounts, pack sizes, or numeric values for "as needed",
    "to taste", "适量", "少许", or other uncertain quantities.
-   Do not convert between mass, volume, and item counts without an explicit
-   equivalence in the source. Separate incompatible quantities remain separate.
+   Preserve approximate totals marked "about"/"约", spoon assumptions, missing-unit
+   notes, and extra-to-taste notes. Do not perform further unit conversions.
+   Separate unsupported quantities remain separate.
    Parentheses may describe an equivalent measure, not another amount to add.
    Never count the same quantity twice or repeat an equivalent parenthetical amount.
 7) Assign EVERY item to exactly one grocery category from:
@@ -110,8 +111,8 @@ def _aggregate_input_items(items: list[dict[str, str]]) -> list[dict[str, str]]:
         if (name := (item.get("name") or "").strip())
     ]
     return [
-        {"name": item.name, "quantity": item.total_quantity}
-        for item in aggregate_ingredients(ingredients)
+        {"name": item.name, "quantity": normalize_purchase_quantity(item.name, item.total_quantity)}
+        for item in aggregate_ingredients(ingredients, for_purchase=True)
     ]
 
 

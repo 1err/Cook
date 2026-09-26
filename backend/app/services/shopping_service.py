@@ -1,4 +1,4 @@
-"""Deterministic shopping totals. No provider calls, density guesses, or DB access."""
+"""Exact shopping totals and explicitly marked, ingredient-specific purchase estimates."""
 import re
 import unicodedata
 from collections import defaultdict
@@ -303,8 +303,152 @@ def aggregate_quantities(quantities: list[str]) -> str:
     return "; ".join(parts)
 
 
+# These estimates apply only to explicitly named ingredients, never as a generic
+# milliliters-to-grams conversion. The exact aggregator above does not use them.
+# Salt/sugar/flour: https://www.kingarthurbaking.com/learn/ingredient-weight-chart
+# Oil: https://crisco.com/products/pure-vegetable-oil/
+# Oyster sauce: https://kikkomanusa.com/products/oyster-sauce/
+# Soy sauce: https://uk.lkk.com/products/premium-light-soy-sauce and
+# https://uk.lkk.com/products/premium-dark-soy-sauce (about 5 g per teaspoon).
+_GRAMS_PER_TABLESPOON = {
+    **dict.fromkeys(("salt", "table salt", "盐", "食盐", "精盐"), Fraction(18)),
+    **dict.fromkeys(("sugar", "white sugar", "granulated sugar", "白糖", "白砂糖"), Fraction(198, 16)),
+    **dict.fromkeys(("all-purpose flour", "all purpose flour", "ap flour", "中筋面粉", "普通面粉"), Fraction(120, 16)),
+    **dict.fromkeys(("oil", "vegetable oil", "cooking oil", "油", "植物油", "食用油"), Fraction(14)),
+    **dict.fromkeys(("soy sauce", "light soy sauce", "dark soy sauce", "酱油", "生抽", "生抽酱油", "老抽", "老抽酱油"), Fraction(15)),
+    **dict.fromkeys(("oyster sauce", "蚝油", "蠔油"), Fraction(19)),
+}
+_PURCHASE_UNITS = {
+    "茶勺": _Unit("volume", Fraction(5), "茶勺"),
+    "汤勺": _Unit("volume", Fraction(15), "汤勺"),
+    "tbs": _Unit("volume", Fraction(15), "tbsp"),
+    "量杯": _Unit("cup", Fraction(1), "杯"),
+}
+_PURCHASE_COUNTS = frozenset({"piece", "pieces", "pc", "pcs", "each", "count", "ct", "个", "枚", "只", "颗"})
+_METRIC_UNITS = frozenset(alias for alias, unit in _UNITS.items() if unit.family in {"mass", "volume"} and unit.label in {"g", "kg", "mg", "克", "公克", "千克", "公斤", "毫克", "ml", "l", "毫升", "升"})
+_VAGUE_PURCHASE_AMOUNTS = frozenset({"适量", "少许", "少量", "酌量", "按需", "to taste", "as needed", "a little", "some", "plus more to taste", "另按口味添加"})
+_SPOON_ASSUMPTIONS = ("(按每勺1汤匙估算)", " (assuming 1 tablespoon per spoon)")
+
+
+def preferred_shopping_quantity(quantity: str, metric_quantity: str | None) -> str:
+    """Use a saved equivalent only for a complete, nonmetric original measurement."""
+    original, metric = (quantity or "").strip(), (metric_quantity or "").strip()
+    source, equivalent = parse_quantity(original), parse_quantity(metric)
+    if source and equivalent and source[0] > 0 and equivalent[0] > 0:
+        source_unit, metric_unit = source[1].casefold(), equivalent[1].casefold()
+        known_source = source_unit in _UNITS or source_unit in _PURCHASE_UNITS or source_unit in _PURCHASE_COUNTS
+        if known_source and source_unit not in _METRIC_UNITS and metric_unit in _METRIC_UNITS:
+            return metric
+    return original
+
+
+def _explicit_purchase_mass(text: str) -> str:
+    """Prefer a recorded mass equivalent over an ingredient density estimate."""
+    parenthetical = re.fullmatch(r"(.+?)\s*\(([^()]*)\)", text)
+    pair = (
+        tuple(_parse_measure(part) for part in parenthetical.groups())
+        if parenthetical else _parse_adjacent_measures(text)
+    )
+    if pair and all(pair):
+        primary, alternate = pair
+        if primary.qualifier == alternate.qualifier and primary.qualifier in {"", "approx"}:
+            for measure in pair:
+                if measure.unit.family == "mass":
+                    return _sum_measures([measure])
+    return text
+
+
+def _format_purchase_estimate(value: Fraction) -> str:
+    with localcontext() as context:
+        context.prec = max(32, len(str(value.numerator)) + len(str(value.denominator)) + 2)
+        decimal = Decimal(value.numerator) / Decimal(value.denominator)
+        result = format(decimal, ".1f" if value >= 1 else ".6f")
+    return result.rstrip("0").rstrip(".")
+
+
+def normalize_purchase_quantity(name: str, quantity: str) -> str:
+    """Consolidate purchase amounts, marking trusted density/spoon assumptions.
+
+    Recorded equivalents take precedence. Bounds, ranges, unknown densities and
+    numeric annotations keep the exact parser's conservative behavior.
+    """
+    chinese = bool(re.search(r"[\u3400-\u9fff]", name or ""))
+    density = _GRAMS_PER_TABLESPOON.get((name or "").strip().casefold())
+    inputs: list[str] = []
+    vague = assumed_spoon = False
+    for text in _split_amounts(_normalize_text(quantity or "")):
+        if text.casefold() in _VAGUE_PURCHASE_AMOUNTS:
+            vague = True
+            continue
+        for note in _SPOON_ASSUMPTIONS:
+            if density is not None and text.endswith(note):
+                text = text[:-len(note)].strip()
+                assumed_spoon = True
+                break
+        inputs.append(_explicit_purchase_mass(text) if density is not None else text)
+
+    groups: dict[str, list[_Measure]] = defaultdict(list)
+    approximate: set[str] = set()
+    retained: list[str] = []
+    for text in _split_amounts(aggregate_quantities(inputs)):
+        measure = _parse_measure(text)
+        if measure is None or measure.qualifier not in {"", "approx"}:
+            if chinese:
+                text = text.replace(" (单位待确认)", "（单位待确认）").replace("(单位待确认)", "（单位待确认）")
+            retained.append(text)
+            continue
+        unit = _PURCHASE_UNITS.get(measure.unit.label.casefold(), measure.unit)
+        estimated = measure.qualifier == "approx"
+        if density is not None and unit.label in {"勺", "平勺"}:
+            unit = _Unit("volume", Fraction(15), "tbsp")
+            assumed_spoon = True
+        amount = measure.amount
+        if density is not None and unit.family in {"volume", "cup"}:
+            # Metric kitchen spoons stay 5 / 15 ml. The ingredient weight chart
+            # defines a cup as 16 tablespoons for these purchase estimates.
+            amount *= density * (unit.factor / 15 if unit.family == "volume" else 16)
+            unit = _Unit("mass", Fraction(1), "g")
+            estimated = True
+        elif unit.family == "mass":
+            amount *= unit.factor
+            unit = _Unit("mass", Fraction(1), "g")
+        elif unit.label.casefold() in _PURCHASE_COUNTS:
+            unit = _Unit("count", Fraction(1), "个" if chinese else "pieces")
+        groups[unit.family].append(_Measure(amount, unit))
+        if estimated:
+            approximate.add(unit.family)
+
+    # A bare number can join explicit pieces, but never acquires a weight/volume.
+    if "unit:" in groups and set(groups) <= {"unit:", "count"} and "count" in groups:
+        count_unit = groups["count"][0].unit
+        groups["count"].extend(_Measure(row.amount, count_unit) for row in groups.pop("unit:"))
+        if "unit:" in approximate:
+            approximate.add("count")
+    missing = groups.pop("unit:") if "unit:" in groups and (len(groups) > 1 or density is not None) else []
+    parts = []
+    for family, rows in groups.items():
+        unit = rows[0].unit
+        if any(row.unit.factor != unit.factor for row in rows):
+            unit = _Unit(family, Fraction(1), {"mass": "g", "volume": "ml"}[family])
+        total = sum((row.amount * row.unit.factor for row in rows), Fraction()) / unit.factor
+        number = _format_purchase_estimate(total) if family in approximate else _format_number(total)
+        part = f"{number} {unit.label}".strip()
+        parts.append((("约 " if chinese else "about ") if family in approximate else "") + part)
+    result = " + ".join(parts)
+    if assumed_spoon and result:
+        result += "（按每勺1汤匙估算）" if chinese else " (assuming 1 tablespoon per spoon)"
+    if vague:
+        result += ("，另按口味添加" if chinese else ", plus more to taste") if result else ("适量" if chinese else "to taste")
+    if missing:
+        number = _format_number(sum((row.amount for row in missing), Fraction()))
+        retained.append(f"{number}（单位待确认）" if chinese else f"{number} (unit missing)")
+    return ("；" if chinese else "; ").join(filter(None, [result, *retained]))
+
+
 def aggregate_ingredients(
     ingredients: list[tuple[str, str]],
+    *,
+    for_purchase: bool = False,
 ) -> list[ShoppingListItem]:
     """
     Group by ingredient name (case-insensitive), aggregate quantities per group.
@@ -316,6 +460,10 @@ def aggregate_ingredients(
         if not name:
             continue
         key = name.casefold()
+        if for_purchase and key in _GRAMS_PER_TABLESPOON:
+            # Keep recorded weights before the exact aggregator can select a
+            # shared volume equivalent across different recipe contributions.
+            qty = "; ".join(_explicit_purchase_mass(part) for part in _split_amounts(_normalize_text(qty or "")))
         by_key[key].append((name, qty))
     out: list[ShoppingListItem] = []
     for key, pairs in sorted(by_key.items()):
