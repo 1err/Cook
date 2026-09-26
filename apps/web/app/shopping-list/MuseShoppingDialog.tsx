@@ -3,7 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   buildMuseCartDraft, buildMuseShoppingPrompt, getMusePackSuggestion, parseMuseBudgetCents, parseMusePackCount,
-  type CartAssistantDraft, type CartAssistantIngredient,
+  type CartAssistantDraft, type CartAssistantIngredient, type MuseQuantitySource,
 } from "@cooking/shared";
 import { useI18n, useT } from "../lib/i18n";
 import styles from "./MuseShoppingDialog.module.css";
@@ -37,19 +37,31 @@ function MuseShoppingReview({ open, draft, pendingIngredients, stale = false, on
   const [previewOpen, setPreviewOpen] = useState(false);
   const [copying, setCopying] = useState(false);
   const [copyResult, setCopyResult] = useState<{ prompt: string; status: "copied" | "error" } | null>(null);
+  const [reviewedSignature, setReviewedSignature] = useState<string | null>(null);
   const generation = useRef(0);
   const museDraft = useMemo(() => buildMuseCartDraft(draft, pendingIngredients), [draft, pendingIngredients]);
   const listedSuggestions = useMemo(() => new Map(museDraft.items.map((item) => [item.id, getMusePackSuggestion(item, language)])), [museDraft, language]);
   const suggestions = useMemo(() => new Map(museDraft.items.map((item) => [item.id, getMusePackSuggestion(item, language, packageSizes[item.id])])), [museDraft, language, packageSizes]);
   const packCounts = Object.fromEntries(museDraft.items.map((item) => {
     const suggestion = suggestions.get(item.id)!;
-    return [item.id, packOverrides[item.id] ?? (suggestion.status === "suggested" ? String(suggestion.packs) : "")];
+    return [item.id, packOverrides[item.id] ?? (suggestion.status !== "unavailable" ? String(suggestion.packs) : "")];
   }));
-  const prompt = stale ? null : buildMuseShoppingPrompt({ draft: museDraft, packCounts, packageSizes, budget, substitutionPolicy, language });
+  const quantitySources: Record<string, MuseQuantitySource> = Object.fromEntries(museDraft.items.map((item) => {
+    const suggestion = suggestions.get(item.id)!;
+    return [item.id, packOverrides[item.id] !== undefined ? "manual" : suggestion.status === "starter" ? "starting"
+      : suggestion.status === "suggested" && suggestion.approximate ? "estimated" : "calculated"];
+  }));
+  const needsEstimateReview = Object.values(quantitySources).some((source) => source === "estimated" || source === "starting");
+  const reviewSignature = JSON.stringify([museDraft.signature, packCounts, packageSizes, quantitySources, budget, substitutionPolicy, language]);
+  const estimatesReviewed = reviewedSignature === reviewSignature;
+  const prompt = stale || (needsEstimateReview && !estimatesReviewed) ? null
+    : buildMuseShoppingPrompt({ draft: museDraft, packCounts, packageSizes, quantitySources, budget, substitutionPolicy, language });
   const currentRequest = useRef(prompt);
   currentRequest.current = open ? prompt : null;
   const budgetInvalid = budget.trim() !== "" && parseMuseBudgetCents(budget) === null;
   const result = copyResult?.prompt === prompt ? copyResult.status : null;
+
+  useEffect(() => { setReviewedSignature(null); }, [reviewSignature]);
 
   useEffect(() => {
     const itemIds = new Set(museDraft.items.map((item) => item.id));
@@ -156,7 +168,7 @@ function MuseShoppingReview({ open, draft, pendingIngredients, stale = false, on
               const suggestion = suggestions.get(item.id)!;
               const listedSuggestion = listedSuggestions.get(item.id)!;
               const showPackageSize = packageSizes[item.id] !== undefined
-                || (listedSuggestion.status === "unavailable" && listedSuggestion.reason === "package-size");
+                || (listedSuggestion.status !== "suggested" && listedSuggestion.reason === "package-size");
               const suggestionId = `${id}-suggestion-${index}`;
               return <li key={item.id} className={styles.product}>
                 <span className={styles.productNumber} aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
@@ -174,17 +186,25 @@ function MuseShoppingReview({ open, draft, pendingIngredients, stale = false, on
                     onChange={(event) => setPackOverrides((counts) => ({ ...counts, [item.id]: event.target.value }))} />
                   {invalid ? <small id={`${id}-pack-error-${index}`} className={styles.error}>{t("shopping.musePackError")}</small> : null}
                 </div>
-                {suggestion.status === "suggested" ? <div id={suggestionId} className={styles.suggestion}>
+                {suggestion.status !== "unavailable" ? <div id={suggestionId} className={styles.suggestion}>
                   <div className={styles.suggestionHeading}>
-                    <strong>{t(suggestion.packs === 1 ? "shopping.museSuggestedPack" : "shopping.museSuggestedPacks", { count: suggestion.packs })}</strong>
+                    <strong>{t(suggestion.status === "starter" ? "shopping.museStarterPack" : suggestion.approximate
+                      ? (suggestion.packs === 1 ? "shopping.museEstimatedPack" : "shopping.museEstimatedPacks")
+                      : (suggestion.packs === 1 ? "shopping.museSuggestedPack" : "shopping.museSuggestedPacks"), { count: suggestion.packs })}</strong>
                     {value !== String(suggestion.packs) ? <button type="button" className={styles.textButton}
                       aria-label={t("shopping.museUseSuggestionLabel", { name: item.product.name })}
                       onClick={() => setPackOverrides((current) => { const next = { ...current }; delete next[item.id]; return next; })}>
                       {t("shopping.museUseSuggestion")}
                     </button> : null}
                   </div>
-                  <p>{t("shopping.musePackCalculation", { needed: suggestion.requiredAmount, size: suggestion.packageAmount })}</p>
-                  <small>{t("shopping.musePackCoverage", { total: suggestion.totalAmount, leftover: suggestion.leftoverAmount })}</small>
+                  {suggestion.status === "starter" ? <p>{t({
+                    "package-size": "shopping.museStarterSizeUnknown",
+                    "ingredient-amount": "shopping.museStarterAmountUnknown",
+                    "unit-mismatch": "shopping.museStarterUnitMismatch",
+                  }[suggestion.reason])}</p> : <>
+                    <p>{t(suggestion.approximate ? "shopping.museEstimateCalculation" : "shopping.musePackCalculation", { needed: suggestion.requiredAmount, size: suggestion.packageAmount })}</p>
+                    <small>{t(suggestion.approximate ? "shopping.museEstimateCoverage" : "shopping.musePackCoverage", { total: suggestion.totalAmount, leftover: suggestion.leftoverAmount })}</small>
+                  </>}
                 </div> : <p id={suggestionId} className={styles.suggestionUnavailable}>{t({
                   "package-size": "shopping.musePackSizeUnknown",
                   "ingredient-amount": "shopping.musePackAmountUnknown",
@@ -242,6 +262,10 @@ function MuseShoppingReview({ open, draft, pendingIngredients, stale = false, on
     </div>
     <footer className={styles.footer}>
       <div className={styles.footerCopy}>
+        {needsEstimateReview ? <label className={styles.estimateReview}>
+          <input type="checkbox" checked={estimatesReviewed} onChange={(event) => setReviewedSignature(event.target.checked ? reviewSignature : null)} />
+          <span>{t("shopping.museReviewEstimates")}</span>
+        </label> : null}
         {result === "copied" ? <p className={styles.success} role="status">{t("shopping.museCopied")}</p>
           : result === "error" ? <p className={styles.error} role="alert">{t("shopping.museCopyError")}</p>
           : <p>{t(prompt ? "shopping.museQuantityReview" : "shopping.museValidation")}</p>}

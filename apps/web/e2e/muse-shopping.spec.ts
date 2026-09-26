@@ -15,14 +15,15 @@ const items = [
   { name: "Ginger", suggested_purchase: "1 knob", category: "Produce" },
 ];
 
-async function prepare(page: Page) {
+async function prepare(page: Page, tofuAmount = "600 g") {
+  const shoppingItems = items.map((item) => item.name === "Tofu" ? { ...item, suggested_purchase: tofuAmount } : item);
   await page.route(`${API_BASE}/**`, async (route) => {
     const url = new URL(route.request().url());
     const now = new Date(); const expires = new Date(now.getTime() + 3_600_000).toISOString();
     let body: unknown;
     if (url.pathname === "/auth/me") body = { id: "muse-test", email: "muse-test@example.com", is_library_public: false };
-    else if (url.pathname === "/shopping-list") body = items.map(({ name, suggested_purchase }) => ({ name, total_quantity: suggested_purchase }));
-    else if (url.pathname === "/shopping-list/refine") body = { purchase_items: items, likely_pantry: [], remove: [] };
+    else if (url.pathname === "/shopping-list") body = shoppingItems.map(({ name, suggested_purchase }) => ({ name, total_quantity: suggested_purchase }));
+    else if (url.pathname === "/shopping-list/refine") body = { purchase_items: shoppingItems, likely_pantry: [], remove: [] };
     else if (url.pathname === "/meal-plan" || url.pathname === "/recipes") body = [];
     else if (url.pathname === "/store-products/batch") {
       const { queries } = route.request().postDataJSON();
@@ -80,6 +81,30 @@ test("reviews quantities, copies exact selected products, and preserves manual c
   await page.getByRole("button", { name: "Review Weee cart (2)" }).click();
   await expect(page.getByText("0 marked as added", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test("shows approximate and starting counts and requires their review before handoff", async ({ page, context }, info) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await prepare(page, "约600 g");
+  await page.getByRole("button", { name: "Prepare with Muse" }).click();
+  const dialog = page.getByRole("dialog", { name: "A little less to do." });
+  await expect(dialog.getByText("Estimated: 2 packs", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Start with 1 pack", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("spinbutton", { name: "Total packs of Jasmine rice bag" })).toHaveValue("1");
+  await expect(dialog.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
+  await dialog.getByRole("checkbox", { name: "I’ve reviewed the estimated and starting quantities." }).check();
+  await dialog.getByRole("button", { name: "Copy for Muse" }).click();
+  await expect(dialog.getByRole("status")).toContainText("Request copied");
+  const request = await page.evaluate(() => navigator.clipboard.readText());
+  expect(request).toContain('"quantitySource":"estimated"');
+  expect(request).toContain('"quantitySource":"starting"');
+  expect(request).toContain("not proof that one pack is enough");
+  await dialog.getByRole("textbox", { name: /Budget for these products/ }).fill("25");
+  await expect(dialog.getByRole("checkbox", { name: "I’ve reviewed the estimated and starting quantities." })).not.toBeChecked();
+  await expect(dialog.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
+  const metrics = await dialog.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
+  expect(metrics.scroll).toBeLessThanOrEqual(metrics.client + 1);
+  await page.screenshot({ path: `/tmp/chef-world-muse-estimates-${info.project.name}.png` });
 });
 
 test("excludes pantry items and resets changed products and weeks", async ({ page }) => {

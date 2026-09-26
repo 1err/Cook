@@ -619,7 +619,7 @@
   "shopping.museStepOpen": "粘贴到 Muse",
   "shopping.museProductsTitle": "已选商品",
   "shopping.museProductCount": "待准备 {count} 件商品",
-  "shopping.musePackHelp": "我们会根据购物清单用量和商品标注的包装规格建议整包数量，你可以按需修改。总包数包含购物车中已有的数量。",
+  "shopping.musePackHelp": "能计算时给出建议包数，近似用量会标注为估算。信息不足时先填 1 包作为起点，不代表一定够用。请核对或调整；总包数包含购物车中已有的数量。",
   "shopping.musePacks": "总包装数",
   "shopping.musePackLabel": "{name} 的总包装数",
   "shopping.musePackPlaceholder": "填写",
@@ -675,5 +675,14 @@
   "shopping.musePackageSizePlaceholder": "例如 350 克或 6 个",
   "shopping.musePackageSizeHelp": "输入每个可购买包装的规格，即可计算建议包数。",
   "shopping.museEditPackageSize": "修改包装规格",
-  "shopping.museEditPackageSizeLabel": "修改 {name} 的包装规格"
+  "shopping.museEditPackageSizeLabel": "修改 {name} 的包装规格",
+  "shopping.museEstimatedPack": "估算：1 包",
+  "shopping.museEstimatedPacks": "估算：{count} 包",
+  "shopping.museEstimateCalculation": "估算所需：{needed} · 按每包 {size} 计算",
+  "shopping.museEstimateCoverage": "预计共 {total}，约剩余 {leftover}。请核对所需用量和包装规格。",
+  "shopping.museStarterPack": "先从 1 包开始",
+  "shopping.museStarterSizeUnknown": "包装规格不明确。先填 1 包，请查看商品规格并核对所需用量；1 包不一定够用。",
+  "shopping.museStarterAmountUnknown": "清单没有完整用量。先填 1 包，请按计划烹饪的菜量调整；这不是计算结果。",
+  "shopping.museStarterUnitMismatch": "清单和包装使用不同计量单位。先填 1 包，再核对规格和所需用量；我们未进行跨单位估算。",
+  "shopping.museReviewEstimates": "我已核对估算包数和起始数量。"
 }

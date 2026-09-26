@@ -52,6 +52,21 @@ function promptFor(draft: MuseCartDraft, overrides = {}) {
   });
 }
 
+test.each(["calculated", "estimated", "starting", "manual"])("exports the reviewed quantity source %s", (basis) => {
+  const draft = buildMuseCartDraft(source());
+  const prompt = promptFor(draft, { quantitySources: { [draft.items[0].id]: basis } });
+  expect(prompt).toContain(`"quantitySource":"${basis}"`);
+  expect(prompt).toContain("starting counts are not proof that one pack is enough");
+  expect(prompt).toContain("ask me before changing the reviewed count");
+});
+
+test("explains starting quantities in Chinese without claiming sufficiency", () => {
+  const draft = buildMuseCartDraft(source());
+  const prompt = promptFor(draft, { language: "zh", quantitySources: { [draft.items[0].id]: "starting" } });
+  expect(prompt).toContain('"quantitySource":"starting"');
+  expect(prompt).toContain("起始包数不代表一包足够");
+});
+
 describe("pack count and spending limit validation", () => {
   test.each([["1", 1], ["99", 99], [" 2 ", 2]])("accepts whole pack count %s", (input, expected) => {
     expect(parseMusePackCount(String(input))).toBe(expected);

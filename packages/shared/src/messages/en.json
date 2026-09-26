@@ -619,7 +619,7 @@
   "shopping.museStepOpen": "Paste it into Muse",
   "shopping.museProductsTitle": "Your selected products",
   "shopping.museProductCount": "{count} products to prepare",
-  "shopping.musePackHelp": "We suggest whole packs from your shopping amounts and the listed package sizes. Adjust as needed; total packs include any already in your cart.",
+  "shopping.musePackHelp": "We calculate packs where possible and label approximate counts. When information is missing, 1 pack is a starting point, not a promise of enough. Review or adjust; totals include packs already in your cart.",
   "shopping.musePacks": "Total packs",
   "shopping.musePackLabel": "Total packs of {name}",
   "shopping.musePackPlaceholder": "Enter",
@@ -675,5 +675,14 @@
   "shopping.musePackageSizePlaceholder": "e.g. 350 g or 6 pieces",
   "shopping.musePackageSizeHelp": "Enter the size of one purchasable pack to calculate a suggestion.",
   "shopping.museEditPackageSize": "Edit package size",
-  "shopping.museEditPackageSizeLabel": "Edit package size for {name}"
+  "shopping.museEditPackageSizeLabel": "Edit package size for {name}",
+  "shopping.museEstimatedPack": "Estimated: 1 pack",
+  "shopping.museEstimatedPacks": "Estimated: {count} packs",
+  "shopping.museEstimateCalculation": "Estimated need: {needed} · assumed pack size: {size}",
+  "shopping.museEstimateCoverage": "About {total} supplied, with about {leftover} left over. Check the amount and package size.",
+  "shopping.museStarterPack": "Start with 1 pack",
+  "shopping.museStarterSizeUnknown": "Package size isn’t listed clearly. Start with 1, then check the listing and how much you need; one pack may not be enough.",
+  "shopping.museStarterAmountUnknown": "Your list doesn’t give a complete amount. Start with 1 pack and adjust for your meals; this is not a calculated quantity.",
+  "shopping.museStarterUnitMismatch": "Your list and the package use different measurements. Start with 1 pack, then check the size and amount; we haven’t converted them.",
+  "shopping.museReviewEstimates": "I’ve reviewed the estimated and starting quantities."
 }

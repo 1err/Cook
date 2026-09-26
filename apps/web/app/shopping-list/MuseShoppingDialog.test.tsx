@@ -132,16 +132,84 @@ test("copies the customer's override instead of silently replacing it with a sug
   expect(screen.queryByText("Request copied. Open Muse and paste it into your conversation.")).not.toBeInTheDocument();
 });
 
-test("explains missing package sizes and incompatible measures without guessing a quantity", () => {
+test("offers one starting pack for missing sizes and incompatible measures, requiring review", () => {
   const view = setup({ draft: { ...draft, selections: [{ ...draft.selections[0], product: { ...draft.selections[0].product, name: "Firm tofu" } }] } });
-  expect(screen.getByRole("spinbutton")).toHaveValue(null);
+  expect(screen.getByRole("spinbutton")).toHaveValue(1);
+  expect(screen.getByText("Start with 1 pack")).toBeVisible();
   expect(screen.getByText(/Package size isn’t listed/)).toBeVisible();
   expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("checkbox", { name: "I’ve reviewed the estimated and starting quantities." }));
+  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeEnabled();
   view.update({ draft: { ...draft, selections: [{ ...draft.selections[0], suggestedPurchase: "2 cups" }] } });
-  expect(screen.getByRole("spinbutton")).toHaveValue(null);
+  expect(screen.getByRole("spinbutton")).toHaveValue(1);
   expect(screen.getByText(/different measurements/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
+  enterPacks("");
   enterPacks("1");
   expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeEnabled();
+});
+
+test("labels approximate calculations and carries their basis into the reviewed request", async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  setup({ draft: { ...draft, selections: [{ ...draft.selections[0], suggestedPurchase: "约600 g" }] } });
+  expect(screen.getByRole("spinbutton")).toHaveValue(2);
+  expect(screen.getByText("Estimated: 2 packs")).toBeVisible();
+  expect(screen.queryByText(/Suggested quantity provides/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("checkbox", { name: "I’ve reviewed the estimated and starting quantities." }));
+  fireEvent.click(screen.getByRole("button", { name: "Copy for Muse" }));
+  await screen.findByText("Request copied. Open Muse and paste it into your conversation.");
+  expect(writeText.mock.calls[0][0]).toContain('"quantitySource":"estimated"');
+});
+
+test("invalidates starting-quantity review on package edits and preserves an explicitly cleared count", () => {
+  const view = setup({ draft: { ...draft, selections: [{ ...draft.selections[0], suggestedPurchase: "some" }] } });
+  const review = () => screen.getByRole("checkbox", { name: "I’ve reviewed the estimated and starting quantities." });
+  fireEvent.click(review());
+  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Edit package size for Firm tofu 350 g" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Package size for Firm tofu 350 g" }), { target: { value: "500 g" } });
+  expect(review()).not.toBeChecked();
+  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
+  enterPacks("");
+  view.update({ open: false }); view.update({ open: true });
+  expect(screen.getByRole("spinbutton")).toHaveValue(null);
+  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Use suggested quantity for Firm tofu 350 g" }));
+  expect(screen.getByRole("spinbutton")).toHaveValue(1);
+  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
+});
+
+test("keeps review required for other starting counts after manually editing one item", () => {
+  setup({ draft: { ...draft, selections: [
+    { ...draft.selections[0], suggestedPurchase: "some" },
+    { ...draft.selections[0], ingredientKey: "rice", ingredientName: "Rice", suggestedPurchase: "some", product: { ...draft.selections[0].product, name: "Rice bag", url: "https://www.sayweee.com/product/rice" } },
+  ] } });
+  enterPacks("2");
+  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
+  fireEvent.change(screen.getByRole("spinbutton", { name: "Total packs of Rice bag" }), { target: { value: "" } });
+  fireEvent.change(screen.getByRole("spinbutton", { name: "Total packs of Rice bag" }), { target: { value: "1" } });
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeEnabled();
+});
+
+test("revoking estimate review invalidates a pending copy and changing a request resets review", async () => {
+  let finish!: () => void;
+  vi.stubGlobal("navigator", { clipboard: { writeText: () => new Promise<void>((resolve) => { finish = resolve; }) } });
+  setup({ draft: { ...draft, selections: [{ ...draft.selections[0], suggestedPurchase: "some" }] } });
+  const review = () => screen.getByRole("checkbox", { name: "I’ve reviewed the estimated and starting quantities." });
+  fireEvent.click(review());
+  fireEvent.click(screen.getByRole("button", { name: "Copy for Muse" }));
+  fireEvent.click(review());
+  await act(async () => { finish(); });
+  expect(screen.queryByText("Request copied. Open Muse and paste it into your conversation.")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Copy for Muse" })).toBeDisabled();
+  fireEvent.click(review());
+  const budget = screen.getByRole("textbox", { name: /Budget for these products/ });
+  fireEvent.change(budget, { target: { value: "25" } });
+  fireEvent.change(budget, { target: { value: "" } });
+  expect(review()).not.toBeChecked();
 });
 
 test("calculates from a customer supplied package size and includes it in the Muse request", async () => {

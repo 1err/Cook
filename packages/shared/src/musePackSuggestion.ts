@@ -1,14 +1,15 @@
 import type { MuseCartItem } from "./museShopping";
 
 export type MusePackSuggestion =
-  | { status: "suggested"; packs: number; requiredAmount: string; packageAmount: string; totalAmount: string; leftoverAmount: string }
+  | { status: "suggested"; packs: number; requiredAmount: string; packageAmount: string; totalAmount: string; leftoverAmount: string; approximate?: true }
+  | { status: "starter"; packs: 1; reason: "package-size" | "ingredient-amount" | "unit-mismatch" }
   | { status: "unavailable"; reason: "package-size" | "ingredient-amount" | "unit-mismatch" | "too-many-packs" | "already-added" };
 
 type Dimension = "mass" | "volume" | "item" | "bag" | "bottle" | "can" | "jar" | "pack" | "block" | "bunch" | "clove" | "bulb" | "stalk";
 type Amount = { dimension: Dimension; value: number };
 type Measurement = Amount & { start: number; end: number; unitScale: number };
 const NUMBER = "(?:\\d+\\s+\\d+\\s*/\\s*\\d+|\\d+\\s*/\\s*\\d+|\\d+(?:\\.\\d+)?|\\.\\d+)";
-const UNIT = "fl\\.?\\s*oz\\.?|fluid\\s+ounces?|kilograms?|kgs?|grams?|g|ounces?|oz|pounds?|lbs?|millilit(?:er|re)s?|ml|lit(?:er|re)s?|l|tablespoons?|tbsp|tbs|teaspoons?|tsp|cups?|dozen|counts?|ct|pieces?|pcs?|each|whole|eggs?|bags?|bottles?|cans?|jars?|packs?|blocks?|bunch(?:es)?|cloves?|bulbs?|stalks?|千克|公斤|克|磅|盎司|毫升|升|个|枚|只|颗|袋|瓶|罐|包";
+const UNIT = "fl\\.?\\s*oz\\.?|fluid\\s+ounces?|kilograms?|kgs?|grams?|g|ounces?|oz|pounds?|lbs?|millilit(?:er|re)s?|ml|lit(?:er|re)s?|l|tablespoons?|tbsp|tbs|teaspoons?|tsp|cups?|dozen|counts?|ct|pieces?|pcs?|each|whole|eggs?|bags?|bottles?|cans?|jars?|packs?|blocks?|bunch(?:es)?|cloves?|bulbs?|stalks?|千克|公斤|克|磅|盎司|毫升|升|个|枚|只|颗|袋|瓶|罐|包|块|把|瓣|头|根";
 const UNITS: Record<string, [Dimension, number]> = {};
 function units(names: string[], dimension: Dimension, factor: number) {
   for (const name of names) UNITS[name] = [dimension, factor];
@@ -32,10 +33,18 @@ units(["袋"], "bag", 1);
 units(["瓶"], "bottle", 1);
 units(["罐"], "can", 1);
 units(["包"], "pack", 1);
+units(["块"], "block", 1);
+units(["把"], "bunch", 1);
+units(["瓣"], "clove", 1);
+units(["头"], "bulb", 1);
+units(["根"], "stalk", 1);
 
 function normalize(text: string): string {
   const fractions: Record<string, string> = { "½": "1/2", "¼": "1/4", "¾": "3/4", "⅓": "1/3", "⅔": "2/3", "⅛": "1/8", "⅜": "3/8", "⅝": "5/8", "⅞": "7/8" };
-  return text.toLowerCase().replace(/[½¼¾⅓⅔⅛⅜⅝⅞]/g, (character) => ` ${fractions[character]}`).trim();
+  return text.toLowerCase()
+    .replace(/[½¼¾⅓⅔⅛⅜⅝⅞]/g, (character) => ` ${fractions[character]}`)
+    .replace(/（/g, "(").replace(/）/g, ")").replace(/，/g, ",").replace(/；/g, ";")
+    .trim();
 }
 
 function numeric(text: string): number {
@@ -78,6 +87,100 @@ function equivalentAmount(values: Array<Amount & { unitScale: number }>, conserv
   // Small differences on dual metric/imperial labels are rounding, not extra contents.
   if (max - min > max * 0.01) return null;
   return { dimension: values[0].dimension, value: conservative === "min" ? min : max };
+}
+
+type PreparedAmount = { text: string; approximate: boolean; invalid: boolean; unsupported?: boolean };
+
+function invalidQuantity(text: string): boolean {
+  if (/\b(?:nan|infinity)(?=$|[^a-z]|(?:kg|g|ml|l|oz|lb)\b)|∞/i.test(text)
+    || /\d(?:\.\d*){2,}|\d(?:[\d.]*)e[+-]?\d|\b0x[\da-f]/i.test(text)
+    || /\d\s*\/\s*\d+\s*\/|\d+\s*\/\s*\d+\.\d|\d+\.\d+\s*\//.test(text)
+    || /\d\s*,\s*\d/.test(text.replace(/\bpack\s+of\s+\d+\s*,/g, ""))
+    || new RegExp(`[-−]\\s*${NUMBER}\\s*(?:${UNIT}|[x×]|$)`, "i").test(text)
+    || /(?:^|[^0-9])0(?:\.0+)?\s*[x×]/.test(text)) return true;
+  if (new RegExp(`^${NUMBER}$`).test(text.trim()) && !Number.isFinite(numeric(text))) return true;
+  const expression = new RegExp(`(^|[^0-9./+-])(${NUMBER})\\s*-?\\s*(${UNIT})(?![a-z])`, "g");
+  let match: RegExpExecArray | null;
+  while ((match = expression.exec(text))) {
+    if (!Number.isFinite(numeric(match[2]))) return true;
+    expression.lastIndex -= 1;
+  }
+  return false;
+}
+
+// Preserve the estimate flag while selecting explicit nominal values or a cautious
+// range endpoint: upper demand, lower purchasable package contents.
+function prepareAmount(raw: string, bound: "min" | "max"): PreparedAmount {
+  let text = normalize(raw);
+  let approximate = false;
+  let invalid = false;
+  let unresolvedRange = false;
+  if (text.length > 1000) return { text, approximate, invalid };
+  text = text.replace(/(^|[^\d.])(\d{1,3}(?:,\d{3})+(?:\.\d+)?)(?![\d.,])/g,
+    (match, prefix: string, number: string, offset: number, input: string) => /\bpack\s+of\s*$/.test(input.slice(0, offset + prefix.length))
+      ? match
+      : prefix + number.replace(/,/g, ""));
+  const range = new RegExp(`(^|[^0-9./+\\-])(${NUMBER})\\s*(${UNIT})?\\s*(?:[-–—~～至到]|\\bto\\b)\\s*(${NUMBER})\\s*(${UNIT})?(?![a-z0-9./])`, "g");
+  text = text.replace(range, (original, prefix: string, low: string, lowUnit: string | undefined, high: string, highUnit: string | undefined) => {
+    if (!lowUnit && !highUnit) {
+      unresolvedRange = true;
+      return original;
+    }
+    const firstUnit = lowUnit ?? highUnit!;
+    const secondUnit = highUnit ?? lowUnit!;
+    const first = UNITS[firstUnit.replace(/[.\s]/g, "")];
+    const second = UNITS[secondUnit.replace(/[.\s]/g, "")];
+    const firstValue = numeric(low) * first[1];
+    const secondValue = numeric(high) * second[1];
+    if (!Number.isFinite(firstValue) || !Number.isFinite(secondValue)) {
+      invalid = true;
+      return original;
+    }
+    if (first[0] !== second[0]) {
+      unresolvedRange = true;
+      return original;
+    }
+    approximate = true;
+    const useFirst = bound === "min" ? firstValue <= secondValue : firstValue >= secondValue;
+    return `${prefix}${useFirst ? low : high} ${useFirst ? firstUnit : secondUnit}`;
+  });
+  if (new RegExp(`${NUMBER}\\s*(?:${UNIT})?\\s*(?:[~～≈]|大约|大概|约|左右|估计|平均|about|approx(?:imately)?|around|avg|average|estimated)\\s*${NUMBER}`).test(text)) unresolvedRange = true;
+  text = text.replace(/\b(?:about|approximately|approx|around|average|avg|estimated)(?![a-z])\.?\s*|大约|大概|约|左右|估计|平均|[~～≈]/g, (marker) => {
+    if (unresolvedRange) return marker;
+    approximate = true;
+    return " ";
+  }).trim();
+  return { text, approximate, invalid: invalid || invalidQuantity(text), unsupported: unresolvedRange };
+}
+
+function ingredientSegments(text: string): string[] | null {
+  const segments: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === "(") depth += 1;
+    else if (text[index] === ")") {
+      depth -= 1;
+      if (depth < 0) return null;
+    } else if (depth === 0 && /[;+,]/.test(text[index])) {
+      segments.push(text.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  segments.push(text.slice(start).trim());
+  return depth === 0 ? segments : null;
+}
+
+function combinedIngredient(prepared: PreparedAmount): { amount: Amount | null; invalid: boolean; mismatch: boolean } {
+  const segments = ingredientSegments(prepared.text);
+  if (!segments) return { amount: null, invalid: prepared.invalid, mismatch: false };
+  if (prepared.invalid || segments.some((segment) => invalidQuantity(segment))) return { amount: null, invalid: true, mismatch: false };
+  if (prepared.unsupported) return { amount: null, invalid: false, mismatch: false };
+  const amounts = segments.map(ingredientAmount);
+  if (amounts.some((amount) => amount === null)) return { amount: null, invalid: false, mismatch: false };
+  const valid = amounts as Amount[];
+  if (valid.some((amount) => amount.dimension !== valid[0].dimension)) return { amount: null, invalid: false, mismatch: true };
+  return { amount: { dimension: valid[0].dimension, value: valid.reduce((sum, amount) => sum + amount.value, 0) }, invalid: false, mismatch: false };
 }
 
 function ingredientAmount(raw: string): Amount | null {
@@ -160,18 +263,29 @@ export function getMusePackSuggestion(
 ): MusePackSuggestion {
   if (item.hasConfirmedMatch) return { status: "unavailable", reason: "already-added" };
   const override = packageSizeOverride?.trim();
-  const packageText = override || item.product.name;
-  if ((override && !explicitPackageSize(override)) || uncertain(normalize(packageText)) || !measurements(normalize(packageText))?.length) {
+  const preparedPackage = prepareAmount(override || item.product.name, "min");
+  const preparedIngredients = item.ingredients.map((ingredient) => prepareAmount(ingredient.suggestedPurchase, "max"));
+  const ingredients = preparedIngredients.map(combinedIngredient);
+  const packageText = preparedPackage.text;
+  const packageMeasurements = preparedPackage.unsupported ? null : measurements(packageText);
+  const primaryDimension = packageMeasurements?.find((amount) => amount.dimension === "mass" || amount.dimension === "volume")?.dimension
+    ?? packageMeasurements?.[0]?.dimension;
+  const packageProbe = primaryDimension ? packageAmount(packageText, primaryDimension) : null;
+  if (preparedPackage.invalid || (override && (!explicitPackageSize(packageText) || !packageProbe))) {
     return { status: "unavailable", reason: "package-size" };
   }
-  const amounts = item.ingredients.map((ingredient) => ingredientAmount(ingredient.suggestedPurchase));
-  if (!amounts.length || amounts.some((amount) => amount === null)) return { status: "unavailable", reason: "ingredient-amount" };
-  const validAmounts = amounts as Amount[];
+  if (ingredients.some((ingredient) => ingredient.invalid)) return { status: "unavailable", reason: "ingredient-amount" };
+  if (!packageProbe) return { status: "starter", packs: 1, reason: "package-size" };
+  if (ingredients.some((ingredient) => ingredient.mismatch)) return { status: "starter", packs: 1, reason: "unit-mismatch" };
+  if (!ingredients.length || ingredients.some((ingredient) => ingredient.amount === null)) return { status: "starter", packs: 1, reason: "ingredient-amount" };
+  const validAmounts = ingredients.map((ingredient) => ingredient.amount!) as Amount[];
   const dimension = validAmounts[0].dimension;
-  if (validAmounts.some((amount) => amount.dimension !== dimension)) return { status: "unavailable", reason: "unit-mismatch" };
+  if (validAmounts.some((amount) => amount.dimension !== dimension)) return { status: "starter", packs: 1, reason: "unit-mismatch" };
   const available = packageAmount(packageText, dimension);
-  if (available === "mismatch") return { status: "unavailable", reason: "unit-mismatch" };
-  if (!available) return { status: "unavailable", reason: "package-size" };
+  if (available === "mismatch") return { status: "starter", packs: 1, reason: "unit-mismatch" };
+  if (!available) return override
+    ? { status: "unavailable", reason: "package-size" }
+    : { status: "starter", packs: 1, reason: "package-size" };
   const required = validAmounts.reduce((sum, amount) => sum + amount.value, 0);
   const packs = Math.ceil(required / available.value - 1e-10);
   if (!Number.isFinite(packs) || packs > 99) return { status: "unavailable", reason: "too-many-packs" };
@@ -179,6 +293,7 @@ export function getMusePackSuggestion(
   const total = available.value * packs;
   return {
     status: "suggested", packs,
+    ...(preparedPackage.approximate || preparedIngredients.some((ingredient) => ingredient.approximate) ? { approximate: true as const } : {}),
     requiredAmount: formatAmount(required, dimension, language),
     packageAmount: formatAmount(available.value, dimension, language),
     totalAmount: formatAmount(total, dimension, language),

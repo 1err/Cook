@@ -127,13 +127,16 @@ function shoppingDataJson(value: unknown): string {
   )).replace(/[<>`]/g, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
 }
 
-export function buildMuseShoppingPrompt({ draft, packCounts, substitutionPolicy, budget, language = "en", packageSizes = {} }: {
+export type MuseQuantitySource = "calculated" | "estimated" | "starting" | "manual";
+
+export function buildMuseShoppingPrompt({ draft, packCounts, substitutionPolicy, budget, language = "en", packageSizes = {}, quantitySources = {} }: {
   draft: MuseCartDraft;
   packCounts: Record<string, string>;
   substitutionPolicy: "ask" | "skip";
   budget: string;
   language?: "en" | "zh";
   packageSizes?: Record<string, string>;
+  quantitySources?: Record<string, MuseQuantitySource>;
 }): string | null {
   if (!draft.items.length) return null;
   const budgetCents = parseMuseBudgetCents(budget);
@@ -147,6 +150,7 @@ export function buildMuseShoppingPrompt({ draft, packCounts, substitutionPolicy,
       productName: item.product.name,
       url,
       totalPacksInCart,
+      ...(quantitySources[item.id] ? { quantitySource: quantitySources[item.id] } : {}),
       referencePricePerPack: item.product.price,
       ...(packageSizes[item.id]?.trim() ? { reviewedPackageSize: packageSizes[item.id].trim() } : {}),
       neededFor: item.ingredients,
@@ -163,6 +167,7 @@ export function buildMuseShoppingPrompt({ draft, packCounts, substitutionPolicy,
     "请按照以下 Chef World 清单准备我的 Weee 购物车，并在结账前停止，让我审核。",
     "仅使用列出的商品链接，核对商品和包装规格。totalPacksInCart 是该商品在购物车中应有的总包数，包括已手动确认添加的数量，并非新增包数。先检查当前购物车，只补足差额；不要重复添加、删除或减少已有数量。保留无关商品；已有数量超过目标时请报告。",
     "如果提供了 reviewedPackageSize，请核对实际在售包装与我填写的规格一致；若不一致或无法确认，先询问我，不要添加该商品。",
+    "quantitySource 标明包数来源：calculated 为计算值，estimated 为近似估算，starting 为经我审核的起始数量，manual 为我填写的数量。估算和起始包数不代表一包足够；不要宣称能满足全部食材用量。若核对实际包装后数量仍不明确，请先询问我再修改已审核的包数，不要自行增加。",
     substitutionPolicy === "ask"
       ? "商品缺货或包装规格不同，请先询问我并获得确认，再替换商品；等待确认期间可继续处理其他明确的商品。"
       : "跳过缺货或包装规格不同的商品，不要替换；请列出未能添加的商品。",
@@ -177,6 +182,7 @@ export function buildMuseShoppingPrompt({ draft, packCounts, substitutionPolicy,
     "Prepare my Weee cart from this Chef World shopping list. Stop before checkout for my review.",
     "Use only the exact listed product URLs and verify the product and pack size. totalPacksInCart is the TOTAL desired pack count already in the cart, including any manually confirmed packs, not an additional quantity. Check the current cart first and add only the shortfall. Never remove or reduce existing quantities, duplicate additions, or change unrelated items. Preserve unrelated items and report any excess above a target.",
     "If reviewedPackageSize is supplied, verify that the live purchasable pack matches my supplied size. If it differs or cannot be verified, ask me before adding that product.",
+    "quantitySource identifies a calculated, estimated, starting, or manually entered count. Estimates and starting counts are not proof that one pack is enough. Do not claim they cover every ingredient need. If the live package or amount leaves the quantity uncertain, ask me before changing the reviewed count; do not add extra packs on your own.",
     substitutionPolicy === "ask"
       ? "Ask me before making any substitution for an unavailable product or a different pack size, and wait for my approval. You may continue with other exact matches while waiting."
       : "Skip unavailable products or different pack sizes; do not substitute. Report every skipped product.",

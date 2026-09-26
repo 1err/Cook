@@ -27,18 +27,18 @@ test.each([
   });
 });
 
-test.each(["牛肉 约2磅", "牛肉 1–2磅", "牛肉 16盎司-1磅", "牛肉 16盎司至1磅", "牛肉 16盎司～1磅", "牛肉 2斤"])(
-  "abstains from approximate, ranged, or unsupported Chinese mass labels: %s",
-  (name) => expect(getMusePackSuggestion(item(name, ["500g"]))).toEqual({ status: "unavailable", reason: "package-size" }),
+test.each(["牛肉 2斤"])(
+  "offers only a starter for unsupported Chinese mass labels: %s",
+  (name) => expect(getMusePackSuggestion(item(name, ["500g"]))).toEqual({ status: "starter", packs: 1, reason: "package-size" }),
 );
 
 test.each(["饮料 16液盎司", "饮料 16液体盎司", "饮料 液体盎司规格 16盎司", "饮料 16盎司（液量盎司）", "饮料 液量盎司规格 16盎司", "饮料 16盎司（液 量 盎司）"])(
   "does not reinterpret Chinese fluid ounce labels as mass: %s",
-  (name) => expect(getMusePackSuggestion(item(name, ["500g"]))).toEqual({ status: "unavailable", reason: "package-size" }),
+  (name) => expect(getMusePackSuggestion(item(name, ["500g"]))).toEqual({ status: "starter", packs: 1, reason: "package-size" }),
 );
 
 test.each(["16液盎司", "16液体盎司"])("does not reinterpret Chinese fluid ounce needs as mass: %s", (needed) => {
-  expect(getMusePackSuggestion(item("Beef 1lb", [needed]))).toEqual({ status: "unavailable", reason: "ingredient-amount" });
+  expect(getMusePackSuggestion(item("Beef 1lb", [needed]))).toEqual({ status: "starter", packs: 1, reason: "ingredient-amount" });
 });
 
 test("sums all ingredient needs before rounding a shared product to packs", () => {
@@ -98,7 +98,7 @@ test.each([
   ["Eggs 99ct (100 pieces)", "150 eggs"],
   ["Rice 350g (352g)", "600g"],
 ])("does not treat conflicting counts or same-unit sizes as rounded dual labels: %s", (name, amount) => {
-  expect(getMusePackSuggestion(item(name, [amount]))).toEqual({ status: "unavailable", reason: "package-size" });
+  expect(getMusePackSuggestion(item(name, [amount]))).toEqual({ status: "starter", packs: 1, reason: "package-size" });
 });
 
 test("chooses the matching dimension when a product explicitly supplies both mass and item count", () => {
@@ -106,14 +106,14 @@ test("chooses the matching dimension when a product explicitly supplies both mas
   expect(getMusePackSuggestion(item("Eggs 12 ct, 600 g", ["900 g"]))).toMatchObject({ status: "suggested", packs: 2, packageAmount: "600 g" });
 });
 
-test.each(["Organic rice", "Rice 0g", "Rice -350g", "Rice ~350g", "Rice about 350g", "Rice 350-400g", "Rice 1–1.5 lb", "Rice 350g or 700g", "Rice 350g (500g)", "Rice 2 pack 350g", "Rice 2 x 3 x 350g", "Rice 350g x 2 x 3", "Rice 350g x 2g", "Rice 10g protein"])(
-  "does not infer an ambiguous package size from %s",
-  (name) => expect(getMusePackSuggestion(item(name, ["600g"]))).toEqual({ status: "unavailable", reason: "package-size" }),
+test.each(["Organic rice", "Rice 350g or 700g", "Rice 350g (500g)", "Rice 2 pack 350g", "Rice 2 x 3 x 350g", "Rice 350g x 2 x 3", "Rice 350g x 2g", "Rice 10g protein"])(
+  "offers a starter without claiming a calculation for ambiguous package size %s",
+  (name) => expect(getMusePackSuggestion(item(name, ["600g"]))).toEqual({ status: "starter", packs: 1, reason: "package-size" }),
 );
 
-test.each(["", "a little", "0g", "-500g", "500-600g", "500 g, 1 kg", "500g + 500g", "500g or 1kg", "about 500g", "500g extra", "1/0 kg"])(
-  "does not silently discard ambiguous or invalid ingredient amounts %j",
-  (amount) => expect(getMusePackSuggestion(item("Rice 350g", [amount]))).toEqual({ status: "unavailable", reason: "ingredient-amount" }),
+test.each(["", "a little", "适量", "500g or 1kg", "500g extra", "25g;适量"])(
+  "offers only a starter for unsupported or incomplete ingredient amounts %j",
+  (amount) => expect(getMusePackSuggestion(item("Rice 350g", [amount]))).toEqual({ status: "starter", packs: 1, reason: "ingredient-amount" }),
 );
 
 test.each([
@@ -123,12 +123,12 @@ test.each([
   ["Juice 2 bottles", ["3 cans"]],
   ["Rice 350g", ["100g", "1 cup"]],
 ] as const)("refuses density conversions or incompatible counts for %s", (name, amounts) => {
-  expect(getMusePackSuggestion(item(name, [...amounts]))).toEqual({ status: "unavailable", reason: "unit-mismatch" });
+  expect(getMusePackSuggestion(item(name, [...amounts]))).toEqual({ status: "starter", packs: 1, reason: "unit-mismatch" });
 });
 
 test("refuses an incomplete set of grouped needs", () => {
-  expect(getMusePackSuggestion(item("Rice 350g", ["100g", "some"]))).toEqual({ status: "unavailable", reason: "ingredient-amount" });
-  expect(getMusePackSuggestion(item("Rice 350g", []))).toEqual({ status: "unavailable", reason: "ingredient-amount" });
+  expect(getMusePackSuggestion(item("Rice 350g", ["100g", "some"]))).toEqual({ status: "starter", packs: 1, reason: "ingredient-amount" });
+  expect(getMusePackSuggestion(item("Rice 350g", []))).toEqual({ status: "starter", packs: 1, reason: "ingredient-amount" });
 });
 
 test("abstains where confirmed ingredients sharing this product were omitted from the total", () => {
@@ -150,7 +150,7 @@ test("renders count amounts for Chinese and leaves the supplied item unchanged",
 test("uses an explicit customer supplied package size when the title has none or differs", () => {
   expect(getMusePackSuggestion(item("Premium rice", ["600g"]), "en", "350 g")).toMatchObject({ status: "suggested", packs: 2, packageAmount: "350 g" });
   expect(getMusePackSuggestion(item("Rice 1kg", ["600g"]), "en", "2 x 350g")).toMatchObject({ status: "suggested", packs: 1, packageAmount: "700 g" });
-  expect(getMusePackSuggestion(item("Rice", ["600g"]), "en", "350ml")).toEqual({ status: "unavailable", reason: "unit-mismatch" });
+  expect(getMusePackSuggestion(item("Rice", ["600g"]), "en", "350ml")).toEqual({ status: "starter", packs: 1, reason: "unit-mismatch" });
 });
 
 test.each(["350", "350g extra", "$3.50 350g", "350g or 700g", "Rice 350g"])("requires the entire supplied package size to be explicit: %s", (size) => {
@@ -158,15 +158,15 @@ test.each(["350", "350g extra", "$3.50 350g", "350g or 700g", "Rice 350g"])("req
 });
 
 test("reports the missing package size first so customers can supply it", () => {
-  expect(getMusePackSuggestion(item("Rice", ["1 bag"]))).toEqual({ status: "unavailable", reason: "package-size" });
+  expect(getMusePackSuggestion(item("Rice", ["1 bag"]))).toEqual({ status: "starter", packs: 1, reason: "package-size" });
 });
 
-test("rejects comma joined aggregation fragments even when their amounts are equivalent", () => {
-  expect(getMusePackSuggestion(item("Rice 500g", ["500g, 0.5kg"]))).toEqual({ status: "unavailable", reason: "ingredient-amount" });
+test("sums complete comma joined requirements rather than collapsing equivalent amounts", () => {
+  expect(getMusePackSuggestion(item("Rice 500g", ["500g, 0.5kg"]))).toMatchObject({ status: "suggested", packs: 2, requiredAmount: "1000 g" });
 });
 
-test.each(["Protein powder 20g per serving", "Snack 10g fiber", "Snack 10g fibre", "每份100克", "大米约500克", "Rice avg 500g", "Protein10g", "Rice case of 6 350g", "Rice 6pk 350g"])("rejects nutrition, approximate, and ambiguous packaging labels: %s", (name) => {
-  expect(getMusePackSuggestion(item(name, ["600g"]))).toEqual({ status: "unavailable", reason: "package-size" });
+test.each(["Protein powder 20g per serving", "Snack 10g fiber", "Snack 10g fibre", "每份100克", "Protein10g", "Rice case of 6 350g", "Rice 6pk 350g"])("does not calculate from nutrition or ambiguous packaging labels: %s", (name) => {
+  expect(getMusePackSuggestion(item(name, ["600g"]))).toEqual({ status: "starter", packs: 1, reason: "package-size" });
 });
 
 test.each([
@@ -175,7 +175,7 @@ test.each([
   ["Juice6pk350ml", "600ml"],
   ["Protein powder20g of protein per serving", "600g"],
 ])("abstains from ambiguous containers and compact or nutritional quantities: %s", (name, amount) => {
-  expect(getMusePackSuggestion(item(name, [amount]))).toEqual({ status: "unavailable", reason: "package-size" });
+  expect(getMusePackSuggestion(item(name, [amount]))).toEqual({ status: "starter", packs: 1, reason: "package-size" });
 });
 
 test.each([
@@ -187,4 +187,79 @@ test.each([
   ["Premium Rice10lb", "5lb", 1, "4535.92 g"],
 ] as const)("handles explicit adjacent quantities or count and each packaging: %s", (name, needed, packs, packageAmount) => {
   expect(getMusePackSuggestion(item(name, [needed]))).toMatchObject({ status: "suggested", packs, packageAmount });
+});
+
+test.each([
+  ["Beef 16盎司", "约400克", 1, "400 g", "453.59 g"],
+  ["Beef 2-2.22磅", "500g", 1, "500 g", "907.18 g"],
+  ["Beef 2-2.22磅", "950g", 2, "950 g", "907.18 g"],
+  ["Rice 350g", "500-800g", 3, "800 g", "350 g"],
+  ["Rice about 350g", "600g", 2, "600 g", "350 g"],
+  ["牛肉约2磅", "500g", 1, "500 g", "907.18 g"],
+  ["牛肉16盎司～1磅", "500g", 2, "500 g", "453.59 g"],
+  ["Rice 350-400g", "750g", 3, "750 g", "350 g"],
+  ["Rice 1–1.5 lb", "500g", 2, "500 g", "453.59 g"],
+  ["Rice 350g", "0.5kg to 750g", 3, "750 g", "350 g"],
+  ["Rice 350g", "600克左右", 2, "600 g", "350 g"],
+])("uses cautious explicit estimates for %s / %s", (name, needed, packs, requiredAmount, packageAmount) => {
+  expect(getMusePackSuggestion(item(name, [needed]))).toMatchObject({ status: "suggested", approximate: true, packs, requiredAmount, packageAmount });
+});
+
+test.each([
+  ["约2克;6g", 8, true],
+  ["25g;6g", 31, false],
+  ["25g + 6g", 31, false],
+  ["25g，6g", 31, false],
+  ["1,000g", 1000, false],
+  ["500g,1,000g", 1500, false],
+  ["1lb (454g)", 454, false],
+])("fully parses additive needs and grouping punctuation %s", (needed, required, approximate) => {
+  const result = getMusePackSuggestion(item("Rice 2kg", [String(needed)]));
+  expect(result).toMatchObject({ status: "suggested", packs: 1, requiredAmount: `${required} g` });
+  expect(result.status === "suggested" && result.approximate === true).toBe(approximate);
+});
+
+test.each([
+  ["Tofu 2块", "3块", 2, "3 blocks"],
+  ["Cilantro 2把", "3把", 2, "3 bunches"],
+  ["Garlic 6瓣", "8 cloves", 2, "8 cloves"],
+  ["Garlic 2头", "3 bulbs", 2, "3 bulbs"],
+  ["Celery 4根", "6 stalks", 2, "6 stalks"],
+])("keeps compatible Chinese count dimensions distinct: %s", (name, needed, packs, requiredAmount) => {
+  expect(getMusePackSuggestion(item(name, [needed]))).toMatchObject({ status: "suggested", packs, requiredAmount });
+});
+
+test("does not equate cloves with bulbs or stalks with bunches", () => {
+  expect(getMusePackSuggestion(item("Garlic 2头", ["6瓣"]))).toEqual({ status: "starter", packs: 1, reason: "unit-mismatch" });
+  expect(getMusePackSuggestion(item("Celery 1把", ["6根"]))).toEqual({ status: "starter", packs: 1, reason: "unit-mismatch" });
+});
+
+test.each(["0g", "-500g", "1/0 kg", "1..2g", "NaN g", "Infinity kg", "1e3g", "0", "-3", "5g;-1g", "5g;0g", "1,00g"])("leaves invalid numeric requirements blank: %s", (needed) => {
+  expect(getMusePackSuggestion(item("Rice 350g", [needed]))).toEqual({ status: "unavailable", reason: "ingredient-amount" });
+  expect(getMusePackSuggestion(item("Rice", [needed]))).toEqual({ status: "unavailable", reason: "ingredient-amount" });
+});
+
+test.each(["Rice 0g", "Rice -350g", "Rice 1/0kg", "Rice 1..2g", "Rice Infinityg"])("leaves invalid numeric package sizes blank: %s", (name) => {
+  expect(getMusePackSuggestion(item(name, ["500g"]))).toEqual({ status: "unavailable", reason: "package-size" });
+});
+
+test.each(["bad size", "350g extra", "0g", "-350g", "1..2g", "350g or700g", "2packs350g"])("keeps invalid explicit overrides blank rather than substituting one pack: %s", (override) => {
+  expect(getMusePackSuggestion(item("Rice 350g", ["600g"]), "en", override)).toEqual({ status: "unavailable", reason: "package-size" });
+});
+
+test("does not invent quantities on a starter recommendation", () => {
+  expect(getMusePackSuggestion(item("Rice", ["适量"]))).toEqual({ status: "starter", packs: 1, reason: "package-size" });
+});
+
+test.each([
+  ["Eggs 1ct", "1~2"],
+  ["Eggs 1ct", "1≈2"],
+  ["Rice 500g", "1大约2g"],
+  ["Rice 500g", "1g~2ml"],
+])("does not concatenate unresolved range endpoints into a quantity: %s / %s", (name, needed) => {
+  expect(getMusePackSuggestion(item(name, [needed]))).toEqual({ status: "starter", packs: 1, reason: "ingredient-amount" });
+});
+
+test.each(["Eggs 1≈2ct", "Rice 1g≈2ml"])("does not calculate a package from an unresolved internal estimate marker: %s", (name) => {
+  expect(getMusePackSuggestion(item(name, [name.startsWith("Eggs") ? "10 eggs" : "10g"]))).toEqual({ status: "starter", packs: 1, reason: "package-size" });
 });
