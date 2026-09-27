@@ -1,4 +1,5 @@
 import type { MenuDraft } from './types';
+import { isMenuDesign } from './design';
 import { MENU_STYLES_BY_ID } from './styles';
 import type { MenuLayout } from './layout';
 import { menuPageSvg } from './pageSvg';
@@ -6,8 +7,9 @@ import type { MenuRendererAssets } from './runtime';
 import { MENU_RUNTIME_SOURCE } from './runtimeSource';
 
 function validateAssets(assets:MenuRendererAssets):void {
+ if(assets.itemImages!==undefined && (!assets.itemImages || typeof assets.itemImages!=='object' || Array.isArray(assets.itemImages) || Object.values(assets.itemImages).some(value=>typeof value!=='string' || !/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value))))throw new Error('Invalid menu item image');
  if(assets.artworkDataUrl!==null && !/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(assets.artworkDataUrl)) throw new Error('Invalid menu artwork');
- if(assets.fonts.length>5 || assets.fonts.some(font=>!['MenuSerif','MenuSans','MenuCJK'].includes(font.family) || ![400,600].includes(font.weight) || !/^data:(?:font\/(?:otf|ttf|woff2?)|application\/(?:font-woff|x-font-ttf|x-font-opentype));base64,[A-Za-z0-9+/]+={0,2}$/.test(font.dataUrl))) throw new Error('Invalid menu font');
+ if(assets.fonts.length>6 || assets.fonts.some(font=>!['MenuSerif','MenuSans','MenuCJK','MenuHand'].includes(font.family) || ![400,600].includes(font.weight) || (font.family==='MenuHand' && font.weight!==400) || !/^data:(?:font\/(?:otf|ttf|woff2?)|application\/(?:font-woff|x-font-ttf|x-font-opentype));base64,[A-Za-z0-9+/]+={0,2}$/.test(font.dataUrl))) throw new Error('Invalid menu font');
 }
 const json=(value:unknown)=>JSON.stringify(value).replace(/</g,'\\u003c').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');
 const baseCss=`*{box-sizing:border-box}html,body{margin:0;padding:0}body{background:#e8e5df}.menu-page{width:816px;height:1056px;margin:0 auto 24px;overflow:hidden;break-after:page;page-break-after:always}.menu-page:last-child{break-after: auto;page-break-after:auto;margin-bottom:0}.menu-page>svg{display:block;width:816px;height:1056px}svg text{white-space:pre;font-kerning:auto}#menu-definitions{position:absolute;width:0;height:0;overflow:hidden}@page { size: 8.5in 11in; margin: 0 }@media print{html,body{width:816px;background:white}.menu-page{margin:0;print-color-adjust:exact;-webkit-print-color-adjust:exact}}`;
@@ -17,8 +19,9 @@ const definitions=(artwork:string|null)=>`<svg id="menu-definitions" xmlns="http
 /** Assets are embedded once. Future render commands omit assets unless their bytes changed. */
 export function buildMenuPreviewHtml(draft:MenuDraft,assets:MenuRendererAssets & {revision:number}):string {
  validateAssets(assets);
+ if(draft.design!==undefined && !isMenuDesign(draft.design))throw new Error('Invalid menu design');
  if(!Number.isSafeInteger(assets.revision) || assets.revision<0)throw new Error('Invalid menu revision');
- const initial={draft,assets:{fonts:assets.fonts,artworkDataUrl:assets.artworkDataUrl},revision:assets.revision};
+ const initial={draft,assets:{fonts:assets.fonts,artworkDataUrl:assets.artworkDataUrl,itemImages:assets.itemImages},revision:assets.revision};
  // A generated standalone source string survives native/web bundler rewriting.
  return shell('',definitions(null)+'<main id="menu-pages"></main>',`<script>${MENU_RUNTIME_SOURCE}\nstartMenuRenderer(${json(initial)},${json(MENU_STYLES_BY_ID)});</script>`);
 }
@@ -26,6 +29,7 @@ export function buildMenuPreviewHtml(draft:MenuDraft,assets:MenuRendererAssets &
 /** Uses the canonical measured layout received in ready; printing never reflows text. */
 export function buildMenuPrintHtml(layout:MenuLayout,draft:MenuDraft,assets:MenuRendererAssets):string {
  validateAssets(assets);
+ if(draft.design!==undefined && !isMenuDesign(draft.design))throw new Error('Invalid menu design');
  const css=assets.fonts.map(font=>`@font-face{font-family:${font.family};font-style:normal;font-weight:${font.weight};src:url(${font.dataUrl})}`).join('');
- return shell(css,definitions(assets.artworkDataUrl)+layout.pages.map((page,index)=>`<section class="menu-page" data-page="${index}">${menuPageSvg(page,MENU_STYLES_BY_ID[draft.styleId],!!assets.artworkDataUrl)}</section>`).join(''));
+ return shell(css,definitions(assets.artworkDataUrl)+layout.pages.map((page,index)=>`<section class="menu-page" data-page="${index}">${menuPageSvg(page,MENU_STYLES_BY_ID[draft.styleId],!!assets.artworkDataUrl,assets.itemImages,assets.artworkDataUrl)}</section>`).join(''));
 }

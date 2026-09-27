@@ -291,3 +291,16 @@ describe("resolveMenuArtwork", () => {
     await rejection;
   });
 });
+
+test('artwork recovery retains the original nested visual design', async () => {
+  const { menuDesignForStyle } = await import('@cooking/shared');
+  const input: GenerateMenuArtworkPayload = { ...payload, design: menuDesignForStyle('cozy-cafe') };
+  const original = JSON.parse(JSON.stringify(input));
+  let missing!: (error: unknown) => void;
+  const client = mockClient({ artworkStatus: vi.fn().mockImplementation(() => new Promise((_, reject) => { missing = reject; })) });
+  const request = resolveMenuArtwork(client, input, { mode: 'check', signal: new AbortController().signal });
+  input.design!.palette.accent = '#000000'; input.design!.columns = 3;
+  missing(new ApiError('missing', 404, 'not_found'));
+  await request;
+  expect(client.generateArtwork).toHaveBeenCalledWith(original, { signal: expect.any(AbortSignal) });
+});

@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { resolveMenuArtwork, type GenerateMenuArtworkPayload, type RecipeImageAccess } from '@cooking/api-client';
-import { createUuid, type AcceptedMenuArtwork, type MenuStyleId } from '@cooking/shared';
+import { createUuid, type AcceptedMenuArtwork, type MenuStyleId, type MenuDesign } from '@cooking/shared';
 import { useAuth } from '../../lib/auth';
 import { webApiClient } from '../../lib/api';
 import { artworkResponseDataUrl } from './menuAssets';
@@ -85,9 +85,9 @@ export function useMenuArtwork() {
   }, [account, refreshAccess]);
   return {
     access, busy, candidate, errorKey, recoverable, refreshAccess,
-    generate(styleId: MenuStyleId, instructions: string) {
+    generate(styleId: MenuStyleId, instructions: string, design?: MenuDesign) {
       if (operation.current || !access?.allowed || instructions.length > 300) return;
-      const payload = { request_id: createUuid(), style_id: styleId, instructions };
+      const payload: GenerateMenuArtworkPayload = { request_id: createUuid(), style_id: styleId, instructions, ...(design ? { design: structuredClone(design) } : {}) };
       request.current = payload; setCandidate(null); void run(payload, 'generate');
     },
     check() { if (request.current) void run(request.current, 'check'); },

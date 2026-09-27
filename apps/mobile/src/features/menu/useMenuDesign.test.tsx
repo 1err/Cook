@@ -1,0 +1,30 @@
+import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { createMenuDraft, menuDesignForStyle } from '@cooking/shared';
+import { useMenuDesign } from './useMenuDesign';
+const mockGenerate = jest.fn();
+const mockApi = { menus: { generateDesign: mockGenerate } };
+jest.mock('../../lib/api', () => ({ useApiClient: () => mockApi }));
+const draft = createMenuDraft([{ id: 'one', title: 'Soup' }], ['one'], { title: 'Dinner', section: 'Mains' });
+beforeEach(() => jest.clearAllMocks());
+test('keeps a design proposal separate and ignores a late response after cancellation', async () => {
+  let complete!: (value: unknown) => void;
+  mockGenerate.mockReturnValue(new Promise(resolve => { complete = resolve; }));
+  const { result } = await renderHook(() => useMenuDesign());
+  await act(async () => result.current.generate('session-id', draft, 'Pastel cafe'));
+  expect(result.current.busy).toBe(true);
+  await act(async () => result.current.cancel());
+  await act(async () => complete(menuDesignForStyle('garden-table')));
+  expect(result.current.candidate).toBeNull();
+  expect(result.current.busy).toBe(false);
+  expect(mockGenerate).toHaveBeenCalledTimes(1);
+  expect(mockGenerate.mock.calls[0][1].signal.aborted).toBe(true);
+});
+test('submits only visual counts and the admitted session, leaving recipe edits outside the model', async () => {
+  const design = menuDesignForStyle('garden-table');
+  mockGenerate.mockResolvedValue(design);
+  const { result } = await renderHook(() => useMenuDesign());
+  await act(async () => result.current.generate('session-id', draft, 'Pastel cafe'));
+  await waitFor(() => expect(result.current.candidate).toEqual(design));
+  expect(mockGenerate.mock.calls[0][0]).toEqual({ menu_creation_id: 'session-id', brief: 'Pastel cafe', content: { item_count: 1, section_count: 1, photo_count: 0, language: 'en' } });
+  expect(draft.items[0].name).toBe('Soup');
+});

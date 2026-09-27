@@ -1,8 +1,8 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { UNSTABLE_usePreventRemove as usePreventRemove } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { buildMenuPrintHtml, createMenuDraft, reconcileMenuSelection, type MenuDraft, type MenuFontAsset, type MenuLayout, type MenuRecipe } from '@cooking/shared';
+import { buildMenuPrintHtml, createMenuDraft, reconcileMenuSelection, menuDesignForStyle, resolveMenuDesign, type MenuDraft, type MenuFontAsset, type MenuLayout, type MenuRecipe } from '@cooking/shared';
 import { Button, TextField } from '../../components';
 import { useApiClient } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -10,6 +10,10 @@ import { useT } from '../../lib/i18n';
 import { colors, radii, spacing, typography } from '../../theme';
 import type { LibraryStackParamList } from '../../navigation/types';
 import { useMenuCreation } from './useMenuCreation';
+import { MenuDesignControls } from './MenuDesignControls';
+import { useMenuDesign } from './useMenuDesign';
+import { MenuImageNormalizer, type MenuImageNormalizerHandle } from './MenuImageNormalizer';
+import { useMenuPhotos } from './useMenuPhotos';
 import { MenuEditor } from './MenuEditor';
 import { MenuPreview } from './MenuPreview';
 import { MenuStylePicker } from './MenuStylePicker';
@@ -27,8 +31,11 @@ export function MenuMakerScreen(props: Props) {
 }
 
 function MenuSession({ navigation, initialIds }: Props & { initialIds: string[] }) {
-  const t = useT(); const api = useApiClient(); const artwork = useMenuArtwork(); const creation = useMenuCreation();
+  const t = useT(); const api = useApiClient(); const artwork = useMenuArtwork(); const creation = useMenuCreation(); const designProposal = useMenuDesign();
   const active = useRef(true);
+  const imageNormalizer = useRef<MenuImageNormalizerHandle>(null);
+  const normalizePhoto = useCallback((dataUrl: string, signal: AbortSignal) => imageNormalizer.current?.normalize(dataUrl, signal) ?? Promise.reject(new Error('Photo converter unavailable')), []);
+  const [brief, setBrief] = useState('');
   const [recipes, setRecipes] = useState<MenuRecipe[]>([]);
   const [selected, setSelected] = useState<string[]>(initialIds);
   const [draft, setDraft] = useState<MenuDraft | null>(null);
@@ -46,11 +53,15 @@ function MenuSession({ navigation, initialIds }: Props & { initialIds: string[] 
   const [pageIndex, setPageIndex] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const photos = useMenuPhotos(draft?.items ?? [], normalizePhoto);
+  useEffect(() => { setRevision(value => value + 1); setReady(null); }, [photos.itemImages]);
   const revisionRef = useRef(revision); revisionRef.current = revision;
-  const assets = useMemo(() => ({ fonts: fonts ?? [], artworkDataUrl }), [fonts, artworkDataUrl]);
+  const assets = useMemo(() => ({ fonts: fonts ?? [], artworkDataUrl, itemImages: photos.itemImages }), [fonts, artworkDataUrl, photos.itemImages]);
+  const renderDraft = useMemo(() => draft ? { ...draft, items: draft.items.map(item => ({ ...item, imageUrl: Object.prototype.hasOwnProperty.call(photos.itemImages, item.recipeId) ? 'menu-photo' : null })) } : null, [draft, photos.itemImages]);
+  const initialDesign = (value: MenuDraft): MenuDraft => ({ ...value, design: { ...resolveMenuDesign(value), show_descriptions: false } });
   const update = (next: MenuDraft) => { setDraft(next); setRevision(value => value + 1); setReady(null); setDirty(true); setPreviewError(false); };
 
-  usePreventRemove(dirty || exporting || artwork.busy || creation.busy, ({ data }) => {
+  usePreventRemove(dirty || exporting || artwork.busy || creation.busy || designProposal.busy, ({ data }) => {
     Alert.alert(t('menu.unsaved.title'), t('menu.unsaved.sessionBody'), [
       { text: t('menu.unsaved.stay'), style: 'cancel' },
       { text: t('menu.unsaved.leave'), style: 'destructive', onPress: () => navigation.dispatch(data.action) },
@@ -65,7 +76,7 @@ function MenuSession({ navigation, initialIds }: Props & { initialIds: string[] 
       if (!current) return;
       setRecipes(rows);
       if (initialIds.length) {
-        try { const next = createMenuDraft(rows, initialIds, { title: t('menu.defaultTitle'), section: t('menu.defaultSection') }); if (await creation.ensure()) { if (!current) return; update(next); setSelecting(false); } }
+        try { const next = initialDesign(createMenuDraft(rows, initialIds, { title: t('menu.defaultTitle'), section: t('menu.defaultSection') })); if (await creation.ensure()) { if (!current) return; update(next); setSelecting(false); } }
         catch { setError('menu.selection.missingRecipes'); setSelecting(true); }
       }
     }).catch(() => { if (current) setError('menu.selection.loadFailed'); }).finally(() => { if (current) setLoading(false); });
@@ -87,18 +98,18 @@ function MenuSession({ navigation, initialIds }: Props & { initialIds: string[] 
   const continueEditing = async () => {
     if (!selected.length) return;
     try {
-      const next = draft ? reconcileMenuSelection(draft, recipes, selected) : createMenuDraft(recipes, selected, { title: t('menu.defaultTitle'), section: t('menu.defaultSection') });
+      const next = draft ? reconcileMenuSelection(draft, recipes, selected) : initialDesign(createMenuDraft(recipes, selected, { title: t('menu.defaultTitle'), section: t('menu.defaultSection') }));
       if (await creation.ensure()) { if (!active.current) return; update(next); setSelecting(false); setError(null); setPageIndex(0); }
     } catch { setError('menu.selection.missingRecipes'); }
   };
   const toggle = (id: string) => { setSelected(value => value.includes(id) ? value.filter(item => item !== id) : [...value, id]); setError(null); };
   const valid = !!draft && !!draft.title.trim() && draft.items.length > 0 && draft.items.every(item => !!item.name.trim());
-  const canExport = valid && ready?.revision === revision && !!fonts && !previewError;
+  const canExport = valid && ready?.revision === revision && !!fonts && !previewError && !photos.loading;
   const exportPdf = async () => {
-    if (!canExport || !ready || !draft || exporting) return;
+    if (!canExport || !ready || !draft || !renderDraft || exporting) return;
     setExporting(true); setError(null);
     try {
-      const html = buildMenuPrintHtml(ready.layout, draft, assets);
+      const html = buildMenuPrintHtml(ready.layout, renderDraft, assets);
       try {
         await shareMenuPdf(html, ready.layout.pages.length);
       } catch (failure) {
@@ -122,6 +133,7 @@ function MenuSession({ navigation, initialIds }: Props & { initialIds: string[] 
 
   if (loading) return <View style={styles.loading}><ActivityIndicator color={colors.primary} /></View>;
   return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={100}>
+    <MenuImageNormalizer ref={imageNormalizer} />
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {error && <Text accessibilityRole="alert" style={styles.error}>{t(error)}</Text>}
       {selecting ? <View>
@@ -145,9 +157,40 @@ function MenuSession({ navigation, initialIds }: Props & { initialIds: string[] 
         <Button title={t(creation.busy ? 'menu.creation.creating' : 'menu.selection.continue')} disabled={!selected.length || !creation.canContinue} onPress={() => void continueEditing()} />
       </View> : draft && <View>
         <Button title={t('menu.editor.back')} variant="ghost" onPress={() => { setSelected(draft.items.map(item => item.recipeId)); setSelecting(true); setReady(null); }} />
-        <Text style={styles.title}>{t('menu.style.title')}</Text>
-        <Text style={styles.hint}>{t('menu.style.description')}</Text>
-        <MenuStylePicker value={draft.styleId} onChange={styleId => { if (styleId !== draft.styleId) update({ ...draft, styleId }); }} />
+        <View style={styles.panel}>
+          <Text style={styles.heading}>{t('menu.preview.title')}</Text>
+          {previewError ? <View><Text style={styles.error}>{t('menu.preview.failed')}</Text><Button title={t('menu.retry')} onPress={() => { setPreviewError(false); setReady(null); if (!fonts) setFontAttempt(value => value + 1); setPreviewAttempt(value => value + 1); }} /></View> : fonts ? <MenuPreview key={previewAttempt} draft={renderDraft ?? draft} assets={assets} revision={revision} pageIndex={pageIndex} onReady={(layout, renderedRevision) => {
+            if (renderedRevision !== revisionRef.current) return;
+            setReady({ layout, revision: renderedRevision }); setPageIndex(value => Math.min(value, layout.pages.length - 1));
+          }} onError={() => { setReady(null); setPreviewError(true); }} /> : <ActivityIndicator color={colors.primary} />}
+          {photos.loading && <Text style={styles.hint}>{t('menu.studio.photosLoading')}</Text>}
+          {photos.failed > 0 && <View><Text style={styles.hint}>{t('menu.studio.photosUnavailableNative', { count: photos.failed })}</Text><Button title={t('menu.studio.retryPhotos')} variant="ghost" onPress={photos.retry} /></View>}
+          {!previewError && ready?.revision !== revision && <Text style={styles.hint}>{t('menu.preview.loading')}</Text>}
+          {ready?.revision === revision && <View>
+            <Text accessibilityLiveRegion="polite" style={styles.pageCount}>{t('menu.preview.pageOf', { current: pageIndex + 1, total: ready.layout.pages.length })}</Text>
+            <View style={styles.row}><Button title={t('menu.preview.previousPage')} variant="ghost" disabled={pageIndex === 0} onPress={() => setPageIndex(value => value - 1)} /><Button title={t('menu.preview.nextPage')} variant="ghost" disabled={pageIndex >= ready.layout.pages.length - 1} onPress={() => setPageIndex(value => value + 1)} /></View>
+          </View>}
+          {!valid && <Text style={styles.error}>{t('menu.editor.required')}</Text>}
+          <Button title={t(exporting ? 'menu.export.exporting' : 'menu.export.pdf')} disabled={!canExport} loading={exporting} onPress={() => void exportPdf()} />
+        </View>
+        <Text style={styles.title}>{t('menu.studio.title')}</Text>
+        <Text style={styles.hint}>{t('menu.studio.description')}</Text>
+        <View style={styles.panel}>
+          <TextField label={t('menu.studio.brief')} placeholder={t('menu.studio.briefPlaceholder')} value={brief} maxLength={1200} multiline onChangeText={value => { setBrief(value); setDirty(true); }} />
+          {designProposal.errorKey && <Text accessibilityRole="alert" style={styles.error}>{t(designProposal.errorKey)}</Text>}
+          <Button title={t(designProposal.busy ? 'menu.studio.generating' : 'menu.studio.generate')} disabled={!brief.trim() || !creation.admitted || designProposal.busy} onPress={() => designProposal.generate(creation.requestId, draft, brief)} />
+          {designProposal.busy && <Button title={t('menu.artwork.cancel')} variant="ghost" onPress={designProposal.cancel} />}
+          {designProposal.candidate && <View style={styles.candidate}>
+            <Text style={styles.heading}>{t('menu.studio.proposal')}</Text>
+            <Text style={styles.hint}>{t(`menu.studio.layout.${designProposal.candidate.layout}`)} · {t(`menu.studio.density.${designProposal.candidate.density}`)}</Text>
+            <View style={styles.row}>{Object.values(designProposal.candidate.palette).map((color, index) => <View key={index} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: color, borderWidth: 1, borderColor: colors.divider }} />)}</View>
+            <Button title={t('menu.studio.useProposal')} onPress={() => { if (designProposal.candidate) { update({ ...draft, design: designProposal.candidate }); designProposal.discard(); } }} />
+            <Button title={t('menu.studio.discardProposal')} variant="ghost" onPress={designProposal.discard} />
+          </View>}
+        </View>
+        <MenuDesignControls design={resolveMenuDesign(draft)} onChange={design => update({ ...draft, design })} />
+        <Text style={styles.heading}>{t('menu.studio.palette')}</Text>
+        <MenuStylePicker value={draft.styleId} onChange={styleId => { if (styleId !== draft.styleId) update({ ...draft, styleId, design: { ...resolveMenuDesign(draft), palette: menuDesignForStyle(styleId).palette } }); }} />
         <MenuEditor draft={draft} onChange={update} />
         <View style={styles.panel}>
           <Text style={styles.heading}>{t('menu.artwork.title')}</Text>
@@ -165,28 +208,14 @@ function MenuSession({ navigation, initialIds }: Props & { initialIds: string[] 
               const candidate = artwork.candidate;
               if (!candidate) return;
               setArtworkDataUrl(candidate.dataUrl);
-              update({ ...draft, styleId: candidate.metadata.styleId, artwork: candidate.metadata }); artwork.discard();
+              update({ ...draft, styleId: candidate.metadata.styleId, ...(candidate.design ? { design: candidate.design } : {}), artwork: candidate.metadata }); artwork.discard();
             }} />
             <Button title={t('menu.artwork.discard')} variant="ghost" onPress={artwork.discard} />
           </View>}
           {artwork.busy ? <View><Text style={styles.hint}>{t('menu.artwork.generating')}</Text><Button title={t('menu.artwork.cancel')} variant="secondary" onPress={artwork.cancel} /></View> : <View style={styles.actions}>
-            <Button title={t(artwork.candidate ? 'menu.artwork.tryAnother' : 'menu.artwork.generate')} disabled={!artwork.access?.allowed} onPress={() => artwork.generate(draft.styleId, draft.instructions)} />
+            <Button title={t(artwork.candidate ? 'menu.artwork.tryAnother' : 'menu.artwork.generate')} disabled={!artwork.access?.allowed} onPress={() => artwork.generate(draft.styleId, draft.instructions, resolveMenuDesign(draft))} />
             {artwork.recoverable && <Button title={t('menu.artwork.checkAgain')} variant="secondary" onPress={artwork.check} />}
           </View>}
-        </View>
-        <View style={styles.panel}>
-          <Text style={styles.heading}>{t('menu.preview.title')}</Text>
-          {previewError ? <View><Text style={styles.error}>{t('menu.preview.failed')}</Text><Button title={t('menu.retry')} onPress={() => { setPreviewError(false); setReady(null); if (!fonts) setFontAttempt(value => value + 1); setPreviewAttempt(value => value + 1); }} /></View> : fonts ? <MenuPreview key={previewAttempt} draft={draft} assets={assets} revision={revision} pageIndex={pageIndex} onReady={(layout, renderedRevision) => {
-            if (renderedRevision !== revisionRef.current) return;
-            setReady({ layout, revision: renderedRevision }); setPageIndex(value => Math.min(value, layout.pages.length - 1));
-          }} onError={() => { setReady(null); setPreviewError(true); }} /> : <ActivityIndicator color={colors.primary} />}
-          {!previewError && ready?.revision !== revision && <Text style={styles.hint}>{t('menu.preview.loading')}</Text>}
-          {ready?.revision === revision && <View>
-            <Text accessibilityLiveRegion="polite" style={styles.pageCount}>{t('menu.preview.pageOf', { current: pageIndex + 1, total: ready.layout.pages.length })}</Text>
-            <View style={styles.row}><Button title={t('menu.preview.previousPage')} variant="ghost" disabled={pageIndex === 0} onPress={() => setPageIndex(value => value - 1)} /><Button title={t('menu.preview.nextPage')} variant="ghost" disabled={pageIndex >= ready.layout.pages.length - 1} onPress={() => setPageIndex(value => value + 1)} /></View>
-          </View>}
-          {!valid && <Text style={styles.error}>{t('menu.editor.required')}</Text>}
-          <Button title={t(exporting ? 'menu.export.exporting' : 'menu.export.pdf')} disabled={!canExport} loading={exporting} onPress={() => void exportPdf()} />
         </View>
       </View>}
     </ScrollView>

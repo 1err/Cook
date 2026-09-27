@@ -12,7 +12,7 @@ export function isMenuRendererMessage(value: unknown, revision: number): value i
   if (message.type === 'error') return ['render-failed', 'export-failed'].includes(String(message.code)) && typeof message.message === 'string';
   if (message.type !== 'ready' || !message.layout || typeof message.layout !== 'object') return false;
   const layout = message.layout as MenuLayout;
-  return layout.width === 816 && layout.height === 1056 && Array.isArray(layout.pages) && layout.pages.length > 0 && layout.pages.length === message.pageCount && layout.pages.every(page => page && Array.isArray(page.itemStarts) && page.itemStarts.every(id => typeof id === 'string') && Array.isArray(page.runs) && page.runs.every(run => run && typeof run.text === 'string' && typeof run.color === 'string' && (run.itemId === undefined || typeof run.itemId === 'string') && ['MenuSerif', 'MenuSans', 'MenuCJK'].includes(run.family) && [400, 600].includes(run.weight) && ['left', 'center', 'right'].includes(run.align) && [run.x, run.baseline, run.size, run.lineHeight].every(Number.isFinite)));
+  return layout.width === 816 && layout.height === 1056 && Array.isArray(layout.pages) && layout.pages.length > 0 && layout.pages.length === message.pageCount && layout.pages.every(page => page && Array.isArray(page.itemStarts) && page.itemStarts.every(id => typeof id === 'string') && Array.isArray(page.runs) && page.runs.every(run => run && typeof run.text === 'string' && typeof run.color === 'string' && (run.itemId === undefined || typeof run.itemId === 'string') && ['MenuSerif', 'MenuSans', 'MenuCJK', 'MenuHand'].includes(run.family) && [400, 600].includes(run.weight) && ['left', 'center', 'right'].includes(run.align) && [run.x, run.baseline, run.size, run.lineHeight].every(Number.isFinite)));
 }
 
 type Props = { draft: MenuDraft; assets: MenuRendererAssets; revision: number; pageIndex: number; onReady: (layout: MenuLayout, revision: number) => void; onError: () => void };
@@ -29,7 +29,7 @@ export function MenuPreview({ draft, assets, revision, pageIndex, onReady, onErr
   const update = () => {
     const next = latest.current;
     if (!loaded.current || next.revision <= sent.current.revision) return;
-    const changedAssets = next.assets.fonts !== sent.current.assets.fonts ? next.assets : next.assets.artworkDataUrl !== sent.current.assets.artworkDataUrl ? { artworkDataUrl: next.assets.artworkDataUrl } : undefined;
+    const changedAssets = next.assets.fonts !== sent.current.assets.fonts ? next.assets : next.assets.artworkDataUrl !== sent.current.assets.artworkDataUrl || next.assets.itemImages !== sent.current.assets.itemImages ? { artworkDataUrl: next.assets.artworkDataUrl, itemImages: next.assets.itemImages } : undefined;
     webview.current?.postMessage(JSON.stringify({ channel: 'chefworld-menu', type: 'render', revision: next.revision, draft: next.draft, ...(changedAssets ? { assets: changedAssets } : {}) }));
     sent.current = { revision: next.revision, assets: next.assets };
   };

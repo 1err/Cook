@@ -1,5 +1,6 @@
 import { createUuid } from "../uuid";
 import type { MenuDraft, MenuItem, MenuRecipe, MenuSection } from "./types";
+import { menuDesignForStyle } from "./design";
 
 export const DEFAULT_MENU_SECTION_ID = "dishes";
 
@@ -38,6 +39,7 @@ function itemFromRecipe(recipe: MenuRecipe): MenuItem {
     sectionId: DEFAULT_MENU_SECTION_ID,
     name: recipe.title,
     description: recipe.description ?? "",
+    ...(recipe.thumbnail_url !== undefined ? { imageUrl: recipe.thumbnail_url } : {}),
   };
 }
 
@@ -54,6 +56,7 @@ export function createMenuDraft(
     sections: [{ id: DEFAULT_MENU_SECTION_ID, title: labels.section }],
     items: selectedRecipes(recipes, selectedIds).map(itemFromRecipe),
     artwork: null,
+    design: menuDesignForStyle("cozy-cafe"),
   };
 }
 
@@ -129,7 +132,7 @@ export function moveMenuItem(
 export function updateMenuItem(
   draft: MenuDraft,
   recipeId: string,
-  patch: Partial<Pick<MenuItem, "name" | "description">>,
+  patch: Partial<Pick<MenuItem, "name" | "description" | "imageUrl" | "price" | "badge">>,
 ): MenuDraft {
   const itemIndex = draft.items.findIndex((item) => item.recipeId === recipeId);
   if (itemIndex === -1) {

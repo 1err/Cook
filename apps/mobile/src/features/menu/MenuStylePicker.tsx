@@ -12,9 +12,7 @@ export function MenuStylePicker({ value, onChange }: Props) {
       accessibilityState={{ checked: value === preset.id }} onPress={() => onChange(preset.id)}
       style={[styles.option, value === preset.id && styles.selected]}>
       <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden style={[styles.swatch, { backgroundColor: preset.colors.background }]}>
-        <View style={[styles.paper, { backgroundColor: preset.colors.panel, borderColor: preset.colors.accent }]}>
-          {[36, 22, 30].map((width, index) => <View key={index} style={{ width, height: index ? 2 : 4, backgroundColor: preset.colors.accent, opacity: index ? 0.5 : 1, marginVertical: 3 }} />)}
-        </View>
+        {[preset.colors.background, preset.colors.panel, preset.colors.accent, preset.colors.text].map((color, index) => <View key={index} style={[styles.colorDot, { backgroundColor: color }]} />)}
       </View>
       <Text style={[styles.label, value === preset.id && { color: colors.primary }]}>{t(preset.labelKey)}</Text>
     </Pressable>)}
@@ -24,7 +22,7 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginVertical: spacing.md },
   option: { width: '47%', flexGrow: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, overflow: 'hidden', backgroundColor: colors.surface, padding: 6 },
   selected: { borderColor: colors.primary, borderWidth: 2, padding: 5 },
-  swatch: { height: 90, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center' },
-  paper: { width: 66, height: 72, borderWidth: 1, borderRadius: 3, alignItems: 'center', justifyContent: 'center' },
+  swatch: { height: 50, flexDirection: 'row', gap: 5, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center' },
+  colorDot: { width: 24, height: 24, borderRadius: 12, borderWidth: 1, borderColor: colors.divider },
   label: { ...typography.footnote, color: colors.ink, textAlign: 'center', marginVertical: spacing.sm },
 });

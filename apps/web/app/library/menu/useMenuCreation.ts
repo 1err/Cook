@@ -82,6 +82,6 @@ export function useMenuCreation() {
   }, [api, bounded, requestId]);
 
   const reset = access?.resets_at ? new Date(access.resets_at).toLocaleString() : '';
-  return { access, busy, checking, errorKey, reset, ensure, refresh, admitted: admitted.current,
+  return { requestId, access, busy, checking, errorKey, reset, ensure, refresh, admitted: admitted.current,
     canContinue: !busy && (admitted.current || attempted.current || !checking && access?.allowed !== false) };
 }

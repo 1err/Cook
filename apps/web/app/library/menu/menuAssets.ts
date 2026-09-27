@@ -6,6 +6,7 @@ export const MENU_FONT_FILES = [
   { file: 'SourceSerif4-400.ttf', family: 'MenuSerif', weight: 400 },
   { file: 'SourceSerif4-600.ttf', family: 'MenuSerif', weight: 600 },
   { file: 'NotoSansCJKsc-Regular.otf', family: 'MenuCJK', weight: 400 },
+  { file: 'ZCOOLKuaiLe-Regular.ttf', family: 'MenuHand', weight: 400 },
 ] as const;
 
 async function boundedBytes(response: Response, limit: number): Promise<Uint8Array> {

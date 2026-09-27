@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { API_BASE } from './api';
 test.use({ actionTimeout: 15000 });
-const origin = `http://127.0.0.1:${process.env.PORT ?? '3000'}`;
+const origin = process.env.MENU_QA_ORIGIN ?? `http://127.0.0.1:${process.env.PORT ?? '3000'}`;
 const recipes = Array.from({length:42}, (_,index) => ({ id:`menu-dish-${index}`, title:`${String(index+1).padStart(2,'0')} 家常菜 · Garden dish`, description:`A thoughtful dish ${index+1}, with seasonal vegetables and herbs.`, ingredients:[],library_tags:['chinese'],thumbnail_url:null }));
 async function fulfill(route:Route,body:unknown,status=200) { await route.fulfill({status,contentType:'application/json',headers:{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Credentials':'true'},body:JSON.stringify(body)}); }
 async function fixtures(page:Page, options:{ fail?:boolean; delayed?:boolean; creationDenied?:boolean; admin?:boolean }={}) {
@@ -40,14 +40,19 @@ test('complete library selection, six styles, local edits, sections, accepted ar
  await page.getByRole('tab',{name:'My library',exact:true}).click(); await page.getByRole('button',{name:'Make a menu',exact:true}).click();
  const first=page.getByRole('checkbox').first(); await first.focus(); await page.keyboard.press('Space'); await expect(page.getByText('1 dishes selected')).toBeVisible();
  await page.getByRole('searchbox').fill('01 家常'); await page.getByRole('button',{name:'Clear selection'}).click(); await page.getByRole('button',{name:'Select matching recipes'}).click(); await expect(page.getByText('1 dishes selected')).toBeVisible();
- await enterEditor(page); await expect(page.getByLabel('Dish name',{exact:true})).toHaveCount(42); await expect(page.getByRole('radio')).toHaveCount(6);
- for(const style of ['French bistro','Garden table','Italian supper','Chinese teahouse','Minimal modern','Cozy cafe']) { await page.getByRole('radio',{name:style,exact:true}).check(); }
- await page.getByLabel('Menu title',{exact:true}).fill('家宴 / Garden supper'); await page.getByLabel('Dish name',{exact:true}).first().fill('妈妈的茄子煲');
- await page.getByRole('button',{name:'Back to dishes',exact:true}).click(); await page.getByRole('button',{name:'Choose a style',exact:true}).click(); await expect(page.getByLabel('Dish name',{exact:true}).first()).toHaveValue('妈妈的茄子煲');
+ await enterEditor(page); await expect(page.getByLabel('Dish name',{exact:true})).toHaveCount(42);
+ for(const style of ['French bistro','Garden table','Italian supper','Chinese teahouse','Minimal modern','Cozy cafe']) { await page.getByRole('button',{name:style,exact:true}).click(); }
+ await page.getByLabel('Menu title',{exact:true}).fill('家宴 / Garden supper');
+ await page.getByRole('tab',{name:/^Dishes/}).click(); await page.locator('#menu-dishes-panel details').first().locator('summary').click();
+ await page.getByLabel('Dish name',{exact:true}).first().fill('妈妈的茄子煲');
+ await page.getByRole('button',{name:'Back to dishes',exact:true}).click(); await page.getByRole('button',{name:'Choose a style',exact:true}).click();
+ await page.getByRole('tab',{name:/^Dishes/}).click(); await page.locator('#menu-dishes-panel details').first().locator('summary').click();
+ await expect(page.getByLabel('Dish name',{exact:true}).first()).toHaveValue('妈妈的茄子煲');
  await page.getByRole('button',{name:'Add section'}).click(); await page.getByLabel('Section heading',{exact:true}).last().fill('甜点 · Dessert');
- await page.getByLabel('Move to section',{exact:true}).last().selectOption({label:'甜点 · Dessert'});
+ await page.locator('#menu-dishes-panel details').last().locator('summary').click(); await page.getByLabel('Move to section',{exact:true}).last().selectOption({label:'甜点 · Dessert'});
+ await page.getByRole('tab',{name:'Design',exact:true}).click();
  await page.getByLabel('Artwork notes',{exact:true}).fill('Sage green botanical border'); await page.getByRole('button',{name:'Generate artwork',exact:true}).click(); await expect(page.getByRole('button',{name:'Use artwork',exact:true})).toBeVisible();
- await expect(page.getByText('Artwork in use',{exact:false})).toHaveCount(0); await page.getByRole('radio',{name:'Garden table',exact:true}).check(); await expect(page.getByText('Artwork created for Cozy cafe')).toBeVisible();
+ await expect(page.getByText('Artwork in use',{exact:false})).toHaveCount(0); await page.getByRole('button',{name:'Garden table',exact:true}).click(); await expect(page.getByText('Artwork created for Cozy cafe')).toBeVisible();
  await page.getByRole('button',{name:'Use artwork',exact:true}).click(); await expect(page.getByText('Artwork in use',{exact:false})).toBeVisible();
  await expect(page.getByRole('button',{name:'Download page 1 as PNG'})).toBeEnabled();
  if(testInfo.project.name === 'desktop') { await page.getByRole('button',{name:'Download page 1 as PNG'}).scrollIntoViewIfNeeded(); const buttonBox=await page.getByRole('button',{name:'Print / PDF',exact:true}).boundingBox(); expect(buttonBox!.y+buttonBox!.height).toBeLessThanOrEqual(720); expect(await page.evaluate(()=>scrollY)).toBeLessThan(2000); }
@@ -62,7 +67,7 @@ test('complete library selection, six styles, local edits, sections, accepted ar
  const popupPromise=page.waitForEvent('popup'); await page.getByRole('button',{name:'Print / PDF',exact:true}).click(); const popup=await popupPromise; await expect(popup.locator('.menu-page')).toHaveCount(pageCount);
  await expect(popup.locator('text').filter({hasText:'妈妈的茄子煲'})).toHaveCount(1); await expect(popup.locator('text').filter({hasText:'42 家常菜'})).toHaveCount(1);
  const pdf=await popup.pdf({path:testInfo.outputPath('menu.pdf'),preferCSSPageSize:true,printBackground:true}); expect(pdf.subarray(0,4).toString()).toBe('%PDF'); await testInfo.attach('menu.pdf',{body:pdf,contentType:'application/pdf'}); await popup.close();
- expect(state.creations).toHaveLength(1); expect(state.posts).toHaveLength(1); expect(Object.keys(state.posts[0] as object).sort()).toEqual(['instructions','request_id','style_id']); expect(state.writes).toEqual([]);
+ expect(state.creations).toHaveLength(1); expect(state.posts).toHaveLength(1); expect(Object.keys(state.posts[0] as object).sort()).toEqual(['design','instructions','request_id','style_id']); expect(state.writes).toEqual([]);
  await testInfo.attach('menu-editor',{body:await page.screenshot({path:testInfo.outputPath('menu-editor.png'),fullPage:false}),contentType:'image/png'});
  await expect(iframe).toHaveAttribute('sandbox','allow-scripts');
 });
@@ -81,7 +86,7 @@ test('failed and cancelled generation preserve edits and accepted template',asyn
 test('generation rejection preserves the menu and an account switch drops private drafts',async({page})=>{
  test.setTimeout(60000); const state=await fixtures(page,{fail:true}); await openMenu(page); await page.getByRole('checkbox').first().check(); await page.getByRole('button',{name:'Choose a style',exact:true}).click();
  await page.getByLabel('Menu title',{exact:true}).fill('Private dinner'); await page.getByRole('button',{name:'Generate artwork',exact:true}).click();
- await expect(page.getByText('You’ve used today’s image allowance. You can still use and export the template.')).toBeVisible();
+ await expect(page.getByText('You’ve used today’s image allowance. You can still edit and export your menu.')).toBeVisible();
  await expect(page.getByLabel('Menu title',{exact:true})).toHaveValue('Private dinner'); await expect(page.getByRole('button',{name:'Use artwork',exact:true})).toHaveCount(0);
  await page.route(`${API_BASE}/auth/me`,route=>fulfill(route,{id:'second-account',email:'second@example.com',is_library_public:false}));
  await page.evaluate(()=>{localStorage.setItem('cooking-auth-user','second-account');window.dispatchEvent(new StorageEvent('storage',{key:'cooking-auth-user',newValue:'second-account'}));});

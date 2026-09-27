@@ -6,6 +6,7 @@ const fonts: Readonly<Record<string, string>> = {
   'Inter-400.ttf': 'font/ttf', 'Inter-600.ttf': 'font/ttf',
   'SourceSerif4-400.ttf': 'font/ttf', 'SourceSerif4-600.ttf': 'font/ttf',
   'NotoSansCJKsc-Regular.otf': 'font/otf',
+  'ZCOOLKuaiLe-Regular.ttf': 'font/ttf',
 };
 export async function GET(_request: Request, { params }: { params: Promise<{ font: string }> }) {
   const { font } = await params;

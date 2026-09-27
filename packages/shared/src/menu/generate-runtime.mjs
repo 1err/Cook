@@ -7,7 +7,7 @@ import {createRequire} from 'node:module';
 const require=createRequire(new URL('../../../../apps/web/package.json',import.meta.url));
 const ts=require('typescript');
 export function generateMenuRuntimeSource(){
- const files=['layout.ts','pageSvg.ts','runtime.ts'];
+ const files=['design.ts','designLayout.ts','layout.ts','pageSvg.ts','runtime.ts'];
  const body=files.map(file=>readFileSync(new URL(file,import.meta.url),'utf8')
   .replace(/\nexport function layoutMenu\([\s\S]*$/,'')
   .replace(/^import .*;\r?\n/gm,'')

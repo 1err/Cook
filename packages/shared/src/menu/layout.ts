@@ -1,17 +1,24 @@
-import type { MenuDraft } from './types';
+import type { MenuDesign, MenuDraft } from './types';
+import { designedMenuLayout } from './designLayout';
 import { MENU_STYLES_BY_ID, type MenuStylePreset } from './styles';
 
 export type MenuTextRun = {
   itemId?: string; text: string; x: number; baseline: number; size: number;
-  lineHeight: number; family: 'MenuSerif' | 'MenuSans' | 'MenuCJK';
+  lineHeight: number; family: 'MenuSerif' | 'MenuSans' | 'MenuCJK' | 'MenuHand';
   weight: 400 | 600; color: string; align: 'left' | 'center' | 'right';
 };
-export type MenuPage = { runs: MenuTextRun[]; itemStarts: string[] };
+export type MenuGraphic =
+ | {kind:'rect';x:number;y:number;width:number;height:number;fill:string;radius?:number;opacity?:number;stroke?:string;strokeWidth?:number}
+ | {kind:'ellipse';x:number;y:number;rx:number;ry:number;fill:string;opacity?:number}
+ | {kind:'line';x:number;y:number;x2:number;y2:number;stroke:string;strokeWidth:number;opacity?:number};
+export type MenuPageImage = {recipeId:string;x:number;y:number;width:number;height:number;frame:'none'|'rounded'|'circle'};
+export type MenuArtworkBox = {x:number;y:number;width:number;height:number;opacity?:number};
+export type MenuPage = { runs: MenuTextRun[]; itemStarts: string[]; design?:MenuDesign; graphics?:MenuGraphic[]; images?:MenuPageImage[]; artwork?:MenuArtworkBox; pageIndex?:number };
 export type MenuLayout = { width: 816; height: 1056; pages: MenuPage[] };
 export type MenuTextMeasure = (text: string, font: Pick<MenuTextRun, 'size' | 'family' | 'weight'>) => number;
 
 /** Self-contained: serialized into the WebView; keep all helpers inside this function. */
-export function menuLayoutEngine(draft: MenuDraft, measure: MenuTextMeasure, style: MenuStylePreset): MenuLayout {
+export function legacyMenuLayoutEngine(draft: MenuDraft, measure: MenuTextMeasure, style: MenuStylePreset): MenuLayout {
   const pages: MenuPage[] = [];
   const Segmenter = (Intl as typeof Intl & { Segmenter?: new (locale: undefined, options: {granularity:'grapheme'}) => {segment(text:string): Iterable<{segment:string}>} }).Segmenter;
   const segmenter = Segmenter ? new Segmenter(undefined, {granularity:'grapheme'}) : null;
@@ -91,6 +98,9 @@ export function menuLayoutEngine(draft: MenuDraft, measure: MenuTextMeasure, sty
   }
   pages.forEach((entry,index)=>entry.runs.push({text:`${index+1} / ${pages.length}`,x:408,baseline:1000,size:16,lineHeight:24,family:style.bodyFamily,weight:400,color:style.colors.accent,align:'center'}));
   return {width:816,height:1056,pages};
+}
+export function menuLayoutEngine(draft: MenuDraft, measure: MenuTextMeasure, style: MenuStylePreset): MenuLayout {
+  return draft.design === undefined ? legacyMenuLayoutEngine(draft, measure, style) : designedMenuLayout(draft, measure);
 }
 export function layoutMenu(draft: MenuDraft, measure: MenuTextMeasure): MenuLayout {
   return menuLayoutEngine(draft,measure,MENU_STYLES_BY_ID[draft.styleId]);
