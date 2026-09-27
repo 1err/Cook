@@ -25,7 +25,11 @@ export const MenuPreview = forwardRef<MenuPreviewHandle, Props>(function MenuPre
   function update() {
     if (!loaded.current || latest.current.revision <= sent.current.revision) return;
     const next = latest.current;
-    const changedAssets = next.assets.fonts !== sent.current.assets.fonts || next.assets.itemImages !== sent.current.assets.itemImages ? next.assets : next.assets.artworkDataUrl !== sent.current.assets.artworkDataUrl ? { artworkDataUrl: next.assets.artworkDataUrl } : undefined;
+    const changedAssets = next.assets.fonts !== sent.current.assets.fonts
+      ? next.assets
+      : next.assets.artworkDataUrl !== sent.current.assets.artworkDataUrl || next.assets.itemImages !== sent.current.assets.itemImages
+        ? { artworkDataUrl: next.assets.artworkDataUrl, itemImages: next.assets.itemImages }
+        : undefined;
     iframe.current?.contentWindow?.postMessage({ channel: 'chefworld-menu', type: 'render', revision: next.revision, draft: next.draft, ...(changedAssets ? { assets: changedAssets } : {}) }, '*');
     sent.current = { revision: next.revision, assets: next.assets };
   }

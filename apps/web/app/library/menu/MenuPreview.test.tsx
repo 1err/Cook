@@ -27,4 +27,15 @@ describe('iframe bridge boundary',()=>{
   fireEvent(window,new MessageEvent('message',{source:iframe.contentWindow,data:JSON.stringify(data)}));expect(onReady).toHaveBeenCalledWith(layout,1);
   expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
  });
+ it('updates arriving dish photos without resending fonts or replacing the iframe',()=>{
+  const props={draft,assets,revision:0,pageIndex:0,onReady:vi.fn(),onPng:vi.fn(),onError:vi.fn()};
+  const {container,rerender}=render(<MenuPreview {...props}/>);
+  const iframe=container.querySelector('iframe')!;const initial=iframe.srcdoc;
+  const post=vi.spyOn(iframe.contentWindow!,'postMessage');fireEvent.load(iframe);
+  const itemImages={one:'data:image/png;base64,iVBORw0KGgo='};
+  rerender(<MenuPreview {...props} assets={{...assets,itemImages}} revision={1}/>);
+  expect(iframe.srcdoc).toBe(initial);
+  expect(post).toHaveBeenLastCalledWith({channel:'chefworld-menu',type:'render',revision:1,draft,assets:{artworkDataUrl:null,itemImages}},'*');
+  expect(post.mock.calls.at(-1)?.[0].assets).not.toHaveProperty('fonts');
+ });
 });
