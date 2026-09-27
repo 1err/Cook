@@ -9,9 +9,10 @@ let mockGuard: { enabled: boolean; callback: (event: any) => void };
 const mockList = jest.fn();
 const mockAccess = jest.fn();
 const mockGenerate = jest.fn();
+const mockDesign = jest.fn();
 const mockCreationAccess = jest.fn();
 const mockCreate = jest.fn();
-const mockApi = { recipes: { list: mockList }, menus: { access: mockCreationAccess, create: mockCreate, artworkAccess: mockAccess, generateArtwork: mockGenerate, artworkStatus: jest.fn(), artworkFile: jest.fn() } };
+const mockApi = { recipes: { list: mockList }, menus: { generateDesign: mockDesign, access: mockCreationAccess, create: mockCreate, artworkAccess: mockAccess, generateArtwork: mockGenerate, artworkStatus: jest.fn(), artworkFile: jest.fn() } };
 const mockTranslate = (key: string, variables?: Record<string, string | number>) => {
   const { MESSAGE_MAP } = require('@cooking/shared');
   return (MESSAGE_MAP.en[key] ?? key).replace(/\{(\w+)\}/g, (_: string, token: string) => String(variables?.[token] ?? ''));
@@ -21,6 +22,7 @@ jest.mock('../../lib/api', () => ({ useApiClient: () => mockApi }));
 jest.mock('../../lib/auth', () => ({ useAuth: () => ({ user: { id: mockAccount } }) }));
 jest.mock('@react-navigation/native', () => ({ UNSTABLE_usePreventRemove: (enabled: boolean, callback: any) => { mockGuard = { enabled, callback }; } }));
 jest.mock('./menuAssets', () => ({ loadMenuFonts: jest.fn(async () => []), artworkResponseDataUrl: jest.fn(async () => 'data:image/png;base64,iVBORw0KGgo=') }));
+jest.mock('./MenuImageNormalizer', () => { const React = require('react'); return { MenuImageNormalizer: React.forwardRef((_props: any, ref: any) => { React.useImperativeHandle(ref, () => ({ normalize: async () => 'data:image/png;base64,iVBORw0KGgo=' })); return null; }) }; });
 jest.mock('./MenuPreview', () => ({ MenuPreview: (props: any) => { mockPreviewProps = props; return null; } }));
 jest.mock('./menuExport', () => ({ shareMenuPdf: jest.fn(), printMenu: jest.fn(), SharingUnavailableError: class extends Error {} }));
 const recipes = [{ id: 'one', title: 'Noodles', description: 'Sesame' }, { id: 'two', title: 'Soup', description: 'Ginger' }];
@@ -100,7 +102,7 @@ test('quota failure preserves template editing and shows a localized error', asy
   await fireEvent.press(screen.getByRole('button', { name: 'Generate artwork' }));
   await waitFor(() => expect(screen.getByText(/used today’s image allowance/)).toBeOnTheScreen());
   expect(screen.getByDisplayValue('Noodles')).toBeOnTheScreen();
-  expect(mockGenerate.mock.calls[0][0]).toEqual({ request_id: expect.any(String), style_id: 'cozy-cafe', instructions: '' });
+  expect(mockGenerate.mock.calls[0][0]).toEqual({ request_id: expect.any(String), style_id: 'cozy-cafe', instructions: '', design: expect.objectContaining({ layout: 'photo-grid' }) });
 });
 
 
@@ -195,4 +197,25 @@ test('admin selection shows the unlimited creation allowance', async () => {
   await fireEvent.press(screen.getByRole('button', {name:'Choose a style'}));
   expect(await screen.findByDisplayValue('Soup')).toBeOnTheScreen();
   expect(mockCreate).toHaveBeenCalledTimes(1);
+});
+
+
+test('accepting an AI design keeps edits made while it runs and reuses the admitted menu', async () => {
+  let complete!: (value: unknown) => void;
+  mockDesign.mockReturnValue(new Promise(resolve => { complete = resolve; }));
+  await render(<MenuMakerScreen {...props()} />);
+  await screen.findByDisplayValue('Noodles');
+  await fireEvent.changeText(screen.getByLabelText(mockTranslate('menu.studio.brief')), 'A pastel cafe');
+  await fireEvent.press(screen.getByRole('button', { name: mockTranslate('menu.studio.generate') }));
+  await fireEvent.changeText(screen.getByLabelText('Dish name'), 'My dinner');
+  await fireEvent.changeText(screen.getByLabelText(mockTranslate('menu.studio.price')), '$12');
+  await fireEvent.changeText(screen.getByLabelText(mockTranslate('menu.studio.badge')), 'Favorite');
+  const { menuDesignForStyle } = require('@cooking/shared');
+  await act(async () => complete(menuDesignForStyle('garden-table')));
+  expect(mockPreviewProps.draft.design.layout).toBe('photo-grid');
+  await fireEvent.press(screen.getByRole('button', { name: mockTranslate('menu.studio.useProposal') }));
+  expect(mockPreviewProps.draft.design.layout).toBe('illustrated-list');
+  expect(mockPreviewProps.draft.items[0]).toMatchObject({ name: 'My dinner', price: '$12', badge: 'Favorite' });
+  expect(mockCreate).toHaveBeenCalledTimes(1);
+  expect(mockDesign.mock.calls[0][0].menu_creation_id).toBe(mockCreate.mock.calls[0][0].request_id);
 });

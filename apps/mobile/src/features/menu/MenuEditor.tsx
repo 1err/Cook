@@ -28,6 +28,8 @@ export function MenuEditor({ draft, onChange }: Props) {
         {items.map((item, index) => <View key={item.recipeId} style={styles.dish}>
           <TextField label={t('menu.editor.dishName')} value={item.name} onChangeText={name => onChange(updateMenuItem(draft, item.recipeId, { name }))} multiline />
           <TextField label={t('menu.editor.description')} value={item.description} onChangeText={description => onChange(updateMenuItem(draft, item.recipeId, { description }))} multiline />
+          <TextField label={t('menu.studio.price')} value={item.price ?? ''} maxLength={40} onChangeText={price => onChange(updateMenuItem(draft, item.recipeId, { price }))} />
+          <TextField label={t('menu.studio.badge')} value={item.badge ?? ''} maxLength={40} onChangeText={badge => onChange(updateMenuItem(draft, item.recipeId, { badge }))} />
           <View style={styles.row}>
             <Button title={`${t('menu.editor.moveUp')} · ${item.name}`} variant="ghost" disabled={index === 0} onPress={() => onChange(moveMenuItem(draft, item.recipeId, section.id, index - 1))} />
             <Button title={`${t('menu.editor.moveDown')} · ${item.name}`} variant="ghost" disabled={index === items.length - 1} onPress={() => onChange(moveMenuItem(draft, item.recipeId, section.id, index + 1))} />

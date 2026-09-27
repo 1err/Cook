@@ -9,9 +9,9 @@ function response(bytes = png, type = 'image/png', size = String(bytes.length)) 
 }
 test('loads all bundled fonts through local assets and file-system bytes', async () => {
   const fonts = await loadMenuFonts();
-  expect(fonts).toHaveLength(5);
+  expect(fonts).toHaveLength(6);
   expect(fonts.find(font => font.family === 'MenuCJK')?.dataUrl).toBe('data:font/otf;base64,YWJj');
-  expect(Asset.fromModule).toHaveBeenCalledTimes(5);
+  expect(Asset.fromModule).toHaveBeenCalledTimes(6);
   expect(FileSystem.readAsStringAsync).toHaveBeenCalledWith('file:///cache/font.ttf', { encoding: 'base64' });
 });
 test('accepts bounded authenticated PNG response bytes without needing Blob/FileReader', async () => {

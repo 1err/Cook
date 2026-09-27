@@ -6,7 +6,7 @@ import { MESSAGE_MAP, type Recipe } from '@cooking/shared';
 import { MenuMaker } from './MenuMaker';
 const mocks = vi.hoisted(() => ({ creationAccess: vi.fn(), create: vi.fn(), access: vi.fn(), generate: vi.fn(), status: vi.fn(), file: vi.fn(), user: { id: 'account-a' } }));
 vi.mock('../../lib/auth', () => ({ useAuth: () => ({ user: mocks.user }) }));
-vi.mock('../../lib/i18n', () => ({ useT: () => (key: string, vars?: Record<string, string | number>) => (MESSAGE_MAP.en[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => String(vars?.[k] ?? '')) }));
+vi.mock('../../lib/i18n', () => { const t = (key: string, vars?: Record<string, string | number>) => (MESSAGE_MAP.en[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => String(vars?.[k] ?? '')); return { useT: () => t, useI18n: () => ({ language: 'en', t }) }; });
 vi.mock('../../lib/api', () => ({ webApiClient: { menus: { access: mocks.creationAccess, create: mocks.create, artworkAccess: mocks.access, generateArtwork: mocks.generate, artworkStatus: mocks.status, artworkFile: mocks.file } } }));
 vi.mock('./menuAssets', () => ({ loadMenuFonts: async () => [], artworkResponseDataUrl: async () => 'data:image/png;base64,iVBORw0KGgo=' }));
 const recipes = [ {id:'one',title:'Apple tart',description:'Warm apple'}, {id:'two',title:'Basil noodles',description:'Fresh basil'}, {id:'three',title:'Coconut cake',description:''} ] as Recipe[];
@@ -31,6 +31,7 @@ describe('menu session', () => {
   expect(screen.getByRole('button',{name:'Choose a style'})).toBeDisabled();
   await user.click(screen.getByRole('button',{name:'Select all recipes'}));
   await user.click(screen.getByRole('button',{name:'Choose a style'}));
+  await user.click(screen.getByRole('tab',{name:/Dishes/})); await user.click(screen.getByText('Apple tart',{selector:'summary > span'}));
   const first = screen.getAllByLabelText('Dish name')[0]; await user.clear(first); await user.type(first,'My special tart');
   await user.click(screen.getByRole('button',{name:'Back to dishes'}));
   await user.click(screen.getByRole('button',{name:'Choose a style'}));
@@ -50,12 +51,12 @@ describe('menu session', () => {
   await user.click(screen.getByRole('button',{name:'Generate artwork'}));
   await waitFor(() => expect(screen.getByRole('button',{name:'Use artwork'})).toBeEnabled());
   expect(screen.queryByText(/Artwork in use/)).not.toBeInTheDocument();
-  await user.click(screen.getByRole('radio',{name:'French bistro'}));
+  await user.click(screen.getByRole('button',{name:'French bistro'}));
   expect(screen.getByText('Artwork created for Cozy cafe')).toBeInTheDocument();
   await user.click(screen.getByRole('button',{name:'Use artwork'}));
   expect(screen.getByText(/Artwork in use/)).toBeInTheDocument();
   expect(mocks.generate.mock.calls[0][0]).toMatchObject({style_id:'cozy-cafe',instructions:''});
-  expect(Object.keys(mocks.generate.mock.calls[0][0]).sort()).toEqual(['instructions','request_id','style_id']);
+  expect(Object.keys(mocks.generate.mock.calls[0][0]).sort()).toEqual(['design','instructions','request_id','style_id']);
  });
 });
 

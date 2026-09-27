@@ -1,10 +1,11 @@
 import type { MenuDraft } from './types';
+import { isMenuDesign } from './design';
 import type { MenuLayout, menuLayoutEngine } from './layout';
 import type { MenuStylePreset } from './styles';
 import type { menuPageSvg } from './pageSvg';
 
 export type MenuFontAsset = {family:string;weight:number;dataUrl:string};
-export type MenuRendererAssets = {fonts:MenuFontAsset[];artworkDataUrl:string|null};
+export type MenuRendererAssets = {fonts:MenuFontAsset[];artworkDataUrl:string|null;itemImages?:Record<string,string>};
 export type MenuRendererCommand =
  | {channel:'chefworld-menu';revision:number;type:'render';draft:MenuDraft;assets?:Partial<MenuRendererAssets>}
  | {channel:'chefworld-menu';revision:number;type:'export-png';pageIndex:number};
@@ -28,6 +29,7 @@ export function menuRendererRuntime(
  const documentFonts=document.fonts as typeof document.fonts & {add(face:FontFace):void;delete(face:FontFace):void};
  let background:HTMLImageElement|null=null;
  let fontFaces:FontFace[]=[];
+ let itemBitmaps=new Map<string,{url:string;image:HTMLImageElement}>();
  const send=(payload:object)=>{
   const value={channel,revision,...payload};
   const native=(window as unknown as {ReactNativeWebView?:{postMessage:(message:string)=>void}}).ReactNativeWebView;
@@ -35,16 +37,16 @@ export function menuRendererRuntime(
   else if(window.parent!==window) window.parent.postMessage(value,'*');
   window.dispatchEvent(new CustomEvent('menu-renderer-message',{detail:value}));
  };
- const validFont=(font:MenuFontAsset)=>font && ['MenuSerif','MenuSans','MenuCJK'].includes(font.family) && [400,600].includes(font.weight) && typeof font.dataUrl==='string' && /^data:(?:font\/(?:otf|ttf|woff2?)|application\/(?:font-woff|x-font-ttf|x-font-opentype));base64,[A-Za-z0-9+/]+={0,2}$/.test(font.dataUrl);
+ const validFont=(font:MenuFontAsset)=>font && ['MenuSerif','MenuSans','MenuCJK','MenuHand'].includes(font.family) && [400,600].includes(font.weight) && (font.family!=='MenuHand'||font.weight===400) && typeof font.dataUrl==='string' && /^data:(?:font\/(?:otf|ttf|woff2?)|application\/(?:font-woff|x-font-ttf|x-font-opentype));base64,[A-Za-z0-9+/]+={0,2}$/.test(font.dataUrl);
  const validImage=(url:unknown)=>url===null || (typeof url==='string' && /^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(url));
- const validDraft=(input:MenuDraft)=>input && typeof input==='object' && Object.prototype.hasOwnProperty.call(styles,input.styleId) && ['title','subtitle'].every(key=>typeof input[key as keyof MenuDraft]==='string') && Array.isArray(input.sections) && input.sections.every(s=>s && typeof s.id==='string' && typeof s.title==='string') && Array.isArray(input.items) && input.items.every(i=>i && ['recipeId','sectionId','name','description'].every(key=>typeof i[key as keyof typeof i]==='string')) && new Set(input.items.map(i=>i.recipeId)).size===input.items.length && new Set(input.sections.map(s=>s.id)).size===input.sections.length && input.items.every(i=>input.sections.some(s=>s.id===i.sectionId));
+ const validDraft=(input:MenuDraft)=>input && typeof input==='object' && (input.design===undefined || isMenuDesign(input.design)) && Object.prototype.hasOwnProperty.call(styles,input.styleId) && ['title','subtitle'].every(key=>typeof input[key as keyof MenuDraft]==='string') && Array.isArray(input.sections) && input.sections.every(s=>s && typeof s.id==='string' && typeof s.title==='string') && Array.isArray(input.items) && input.items.every(i=>i && ['recipeId','sectionId','name','description'].every(key=>typeof i[key as keyof typeof i]==='string') && (i.imageUrl===undefined || i.imageUrl===null || typeof i.imageUrl==='string') && (i.price===undefined || typeof i.price==='string') && (i.badge===undefined || typeof i.badge==='string')) && new Set(input.items.map(i=>i.recipeId)).size===input.items.length && new Set(input.sections.map(s=>s.id)).size===input.sections.length && input.items.every(i=>input.sections.some(s=>s.id===i.sectionId));
  const canvas=document.createElement('canvas');
  const context=canvas.getContext('2d')!;
  const font=(run:{size:number;weight:number;family:string})=>`${run.weight} ${run.size}px "${run.family}", "MenuCJK", sans-serif`;
  const render=async(command:Extract<MenuRendererCommand,{type:'render'}>)=>{
   if(!validDraft(command.draft)) return;
   const nextAssets={...requestedAssets,...command.assets};
-  if(!Array.isArray(nextAssets.fonts) || nextAssets.fonts.length>5 || !nextAssets.fonts.every(validFont) || !validImage(nextAssets.artworkDataUrl)) return;
+  if(!Array.isArray(nextAssets.fonts) || nextAssets.fonts.length>6 || !nextAssets.fonts.every(validFont) || !validImage(nextAssets.artworkDataUrl) || (nextAssets.itemImages!==undefined && (!nextAssets.itemImages || typeof nextAssets.itemImages!=='object' || Array.isArray(nextAssets.itemImages) || !Object.values(nextAssets.itemImages).every(url=>url!==null && validImage(url))))) return;
   requestedAssets=nextAssets;
   revision=command.revision; readyRevision=-1;
   const thisRevision=revision;
@@ -63,9 +65,14 @@ export function menuRendererRuntime(
     image=null;
     if(nextAssets.artworkDataUrl){image=new Image();image.src=nextAssets.artworkDataUrl;await image.decode();}
    }
+   const decodedItems=await Promise.all(Object.entries(nextAssets.itemImages??{}).map(async ([id,url])=>{
+    const cached=itemBitmaps.get(id);
+    if(cached?.url===url)return [id,cached] as const;
+    const image=new Image();image.src=url;await image.decode();return [id,{url,image}] as const;
+   }));
    await document.fonts.ready;
    if(revision!==thisRevision) return;
-   assets=nextAssets; draft=command.draft; background=image;
+   assets=nextAssets; draft=command.draft; background=image; itemBitmaps=new Map(decodedItems);
    layout=layoutEngine(draft,(text,run)=>{context.font=font(run);return context.measureText(text).width;},styles[draft.styleId]);
    const defs=document.getElementById('menu-artwork-def')!;
    defs.replaceChildren();
@@ -73,7 +80,7 @@ export function menuRendererRuntime(
     const node=document.createElementNS('http://www.w3.org/2000/svg','image');
     node.id='menu-artwork';node.setAttribute('href',assets.artworkDataUrl);node.setAttribute('width','816');node.setAttribute('height','1056');node.setAttribute('preserveAspectRatio','xMidYMid slice');defs.append(node);
    }
-   document.getElementById('menu-pages')!.innerHTML=layout.pages.map((page,index)=>`<section class="menu-page" data-page="${index}">${pageSvg(page,styles[draft.styleId],!!background)}</section>`).join('');
+   document.getElementById('menu-pages')!.innerHTML=layout.pages.map((page,index)=>`<section class="menu-page" data-page="${index}">${pageSvg(page,styles[draft.styleId],!!background,assets.itemImages,assets.artworkDataUrl)}</section>`).join('');
    readyRevision=revision; send({type:'ready',layout,pageCount:layout.pages.length});
   } catch { if(revision===thisRevision) send({type:'error',code:'render-failed',message:'Menu rendering failed.'}); }
  };
@@ -84,10 +91,38 @@ export function menuRendererRuntime(
    const output=document.createElement('canvas');output.width=1632;output.height=2112;
    const ctx=output.getContext('2d')!;ctx.scale(2,2);
    const style=styles[draft.styleId];
-   ctx.fillStyle=style.colors.background;ctx.fillRect(0,0,816,1056);
-   if(background){const scale=Math.max(816/background.width,1056/background.height);ctx.drawImage(background,(816-background.width*scale)/2,(1056-background.height*scale)/2,background.width*scale,background.height*scale);}
-   else {const ornament=new Image();ornament.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(style.ornamentSvg);await ornament.decode();if(revision!==thisRevision)return;ctx.drawImage(ornament,0,0,816,1056);}
-   ctx.fillStyle=style.colors.panel;ctx.beginPath();ctx.roundRect(56,56,704,972,6);ctx.fill();
+   const page=layout.pages[pageIndex];
+   const cover=(image:HTMLImageElement,x:number,y:number,width:number,height:number)=>{
+    const scale=Math.max(width/image.width,height/image.height);
+    ctx.save();ctx.beginPath();ctx.rect(x,y,width,height);ctx.clip();
+    ctx.drawImage(image,x+(width-image.width*scale)/2,y+(height-image.height*scale)/2,image.width*scale,image.height*scale);ctx.restore();
+   };
+   if(page.design){
+    ctx.fillStyle=page.design.palette.background;ctx.fillRect(0,0,816,1056);
+    if(background&&page.artwork){const box=page.artwork;ctx.save();ctx.globalAlpha=box.opacity??1;cover(background,box.x,box.y,box.width,box.height);ctx.restore();}
+    for(const graphic of page.graphics??[]){
+     ctx.save();ctx.globalAlpha=graphic.opacity??1;ctx.beginPath();
+     if(graphic.kind==='rect'){
+      ctx.roundRect(graphic.x,graphic.y,graphic.width,graphic.height,graphic.radius??0);ctx.fillStyle=graphic.fill;ctx.fill();
+      if(graphic.stroke){ctx.strokeStyle=graphic.stroke;ctx.lineWidth=graphic.strokeWidth??1;ctx.stroke();}
+     }else if(graphic.kind==='ellipse'){
+      ctx.ellipse(graphic.x,graphic.y,graphic.rx,graphic.ry,0,0,Math.PI*2);ctx.fillStyle=graphic.fill;ctx.fill();
+     }else {ctx.moveTo(graphic.x,graphic.y);ctx.lineTo(graphic.x2,graphic.y2);ctx.strokeStyle=graphic.stroke;ctx.lineWidth=graphic.strokeWidth;ctx.stroke();}
+     ctx.restore();
+    }
+    for(const photo of page.images??[]){
+     const image=itemBitmaps.get(photo.recipeId)?.image;if(!image)continue;
+     ctx.save();ctx.beginPath();
+     if(photo.frame==='circle')ctx.ellipse(photo.x+photo.width/2,photo.y+photo.height/2,photo.width/2,photo.height/2,0,0,Math.PI*2);
+     else ctx.roundRect(photo.x,photo.y,photo.width,photo.height,photo.frame==='rounded'?12:0);
+     ctx.clip();cover(image,photo.x,photo.y,photo.width,photo.height);ctx.restore();
+    }
+   }else {
+    ctx.fillStyle=style.colors.background;ctx.fillRect(0,0,816,1056);
+    if(background)cover(background,0,0,816,1056);
+    else {const ornament=new Image();ornament.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(style.ornamentSvg);await ornament.decode();if(revision!==thisRevision)return;ctx.drawImage(ornament,0,0,816,1056);}
+    ctx.fillStyle=style.colors.panel;ctx.beginPath();ctx.roundRect(56,56,704,972,6);ctx.fill();
+   }
    ctx.textBaseline='alphabetic';
    for(const run of layout.pages[pageIndex].runs){ctx.font=font(run);ctx.fillStyle=run.color;ctx.textAlign=run.align;ctx.fillText(run.text,run.x,run.baseline);}
    if(revision===thisRevision) send({type:'png',pageIndex,dataUrl:output.toDataURL('image/png')});

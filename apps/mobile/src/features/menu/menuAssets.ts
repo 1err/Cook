@@ -8,6 +8,7 @@ const fonts = [
   { module: require('../../../../../packages/shared/assets/menu-fonts/Inter-600.ttf'), family: 'MenuSans', weight: 600, type: 'ttf' },
   { module: require('../../../../../packages/shared/assets/menu-fonts/SourceSerif4-400.ttf'), family: 'MenuSerif', weight: 400, type: 'ttf' },
   { module: require('../../../../../packages/shared/assets/menu-fonts/SourceSerif4-600.ttf'), family: 'MenuSerif', weight: 600, type: 'ttf' },
+  { module: require('../../../../../packages/shared/assets/menu-fonts/ZCOOLKuaiLe-Regular.ttf'), family: 'MenuHand', weight: 400, type: 'ttf' },
   { module: require('../../../../../packages/shared/assets/menu-fonts/NotoSansCJKsc-Regular.otf'), family: 'MenuCJK', weight: 400, type: 'otf' },
 ] as const;
 

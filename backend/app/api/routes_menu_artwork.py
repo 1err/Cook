@@ -24,7 +24,9 @@ from app.db.repo_upload_budget import reserve_upload_allowance, UploadAllowanceE
 from app.db import repo_recipe_images
 from app.db.models import RecipeImageGenerationModel, UserModel
 from app.db.session import get_session
-from app.services.menu_artwork_service import LAYOUT_VERSION, PROMPT_VERSION, generate_menu_artwork
+from app.services.menu_artwork_service import (LAYOUT_VERSION, PROMPT_VERSION, DESIGN_LAYOUT_VERSION,
+                                              DESIGN_PROMPT_VERSION, generate_menu_artwork)
+from app.services.menu_design_service import MenuDesign
 from app.services.menu_artwork_storage import MenuArtworkStorageError, read_menu_artwork, save_menu_artwork
 from app.services.recipe_image_service import ImageGenerationError
 
@@ -37,6 +39,7 @@ class GenerateMenuArtworkBody(BaseModel):
     request_id: UUID
     style_id: Literal["cozy-cafe", "french-bistro", "garden-table", "italian-supper", "chinese-teahouse", "minimal-modern"]
     instructions: str = Field("", max_length=300)
+    design: MenuDesign | None = None
 
 
 def _result(row: RecipeImageGenerationModel, response: Response) -> ImageGenerationResponse:
@@ -140,8 +143,12 @@ async def create_menu_artwork(body: GenerateMenuArtworkBody, request: Request, r
 
 async def _generate_artwork_operation(body, request, response, session, user, deadline, state):
     user_id, auth_version = user.id, user.auth_version
-    data = {**body.model_dump(mode="json", exclude={"request_id"}),
+    # Explicit legacy keys avoid adding design:null to old request hashes.
+    data = {"style_id": body.style_id, "instructions": body.instructions,
             "prompt_version": PROMPT_VERSION, "layout_version": LAYOUT_VERSION}
+    if body.design is not None:
+        data.update(design=body.design.model_dump(mode="json"),
+                    prompt_version=DESIGN_PROMPT_VERSION, layout_version=DESIGN_LAYOUT_VERSION)
     try:
         row, admitted = await repo_recipe_images.begin_generation(
             session, user_id, body.request_id, data, purpose="menu_artwork")
@@ -167,7 +174,10 @@ async def _generate_artwork_operation(body, request, response, session, user, de
     file_url = error_code = None
     try:
         state["provider_started"] = True
-        content = await generate_menu_artwork(body.style_id, body.instructions, ledger_call_id=row.ledger_call_id)
+        options = {"ledger_call_id": row.ledger_call_id}
+        if body.design is not None:
+            options["design"] = body.design
+        content = await generate_menu_artwork(body.style_id, body.instructions, **options)
         await reserve_upload_allowance(str(user_id), len(content))
         receipt = await reserve_owned_image(user_id, auth_version, "image/png", str(request.base_url),
                                             namespace="menu-artwork")

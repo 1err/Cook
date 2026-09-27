@@ -1,4 +1,4 @@
-import type { MenuStyleId } from "@cooking/shared";
+import type { MenuStyleId, MenuDesign } from "@cooking/shared";
 import type { RecipeImageAccess, RecipeImageGeneration } from "./index";
 
 const MENU_ARTWORK_DEADLINE_MS = 90_000;
@@ -8,6 +8,7 @@ export type GenerateMenuArtworkPayload = {
   request_id: string;
   style_id: MenuStyleId;
   instructions: string;
+  design?: MenuDesign;
 };
 
 export type MenuArtworkResult = RecipeImageGeneration;
@@ -107,6 +108,7 @@ export async function resolveMenuArtwork(
     request_id: payload.request_id,
     style_id: payload.style_id,
     instructions: payload.instructions,
+    ...(payload.design === undefined ? {} : { design: JSON.parse(JSON.stringify(payload.design)) as MenuDesign }),
   };
   const operation = new AbortController();
   let operationAbortError: Error | null = null;

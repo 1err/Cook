@@ -21,12 +21,13 @@ export * from "./externalUrl";
 export * from "./menu/types";
 export * from "./menu/draft";
 export * from "./menu/styles";
+export * from "./menu/design";
 export { formatStepDuration } from "./formatStepDuration";
 export { createManualRecipeDraft, isCompleteRecipeDraft } from "./manualRecipe";
 export { SUPPORT_EMAIL, BETA_FEEDBACK_URL, PRIVACY_URL } from "./support";
 
 export { extractSharedVideoUrl } from "./sharedVideoUrl";
 export { layoutMenu } from './menu/layout';
-export type { MenuTextRun, MenuPage, MenuLayout, MenuTextMeasure } from './menu/layout';
+export type { MenuTextRun, MenuPage, MenuLayout, MenuTextMeasure, MenuGraphic, MenuPageImage, MenuArtworkBox } from './menu/layout';
 export { buildMenuPreviewHtml, buildMenuPrintHtml } from './menu/html';
 export type { MenuFontAsset, MenuRendererAssets, MenuRendererCommand, MenuRendererMessage } from './menu/runtime';

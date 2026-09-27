@@ -6,3 +6,9 @@ Pinned upstream commit: `f8d157532fbfaeda587e826d4cd5b21a49186f7c`.
 
 - [NotoSansCJKsc-Regular.otf](https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf): 16437364 bytes; SHA256 `2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b`.
 - [LICENSE](https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/LICENSE): 4301 bytes; SHA256 `6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2`.
+
+ZCOOL KuaiLe supplies playful Chinese and Latin headings. The unmodified font is distributed under the included `ZCOOLKuaiLe-LICENSE` (SIL Open Font License).
+
+- Source: https://github.com/google/fonts/tree/main/ofl/zcoolkuaile
+- Local renderer family: `MenuHand`, regular weight 400.
+- Bundled file: 1514968 bytes; SHA256 `812a6fc1fe54b6d73a419245c32dfeba8aa33104d5be90d1cf6af082007cb71d`.

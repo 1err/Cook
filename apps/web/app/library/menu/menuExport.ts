@@ -44,11 +44,11 @@ export async function printMenu(layout: MenuLayout, draft: MenuDraft, assets: Me
       await Promise.all(assets.fonts.map(font => popup.document.fonts.load(`${font.weight} 20px "${font.family}"`)));
       await popup.document.fonts.ready;
       if (!active) return;
-      if (assets.artworkDataUrl) {
+      await Promise.all([assets.artworkDataUrl, ...Object.values(assets.itemImages ?? {})].filter((url): url is string => !!url).map(async url => {
         const image = new Image();
-        image.src = assets.artworkDataUrl;
+        image.src = url;
         await image.decode();
-      }
+      }));
       if (!active) return;
       await new Promise<void>(resolve => popup.requestAnimationFrame(() => {
         if (!active) { resolve(); return; }

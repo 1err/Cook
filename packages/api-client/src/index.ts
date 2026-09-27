@@ -43,6 +43,7 @@ export async function resolveRecipeDetails(get: (id: string) => Promise<Recipe>,
 }
 
 export * from "./menuArtwork";
+export * from "./menuDesign";
 
 export type MenuCreationAccess = {
   allowed: boolean;
@@ -313,6 +314,12 @@ export function createApiClient(options: ApiClientOptions) {
         }),
     },
     menus: {
+      generateDesign: (payload: import("./menuDesign").GenerateMenuDesignPayload, options?: { signal?: AbortSignal }) =>
+        json<import("@cooking/shared").MenuDesign>("/menus/designs", {
+          method: "POST", body: JSON.stringify(payload), signal: options?.signal,
+        }),
+      recipeImage: (recipeId: string, options?: { signal?: AbortSignal }) =>
+        request(`/menus/recipe-images/${encodeURIComponent(recipeId)}`, { signal: options?.signal }),
       access: (options?: { signal?: AbortSignal }) =>
         json<MenuCreationAccess>("/menus/access", { signal: options?.signal }),
       create: (payload: { request_id: string }, options?: { signal?: AbortSignal }) =>

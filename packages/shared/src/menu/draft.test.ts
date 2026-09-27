@@ -37,7 +37,8 @@ describe("createMenuDraft", () => {
 
     const draft = createMenuDraft(recipes, ["a", "a", "b"], labels);
 
-    expect(draft).toEqual({
+    const { design: _design, ...legacyFields } = draft;
+    expect(legacyFields).toEqual({
       title: "From my kitchen",
       subtitle: "",
       styleId: "cozy-cafe",

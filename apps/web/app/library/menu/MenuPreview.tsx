@@ -12,7 +12,7 @@ export function isMenuRendererMessage(value: unknown, revision: number): value i
   if (message.type === 'png') return Number.isSafeInteger(message.pageIndex) && Number(message.pageIndex) >= 0 && typeof message.dataUrl === 'string' && message.dataUrl.length < 30_000_000 && /^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(message.dataUrl);
   if (message.type !== 'ready' || !message.layout || typeof message.layout !== 'object') return false;
   const layout = message.layout as MenuLayout;
-  return layout.width === 816 && layout.height === 1056 && Array.isArray(layout.pages) && layout.pages.length > 0 && layout.pages.length === message.pageCount && layout.pages.every(page => page && Array.isArray(page.itemStarts) && page.itemStarts.every(id => typeof id === 'string') && Array.isArray(page.runs) && page.runs.every(run => run && typeof run.text === 'string' && typeof run.color === 'string' && ['MenuSerif','MenuSans','MenuCJK'].includes(run.family) && [400,600].includes(run.weight) && ['left','center','right'].includes(run.align) && [run.x,run.baseline,run.size,run.lineHeight].every(Number.isFinite)));
+  return layout.width === 816 && layout.height === 1056 && Array.isArray(layout.pages) && layout.pages.length > 0 && layout.pages.length === message.pageCount && layout.pages.every(page => page && Array.isArray(page.itemStarts) && page.itemStarts.every(id => typeof id === 'string') && Array.isArray(page.runs) && page.runs.every(run => run && typeof run.text === 'string' && typeof run.color === 'string' && ['MenuSerif','MenuSans','MenuCJK','MenuHand'].includes(run.family) && [400,600].includes(run.weight) && ['left','center','right'].includes(run.align) && [run.x,run.baseline,run.size,run.lineHeight].every(Number.isFinite)));
 }
 export type MenuPreviewHandle = { exportPng: (pageIndex: number) => void };
 type Props = { draft: MenuDraft; assets: MenuRendererAssets; revision: number; pageIndex: number; onReady: (layout: MenuLayout, revision: number) => void; onPng: (dataUrl: string, pageIndex: number) => void; onError: (code: 'render-failed' | 'export-failed') => void };
@@ -25,7 +25,7 @@ export const MenuPreview = forwardRef<MenuPreviewHandle, Props>(function MenuPre
   function update() {
     if (!loaded.current || latest.current.revision <= sent.current.revision) return;
     const next = latest.current;
-    const changedAssets = next.assets.fonts !== sent.current.assets.fonts ? next.assets : next.assets.artworkDataUrl !== sent.current.assets.artworkDataUrl ? { artworkDataUrl: next.assets.artworkDataUrl } : undefined;
+    const changedAssets = next.assets.fonts !== sent.current.assets.fonts || next.assets.itemImages !== sent.current.assets.itemImages ? next.assets : next.assets.artworkDataUrl !== sent.current.assets.artworkDataUrl ? { artworkDataUrl: next.assets.artworkDataUrl } : undefined;
     iframe.current?.contentWindow?.postMessage({ channel: 'chefworld-menu', type: 'render', revision: next.revision, draft: next.draft, ...(changedAssets ? { assets: changedAssets } : {}) }, '*');
     sent.current = { revision: next.revision, assets: next.assets };
   }
