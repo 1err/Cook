@@ -10,6 +10,7 @@ import { RequireAuth } from "../components/RequireAuth";
 import { useT } from "../lib/i18n";
 import { useEditorialCopy } from "../lib/editorialCopy";
 import { RecipeCard } from "../components/RecipeCard";
+import { Icon } from "../components/ui/Icon";
 import { PageHeader, PageShell } from "../components/PageShell";
 import { CATEGORY_LABELS, type LibraryFilterId, type RecipeTagSlug } from "../lib/recipeCategories";
 import { getRecipeTags } from "../lib/recipeTags";
@@ -85,7 +86,7 @@ function LibraryPageContent() {
     <>
       <div className={styles.headingRow}>
         <PageHeader title={t("library.title")} description={copy["library.tagline"]} />
-        {view === "mine" ? <button ref={menuTrigger} type="button" className={styles.menuButton} onClick={() => setMenuOpen(true)}>{t("menu.make")}</button> : null}
+        {view === "mine" ? <button ref={menuTrigger} type="button" className={styles.menuButton} onClick={() => setMenuOpen(true)}><Icon name="menuCard" size={18} />{t("menu.make")}</button> : null}
       </div>
 
       <div className={styles.tabs} role="tablist" aria-label={t("library.views")}>
@@ -191,38 +192,40 @@ function LibraryPageContent() {
             const tags = getRecipeTags(recipe).slice(0, 2);
             return (
               <article key={recipe.id} role="listitem" className={styles.publicCard}>
-                <div className={`${styles.publicMedia} ${recipe.thumbnail_url ? "" : styles.publicMediaPlaceholder}`}>
-                  {recipe.thumbnail_url ? (
-                    <img src={recipe.thumbnail_url} alt="" />
-                  ) : (
-                    <span className="cw-display" aria-hidden>CW</span>
-                  )}
-                </div>
-                <div className={styles.publicBody}>
-                  <h2 className="cw-display">{recipe.title}</h2>
-                  <div className={styles.metadata}>
-                  {recipe.total_time_minutes ? <p>{recipe.total_time_minutes} {t("recipe.totalTime.minutesSuffix")}</p> : null}
-                  {tags.length ? (
-                    <div className={styles.publicTags}>
-                      {tags.map((tag) => (
-                        <span key={tag}>{CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}</span>
-                      ))}
-                    </div>
-                  ) : null}
+                <Link href={`/library/public/${encodeURIComponent(recipe.id)}`} className={styles.publicLink}>
+                  <div className={`${styles.publicMedia} ${recipe.thumbnail_url ? "" : styles.publicMediaPlaceholder}`}>
+                    {recipe.thumbnail_url ? (
+                      <img src={recipe.thumbnail_url} alt="" />
+                    ) : (
+                      <span className="cw-display" aria-hidden>CW</span>
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    className={styles.addButton}
-                    onClick={() => handleCopyPublicRecipe(recipe.id)}
-                    disabled={alreadyAdded || copyingId === recipe.id}
-                  >
-                    {alreadyAdded
-                      ? t("library.inYourLibrary")
-                      : copyingId === recipe.id
-                        ? t("library.adding")
-                        : t("library.addToMyLibrary")}
-                  </button>
-                </div>
+                  <div className={styles.publicBody}>
+                    <h2 className="cw-display">{recipe.title}</h2>
+                    <div className={styles.metadata}>
+                      {recipe.total_time_minutes ? <p>{recipe.total_time_minutes} {t("recipe.totalTime.minutesSuffix")}</p> : null}
+                      {tags.length ? (
+                        <div className={styles.publicTags}>
+                          {tags.map((tag) => (
+                            <span key={tag}>{CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </Link>
+                <button
+                  type="button"
+                  className={styles.addButton}
+                  onClick={() => handleCopyPublicRecipe(recipe.id)}
+                  disabled={alreadyAdded || copyingId === recipe.id}
+                >
+                  {alreadyAdded
+                    ? t("library.inYourLibrary")
+                    : copyingId === recipe.id
+                      ? t("library.adding")
+                      : t("library.addToMyLibrary")}
+                </button>
               </article>
             );
           })}

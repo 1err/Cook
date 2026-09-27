@@ -717,6 +717,10 @@
   line-height: 1.05;
 }
 
+.workspaceHeader h1 {
+  font-size: clamp(1.75rem, 2.65vw, 2.2rem);
+}
+
 .workspaceHeader .eyebrow,
 .setupHeader .eyebrow {
   margin-bottom: 0.2rem;
@@ -837,7 +841,7 @@
 }
 
 .stepText {
-  font-size: clamp(1.75rem, 2.7vw, 2.35rem);
+  font-size: clamp(1.5rem, 2.35vw, 2.05rem);
   letter-spacing: -0.018em;
   line-height: 1.18;
 }
@@ -1001,6 +1005,10 @@
     font-size: clamp(1.75rem, 8vw, 2.125rem);
   }
 
+  .workspaceHeader h1 {
+    font-size: clamp(1.5rem, 7vw, 1.875rem);
+  }
+
   .recommendation {
     width: 100%;
     max-width: none;
@@ -1031,7 +1039,7 @@
   }
 
   .stepText {
-    font-size: clamp(1.5rem, 7vw, 1.85rem);
+    font-size: clamp(1.3125rem, 6vw, 1.625rem);
     line-height: 1.2;
   }
 

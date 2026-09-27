@@ -44,7 +44,7 @@ function StepVisual({ index, step }: StepVisualProps) {
   );
 }
 
-export function RecipeTutorial({ recipe }: { recipe: Recipe }) {
+export function RecipeTutorial({ recipe, canEdit = true }: { recipe: Recipe; canEdit?: boolean }) {
   const t = useT();
   const steps = recipe.steps ?? [];
   const editHref = `/recipe/${recipe.id}/tutorial/edit`;
@@ -53,7 +53,7 @@ export function RecipeTutorial({ recipe }: { recipe: Recipe }) {
     <section aria-labelledby="recipe-tutorial-heading" className={styles.tutorial}>
       <div className={styles.tutorialHeader}>
         <h2 className="cw-display" id="recipe-tutorial-heading">{t("recipe.steps")}</h2>
-        {steps.length ? (
+        {steps.length && canEdit ? (
           <Link className={styles.editTutorial} href={editHref}>{t("recipe.tutorial.edit")}</Link>
         ) : null}
       </div>
@@ -73,8 +73,8 @@ export function RecipeTutorial({ recipe }: { recipe: Recipe }) {
         </ol>
       ) : (
         <div className={styles.tutorialEmpty}>
-          <p>{t("recipe.tutorial.noSteps")}</p>
-          <Link href={editHref}>{t("recipe.tutorial.edit")}</Link>
+          <p>{t(canEdit ? "recipe.tutorial.noSteps" : "recipe.tutorial.noPublicSteps")}</p>
+          {canEdit ? <Link href={editHref}>{t("recipe.tutorial.edit")}</Link> : null}
         </div>
       )}
     </section>

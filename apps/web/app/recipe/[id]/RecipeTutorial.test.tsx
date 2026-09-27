@@ -9,6 +9,7 @@ vi.mock("../../lib/i18n", () => ({
       "recipe.steps": "Steps",
       "recipe.tutorial.edit": "Edit tutorial",
       "recipe.tutorial.noSteps": "No tutorial steps yet. Add a step to get started.",
+      "recipe.tutorial.noPublicSteps": "No tutorial steps have been added to this recipe.",
       "recipe.tutorial.duration.aboutMinutes": "About {minutes} min",
       "recipe.tutorial.source.estimated": "AI estimated",
       "recipe.tutorial.attention.passive": "Passive",
@@ -53,6 +54,22 @@ const recipe: Recipe = {
 afterEach(cleanup);
 
 describe("RecipeTutorial", () => {
+  it("shows public tutorial steps without an editing action", () => {
+    render(<RecipeTutorial recipe={recipe} canEdit={false} />);
+
+    expect(screen.getByText("Chop the scallions.")).toBeVisible();
+    expect(screen.getByText("Simmer the sauce until glossy.")).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Edit tutorial" })).not.toBeInTheDocument();
+  });
+
+  it("does not invite editing when a public tutorial is empty", () => {
+    render(<RecipeTutorial recipe={{ ...recipe, steps: [] }} canEdit={false} />);
+
+    expect(screen.getByText("No tutorial steps have been added to this recipe.")).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Edit tutorial" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Add a step to get started/)).not.toBeInTheDocument();
+  });
+
   it("shows real step media first and transparent localized metadata", () => {
     render(<RecipeTutorial recipe={recipe} />);
 

@@ -44,23 +44,35 @@ export function Header() {
   return (
     <header className={styles.header} data-app-shell>
       <div className={styles.inner}>
-        <Link
-          aria-label={t("nav.appName")}
-          className={styles.brand}
-          href={user ? "/library" : "/login"}
-        >
-          <img
-            alt=""
-            aria-hidden="true"
-            className={styles.brandMark}
-            height={38}
-            src="/brand/chef-world-mark.svg"
-            width={38}
-          />
-          <span aria-hidden="true" className={styles.brandName}>
-            {t("nav.appName")}
-          </span>
-        </Link>
+        <div className={styles.brandGroup}>
+          <Link
+            aria-label={t("nav.appName")}
+            className={styles.brand}
+            href={user ? "/library" : "/login"}
+          >
+            <img
+              alt=""
+              aria-hidden="true"
+              className={styles.brandMark}
+              height={38}
+              src="/brand/chef-world-mark.svg"
+              width={38}
+            />
+            <span aria-hidden="true" className={styles.brandName}>
+              {t("nav.appName")}
+            </span>
+          </Link>
+          {!loading && user ? (
+            <Link
+              aria-label={t("nav.home")}
+              className={styles.homeLink}
+              href="/"
+              title={t("nav.home")}
+            >
+              <Icon name="home" size={18} />
+            </Link>
+          ) : null}
+        </div>
 
         {!loading && canUseApp ? (
           <IconButton

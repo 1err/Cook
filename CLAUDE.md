@@ -492,6 +492,9 @@ Their header and footer use the same Home/About/Contact/Privacy/Terms page links
 `apps/web/app/public-site/`. The header and home hero have an `Open app` link to `/library`;
 existing authentication handles signed-in users or redirects guests to login. Public pages
 use English without changing the saved language preference for the bilingual web app.
+The signed-in app header keeps its brand link pointing to `/library` and provides a small
+translated Home icon beside it for returning to `/`. My Library's outlined menu-card
+action remains visually distinct from the primary Add Recipe action.
 Existing `/login` and `/register` routes link back to the public policies. This is not an
 invite-only registration gate. The current contact is `jerryxiang24@gmail.com`.
 
@@ -500,6 +503,12 @@ and app header. A 401 still clears stale private state, but leaves those public 
 readable; protected pages retain their existing login redirect. Public content is rendered
 without waiting for authentication or backend availability. `sitemap.ts` lists only the
 informational pages; robots rules are crawler guidance, not access controls.
+
+Public-library cards open authenticated `/library/public/[id]` previews with ingredients,
+steps, and tips. These use the existing sanitized catalog read and render tutorials with
+`canEdit={false}`; they expose no editing or cooking action for the catalog source.
+Users can save a private copy or open their existing copy. Publishing and source mutation
+permissions remain enforced by the existing backend; this preview adds no API routes.
 
 The public Privacy Notice describes actual storage, AI processing, sharing/copying,
 externally hosted resources, and manual data requests. Keep `public-site/documents.ts`

@@ -99,3 +99,16 @@ test('a public-library navigation link activates the paginated catalog immediate
   expect(screen.queryByRole('heading', { name: 'Private recipe' })).not.toBeInTheDocument();
   expect(catalog).toHaveBeenCalledTimes(1);
 });
+
+test('opens public recipe details before copying, including recipes already saved', async () => {
+  query.value = 'view=public';
+  mine.mockResolvedValue(page('Private recipe'));
+  catalog.mockResolvedValue(page('Public recipe', null, true));
+  render(<LibraryPage />);
+
+  const heading = await screen.findByRole('heading', { name: 'Public recipe' });
+  expect(heading.closest('a')).toHaveAttribute('href', '/library/public/Public%20recipe');
+  const copyButton = screen.getByRole('button', { name: 'library.inYourLibrary' });
+  expect(copyButton).toBeDisabled();
+  expect(copyButton.closest('a')).toBeNull();
+});

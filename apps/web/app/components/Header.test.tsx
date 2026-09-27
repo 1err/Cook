@@ -23,6 +23,7 @@ const messages: Record<string, string> = {
   "nav.cachePreview": "Store cache",
   "nav.closeMenu": "Close navigation menu",
   "nav.cook": "Cook",
+  "nav.home": "Home",
   "nav.library": "Library",
   "nav.logOut": "Log out",
   "nav.openMenu": "Open navigation menu",
@@ -80,6 +81,24 @@ test("uses the Chef World logo mark in the brand link", () => {
   expect(brand.querySelector("img")).toHaveAttribute("src", "/brand/chef-world-mark.svg");
   expect(brand).not.toHaveTextContent("CW");
 });
+
+test.each([["en", "Home"], ["zh", "首页"]])(
+  "offers a translated homepage shortcut while keeping the logo in Library (%s)",
+  (language, homeLabel) => {
+    mockUseI18n.mockReturnValue({
+      language,
+      setLanguage: vi.fn(),
+      t: (key: string, vars?: Record<string, string | number>) =>
+        key === "nav.home" ? homeLabel : t(key, vars),
+    });
+    render(<Header />);
+
+    expect(screen.getByRole("link", { name: "Chef World" })).toHaveAttribute("href", "/library");
+    const homeLink = screen.getByRole("link", { name: homeLabel });
+    expect(homeLink).toHaveAttribute("href", "/");
+    expect(homeLink).toHaveAttribute("title", homeLabel);
+  },
+);
 
 test("moves settings, language, admin tools, and logout into the account menu", async () => {
   const user = userEvent.setup();

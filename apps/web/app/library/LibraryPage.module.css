@@ -111,6 +111,26 @@
   box-shadow: none;
 }
 
+.publicLink {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.publicLink:hover h2 {
+  color: var(--cw-color-action);
+}
+
+.publicLink:focus-visible {
+  outline: 2px solid var(--cw-color-action);
+  outline-offset: -2px;
+  border-radius: 12px;
+}
+
+.publicCard > .addButton {
+  align-self: flex-start;
+}
+
 .publicMedia {
   border-radius: 12px;
   overflow: hidden;
@@ -305,5 +325,7 @@
   .addButton { width: 100%; font-size: 0.8125rem; padding-inline: 0.4rem; }
 }
 .headingRow { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }
-.menuButton { flex-shrink:0; margin-top:.1rem; padding:.75rem 1.1rem; border:1px solid var(--cw-color-action); border-radius:8px; background:var(--cw-color-action); color:var(--cw-color-on-action); font:inherit; font-size:.85rem; font-weight:700; cursor:pointer; }
+.menuButton { display:inline-flex; align-items:center; justify-content:center; gap:.5rem; flex-shrink:0; min-height:44px; margin-top:.1rem; padding:.6rem .85rem; border:1px solid var(--cw-color-divider); border-radius:8px; background:transparent; color:var(--cw-color-ink); font:inherit; font-size:.85rem; font-weight:500; cursor:pointer; }
+.menuButton:hover:not(:disabled) { background:var(--cw-color-subtle-surface); border-color:var(--cw-color-muted-ink); }
+.menuButton:focus-visible { outline:2px solid var(--cw-color-action); outline-offset:3px; }
 .menuButton:disabled { opacity:.5; cursor:default; }
