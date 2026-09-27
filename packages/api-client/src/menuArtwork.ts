@@ -2,6 +2,7 @@ import type { MenuStyleId, MenuDesign } from "@cooking/shared";
 import type { RecipeImageAccess, RecipeImageGeneration } from "./index";
 
 const MENU_ARTWORK_DEADLINE_MS = 90_000;
+const FULL_MENU_DEADLINE_MS = 240_000;
 const MENU_ARTWORK_POLL_MS = 2_000;
 
 export type GenerateMenuArtworkPayload = {
@@ -11,12 +12,24 @@ export type GenerateMenuArtworkPayload = {
   design?: MenuDesign;
 };
 
+/** One complete generated menu. This request ID also admits the daily creation. */
+export type GenerateFullMenuPayload = {
+  request_id: string;
+  mode: "full-menu-v1";
+  title?: string;
+  brief?: string;
+  recipes: Array<{ recipe_id: string; name: string }>;
+};
+
+export type MenuArtworkRequestPayload = GenerateMenuArtworkPayload | GenerateFullMenuPayload;
+export const FULL_MENU_RECIPE_LIMIT = 24;
+
 export type MenuArtworkResult = RecipeImageGeneration;
 
 export interface MenuArtworkClient {
   artworkAccess(options?: { signal?: AbortSignal }): Promise<RecipeImageAccess>;
   generateArtwork(
-    payload: GenerateMenuArtworkPayload,
+    payload: MenuArtworkRequestPayload,
     options?: { signal?: AbortSignal },
   ): Promise<MenuArtworkResult>;
   artworkStatus(
@@ -101,10 +114,16 @@ function isDefinitiveRejection(error: unknown): boolean {
 
 export async function resolveMenuArtwork(
   client: MenuArtworkClient,
-  payload: GenerateMenuArtworkPayload,
+  payload: MenuArtworkRequestPayload,
   options: { mode: "generate" | "check"; signal: AbortSignal },
 ): Promise<MenuArtworkResult> {
-  const originalPayload: GenerateMenuArtworkPayload = {
+  const originalPayload: MenuArtworkRequestPayload = "mode" in payload ? {
+    request_id: payload.request_id,
+    mode: payload.mode,
+    ...(payload.title === undefined ? {} : { title: payload.title }),
+    ...(payload.brief === undefined ? {} : { brief: payload.brief }),
+    recipes: payload.recipes.map(recipe => ({ recipe_id: recipe.recipe_id, name: recipe.name })),
+  } : {
     request_id: payload.request_id,
     style_id: payload.style_id,
     instructions: payload.instructions,
@@ -123,7 +142,7 @@ export async function resolveMenuArtwork(
   else options.signal.addEventListener("abort", abortFromCaller, { once: true });
   const deadline = setTimeout(
     () => abortOperation("Menu artwork request timed out"),
-    MENU_ARTWORK_DEADLINE_MS,
+    "mode" in originalPayload ? FULL_MENU_DEADLINE_MS : MENU_ARTWORK_DEADLINE_MS,
   );
   const requestOptions = { signal: operation.signal };
 

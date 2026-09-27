@@ -1,11 +1,11 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
-import { shareMenuPdf, printMenu, SharingUnavailableError } from './menuExport';
+import { shareMenuPdf, shareMenuPng, printMenu, SharingUnavailableError } from './menuExport';
 
 jest.mock('expo-print', () => ({ printToFileAsync: jest.fn(), printAsync: jest.fn() }), { virtual: true });
 jest.mock('expo-sharing', () => ({ isAvailableAsync: jest.fn(), shareAsync: jest.fn() }), { virtual: true });
-jest.mock('expo-file-system/legacy', () => ({ cacheDirectory: 'file:///cache/', deleteAsync: jest.fn(async () => undefined) }));
+jest.mock('expo-file-system/legacy', () => ({ cacheDirectory: 'file:///cache/', EncodingType: { Base64: 'base64' }, writeAsStringAsync: jest.fn(async () => undefined), deleteAsync: jest.fn(async () => undefined) }));
 const html = '<html><img src="data:image/png;base64,iVBORw0KGgo="><p>家常菜单</p></html>';
 beforeEach(() => {
   jest.clearAllMocks();
@@ -42,4 +42,33 @@ test('never deletes non-cache files even if a native module returns one', async 
   await expect(shareMenuPdf(html, 3)).rejects.toThrow();
   expect(FileSystem.deleteAsync).not.toHaveBeenCalled();
   expect(Sharing.shareAsync).not.toHaveBeenCalled();
+});
+
+const png = 'data:image/png;base64,iVBORw0KGgo=';
+test('shares the exact PNG bytes from a unique owned cache file and cleans it after sharing', async () => {
+  await shareMenuPng(png, new AbortController().signal);
+  const [uri, bytes, options] = (FileSystem.writeAsStringAsync as jest.Mock).mock.calls[0];
+  expect(uri).toMatch(/^file:\/\/\/cache\/menu-[a-f0-9-]+\.png$/);
+  expect(bytes).toBe('iVBORw0KGgo='); expect(options).toEqual({ encoding: 'base64' });
+  expect(Sharing.shareAsync).toHaveBeenCalledWith(uri, { mimeType: 'image/png', UTI: 'public.png' });
+  expect(FileSystem.deleteAsync).toHaveBeenCalledWith(uri, { idempotent: true });
+});
+test('PNG failure cleans only the file allocated for that share', async () => {
+  (Sharing.shareAsync as jest.Mock).mockRejectedValueOnce(new Error('cancelled'));
+  await expect(shareMenuPng(png, new AbortController().signal)).rejects.toThrow('cancelled');
+  const uri = (FileSystem.writeAsStringAsync as jest.Mock).mock.calls[0][0];
+  expect(FileSystem.deleteAsync).toHaveBeenCalledWith(uri, { idempotent: true });
+});
+test('unmount or account cancellation during the write prevents opening native share', async () => {
+  const controller = new AbortController();
+  (FileSystem.writeAsStringAsync as jest.Mock).mockImplementationOnce(async () => controller.abort());
+  await expect(shareMenuPng(png, controller.signal)).rejects.toThrow();
+  expect(Sharing.shareAsync).not.toHaveBeenCalled(); expect(FileSystem.deleteAsync).toHaveBeenCalledTimes(1);
+});
+test('invalid or cancelled PNG share never writes a file', async () => {
+  const controller = new AbortController(); controller.abort();
+  await expect(shareMenuPng(png, controller.signal)).rejects.toThrow();
+  await expect(shareMenuPng('https://example.com/not-owned.png', new AbortController().signal)).rejects.toThrow();
+  await expect(shareMenuPng('data:image/png;base64,aGVsbG8=', new AbortController().signal)).rejects.toThrow();
+  expect(FileSystem.writeAsStringAsync).not.toHaveBeenCalled();
 });

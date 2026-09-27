@@ -53,12 +53,14 @@ async def generate_recipe_image(recipe: dict, *, ledger_call_id=None) -> bytes:
                               size="1024x1024", ledger_call_id=ledger_call_id)
 
 
-async def generate_png(client, prompt: str, *, size: str, ledger_call_id) -> bytes:
+async def generate_png(client, prompt: str, *, size: str, ledger_call_id,
+                       timeout_seconds: float | None = None) -> bytes:
     """One reserved provider call; reconcile even invalid images and cancellation."""
     if client is None or ledger_call_id is None:
         raise ImageGenerationError("unavailable", "AI images are temporarily unavailable.")
+    timeout = settings.OPENAI_IMAGE_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
     try:
-        async with asyncio.timeout(settings.OPENAI_IMAGE_TIMEOUT_SECONDS):
+        async with asyncio.timeout(timeout):
             response = await client.images.generate(
                 model=settings.OPENAI_IMAGE_MODEL,
                 prompt=prompt,
@@ -66,7 +68,7 @@ async def generate_png(client, prompt: str, *, size: str, ledger_call_id) -> byt
                 size=size,
                 quality="low",
                 extra_body={"output_format": "png"},
-                timeout=settings.OPENAI_IMAGE_TIMEOUT_SECONDS,
+                timeout=timeout,
             )
         usage = getattr(response, 'usage', None)
         # SDK 1.55 preserves this newer response field as a dict. Reconcile paid

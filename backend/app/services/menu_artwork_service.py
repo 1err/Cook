@@ -1,4 +1,4 @@
-"""Generate decoration only; recipe and menu text never enters this service."""
+"""Versioned menu image prompts: legacy decoration or a complete illustrated menu."""
 from __future__ import annotations
 
 import json
@@ -6,6 +6,7 @@ import json
 from app.core.llm import get_openai_client
 from app.services.recipe_image_service import ImageGenerationError, generate_png
 from app.services.menu_design_service import MenuDesign
+from app.services.full_menu import full_menu_prompt, FULL_MENU_PROVIDER_TIMEOUT_SECONDS
 
 PROMPT_VERSION = "menu-artwork-v1"
 LAYOUT_VERSION = "letter-v1"
@@ -62,6 +63,8 @@ def menu_design_artwork_prompt(style_id: str, instructions: str, design: MenuDes
 
 
 def menu_artwork_input_bound(data: dict) -> int:
+    if data.get("mode") == "full-menu-v1":
+        return len(full_menu_prompt(data).encode("utf-8")) + 1024
     design_data = data.get("design")
     prompt = (menu_design_artwork_prompt(data["style_id"], data.get("instructions", ""), MenuDesign.model_validate(design_data))
               if design_data is not None else menu_artwork_prompt(data["style_id"], data.get("instructions", "")))
@@ -71,3 +74,9 @@ def menu_artwork_input_bound(data: dict) -> int:
 async def generate_menu_artwork(style_id: str, instructions: str, *, ledger_call_id, design: MenuDesign | None = None) -> bytes:
     prompt = menu_design_artwork_prompt(style_id, instructions, design) if design is not None else menu_artwork_prompt(style_id, instructions)
     return await generate_png(get_openai_client(), prompt, size="1024x1536", ledger_call_id=ledger_call_id)
+
+
+async def generate_full_menu(data: dict, *, ledger_call_id) -> bytes:
+    return await generate_png(get_openai_client(), full_menu_prompt(data), size="1024x1536",
+                              ledger_call_id=ledger_call_id,
+                              timeout_seconds=FULL_MENU_PROVIDER_TIMEOUT_SECONDS)

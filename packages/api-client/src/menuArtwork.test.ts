@@ -3,6 +3,7 @@ import { ApiError } from "./index";
 import {
   resolveMenuArtwork,
   type GenerateMenuArtworkPayload,
+  type GenerateFullMenuPayload,
   type MenuArtworkClient,
   type MenuArtworkResult,
 } from "./menuArtwork";
@@ -38,6 +39,51 @@ function mockClient(overrides: Partial<MenuArtworkClient> = {}): MenuArtworkClie
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+test('whole-menu recovery preserves the original title, brief, and ordered recipe names', async () => {
+  let missing!: (error: unknown) => void;
+  const input: GenerateFullMenuPayload = {
+    request_id: 'whole-menu-original', mode: 'full-menu-v1', title: '我家的小菜单',
+    brief: 'Cream paper and little tomatoes',
+    recipes: [{ recipe_id: 'dish-1', name: '番茄炒蛋' }, { recipe_id: 'dish-2', name: '油条' }],
+  };
+  const client = mockClient({
+    artworkStatus: vi.fn().mockImplementation(() => new Promise((_, reject) => { missing = reject; })),
+    generateArtwork: vi.fn().mockResolvedValue({ ...completed, request_id: 'whole-menu-original' }),
+  });
+  const request = resolveMenuArtwork(client, input, { mode: 'check', signal: new AbortController().signal });
+  input.title = 'Changed title'; input.brief = 'Changed brief';
+  input.recipes[0].name = 'Changed dish'; input.recipes.reverse();
+  missing(new ApiError('missing', 404, 'not_found'));
+  await expect(request).resolves.toMatchObject({ request_id: 'whole-menu-original' });
+  expect(client.generateArtwork).toHaveBeenCalledWith({
+    request_id: 'whole-menu-original', mode: 'full-menu-v1', title: '我家的小菜单',
+    brief: 'Cream paper and little tomatoes',
+    recipes: [{ recipe_id: 'dish-1', name: '番茄炒蛋' }, { recipe_id: 'dish-2', name: '油条' }],
+  }, { signal: expect.any(AbortSignal) });
+});
+
+test('whole-menu generation allows a longer bounded wait without creating another request', async () => {
+  vi.useFakeTimers();
+  const input: GenerateFullMenuPayload = {
+    request_id: 'whole-menu-slow', mode: 'full-menu-v1', recipes: [{ recipe_id: 'dish-1', name: 'Noodles' }],
+  };
+  const client = mockClient({
+    generateArtwork: vi.fn().mockResolvedValue({ ...pending, request_id: input.request_id }),
+    artworkStatus: vi.fn().mockResolvedValue({ ...pending, request_id: input.request_id }),
+  });
+  let settled = false;
+  const request = resolveMenuArtwork(client, input, { mode: 'generate', signal: new AbortController().signal });
+  const result = request.then(() => { settled = true; return null; }, error => { settled = true; return error; });
+  await vi.advanceTimersByTimeAsync(140_000);
+  expect(settled).toBe(false);
+  await vi.advanceTimersByTimeAsync(100_000);
+  expect(await result).toMatchObject({ name: 'AbortError' });
+  expect(client.generateArtwork).toHaveBeenCalledOnce();
+  const polls = vi.mocked(client.artworkStatus).mock.calls.length;
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(client.artworkStatus).toHaveBeenCalledTimes(polls);
 });
 
 describe("resolveMenuArtwork", () => {

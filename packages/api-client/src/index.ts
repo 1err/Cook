@@ -328,7 +328,7 @@ export function createApiClient(options: ApiClientOptions) {
         }),
       artworkAccess: (options?: { signal?: AbortSignal }) =>
         json<RecipeImageAccess>("/menus/artwork/access", { signal: options?.signal }),
-      generateArtwork: (payload: import("./menuArtwork").GenerateMenuArtworkPayload, options?: { signal?: AbortSignal }) =>
+      generateArtwork: (payload: import("./menuArtwork").MenuArtworkRequestPayload, options?: { signal?: AbortSignal }) =>
         json<import("./menuArtwork").MenuArtworkResult>("/menus/artwork", {
           method: "POST", body: JSON.stringify(payload), signal: options?.signal,
         }),

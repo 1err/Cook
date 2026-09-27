@@ -1,29 +1,21 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { UNSTABLE_usePreventRemove as usePreventRemove } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { buildMenuPrintHtml, createMenuDraft, reconcileMenuSelection, menuDesignForStyle, resolveMenuDesign, type MenuDraft, type MenuFontAsset, type MenuLayout, type MenuRecipe } from '@cooking/shared';
+import { FULL_MENU_RECIPE_LIMIT } from '@cooking/api-client';
+import type { MenuRecipe } from '@cooking/shared';
 import { Button, TextField } from '../../components';
 import { useApiClient } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useT } from '../../lib/i18n';
 import { colors, radii, spacing, typography } from '../../theme';
 import type { LibraryStackParamList } from '../../navigation/types';
-import { useMenuCreation } from './useMenuCreation';
-import { MenuDesignControls } from './MenuDesignControls';
-import { useMenuDesign } from './useMenuDesign';
-import { MenuImageNormalizer, type MenuImageNormalizerHandle } from './MenuImageNormalizer';
-import { useMenuPhotos } from './useMenuPhotos';
-import { MenuEditor } from './MenuEditor';
-import { MenuPreview } from './MenuPreview';
-import { MenuStylePicker } from './MenuStylePicker';
-import { loadMenuFonts } from './menuAssets';
-import { printMenu, shareMenuPdf, SharingUnavailableError } from './menuExport';
-import { menuArtworkErrorKey, useMenuArtwork } from './useMenuArtwork';
+import { shareMenuPng, SharingUnavailableError } from './menuExport';
+import { useFullMenu } from './useFullMenu';
 
 type Props = NativeStackScreenProps<LibraryStackParamList, 'MenuMaker'>;
 
-/** A new account mounts a fresh session and cannot inherit even the old route's IDs. */
+/** Account changes destroy this private session, including its original route selection. */
 export function MenuMakerScreen(props: Props) {
   const { user } = useAuth();
   const initialAccount = useRef(user?.id);
@@ -31,208 +23,110 @@ export function MenuMakerScreen(props: Props) {
 }
 
 function MenuSession({ navigation, initialIds }: Props & { initialIds: string[] }) {
-  const t = useT(); const api = useApiClient(); const artwork = useMenuArtwork(); const creation = useMenuCreation(); const designProposal = useMenuDesign();
+  const t = useT(); const api = useApiClient(); const generation = useFullMenu();
   const active = useRef(true);
-  const imageNormalizer = useRef<MenuImageNormalizerHandle>(null);
-  const normalizePhoto = useCallback((dataUrl: string, signal: AbortSignal) => imageNormalizer.current?.normalize(dataUrl, signal) ?? Promise.reject(new Error('Photo converter unavailable')), []);
+  const sharingOperation = useRef<AbortController | null>(null);
+  const [title, setTitle] = useState('');
   const [brief, setBrief] = useState('');
+  const [search, setSearch] = useState('');
   const [recipes, setRecipes] = useState<MenuRecipe[]>([]);
-  const [selected, setSelected] = useState<string[]>(initialIds);
-  const [draft, setDraft] = useState<MenuDraft | null>(null);
-  const [selecting, setSelecting] = useState(true);
+  const [selected, setSelected] = useState<string[]>(() => [...new Set(initialIds)]);
   const [loading, setLoading] = useState(true);
   const [loadAttempt, setLoadAttempt] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [fonts, setFonts] = useState<MenuFontAsset[] | null>(null);
-  const [fontAttempt, setFontAttempt] = useState(0);
-  const [artworkDataUrl, setArtworkDataUrl] = useState<string | null>(null);
-  const [revision, setRevision] = useState(1);
-  const [ready, setReady] = useState<{ layout: MenuLayout; revision: number } | null>(null);
-  const [previewError, setPreviewError] = useState(false);
-  const [previewAttempt, setPreviewAttempt] = useState(0);
-  const [pageIndex, setPageIndex] = useState(0);
+  const [loadError, setLoadError] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const photos = useMenuPhotos(draft?.items ?? [], normalizePhoto);
-  useEffect(() => { setRevision(value => value + 1); setReady(null); }, [photos.itemImages]);
-  const revisionRef = useRef(revision); revisionRef.current = revision;
-  const assets = useMemo(() => ({ fonts: fonts ?? [], artworkDataUrl, itemImages: photos.itemImages }), [fonts, artworkDataUrl, photos.itemImages]);
-  const renderDraft = useMemo(() => draft ? { ...draft, items: draft.items.map(item => ({ ...item, imageUrl: Object.prototype.hasOwnProperty.call(photos.itemImages, item.recipeId) ? 'menu-photo' : null })) } : null, [draft, photos.itemImages]);
-  const initialDesign = (value: MenuDraft): MenuDraft => ({ ...value, design: { ...resolveMenuDesign(value), show_descriptions: false } });
-  const update = (next: MenuDraft) => { setDraft(next); setRevision(value => value + 1); setReady(null); setDirty(true); setPreviewError(false); };
+  const locked = generation.busy || generation.recoverable;
+  const missing = selected.some(id => !recipes.some(recipe => recipe.id === id));
+  const tooMany = selected.length > FULL_MENU_RECIPE_LIMIT;
+  const valid = selected.length > 0 && !missing && !tooMany && !loadError;
+  const visible = useMemo(() => recipes.filter(recipe => recipe.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())), [recipes, search]);
+  const reset = generation.access?.resets_at ? new Date(generation.access.resets_at).toLocaleString() : '';
 
-  usePreventRemove(dirty || exporting || artwork.busy || creation.busy || designProposal.busy, ({ data }) => {
+  usePreventRemove(dirty || generation.busy || generation.recoverable || !!generation.result || exporting, ({ data }) => {
     Alert.alert(t('menu.unsaved.title'), t('menu.unsaved.sessionBody'), [
       { text: t('menu.unsaved.stay'), style: 'cancel' },
       { text: t('menu.unsaved.leave'), style: 'destructive', onPress: () => navigation.dispatch(data.action) },
     ]);
   });
   useLayoutEffect(() => { navigation.setOptions({ title: t('menu.make'), headerBackButtonMenuEnabled: false }); }, [navigation, t]);
-  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
+  useEffect(() => { active.current = true; return () => { active.current = false; sharingOperation.current?.abort(); }; }, []);
   useEffect(() => {
-    let current = true;
-    setLoading(true); setError(null);
-    void api.recipes.list().then(async rows => {
-      if (!current) return;
-      setRecipes(rows);
-      if (initialIds.length) {
-        try { const next = initialDesign(createMenuDraft(rows, initialIds, { title: t('menu.defaultTitle'), section: t('menu.defaultSection') })); if (await creation.ensure()) { if (!current) return; update(next); setSelecting(false); } }
-        catch { setError('menu.selection.missingRecipes'); setSelecting(true); }
-      }
-    }).catch(() => { if (current) setError('menu.selection.loadFailed'); }).finally(() => { if (current) setLoading(false); });
+    let current = true; setLoading(true); setLoadError(false);
+    void api.recipes.list().then(rows => { if (current) setRecipes(rows); })
+      .catch(() => { if (current) setLoadError(true); }).finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
-    // Labels and route selection are an opening snapshot; changing language does not reset edits.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, loadAttempt]);
-  useEffect(() => {
-    let current = true; setPreviewError(false);
-    void loadMenuFonts().then(value => { if (current) setFonts(value); }).catch(() => { if (current) setPreviewError(true); });
-    return () => { current = false; };
-  }, [fontAttempt]);
-  useEffect(() => {
-    if (!draft || selecting || ready?.revision === revision || previewError) return;
-    const timer = setTimeout(() => setPreviewError(true), 30_000);
-    return () => clearTimeout(timer);
-  }, [draft, selecting, ready, revision, previewError]);
 
-  const continueEditing = async () => {
-    if (!selected.length) return;
-    try {
-      const next = draft ? reconcileMenuSelection(draft, recipes, selected) : initialDesign(createMenuDraft(recipes, selected, { title: t('menu.defaultTitle'), section: t('menu.defaultSection') }));
-      if (await creation.ensure()) { if (!active.current) return; update(next); setSelecting(false); setError(null); setPageIndex(0); }
-    } catch { setError('menu.selection.missingRecipes'); }
-  };
-  const toggle = (id: string) => { setSelected(value => value.includes(id) ? value.filter(item => item !== id) : [...value, id]); setError(null); };
-  const valid = !!draft && !!draft.title.trim() && draft.items.length > 0 && draft.items.every(item => !!item.name.trim());
-  const canExport = valid && ready?.revision === revision && !!fonts && !previewError && !photos.loading;
-  const exportPdf = async () => {
-    if (!canExport || !ready || !draft || !renderDraft || exporting) return;
-    setExporting(true); setError(null);
-    try {
-      const html = buildMenuPrintHtml(ready.layout, renderDraft, assets);
-      try {
-        await shareMenuPdf(html, ready.layout.pages.length);
-      } catch (failure) {
-        if (!active.current) return;
-        if (failure instanceof SharingUnavailableError) {
-          Alert.alert(t('menu.export.printPdf'), t('menu.export.sharingUnavailable'), [
-            { text: t('menu.unsaved.stay'), style: 'cancel' },
-            { text: t('menu.export.printPdf'), onPress: () => {
-              if (!active.current) return;
-              setExporting(true);
-              void printMenu(html)
-                .catch(() => { if (active.current) setError('menu.export.failed'); })
-                .finally(() => { if (active.current) setExporting(false); });
-            } },
-          ]);
-        } else setError('menu.export.failed');
-      }
-    } catch { if (active.current) setError('menu.export.failed'); }
-    finally { if (active.current) setExporting(false); }
+  const select = (ids: string[]) => { if (!locked) { setSelected(ids); setDirty(true); } };
+  const share = async () => {
+    if (!generation.result || sharingOperation.current) return;
+    const controller = new AbortController(); sharingOperation.current = controller;
+    setExporting(true); setExportError(null);
+    try { await shareMenuPng(generation.result, controller.signal); }
+    catch (failure) { if (active.current && !controller.signal.aborted) setExportError(failure instanceof SharingUnavailableError ? 'menu.simple.sharingUnavailable' : 'menu.export.failed'); }
+    finally { if (sharingOperation.current === controller) sharingOperation.current = null; if (active.current) setExporting(false); }
   };
 
   if (loading) return <View style={styles.loading}><ActivityIndicator color={colors.primary} /></View>;
   return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={100}>
-    <MenuImageNormalizer ref={imageNormalizer} />
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      {error && <Text accessibilityRole="alert" style={styles.error}>{t(error)}</Text>}
-      {selecting ? <View>
-        <Text style={styles.title}>{t('menu.selection.title')}</Text>
-        <Text style={styles.hint}>{t('menu.selection.description')}</Text>
-        <Text style={styles.hint}>{t(creation.access?.is_admin ? 'menu.creation.adminUnlimited' : 'menu.creation.dailyAllowance')}</Text>
-        {creation.access && !creation.access.is_admin && creation.access.allowed && <Text style={styles.hint}>{t('menu.creation.remaining', { remaining: creation.access.remaining ?? 0, limit: creation.access.daily_limit ?? 1 })}</Text>}
-        {(creation.errorKey || creation.access?.allowed === false) && !creation.admitted && <Text accessibilityRole="alert" style={styles.error}>{t(creation.errorKey ?? 'menu.creation.limitReached', { reset: creation.reset })}</Text>}
-        {(creation.errorKey === 'menu.creation.unavailable' || creation.access?.allowed === false && !creation.admitted) && <Button title={t('menu.retry')} onPress={() => void creation.refresh()} />}
-
-        {error === 'menu.selection.loadFailed' && <Button title={t('menu.retry')} onPress={() => setLoadAttempt(value => value + 1)} />}
-        <View style={styles.row}>
-          <Button title={t('menu.selection.selectAll')} variant="secondary" disabled={!recipes.length} onPress={() => { setSelected(recipes.map(recipe => recipe.id)); setError(null); }} />
-          <Button title={t('menu.selection.clear')} variant="ghost" onPress={() => { setSelected([]); setError(null); }} />
+      <Text style={styles.title}>{t('menu.make')}</Text>
+      <Text style={styles.hint}>{t('menu.simple.intro')}</Text>
+      <View style={styles.picker}>
+        <TextField accessibilityLabel={t('library.searchAria')} placeholder={t('library.searchPlaceholder')} value={search} onChangeText={setSearch} leadingIcon="search" />
+        <View style={styles.selectionBar}>
+          <Text style={styles.count}>{t('menu.selection.count', { count: selected.length })}</Text>
+          <Button title={t('menu.selection.selectAll')} variant="ghost" size="sm" disabled={locked || !recipes.length} onPress={() => select(recipes.map(recipe => recipe.id))} />
+          <Button title={t('menu.selection.clear')} variant="ghost" size="sm" disabled={locked || !selected.length} onPress={() => select([])} />
         </View>
-        <Text accessibilityLiveRegion="polite" style={styles.hint}>{t('menu.selection.count', { count: selected.length })}</Text>
-        {!recipes.length && error !== 'menu.selection.loadFailed' && <Text style={styles.hint}>{t('menu.selection.empty')}</Text>}
-        {recipes.map(recipe => <Pressable key={recipe.id} accessibilityRole="checkbox" accessibilityState={{ checked: selected.includes(recipe.id) }} accessibilityLabel={t('menu.selection.selectDish', { name: recipe.title })} onPress={() => toggle(recipe.id)} style={styles.recipe}>
-          <Text style={styles.check}>{selected.includes(recipe.id) ? '☑' : '☐'}</Text><Text style={styles.recipeName}>{recipe.title}</Text>
-        </Pressable>)}
-        <Button title={t(creation.busy ? 'menu.creation.creating' : 'menu.selection.continue')} disabled={!selected.length || !creation.canContinue} onPress={() => void continueEditing()} />
-      </View> : draft && <View>
-        <Button title={t('menu.editor.back')} variant="ghost" onPress={() => { setSelected(draft.items.map(item => item.recipeId)); setSelecting(true); setReady(null); }} />
-        <View style={styles.panel}>
-          <Text style={styles.heading}>{t('menu.preview.title')}</Text>
-          {previewError ? <View><Text style={styles.error}>{t('menu.preview.failed')}</Text><Button title={t('menu.retry')} onPress={() => { setPreviewError(false); setReady(null); if (!fonts) setFontAttempt(value => value + 1); setPreviewAttempt(value => value + 1); }} /></View> : fonts ? <MenuPreview key={previewAttempt} draft={renderDraft ?? draft} assets={assets} revision={revision} pageIndex={pageIndex} onReady={(layout, renderedRevision) => {
-            if (renderedRevision !== revisionRef.current) return;
-            setReady({ layout, revision: renderedRevision }); setPageIndex(value => Math.min(value, layout.pages.length - 1));
-          }} onError={() => { setReady(null); setPreviewError(true); }} /> : <ActivityIndicator color={colors.primary} />}
-          {photos.loading && <Text style={styles.hint}>{t('menu.studio.photosLoading')}</Text>}
-          {photos.failed > 0 && <View><Text style={styles.hint}>{t('menu.studio.photosUnavailableNative', { count: photos.failed })}</Text><Button title={t('menu.studio.retryPhotos')} variant="ghost" onPress={photos.retry} /></View>}
-          {!previewError && ready?.revision !== revision && <Text style={styles.hint}>{t('menu.preview.loading')}</Text>}
-          {ready?.revision === revision && <View>
-            <Text accessibilityLiveRegion="polite" style={styles.pageCount}>{t('menu.preview.pageOf', { current: pageIndex + 1, total: ready.layout.pages.length })}</Text>
-            <View style={styles.row}><Button title={t('menu.preview.previousPage')} variant="ghost" disabled={pageIndex === 0} onPress={() => setPageIndex(value => value - 1)} /><Button title={t('menu.preview.nextPage')} variant="ghost" disabled={pageIndex >= ready.layout.pages.length - 1} onPress={() => setPageIndex(value => value + 1)} /></View>
-          </View>}
-          {!valid && <Text style={styles.error}>{t('menu.editor.required')}</Text>}
-          <Button title={t(exporting ? 'menu.export.exporting' : 'menu.export.pdf')} disabled={!canExport} loading={exporting} onPress={() => void exportPdf()} />
-        </View>
-        <Text style={styles.title}>{t('menu.studio.title')}</Text>
-        <Text style={styles.hint}>{t('menu.studio.description')}</Text>
-        <View style={styles.panel}>
-          <TextField label={t('menu.studio.brief')} placeholder={t('menu.studio.briefPlaceholder')} value={brief} maxLength={1200} multiline onChangeText={value => { setBrief(value); setDirty(true); }} />
-          {designProposal.errorKey && <Text accessibilityRole="alert" style={styles.error}>{t(designProposal.errorKey)}</Text>}
-          <Button title={t(designProposal.busy ? 'menu.studio.generating' : 'menu.studio.generate')} disabled={!brief.trim() || !creation.admitted || designProposal.busy} onPress={() => designProposal.generate(creation.requestId, draft, brief)} />
-          {designProposal.busy && <Button title={t('menu.artwork.cancel')} variant="ghost" onPress={designProposal.cancel} />}
-          {designProposal.candidate && <View style={styles.candidate}>
-            <Text style={styles.heading}>{t('menu.studio.proposal')}</Text>
-            <Text style={styles.hint}>{t(`menu.studio.layout.${designProposal.candidate.layout}`)} · {t(`menu.studio.density.${designProposal.candidate.density}`)}</Text>
-            <View style={styles.row}>{Object.values(designProposal.candidate.palette).map((color, index) => <View key={index} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: color, borderWidth: 1, borderColor: colors.divider }} />)}</View>
-            <Button title={t('menu.studio.useProposal')} onPress={() => { if (designProposal.candidate) { update({ ...draft, design: designProposal.candidate }); designProposal.discard(); } }} />
-            <Button title={t('menu.studio.discardProposal')} variant="ghost" onPress={designProposal.discard} />
-          </View>}
-        </View>
-        <MenuDesignControls design={resolveMenuDesign(draft)} onChange={design => update({ ...draft, design })} />
-        <Text style={styles.heading}>{t('menu.studio.palette')}</Text>
-        <MenuStylePicker value={draft.styleId} onChange={styleId => { if (styleId !== draft.styleId) update({ ...draft, styleId, design: { ...resolveMenuDesign(draft), palette: menuDesignForStyle(styleId).palette } }); }} />
-        <MenuEditor draft={draft} onChange={update} />
-        <View style={styles.panel}>
-          <Text style={styles.heading}>{t('menu.artwork.title')}</Text>
-          <Text style={styles.hint}>{t('menu.artwork.sharedAllowance')}</Text>
-          <TextField label={t('menu.style.instructions')} placeholder={t('menu.style.instructionsPlaceholder')} value={draft.instructions} maxLength={300} multiline onChangeText={instructions => update({ ...draft, instructions })} />
-          <Text style={styles.hint}>{draft.instructions.length}/300</Text>
-          {artwork.access && <Text style={styles.hint}>{t('menu.artwork.remaining', { remaining: artwork.access.remaining, limit: artwork.access.daily_limit })}</Text>}
-          {artwork.errorKey && <Text accessibilityRole="alert" style={styles.error}>{t(artwork.errorKey)}</Text>}
-          {artwork.access && !artwork.access.allowed && !artwork.errorKey && <Text style={styles.hint}>{t(menuArtworkErrorKey(artwork.access.reason, 'unavailable'))}</Text>}
-          {draft.artwork && <Text style={styles.hint}>{t('menu.artwork.accepted')} · {t(`menu.style.${draft.artwork.styleId}`)}</Text>}
-          {artwork.candidate && <View style={styles.candidate}>
-            <Image source={{ uri: artwork.candidate.dataUrl }} style={styles.artwork} accessibilityLabel={t('menu.artwork.aiGenerated')} />
-            <Text style={styles.hint}>{t('menu.artwork.candidateStyle', { style: t(`menu.style.${artwork.candidate.metadata.styleId}`) })}</Text>
-            <Button title={t('menu.artwork.use')} onPress={() => {
-              const candidate = artwork.candidate;
-              if (!candidate) return;
-              setArtworkDataUrl(candidate.dataUrl);
-              update({ ...draft, styleId: candidate.metadata.styleId, ...(candidate.design ? { design: candidate.design } : {}), artwork: candidate.metadata }); artwork.discard();
-            }} />
-            <Button title={t('menu.artwork.discard')} variant="ghost" onPress={artwork.discard} />
-          </View>}
-          {artwork.busy ? <View><Text style={styles.hint}>{t('menu.artwork.generating')}</Text><Button title={t('menu.artwork.cancel')} variant="secondary" onPress={artwork.cancel} /></View> : <View style={styles.actions}>
-            <Button title={t(artwork.candidate ? 'menu.artwork.tryAnother' : 'menu.artwork.generate')} disabled={!artwork.access?.allowed} onPress={() => artwork.generate(draft.styleId, draft.instructions, resolveMenuDesign(draft))} />
-            {artwork.recoverable && <Button title={t('menu.artwork.checkAgain')} variant="secondary" onPress={artwork.check} />}
-          </View>}
-        </View>
+        {loadError ? <View><Text accessibilityRole="alert" style={styles.error}>{t('menu.selection.loadFailed')}</Text><Button title={t('library.retry')} variant="secondary" onPress={() => setLoadAttempt(value => value + 1)} /></View> : !recipes.length ? <Text style={styles.hint}>{t('menu.selection.empty')}</Text> :
+          <ScrollView style={styles.recipeList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+            {visible.map(recipe => <Pressable key={recipe.id} accessibilityRole="checkbox" accessibilityLabel={t('menu.selection.selectDish', { name: recipe.title })} accessibilityState={{ checked: selected.includes(recipe.id), disabled: locked }} disabled={locked} onPress={() => select(selected.includes(recipe.id) ? selected.filter(id => id !== recipe.id) : [...selected, recipe.id])} style={styles.recipe}>
+              {recipe.thumbnail_url ? <Image source={{ uri: recipe.thumbnail_url }} style={styles.thumbnail} /> : <View style={[styles.thumbnail, styles.placeholder]}><Text style={styles.placeholderText}>♨</Text></View>}
+              <Text style={styles.recipeName} numberOfLines={2}>{recipe.title}</Text>
+              <Text style={styles.check} accessibilityElementsHidden>{selected.includes(recipe.id) ? '☑' : '☐'}</Text>
+            </Pressable>)}
+          </ScrollView>}
+      </View>
+      {missing && <Text accessibilityRole="alert" style={styles.error}>{t('menu.selection.missingRecipes')}</Text>}
+      {tooMany && <Text accessibilityRole="alert" style={styles.error}>{t('menu.simple.recipeLimit', { limit: FULL_MENU_RECIPE_LIMIT })}</Text>}
+      <TextField label={t('menu.simple.title')} placeholder={t('menu.simple.titlePlaceholder')} value={title} maxLength={120} editable={!locked} onChangeText={value => { if (!locked) { setTitle(value); setDirty(true); } }} />
+      <TextField label={t('menu.simple.brief')} placeholder={t('menu.simple.briefPlaceholder')} value={brief} maxLength={1200} multiline textAlignVertical="top" style={styles.brief} editable={!locked} onChangeText={value => { if (!locked) { setBrief(value); setDirty(true); } }} />
+      <Text style={styles.hint}>{t(generation.checkingAccess ? 'menu.simple.quotaChecked' : generation.access?.is_admin ? 'menu.creation.adminUnlimited' : 'menu.simple.dailyAllowance')}</Text>
+      {(generation.error || (!generation.checkingAccess && generation.access && !generation.access.allowed && !generation.recoverable && !generation.result)) && <Text accessibilityRole="alert" style={styles.error}>{t(generation.error ?? 'menu.creation.limitReached', { reset })}</Text>}
+      {generation.error === 'menu.simple.selectionChanged' && <Button title={t('common.refresh')} variant="secondary" onPress={() => setLoadAttempt(value => value + 1)} />}
+      {generation.accessErrorKey && !generation.error && !generation.recoverable && <Text accessibilityRole="alert" style={styles.error}>{t(generation.accessErrorKey)}</Text>}
+      {generation.accessError && <View><Text accessibilityRole="alert" style={styles.error}>{t('menu.simple.unavailable')}</Text><Button title={t('library.retry')} variant="secondary" onPress={() => void generation.refresh()} /></View>}
+      {generation.busy ? <View style={styles.actions}>
+        <Button title={t(generation.checking ? 'menu.simple.checking' : 'menu.simple.generating')} onPress={() => {}} loading />
+        <Button title={t('menu.simple.cancel')} variant="ghost" onPress={generation.cancel} />
+      </View> : generation.recoverable ? <View style={styles.actions}>
+        <Text style={styles.hint}>{t('menu.simple.waiting')}</Text>
+        <Button title={t('menu.simple.check')} onPress={generation.check} />
+      </View> : <Button title={t('menu.simple.generate')} disabled={!valid || !generation.allowed} loading={generation.checkingAccess} onPress={() => generation.generate({ title, brief, recipes: selected.map(id => { const recipe = recipes.find(row => row.id === id)!; return { recipe_id: id, name: recipe.title }; }) })} />}
+      {generation.result && <View style={styles.result}>
+        <Text style={styles.heading}>{t('menu.simple.result')}</Text>
+        <Image source={{ uri: generation.result }} style={styles.menuImage} accessibilityLabel={t('menu.simple.imageAlt')} />
+        <Text style={styles.hint}>{t('menu.simple.resultNote')}</Text>
+        {exportError && <Text accessibilityRole="alert" style={styles.error}>{t(exportError)}</Text>}
+        <Button title={t('menu.simple.share')} onPress={() => void share()} loading={exporting} />
       </View>}
     </ScrollView>
   </KeyboardAvoidingView>;
 }
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.canvas }, loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.canvas },
   content: { padding: spacing.lg, paddingBottom: spacing['3xl'] },
-  title: { ...typography.recipeTitle, color: colors.ink, marginVertical: spacing.md },
-  heading: { ...typography.title3, color: colors.ink, marginBottom: spacing.md },
-  hint: { ...typography.footnote, color: colors.mutedInk, lineHeight: 20, marginBottom: spacing.md },
-  error: { ...typography.footnote, color: colors.error, lineHeight: 20, marginBottom: spacing.md },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginVertical: spacing.sm },
-  recipe: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.divider, borderRadius: radii.md, marginBottom: spacing.sm },
-  check: { fontSize: 24, color: colors.primary, marginRight: spacing.md }, recipeName: { ...typography.body, flex: 1, color: colors.ink },
-  panel: { borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: spacing.xl, marginTop: spacing.xl },
-  candidate: { padding: spacing.md, backgroundColor: colors.surface, borderRadius: radii.md, marginBottom: spacing.md },
-  artwork: { height: 220, width: '100%', resizeMode: 'contain', marginBottom: spacing.sm }, actions: { gap: spacing.sm },
-  pageCount: { ...typography.footnote, color: colors.mutedInk, textAlign: 'center', marginTop: spacing.md },
+  title: { ...typography.recipeTitle, color: colors.ink, marginBottom: spacing.sm }, heading: { ...typography.title3, color: colors.ink, marginBottom: spacing.md },
+  hint: { ...typography.footnote, color: colors.mutedInk, lineHeight: 20, marginBottom: spacing.md }, error: { ...typography.footnote, color: colors.error, lineHeight: 20, marginBottom: spacing.md },
+  picker: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.divider, borderRadius: radii.lg, padding: spacing.sm, marginBottom: spacing.lg },
+  selectionBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs }, count: { ...typography.caption, color: colors.mutedInk, flexGrow: 1 },
+  recipeList: { maxHeight: 288 }, recipe: { flexDirection: 'row', alignItems: 'center', minHeight: 58, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.divider, paddingVertical: spacing.xs, gap: spacing.sm },
+  thumbnail: { width: 40, height: 40, borderRadius: radii.sm }, placeholder: { backgroundColor: colors.canvas, alignItems: 'center', justifyContent: 'center' }, placeholderText: { color: colors.mutedInk, fontSize: 21 },
+  recipeName: { ...typography.subhead, color: colors.ink, flex: 1 }, check: { color: colors.primary, fontSize: 24, paddingHorizontal: spacing.xs },
+  brief: { minHeight: 96 }, actions: { gap: spacing.sm }, result: { marginTop: spacing.xl, paddingTop: spacing.xl, borderTopWidth: 1, borderTopColor: colors.divider },
+  menuImage: { width: '100%', aspectRatio: 2 / 3, resizeMode: 'contain', borderRadius: radii.md, marginBottom: spacing.md },
 });

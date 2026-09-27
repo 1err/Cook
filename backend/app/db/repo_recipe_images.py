@@ -22,6 +22,7 @@ from app.db.models import AIUsageCounterModel, FeatureEntitlementModel, RecipeIm
 from app.db.repo_ai_usage import counter_statement, AIUsageLimitExceeded
 from app.services.recipe_image_service import ImageGenerationError, image_input_bound
 from app.services.menu_artwork_service import menu_artwork_input_bound
+from app.services.full_menu import FULL_MENU_JOB_TIMEOUT_SECONDS
 
 FEATURE_KEY = "recipe_image_generation"
 ImagePurpose = Literal["recipe_cover", "menu_artwork"]
@@ -175,6 +176,16 @@ def _validate_replay(row: RecipeImageGenerationModel, digest: str, purpose: Imag
         )
 
 
+async def find_replay(session: AsyncSession, user_id: UUID, request_id: UUID,
+                      recipe: dict, *, purpose: ImagePurpose = "recipe_cover") -> RecipeImageGenerationModel | None:
+    """Validate an immutable retry before checking mutable library contents."""
+    existing = await _find_existing_request(session, user_id, request_id)
+    if existing is None:
+        return None
+    _validate_replay(existing, request_hash(recipe), purpose)
+    return await find_request(session, user_id, request_id, purpose=purpose)
+
+
 async def begin_generation(session: AsyncSession, user_id: UUID, request_id: UUID,
                            recipe: dict, *, purpose: ImagePurpose = "recipe_cover",
                            ) -> tuple[RecipeImageGenerationModel, bool]:
@@ -196,11 +207,14 @@ async def begin_generation(session: AsyncSession, user_id: UUID, request_id: UUI
         raise ImageGenerationError("membership_required", "AI images require an active membership.", 403)
     await check_storage_capacity(session, user_id)
 
+    job_timeout = (FULL_MENU_JOB_TIMEOUT_SECONDS
+                   if purpose == "menu_artwork" and recipe.get("mode") == "full-menu-v1"
+                   else settings.OPENAI_IMAGE_TIMEOUT_SECONDS + 75)
     ledger_call_id = uuid4()
     created = await session.execute(insert(RecipeImageGenerationModel).values(
         user_id=user_id, request_id=request_id, request_hash=digest, purpose=purpose,
         status="pending", created_at=now, ledger_call_id=ledger_call_id,
-        deadline_at=now + timedelta(seconds=settings.OPENAI_IMAGE_TIMEOUT_SECONDS + 75),
+        deadline_at=now + timedelta(seconds=job_timeout),
     ).on_conflict_do_nothing(index_elements=["user_id", "request_id"]).returning(RecipeImageGenerationModel.request_id))
     if created.scalar_one_or_none() is None:
         # A contender may have committed between our read and atomic INSERT.
@@ -230,7 +244,7 @@ async def begin_generation(session: AsyncSession, user_id: UUID, request_id: UUI
         # concurrency and money controls, while keeping image attempt caps separate.
         await repo_ai_cost.acquire_lease(session, str(user_id), ledger_call_id,
             global_limit=settings.AI_GLOBAL_MAX_INFLIGHT, account_limit=settings.AI_USER_MAX_INFLIGHT,
-            ttl=settings.OPENAI_IMAGE_TIMEOUT_SECONDS + 75)
+            ttl=job_timeout)
     except AIUsageLimitExceeded as exc:
         raise ImageGenerationError('rate_limited', 'AI generation is busy. Please try again shortly.', 429, exc.retry_after) from None
     try:

@@ -1,4 +1,4 @@
-"""Durable menu decoration previews and authenticated PNG export bytes."""
+"""Durable menu images, legacy decoration previews and authenticated PNG exports."""
 from __future__ import annotations
 
 import logging
@@ -10,6 +10,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -21,11 +22,12 @@ from app.core.ai_context import cleanup_lease
 from app.services import recipe_image_service
 from app.services.owned_images import reserve_owned_image, finish_owned_upload
 from app.db.repo_upload_budget import reserve_upload_allowance, UploadAllowanceExceeded
-from app.db import repo_recipe_images
-from app.db.models import RecipeImageGenerationModel, UserModel
+from app.db import repo_recipe_images, repo_menu_creations
+from app.db.models import RecipeImageGenerationModel, RecipeModel, UserModel
 from app.db.session import get_session
 from app.services.menu_artwork_service import (LAYOUT_VERSION, PROMPT_VERSION, DESIGN_LAYOUT_VERSION,
-                                              DESIGN_PROMPT_VERSION, generate_menu_artwork)
+                                              DESIGN_PROMPT_VERSION, generate_menu_artwork, generate_full_menu)
+from app.services.full_menu import GenerateFullMenuBody, full_menu_request_data, FULL_MENU_OPERATION_TIMEOUT_SECONDS
 from app.services.menu_design_service import MenuDesign
 from app.services.menu_artwork_storage import MenuArtworkStorageError, read_menu_artwork, save_menu_artwork
 from app.services.recipe_image_service import ImageGenerationError
@@ -103,12 +105,13 @@ async def menu_artwork_status(request_id: UUID, response: Response,
 
 
 @router.post("", response_model=ImageGenerationResponse)
-async def create_menu_artwork(body: GenerateMenuArtworkBody, request: Request, response: Response,
+async def create_menu_artwork(body: GenerateMenuArtworkBody | GenerateFullMenuBody, request: Request, response: Response,
                               session: AsyncSession = Depends(get_session),
                               user: UserModel = Depends(get_current_user)):
     user_id = user.id
-    deadline = time.monotonic() + min(settings.AI_OPERATION_TIMEOUT_SECONDS,
-                                      settings.OPENAI_IMAGE_TIMEOUT_SECONDS + 75)
+    operation_timeout = (FULL_MENU_OPERATION_TIMEOUT_SECONDS if isinstance(body, GenerateFullMenuBody)
+                         else min(settings.AI_OPERATION_TIMEOUT_SECONDS, settings.OPENAI_IMAGE_TIMEOUT_SECONDS + 75))
+    deadline = time.monotonic() + operation_timeout
     state = {"lease_id": None, "provider_started": False, "finished": False}
     try:
         async with asyncio.timeout_at(deadline):
@@ -143,13 +146,31 @@ async def create_menu_artwork(body: GenerateMenuArtworkBody, request: Request, r
 
 async def _generate_artwork_operation(body, request, response, session, user, deadline, state):
     user_id, auth_version = user.id, user.auth_version
-    # Explicit legacy keys avoid adding design:null to old request hashes.
-    data = {"style_id": body.style_id, "instructions": body.instructions,
-            "prompt_version": PROMPT_VERSION, "layout_version": LAYOUT_VERSION}
-    if body.design is not None:
-        data.update(design=body.design.model_dump(mode="json"),
-                    prompt_version=DESIGN_PROMPT_VERSION, layout_version=DESIGN_LAYOUT_VERSION)
+    full_menu = isinstance(body, GenerateFullMenuBody)
+    if full_menu:
+        data = full_menu_request_data(body)
+    else:
+        # Explicit legacy keys avoid adding design:null to old request hashes.
+        data = {"style_id": body.style_id, "instructions": body.instructions,
+                "prompt_version": PROMPT_VERSION, "layout_version": LAYOUT_VERSION}
+        if body.design is not None:
+            data.update(design=body.design.model_dump(mode="json"),
+                        prompt_version=DESIGN_PROMPT_VERSION, layout_version=DESIGN_LAYOUT_VERSION)
     try:
+        if full_menu:
+            # Recover the immutable request even after its library recipes were
+            # renamed/deleted. Never issue a second provider call for this ID.
+            existing = await repo_recipe_images.find_replay(session, user_id, body.request_id,
+                                                             data, purpose="menu_artwork")
+            if existing is not None:
+                await session.commit()
+                result = _result(existing, response)
+                await session.close()
+                return result
+            await _validate_owned_recipes(session, user_id, body)
+            # One UUID binds the generated image to its menu admission. Both
+            # admission and all image/money reservations commit or roll back.
+            await repo_menu_creations.create_menu(session, user_id, body.request_id)
         row, admitted = await repo_recipe_images.begin_generation(
             session, user_id, body.request_id, data, purpose="menu_artwork")
         if admitted:
@@ -166,6 +187,9 @@ async def _generate_artwork_operation(body, request, response, session, user, de
     except ImageGenerationError as exc:
         await session.rollback()
         raise _http_error(exc) from None
+    except repo_menu_creations.MenuDailyLimitExceeded as exc:
+        await session.rollback()
+        raise _http_error(ImageGenerationError("menu_daily_limit", str(exc), 429, exc.retry_after)) from None
     except SQLAlchemyError as exc:
         await session.rollback()
         raise _database_error(exc) from None
@@ -174,10 +198,13 @@ async def _generate_artwork_operation(body, request, response, session, user, de
     file_url = error_code = None
     try:
         state["provider_started"] = True
-        options = {"ledger_call_id": row.ledger_call_id}
-        if body.design is not None:
-            options["design"] = body.design
-        content = await generate_menu_artwork(body.style_id, body.instructions, **options)
+        if full_menu:
+            content = await generate_full_menu(data, ledger_call_id=row.ledger_call_id)
+        else:
+            options = {"ledger_call_id": row.ledger_call_id}
+            if body.design is not None:
+                options["design"] = body.design
+            content = await generate_menu_artwork(body.style_id, body.instructions, **options)
         await reserve_upload_allowance(str(user_id), len(content))
         receipt = await reserve_owned_image(user_id, auth_version, "image/png", str(request.base_url),
                                             namespace="menu-artwork")
@@ -206,6 +233,17 @@ async def _generate_artwork_operation(body, request, response, session, user, de
     except SQLAlchemyError as exc:
         await session.rollback()
         raise _database_error(exc) from None
+
+
+async def _validate_owned_recipes(session, user_id, body: GenerateFullMenuBody):
+    requested = {recipe.recipe_id: recipe.name for recipe in body.recipes}
+    rows = (await session.execute(select(RecipeModel.id, RecipeModel.title).where(
+        RecipeModel.user_id == user_id, RecipeModel.id.in_(requested),
+    ))).all()
+    if len(rows) != len(requested):
+        raise ImageGenerationError("recipe_not_found", "One of these recipes is no longer in your library. Refresh your selection.", 404)
+    if any(title != requested[recipe_id] for recipe_id, title in rows):
+        raise ImageGenerationError("recipe_changed", "A recipe name changed. Refresh your selection and try again.", 409)
 
 
 @router.get("/{request_id}/file")
