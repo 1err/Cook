@@ -32,10 +32,14 @@ test("keyboard feature navigation keeps focus and enlargement on the selected re
   await user.keyboard("{ArrowRight}");
   expect(screen.getByRole("tab", { name: "Planner" })).toHaveFocus();
   expect(screen.getByRole("tab", { name: "Planner" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.queryByRole("region", { name: "Planner screenshot preview" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Enlarge Planner screenshot" }));
+  expect(within(screen.getByRole("dialog")).getByRole("img")).toHaveAttribute("src", "/brand/features/07-planner.webp");
+  await user.click(screen.getByRole("button", { name: "Close screenshot" }));
   await user.click(screen.getByRole("tab", { name: "Menu maker" }));
   await user.click(screen.getByRole("button", { name: "Enlarge Menu maker screenshot" }));
   const dialog = screen.getByRole("dialog");
-  expect(within(dialog).getByRole("img")).toHaveAttribute("src", "/brand/features/menu-generated.webp");
+  expect(within(dialog).getByRole("img")).toHaveAttribute("src", "/brand/features/menu-maker-demo.webp");
   await user.click(within(dialog).getByRole("button", { name: "Close screenshot" }));
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
@@ -61,7 +65,7 @@ test("orders the previews from recipes through cooking and resets native scroll 
   const user = userEvent.setup();
   render(<HomePage />);
   expect(screen.getAllByRole("tab").map(tab => tab.textContent)).toEqual(["Recipes", "Planner", "Shopping", "Muse", "Menu maker", "Cook"]);
-  for (const [label, asset] of [["Recipes", "recipes"], ["Planner", "planner"], ["Shopping", "shopping"]]) {
+  for (const [label, asset] of [["Recipes", "recipes"], ["Shopping", "shopping"]]) {
     await user.click(screen.getByRole("tab", { name: label }));
     const viewport = screen.getByRole("region", { name: `${label} screenshot preview` });
     expect(viewport).toHaveAttribute("tabindex", "0");
@@ -87,53 +91,58 @@ test("falls back to the current real screenshot if a new preview asset is unavai
   expect(within(viewport).getByRole("img")).toHaveAttribute("src", "/brand/features/06-recipe.webp");
 });
 
-test("cycles actual cooking screenshots, enlarges the current step, and resets without API calls", async () => {
+test("Cook video waits for a click, replays, and stops on tab changes without API calls", async () => {
+  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   const fetch = vi.fn();
   vi.stubGlobal("fetch", fetch);
   const user = userEvent.setup();
   render(<HomePage />);
   await user.click(screen.getByRole("tab", { name: "Cook" }));
-  const screenshot = () => within(screen.getByRole("button", { name: "Enlarge Cook screenshot" })).getByRole("img");
-  expect(screen.getByRole("status")).toHaveTextContent("Preview 1 / 3");
-  expect(screenshot()).toHaveAttribute("src", "/brand/features/cook-step-1.webp");
-  await user.click(screen.getByRole("button", { name: "Complete & next step" }));
-  expect(screen.getByRole("status")).toHaveTextContent("Preview 2 / 3");
-  await user.click(screen.getByRole("button", { name: "Enlarge Cook screenshot" }));
-  expect(within(screen.getByRole("dialog")).getByRole("img")).toHaveAttribute("src", "/brand/features/cook-step-2.webp");
-  await user.click(screen.getByRole("button", { name: "Close screenshot" }));
-  await user.click(screen.getByRole("button", { name: "Complete & next step" }));
-  expect(screenshot()).toHaveAttribute("src", "/brand/features/cook-step-3.webp");
-  await user.click(screen.getByRole("button", { name: "Replay preview" }));
-  expect(screenshot()).toHaveAttribute("src", "/brand/features/cook-step-1.webp");
-  await user.click(screen.getByRole("button", { name: "Complete & next step" }));
+  const video = screen.getByLabelText("Short cooking preview") as HTMLVideoElement;
+  expect(video).toHaveAttribute("controls");
+  expect(video).toHaveAttribute("playsinline");
+  expect(video).toHaveAttribute("preload", "none");
+  expect(video).toHaveAttribute("poster", "/brand/features/08-cook.webp");
+  expect(video).not.toHaveAttribute("autoplay");
+  expect(video.querySelector("source")).toHaveAttribute("src", "/brand/features/cook-preview.mp4");
+  expect(screen.queryByRole("button", { name: "Complete & next step" })).not.toBeInTheDocument();
+  expect(play).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "Play cooking preview" }));
+  expect(play).toHaveBeenCalledTimes(1);
+  expect(play.mock.contexts[0]).toBe(video);
+  video.currentTime = 9;
+  fireEvent.ended(video);
+  await user.click(screen.getByRole("button", { name: "Replay cooking preview" }));
+  expect(video.currentTime).toBe(0);
+  expect(play).toHaveBeenCalledTimes(2);
   await user.click(screen.getByRole("tab", { name: "Muse" }));
+  expect(video).not.toBeInTheDocument();
+  expect(pause.mock.contexts).toContain(video);
   await user.click(screen.getByRole("tab", { name: "Cook" }));
-  expect(screen.getByRole("status")).toHaveTextContent("Preview 1 / 3");
+  expect(screen.getByLabelText("Short cooking preview")).not.toBe(video);
+  expect(screen.getByRole("button", { name: "Play cooking preview" })).toBeVisible();
+  expect(play).toHaveBeenCalledTimes(2);
   await user.click(screen.getByRole("button", { name: "Switch to Chinese" }));
-  expect(screen.getByRole("status")).toHaveTextContent("演示 1 / 3");
-  expect(screen.getByRole("button", { name: "完成并看下一步" })).toBeVisible();
+  expect(screen.getByLabelText("烹饪功能短预览")).toBeVisible();
+  expect(screen.getByRole("button", { name: "播放烹饪预览" })).toBeVisible();
   expect(fetch).not.toHaveBeenCalled();
 });
 
-
-test("a failed cooking step shows an explicit static fallback without misleading progression", async () => {
+test.each(["play", "source"])("Cook %s failure shows an explicit static screenshot fallback", async (failure) => {
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockRejectedValue(new Error("unavailable"));
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   const user = userEvent.setup();
   render(<HomePage />);
   await user.click(screen.getByRole("tab", { name: "Cook" }));
-  await user.click(screen.getByRole("button", { name: "Complete & next step" }));
-  const preview = () => within(screen.getByRole("button", { name: "Enlarge Cook screenshot" })).getByRole("img");
-  fireEvent.error(preview());
-  expect(preview()).toHaveAttribute("src", "/brand/features/08-cook.webp");
-  expect(preview().getAttribute("alt")).not.toContain("Preview 2 / 3");
-  expect(screen.getByRole("status")).toHaveTextContent("The step preview is unavailable");
-  expect(screen.queryByRole("button", { name: "Complete & next step" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Replay preview" })).not.toBeInTheDocument();
+  if (failure === "play") await user.click(screen.getByRole("button", { name: "Play cooking preview" }));
+  else fireEvent.error(screen.getByLabelText("Short cooking preview").querySelector("source")!);
+  expect(await screen.findByRole("status")).toHaveTextContent("The cooking preview could not play");
+  expect(screen.queryByLabelText("Short cooking preview")).not.toBeInTheDocument();
+  expect(within(screen.getByRole("tabpanel")).getByRole("img")).toHaveAttribute("src", "/brand/features/08-cook.webp");
   await user.click(screen.getByRole("button", { name: "Enlarge Cook screenshot" }));
   expect(within(screen.getByRole("dialog")).getByRole("img")).toHaveAttribute("src", "/brand/features/08-cook.webp");
   await user.click(screen.getByRole("button", { name: "Close screenshot" }));
-  await user.click(screen.getByRole("tab", { name: "Recipes" }));
-  await user.click(screen.getByRole("tab", { name: "Cook" }));
-  expect(screen.getByRole("status")).toHaveTextContent("The step preview is unavailable");
   await user.click(screen.getByRole("button", { name: "Switch to Chinese" }));
-  expect(screen.getByRole("status")).toHaveTextContent("步骤演示暂时无法显示");
+  expect(screen.getByRole("status")).toHaveTextContent("烹饪预览暂时无法播放");
 });

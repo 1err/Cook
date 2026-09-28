@@ -13,11 +13,61 @@ function PlayIcon({ filled = false }: { filled?: boolean }) {
   return <svg viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m7 4 13 8-13 8Z" /></svg>;
 }
 
+function CookingPreview({ language, source, poster, caption, hydrated }: {
+  language: HomeLanguage;
+  source: string;
+  poster: string;
+  caption: string;
+  hydrated: boolean;
+}) {
+  const copy = HOME_COPY[language];
+  const video = useRef<HTMLVideoElement>(null);
+  const mounted = useRef(true);
+  const [state, setState] = useState<"ready" | "playing" | "ended" | "failed">("ready");
+
+  useEffect(() => {
+    const element = video.current;
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      element?.pause();
+    };
+  }, []);
+
+  function playbackFailed() {
+    if (!mounted.current) return;
+    video.current?.pause();
+    setState("failed");
+  }
+  async function play() {
+    const element = video.current;
+    if (!element) return;
+    if (state === "ended") element.currentTime = 0;
+    setState("playing");
+    try { await element.play(); }
+    catch { playbackFailed(); }
+  }
+
+  return <>
+    <div className={styles["video-wrap"]}>
+      {state === "failed" ? <img src={poster} width={1280} height={720} alt={caption} /> : <>
+        <video ref={video} controls playsInline preload="none" poster={poster} aria-label={copy.cookVideoLabel}
+          onPlay={() => setState("playing")} onEnded={() => setState("ended")} onError={playbackFailed}>
+          <source src={source} type="video/mp4" onError={playbackFailed} />
+        </video>
+        {hydrated && state !== "playing" ? <button type="button" className={styles["video-start"]} onClick={() => void play()}>
+          <span className={styles["play-disc"]}><PlayIcon filled /></span><span>{state === "ended" ? copy.cookReplay : copy.cookPlay}</span>
+        </button> : null}
+      </>}
+    </div>
+    <p className={styles["video-note"]} role={state === "failed" ? "status" : undefined}>{state === "failed" ? copy.cookUnavailable : copy.cookVideoNote}</p>
+  </>;
+}
+
 export function HomePage() {
   // Public-page copy never overwrites the user's separately stored app language.
   const [language, setLanguage] = useState<HomeLanguage>("en");
   const [selected, setSelected] = useState(0);
-  const [cookStep, setCookStep] = useState(0);
   const [failedImages, setFailedImages] = useState<Set<string>>(() => new Set());
   const [hydrated, setHydrated] = useState(false);
   const [videoStarted, setVideoStarted] = useState(false);
@@ -29,21 +79,17 @@ export function HomePage() {
   const copy = HOME_COPY[language];
   const feature = HOME_FEATURES[selected];
   const details = feature[language];
-  const preferredImage = feature.preview === "scroll" ? feature.scrollImage
-    : feature.preview === "steps" ? feature.stepImages[cookStep] : feature.image;
-  const cookingPreviewUnavailable = feature.preview === "steps" && feature.stepImages.some(image => failedImages.has(image));
-  const previewImage = cookingPreviewUnavailable || failedImages.has(preferredImage) ? feature.image : preferredImage;
+  const preferredImage = feature.preview === "scroll" ? feature.scrollImage : feature.image;
+  const previewImage = failedImages.has(preferredImage) ? feature.image : preferredImage;
   const isTallPreview = feature.preview === "scroll" && previewImage === feature.scrollImage;
   const enlargeLabel = language === "en" ? `Enlarge ${details.label} screenshot` : `放大${details.label}截图`;
-  const previewAlt = feature.preview === "steps" && !cookingPreviewUnavailable
-    ? `${details.caption} ${copy.cookStep.replace("{current}", String(cookStep + 1))}` : details.caption;
+  const previewAlt = details.caption;
   const locale = language === "zh" ? "zh-CN" : "en";
 
   useEffect(() => { setHydrated(true); }, []);
 
   function selectFeature(index: number, focus = false) {
     const next = (index + HOME_FEATURES.length) % HOME_FEATURES.length;
-    if (next !== selected) setCookStep(0);
     setSelected(next);
     if (focus) {
       tabs.current[next]?.focus();
@@ -104,7 +150,7 @@ export function HomePage() {
         </div>
         <div id="feature-panel" className={styles["feature-panel"]} role="tabpanel" aria-labelledby={`feature-tab-${feature.id}`} tabIndex={0}>
           <figure className={styles["screen-figure"]}>
-            {feature.preview === "scroll" ? <div
+            {feature.preview === "video" ? <CookingPreview language={language} source={feature.video} poster={feature.image} caption={details.caption} hydrated={hydrated} /> : feature.preview === "scroll" ? <div
               key={feature.id}
               className={styles["screen-viewport"]}
               role="region"
@@ -116,11 +162,7 @@ export function HomePage() {
             </div> : <button type="button" className={styles["screen-button"]} onClick={openScreenshot} aria-label={enlargeLabel}>
               <img key={previewImage} src={previewImage} width={1280} height={720} alt={previewAlt} loading="lazy" onError={screenshotFailed} />
             </button>}
-            {cookingPreviewUnavailable ? <p className={styles["video-note"]} role="status">{copy.cookUnavailable}</p> : feature.preview === "steps" ? <div className={styles["demo-controls"]}>
-              <div><span className={styles["demo-label"]}>{copy.cookDemo}</span><span role="status" aria-live="polite">{copy.cookStep.replace("{current}", String(cookStep + 1))}</span></div>
-              <button type="button" onClick={() => setCookStep(current => (current + 1) % feature.stepImages.length)}>{cookStep === feature.stepImages.length - 1 ? copy.cookReplay : copy.cookNext}</button>
-            </div> : null}
-            <figcaption><span>{details.caption}</span>{feature.preview === "scroll"
+            <figcaption><span>{details.caption}</span>{feature.preview === "scroll" || feature.preview === "video"
               ? <button type="button" className={styles["enlarge-control"]} onClick={openScreenshot} aria-label={enlargeLabel}>{copy.enlarge}</button>
               : <span>{copy.enlarge}</span>}</figcaption>
             {feature.preview === "scroll" ? <p id="feature-scroll-hint" className={styles["scroll-hint"]}>{copy.scrollHint}</p> : null}

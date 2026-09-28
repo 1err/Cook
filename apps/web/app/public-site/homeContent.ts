@@ -15,11 +15,11 @@ export const HOME_COPY = {
     "featuresIntro": "From the dish you saved to the meal you share. Take a look inside Chef World.",
     "enlarge": "Look closer",
     "scrollHint": "Scroll to explore",
-    "cookDemo": "Short cooking demo",
-    "cookStep": "Preview {current} / 3",
-    "cookNext": "Complete & next step",
-    "cookReplay": "Replay preview",
-    "cookUnavailable": "The step preview is unavailable. Here’s a cooking screenshot.",
+    "cookPlay": "Play cooking preview",
+    "cookReplay": "Replay cooking preview",
+    "cookVideoLabel": "Short cooking preview",
+    "cookVideoNote": "A short preview of guided cooking, made with actual app screens.",
+    "cookUnavailable": "The cooking preview could not play. Here’s a cooking screenshot.",
     "screensNote": "Actual app screens. Select a feature to explore.",
     "previewEyebrow": "A look inside",
     "previewIntro": "A quick tour of recipes, menus, meal planning, shopping, and guided cooking — made with actual app screens.",
@@ -44,11 +44,11 @@ export const HOME_COPY = {
     "featuresIntro": "从刷到一道想做的菜，到和朋友一起开饭。看看 Chef World 能帮你做什么。",
     "enlarge": "放大查看",
     "scrollHint": "向下滚动，继续看看",
-    "cookDemo": "烹饪小演示",
-    "cookStep": "演示 {current} / 3",
-    "cookNext": "完成并看下一步",
-    "cookReplay": "重新演示",
-    "cookUnavailable": "步骤演示暂时无法显示，先看看烹饪截图。",
+    "cookPlay": "播放烹饪预览",
+    "cookReplay": "重播烹饪预览",
+    "cookVideoLabel": "烹饪功能短预览",
+    "cookVideoNote": "用实际应用画面，看看跟着步骤做饭的过程。",
+    "cookUnavailable": "烹饪预览暂时无法播放，先看看烹饪截图。",
     "screensNote": "真实应用截图，选择一个功能看看。",
     "previewEyebrow": "看看功能预览",
     "previewIntro": "用实际应用画面，快速看看菜谱、菜单、餐单、购物和烹饪步骤。",
@@ -105,8 +105,7 @@ export const HOME_FEATURES = [
       "caption": "把自己的菜谱安排到一周的早、中、晚餐。",
       "note": ""
     },
-    "preview": "scroll",
-    "scrollImage": "/brand/features/planner-scroll.webp"
+    "preview": "image"
   },
   {
     "id": "shopping",
@@ -155,14 +154,14 @@ export const HOME_FEATURES = [
   },
   {
     "id": "menus",
-    "image": "/brand/features/menu-generated.webp",
+    "image": "/brand/features/menu-maker-demo.webp",
     "path": "/library",
     "en": {
       "label": "Menu maker",
       "title": "Make your table feel like your own little restaurant.",
       "body": "Choose your dishes and describe a style. Turn them into an illustrated menu to download and share before friends come over.",
       "cta": "Make a menu",
-      "caption": "A menu generated from the recipes in this library.",
+      "caption": "The menu-making page, with the finished illustrated menu.",
       "note": "AI-generated image. Check dish names before sharing. One new menu per UTC day."
     },
     "zh": {
@@ -170,7 +169,7 @@ export const HOME_FEATURES = [
       "title": "朋友来家里吃饭，也有一张专属菜单。",
       "body": "选好拿手菜，描述喜欢的风格，让 AI 画成一张菜单。下载发给室友或朋友，聚餐也可以很有仪式感。",
       "cta": "去生成菜单",
-      "caption": "从这个菜谱库里选菜，实际生成的菜单。",
+      "caption": "菜单制作页面，和实际生成的插画菜单。",
       "note": "菜单为 AI 生成图片，分享前请核对菜名。每天可生成一张，按 UTC 重置。"
     },
     "preview": "image"
@@ -195,11 +194,7 @@ export const HOME_FEATURES = [
       "caption": "烹饪过程中的步骤、进度和计时。",
       "note": "请保持浏览器打开，以接收烹饪声音和通知。"
     },
-    "preview": "steps",
-    "stepImages": [
-      "/brand/features/cook-step-1.webp",
-      "/brand/features/cook-step-2.webp",
-      "/brand/features/cook-step-3.webp"
-    ]
+    "preview": "video",
+    "video": "/brand/features/cook-preview.mp4"
   }
 ] as const;
