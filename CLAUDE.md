@@ -490,12 +490,15 @@ The slug union `RecipeTagSlug` lives in `@cooking/shared/types`.
 
 ### Public website and recipe library layout
 
-The web root `/` is an English-only Chef World homepage explaining the save, plan, shop,
-and guided-cooking flow. `/about`, `/privacy`, `/terms`, and `/contact` are also public.
+The web root `/` is a Chef World homepage with page-local English/Chinese switching.
+It showcases recipes, AI menus, meal planning, shopping, the Muse handoff, and guided
+cooking through actual screenshots and a click-to-play, silent 30-second feature preview. `/about`, `/privacy`, `/terms`, and `/contact` are also public.
 Their header and footer use the same Home/About/Contact/Privacy/Terms page links under
 `apps/web/app/public-site/`. The header and home hero have an `Open app` link to `/library`;
-existing authentication handles signed-in users or redirects guests to login. Public pages
-use English without changing the saved language preference for the bilingual web app.
+existing authentication handles signed-in users or redirects guests to login. The homepage defaults to English; its language switch translates only the public page
+and its navigation, without changing the saved language preference for the bilingual
+web app. Other public pages remain English. Screenshot tabs support keyboard navigation
+and enlargement; the preview has native controls, no autoplay, and a text alternative.
 The signed-in app header keeps its brand link pointing to `/library` and provides a small
 translated Home icon beside it for returning to `/`. My Library's outlined menu-card
 action remains visually distinct from the primary Add Recipe action.

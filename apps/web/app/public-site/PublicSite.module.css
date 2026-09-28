@@ -101,3 +101,14 @@
   .document { padding: 3rem 1.3rem; }
   .documentIntro { font-size: .97rem; }
 }
+
+.headerActions { display:flex; align-items:center; gap:1.1rem; }
+.languageToggle { padding:.5rem 0; border:0; background:transparent; color:var(--public-muted); font:500 .8rem/1.4 "Inter",sans-serif; white-space:nowrap; cursor:pointer; }
+.languageToggle:hover { color:#a74731; }
+.languageToggle:focus-visible { outline:3px solid var(--public-green); outline-offset:5px; }
+@media(max-width:680px) { .headerActions { gap:.85rem; } }
+
+@media (max-width:760px) {
+  .localizedHeader { padding:1rem 1.2rem; gap:1rem; flex-wrap:wrap; justify-content:space-between; }
+  .localizedHeader .headerLinks { order:3; width:100%; margin:0; justify-content:space-between; gap:.8rem; }
+}

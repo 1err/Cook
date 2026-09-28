@@ -30,7 +30,7 @@ for (const [path, title] of publicPages) {
     await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`${path === "/" ? "/" : path}$`));
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
-    await expect(page.getByRole("button", { name: "中文", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Switch to Chinese", exact: true })).toHaveCount(path === "/" ? 1 : 0);
     await expect(page.getByRole("banner").getByRole("link", { name: "Open app", exact: true })).toHaveAttribute("href", "/library");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     if (path === "/") await page.getByRole("main").getByRole("link", { name: "Open app", exact: true }).hover();
@@ -67,7 +67,8 @@ test("English public pages preserve the user's Chinese app preference", async ({
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(/A little closer/);
   expect(await page.evaluate(() => localStorage.getItem("cooking-ui-language"))).toBe("zh");
-  await expect(page.getByRole("list", { name: "From recipe to dinner" }).getByRole("listitem")).toHaveText(["01Save a recipe", "02Plan a meal", "03Buy groceries", "04Cook with guidance"]);
+  await expect(page.getByRole("tab")).toHaveCount(6);
+  await expect(page.getByRole("tab", { name: "Recipes", exact: true })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("main").getByRole("link", { name: "Open app", exact: true }).click();
   await expect(page).toHaveURL(/\/login\?redirect=%2Flibrary/);
   await expect(page.locator("html")).toHaveAttribute("lang", "zh");
