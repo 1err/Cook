@@ -495,9 +495,10 @@ Its feature tabs are ordered Recipes, Planner, Shopping, Muse, Menu maker, and C
 Recipes and Shopping use keyboard-focusable, fixed-height scroll viewports with
 full-width screenshots. Planner uses a single static screenshot, and Menu maker
 shows the actual creation page with its finished menu layered into the image.
-Cook uses a short click-to-play video with native controls, no autoplay, and a static
-cooking screenshot on playback failure. Its player is paused and unmounted when
-changing tabs; returning to Cook starts with its poster. The preview does not call
+Cook uses a centered, stationary step-completion video that autoplays silently and
+loops, with native controls and no play-prompt overlay. Source failure shows a static
+cooking screenshot. Its player is paused and unmounted when changing tabs; returning
+to Cook starts the video again. Native controls remain available if autoplay is blocked. The preview does not call
 application APIs or change a cooking session. Changing tabs also resets screenshot
 scrolling. Missing scroll-preview images fall back to the existing screenshot. The click-to-play,
 silent 30-second feature video remains a separate preview. `/about`, `/privacy`, `/terms`, and `/contact` are also public.

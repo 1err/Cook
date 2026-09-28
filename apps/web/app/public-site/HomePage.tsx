@@ -13,54 +13,40 @@ function PlayIcon({ filled = false }: { filled?: boolean }) {
   return <svg viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m7 4 13 8-13 8Z" /></svg>;
 }
 
-function CookingPreview({ language, source, poster, caption, hydrated }: {
+function CookingPreview({ language, source, poster, caption }: {
   language: HomeLanguage;
   source: string;
   poster: string;
   caption: string;
-  hydrated: boolean;
 }) {
   const copy = HOME_COPY[language];
   const video = useRef<HTMLVideoElement>(null);
-  const mounted = useRef(true);
-  const [state, setState] = useState<"ready" | "playing" | "ended" | "failed">("ready");
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     const element = video.current;
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-      element?.pause();
-    };
+    if (element) {
+      // Set muted before playback for browsers that gate dynamically mounted video.
+      element.muted = true;
+      void element.play().catch(() => { /* Native controls remain available if autoplay is blocked. */ });
+    }
+    return () => { element?.pause(); };
   }, []);
 
   function playbackFailed() {
-    if (!mounted.current) return;
     video.current?.pause();
-    setState("failed");
-  }
-  async function play() {
-    const element = video.current;
-    if (!element) return;
-    if (state === "ended") element.currentTime = 0;
-    setState("playing");
-    try { await element.play(); }
-    catch { playbackFailed(); }
+    setFailed(true);
   }
 
   return <>
     <div className={styles["video-wrap"]}>
-      {state === "failed" ? <img src={poster} width={1280} height={720} alt={caption} /> : <>
-        <video ref={video} controls playsInline preload="none" poster={poster} aria-label={copy.cookVideoLabel}
-          onPlay={() => setState("playing")} onEnded={() => setState("ended")} onError={playbackFailed}>
+      {failed ? <img src={poster} width={1280} height={720} alt={caption} /> :
+        <video ref={video} autoPlay muted loop controls playsInline preload="metadata" poster={poster} aria-label={copy.cookVideoLabel}
+          onError={playbackFailed}>
           <source src={source} type="video/mp4" onError={playbackFailed} />
-        </video>
-        {hydrated && state !== "playing" ? <button type="button" className={styles["video-start"]} onClick={() => void play()}>
-          <span className={styles["play-disc"]}><PlayIcon filled /></span><span>{state === "ended" ? copy.cookReplay : copy.cookPlay}</span>
-        </button> : null}
-      </>}
+        </video>}
     </div>
-    <p className={styles["video-note"]} role={state === "failed" ? "status" : undefined}>{state === "failed" ? copy.cookUnavailable : copy.cookVideoNote}</p>
+    <p className={styles["video-note"]} role={failed ? "status" : undefined}>{failed ? copy.cookUnavailable : copy.cookVideoNote}</p>
   </>;
 }
 
@@ -150,7 +136,7 @@ export function HomePage() {
         </div>
         <div id="feature-panel" className={styles["feature-panel"]} role="tabpanel" aria-labelledby={`feature-tab-${feature.id}`} tabIndex={0}>
           <figure className={styles["screen-figure"]}>
-            {feature.preview === "video" ? <CookingPreview language={language} source={feature.video} poster={feature.image} caption={details.caption} hydrated={hydrated} /> : feature.preview === "scroll" ? <div
+            {feature.preview === "video" ? <CookingPreview language={language} source={feature.video} poster={feature.image} caption={details.caption} /> : feature.preview === "scroll" ? <div
               key={feature.id}
               className={styles["screen-viewport"]}
               role="region"

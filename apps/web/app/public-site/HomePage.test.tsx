@@ -6,6 +6,7 @@ import { HomePage } from "./HomePage";
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
 
 beforeEach(() => {
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute("open", ""); } });
   Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute("open"); } });
 });
@@ -91,8 +92,7 @@ test("falls back to the current real screenshot if a new preview asset is unavai
   expect(within(viewport).getByRole("img")).toHaveAttribute("src", "/brand/features/06-recipe.webp");
 });
 
-test("Cook video waits for a click, replays, and stops on tab changes without API calls", async () => {
-  const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+test("Cook video autoplays silently without an overlay and stops on tab changes without API calls", async () => {
   const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   const fetch = vi.fn();
   vi.stubGlobal("fetch", fetch);
@@ -102,40 +102,32 @@ test("Cook video waits for a click, replays, and stops on tab changes without AP
   const video = screen.getByLabelText("Short cooking preview") as HTMLVideoElement;
   expect(video).toHaveAttribute("controls");
   expect(video).toHaveAttribute("playsinline");
-  expect(video).toHaveAttribute("preload", "none");
+  expect(video).toHaveAttribute("preload", "metadata");
+  expect(video).toHaveAttribute("autoplay");
+  expect(video).toHaveAttribute("loop");
+  expect(video.muted).toBe(true);
+  expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
   expect(video).toHaveAttribute("poster", "/brand/features/08-cook.webp");
-  expect(video).not.toHaveAttribute("autoplay");
   expect(video.querySelector("source")).toHaveAttribute("src", "/brand/features/cook-preview.mp4");
   expect(screen.queryByRole("button", { name: "Complete & next step" })).not.toBeInTheDocument();
-  expect(play).not.toHaveBeenCalled();
-  await user.click(screen.getByRole("button", { name: "Play cooking preview" }));
-  expect(play).toHaveBeenCalledTimes(1);
-  expect(play.mock.contexts[0]).toBe(video);
-  video.currentTime = 9;
-  fireEvent.ended(video);
-  await user.click(screen.getByRole("button", { name: "Replay cooking preview" }));
-  expect(video.currentTime).toBe(0);
-  expect(play).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole("button", { name: /Play cooking preview|Replay cooking preview/ })).not.toBeInTheDocument();
   await user.click(screen.getByRole("tab", { name: "Muse" }));
   expect(video).not.toBeInTheDocument();
   expect(pause.mock.contexts).toContain(video);
   await user.click(screen.getByRole("tab", { name: "Cook" }));
   expect(screen.getByLabelText("Short cooking preview")).not.toBe(video);
-  expect(screen.getByRole("button", { name: "Play cooking preview" })).toBeVisible();
-  expect(play).toHaveBeenCalledTimes(2);
   await user.click(screen.getByRole("button", { name: "Switch to Chinese" }));
-  expect(screen.getByLabelText("烹饪功能短预览")).toBeVisible();
-  expect(screen.getByRole("button", { name: "播放烹饪预览" })).toBeVisible();
+  expect(screen.getByLabelText("烹饪功能短预览")).toHaveAttribute("autoplay");
+  expect(screen.queryByRole("button", { name: "播放烹饪预览" })).not.toBeInTheDocument();
   expect(fetch).not.toHaveBeenCalled();
 });
 
-test.each(["play", "source"])("Cook %s failure shows an explicit static screenshot fallback", async (failure) => {
-  vi.spyOn(HTMLMediaElement.prototype, "play").mockRejectedValue(new Error("unavailable"));
+test.each(["video", "source"])("Cook %s failure shows an explicit static screenshot fallback", async (failure) => {
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   const user = userEvent.setup();
   render(<HomePage />);
   await user.click(screen.getByRole("tab", { name: "Cook" }));
-  if (failure === "play") await user.click(screen.getByRole("button", { name: "Play cooking preview" }));
+  if (failure === "video") fireEvent.error(screen.getByLabelText("Short cooking preview"));
   else fireEvent.error(screen.getByLabelText("Short cooking preview").querySelector("source")!);
   expect(await screen.findByRole("status")).toHaveTextContent("The cooking preview could not play");
   expect(screen.queryByLabelText("Short cooking preview")).not.toBeInTheDocument();
