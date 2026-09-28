@@ -27,4 +27,16 @@ Real-generation evidence: `/private/tmp/menu-simple-real-proof-20260927/nine-dis
 
 ## Release status
 
-Pending the final clean source commit, fresh immutable backend/frontend build and runtime checks, authenticated candidate browser checks and approved production rollout. Release harness: `/private/tmp/chef-menu-simple-20260927`. This document does not yet claim this revision is live. No native binary or OTA update is included.
+Released to both `chef-world.com` and `www.chef-world.com`. Backend and frontend share application source `6a3d88fc18d920b3107939b19926c63df3e0fc61` on `codex/menu-simple-20260927`.
+
+- API: `cooking-backend:29`, image `sha256:2cb85360cb724e13ec69bb3b658ae4ba4d9780390e59c5dd023af36765cd8211`. Worker remains `cooking-store-worker:2`.
+- Frontend: `dpl_ERWE8GmFYpZXVhLYerZVmTBYCQhZ`, READY at `https://cook-beithbfxt-jerrys-projects-08f739a2.vercel.app` and both public aliases.
+- Fresh backend and web Docker builds used `--no-cache --pull` for Linux/amd64. Actual image runtime checks passed, including matching committed file hashes, non-root startup, disposable PostgreSQL migrations, full-menu ownership/concurrency/quota/accounting/replay/PNG, preserved legacy menu and shopping/import behavior, and all six Linux containment regressions.
+- Locked production migration succeeded before rollout. Exact API revision/digest, healthy completed service, readiness, authorization and CORS passed. Original configuration fingerprints have zero differences, including all eight Gemini settings.
+- Candidate verification passed all **14 menu + 10 preserved UI cases** across desktop and phone Chromium. The first direct-public run hit host network suspension/disconnection; 12 menu and four UI cases passed before the interruption. Only the two affected menu and six UI cases were rerun serially after connectivity returned, and all passed without application changes. The combined 24-case public result retains the initial and rerun receipt provenance. Test API/account responses were fixtures and did not make paid provider or production account mutations. PNG downloads matched the supplied proof image byte-for-byte. Representative screens were visually inspected.
+- Public route/asset verification matched the candidate: **10 routes, 44 assets and 6 fonts**, including unknown-font rejection. Vercel bounded error/fatal/HTTP5xx scans found zero records through `2026-09-28T01:17:14.573187Z`. API/worker bounded scans found zero warnings, errors, tracebacks or HTTP5xx through `2026-09-28T01:17:24.374000+00:00`. These are bounded observations, not ongoing monitoring.
+- Vercel upload discovery exactly matched all 264 allowlisted source files (24,874,386 bytes); tests, private environment files and local build outputs were not uploaded.
+
+Release evidence: `/private/tmp/chef-menu-simple-20260927`, with backend `production-api-verification.json`, web `production-web-verification.json`/`live-verification.json`, candidate/public browser receipts and reviewed screenshots. Persistent real-generation example: `/Users/xiang1err_/.codex/visualizations/2026/09/26/01a0dbc6-5b16-75c1-93d2-b595ca73c0e5/generated-menu-proof.png`.
+
+Rollback pair: API `cooking-backend:28` at `sha256:0c10673e9a9e7e36e22a834b84707232c1ec61908e0564e9fecf99a20e5bac80` and frontend `dpl_Dv3G4yHEtL8BgsMZNgPiVv54egG8`. The old frontend remains compatible with API29; full-menu generation requires the new backend. No native binary or OTA update was published. Native source parity is verified only by the native suite and TypeScript.
