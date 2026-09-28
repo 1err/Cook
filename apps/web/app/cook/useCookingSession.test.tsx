@@ -174,6 +174,126 @@ test("posts the current revision and replaces optimistic state with the canonica
   expect(result.current.session).toEqual(canonical);
 });
 
+test.each(["completed step", "new session", "discarded session"])(
+  "ignores an older refresh after a locally accepted %s",
+  async (change) => {
+    mockActive.mockResolvedValue(session);
+    const { result } = renderHook(() => useCookingSession("user-1"));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    let resolveRefresh!: (value: CookingSession) => void;
+    mockActive.mockImplementationOnce(() => new Promise<CookingSession>(resolve => { resolveRefresh = resolve; }));
+    let pending!: Promise<void>;
+    act(() => { pending = result.current.refresh(); });
+    const next = change === "discarded session" ? null : change === "new session"
+      ? { ...session, id: "session-2" }
+      : { ...session, version: 2, dishes: [{ ...session.dishes[0], steps: [{ ...readyStep, state: "completed" as const, revision: 3 }] }] };
+    if (change === "completed step") {
+      mockAction.mockResolvedValue(next);
+      await act(async () => result.current.applyAction("dish-1", "step-1", "complete"));
+    } else act(() => result.current.acceptSession(next));
+
+    await act(async () => { resolveRefresh(session); await pending; });
+
+    expect(result.current.session).toEqual(next);
+    expect(readCookingStorage("user-1")?.session).toEqual(next);
+  },
+);
+
+test("keeps queued optimistic progress visible while refreshing an older version and replaying", async () => {
+  mockActive.mockResolvedValue(session);
+  mockAction.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+  const { result } = renderHook(() => useCookingSession("user-1"));
+  await waitFor(() => expect(result.current.status).toBe("ready"));
+  await act(async () => result.current.applyAction("dish-1", "step-1", "complete"));
+  const completed = result.current.session;
+  let resolveReplay!: (value: CookingSession) => void;
+  mockAction.mockImplementationOnce(() => new Promise<CookingSession>(resolve => { resolveReplay = resolve; }));
+  let pending!: Promise<void>;
+  act(() => { pending = result.current.refresh(); });
+  await waitFor(() => expect(mockAction).toHaveBeenCalledTimes(2));
+
+  expect(result.current.session).toEqual(completed);
+  expect(readCookingStorage("user-1")?.session).toEqual(completed);
+  expect(result.current.pendingCount).toBe(1);
+  await act(async () => { resolveReplay(completed!); await pending; });
+  expect(result.current.pendingCount).toBe(0);
+});
+
+test("accepts authoritative progress after rejected offline actions inflated the local version", async () => {
+  const secondDish = { ...session.dishes[0], id: "dish-2", recipe_id: "recipe-2", position: 1,
+    steps: [{ ...readyStep, id: "other-step", recipe_step_id: "other-recipe-step" }] };
+  const initial: CookingSession = { ...session, dishes: [
+    { ...session.dishes[0], steps: [readyStep, { ...readyStep, id: "step-2", recipe_step_id: "recipe-step-2", position: 1, state: "locked" }] },
+    secondDish,
+  ] };
+  mockActive.mockResolvedValue(initial);
+  mockAction.mockRejectedValue(new TypeError("Failed to fetch"));
+  const { result } = renderHook(() => useCookingSession("user-1"));
+  await waitFor(() => expect(result.current.status).toBe("ready"));
+  await act(async () => result.current.applyAction("dish-1", "step-1", "complete"));
+  await act(async () => result.current.applyAction("dish-1", "step-2", "complete"));
+  expect(result.current.session?.version).toBe(3);
+  expect(result.current.pendingCount).toBe(2);
+
+  const authoritative = { ...session, version: 2, dishes: [secondDish] };
+  mockActive.mockResolvedValue(authoritative);
+  mockAction.mockRejectedValue(new ApiError("Step removed on another device", 404, "step_not_found"));
+  await act(async () => result.current.refresh());
+  expect(result.current.pendingCount).toBe(0);
+  await act(async () => result.current.refresh());
+
+  expect(result.current.session).toEqual(authoritative);
+  expect(readCookingStorage("user-1")?.session).toEqual(authoritative);
+});
+
+test("does not rewind optimistic progress during an in-flight online step request", async () => {
+  mockActive.mockResolvedValue(session);
+  const { result } = renderHook(() => useCookingSession("user-1"));
+  await waitFor(() => expect(result.current.status).toBe("ready"));
+  let resolveAction!: (value: CookingSession) => void;
+  mockAction.mockImplementationOnce(() => new Promise<CookingSession>(resolve => { resolveAction = resolve; }));
+  let pending!: Promise<void>;
+  act(() => { pending = result.current.applyAction("dish-1", "step-1", "complete"); });
+  const completed = result.current.session;
+
+  await act(async () => result.current.refresh());
+
+  expect(result.current.session).toEqual(completed);
+  await act(async () => { resolveAction(completed!); await pending; });
+});
+
+test.each([
+  { label: "no session", next: null },
+  { label: "a new session", next: { ...session, id: "session-2" } },
+])("accepts a current refresh reporting $label", async ({ next }) => {
+  mockActive.mockResolvedValueOnce({ ...session, version: 5 });
+  const { result } = renderHook(() => useCookingSession("user-1"));
+  await waitFor(() => expect(result.current.status).toBe("ready"));
+  mockActive.mockResolvedValueOnce(next);
+
+  await act(async () => result.current.refresh());
+
+  expect(result.current.session).toEqual(next);
+  expect(readCookingStorage("user-1")?.session).toEqual(next);
+});
+
+test("does not replace a newer accepted session with a late refresh error", async () => {
+  mockActive.mockResolvedValue(session);
+  const { result } = renderHook(() => useCookingSession("user-1"));
+  await waitFor(() => expect(result.current.status).toBe("ready"));
+  let rejectRefresh!: (error: Error) => void;
+  mockActive.mockImplementationOnce(() => new Promise<CookingSession>((_, reject) => { rejectRefresh = reject; }));
+  let pending!: Promise<void>;
+  act(() => { pending = result.current.refresh(); });
+  act(() => result.current.acceptSession({ ...session, id: "session-2" }));
+
+  await act(async () => { rejectRefresh(new ApiError("Temporary failure", 503)); await pending; });
+
+  expect(result.current.status).toBe("ready");
+  expect(result.current.error).toBeNull();
+  expect(result.current.session?.id).toBe("session-2");
+});
+
 test("restores the prior session and exposes a local action error when a mutation fails", async () => {
   mockActive.mockResolvedValue(session);
   mockAction.mockRejectedValue(new Error("Network unavailable"));

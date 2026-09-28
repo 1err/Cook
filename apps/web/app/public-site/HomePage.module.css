@@ -2,7 +2,7 @@
 .homepage { --paper:#fbf8f2; --white:#fffdf9; --ink:#2f2621; --muted:#675e58; --rust:#a64b34; --rust-dark:#853521; --sage:#687761; --line:#e6ded6; --serif:"Source Serif 4",Georgia,'Songti SC','Noto Serif CJK SC',serif; --sans:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; }
 .wrap { width:min(1280px,calc(100% - 80px)); margin-inline:auto; }
 .button { display:inline-flex; align-items:center; justify-content:center; gap:12px; border:1px solid transparent; border-radius:6px; padding:12px 22px; background:var(--rust); color:white; font-size:14px; font-weight:600; line-height:1.45; min-height:46px; }
-.button:hover { background:var(--rust-dark); }
+.button:hover { background:var(--rust-dark); color:#fff; }
 .button svg,.text-button svg { width:17px; height:17px; flex:none; }
 .hero { display:grid; grid-template-columns:minmax(0,.74fr) minmax(0,1.26fr); align-items:center; gap:36px; padding-block:69px 55px; }
 .hero h1 { font:400 clamp(54px,5.8vw,83px)/1.045 var(--serif); letter-spacing:-4.5px; margin:0 0 26px; }
@@ -62,7 +62,7 @@
 .video-error { color:var(--rust); font-size:12px; margin:12px 0 0; }
 .partnership { padding:44px 48px; margin-block:60px 45px; background:var(--sage); color:var(--white); border-radius:10px; display:flex; gap:40px; align-items:center; justify-content:space-between; }
 .partnership h2 { font-size:35px; margin-bottom:10px; }
-.partnership p { font-size:14px; line-height:1.75; margin:0; max-width:620px; color:#f1f3ed; }
+.partnership p { font-size:14px; line-height:1.75; margin:0; max-width:620px; color:var(--white); }
 .partnership a { color:var(--white); border-bottom:1px solid #fff9; padding:8px 0; font-size:14px; flex:none; }
 .dialog { width:min(1360px,calc(100vw - 44px)); max-height:94vh; overflow:hidden; border:0; border-radius:10px; padding:12px; color:var(--ink); background:var(--white); box-shadow:0 25px 90px #0005; }
 .dialog::backdrop { background:#211b16bb; backdrop-filter:blur(4px); }

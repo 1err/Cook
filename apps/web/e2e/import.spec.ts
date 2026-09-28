@@ -61,6 +61,14 @@ async function installImportFixtures(page: Page) {
   await page.route(`${API_BASE}/**`, async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
+    if (pathname === "/analytics/events") {
+      await fulfillJson(route, { ok: true });
+      return;
+    }
+    if (pathname === "/recipes/image-generation/access") {
+      await fulfillJson(route, { enabled: true, allowed: true, reason: null, daily_limit: 3, remaining: 3, resets_at: "2026-09-29T00:00:00Z" });
+      return;
+    }
     if (pathname === "/auth/me") {
       await fulfillJson(route, {
         id: "00000000-0000-0000-0000-000000000001",
@@ -154,6 +162,7 @@ test("imports a TikTok link, then saves the streamlined Review draft", async ({ 
   await page.getByLabel("Step 1 illustration").selectOption("boil");
 
   if (testInfo.project.name === "desktop") {
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
     await expect(page).toHaveScreenshot("import-review.png", {
       animations: "disabled",
       fullPage: true,

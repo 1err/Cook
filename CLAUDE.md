@@ -345,6 +345,10 @@ Password-confirmed deletion atomically removes identities, action links, session
 
 ### Cooking-session domain and concurrency
 
+Web planned cooking defaults to the browser's local calendar date, matching the planner, including near a UTC date boundary.
+
+Web cooking refreshes ignore responses or errors made stale by an accepted local session change. Lower versions cannot rewind pending step requests or queued progress; after reconciliation, a current refresh accepts authoritative state even if optimistic work inflated the prior local version, and offline replay still runs. A current refresh can replace the session with a different identity or `null` after a change on another device.
+
 `cooking_sessions.user_id` is unique, so an account has at most one active session. `cooking_session_dishes` and `cooking_session_steps` copy recipe title, image, ingredients, tutorial text, timing provenance, attention type, action type, and existing step image. They deliberately retain `recipe_id` only as provenance rather than a foreign key: later recipe edits/deletion cannot alter an in-progress cook. Finishing or discarding deletes the normalized session and all children; V1 keeps no history.
 
 Step mutations and expiry-updating reads lock the user-scoped session row; step actions require the step's current `revision`. Every mutation carries a random mutation UUID and device ID; `cooking_session_mutations` makes retries idempotent. Two devices can safely advance different dishes because revisions live on steps. A stale mutation returns a stable 409 `detail.{code,message}`; ownership misses use 404. Starting/resuming a passive timer records an absolute `timer_ends_at` plus alert owner. Unknown-duration steps cannot start a timer but can still complete or skip. Reads turn elapsed running timers into `needs_attention`; they never auto-complete or advance the dish. Completing/skipping explicitly advances the earliest locked step. Shared progress uses duration weights when every dish step has a time and step counts when any time is unknown; deterministic attention ordering lives alongside it in `packages/shared/src/cookingSession.ts`.
@@ -510,6 +514,7 @@ web app. Other public pages remain English. Screenshot tabs support keyboard nav
 and enlargement; enlarged tall screenshots remain scrollable, while Cook offers its
 static screenshot for closer viewing. The separate 30-second tour has native controls,
 no autoplay, and a text alternative.
+The hero Open app button retains white text on hover; partnership copy uses the light foreground to preserve readable contrast on sage.
 The signed-in app header keeps its brand link pointing to `/library` and provides a small
 translated Home icon beside it for returning to `/`. My Library's outlined menu-card
 action remains visually distinct from the primary Add Recipe action.
@@ -673,6 +678,8 @@ Both backends share the `json.get/set` helpers for typed JSON read/write. Don't 
 My Library and Public Library retain separate pagers, errors and explicit retry controls; catalog loading is lazy. Failed refresh retains loaded cards and pagination, and only successful catalog refresh clears optimistic copy markers. Search/refresh/unmount generations suppress stale results. Empty libraries lead to import/manual creation.
 
 Current web/mobile Library, public/friend libraries, planner pickers and cooking pickers use `{items,next_cursor}` summary pages. Summaries carry title/image/tags/time, ingredient/step counts and caller-scoped `already_saved`; instructions, ingredients and private import text are detail-only. Search is a literal case-insensitive title substring; multiple tags use AND semantics, including existing legacy-category fallback. More results require a user action; refresh/search changes invalidate older in-flight pages. Planner, shopping and planned cooking fetch only referenced recipe details with at most four concurrent detail requests, so recipes outside the first page still resolve.
+
+Web planner load failures, including failed referenced-recipe detail reads, disable changes and expose the existing retry control. A failed load never publishes an empty planner fingerprint; retry restores saved slot IDs and revisions before editing resumes.
 
 Cursors are signed and bound to caller, library and normalized filters. Database ordering is a bounded lower-title prefix, the complete lower-title and ID; full titles break prefix ties. Prefix indexes allow existing long Unicode titles and PostgreSQL incremental sort, while `(user_id,catalog_source_recipe_id)` supports per-row copy state without reading the caller's library. Pages use current committed visibility: newly inserted earlier rows appear on refresh; renamed rows may move across the cursor, so clients deduplicate IDs. There is no snapshot/total-count promise.
 

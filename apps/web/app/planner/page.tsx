@@ -147,7 +147,11 @@ function PlannerPageContent() {
           setPlanByDate(nextPlan);
         }
       } catch {
-        if (!cancelled) setRecipes([]);
+        if (!cancelled && loadGeneration.current === generation) {
+          mutationQueuesByDate.current = {};
+          setRecipes([]);
+          setPlanLoadFailed(true);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }

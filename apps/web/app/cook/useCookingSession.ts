@@ -109,6 +109,8 @@ export function useCookingSession(userId: string | null = null): CookingSessionC
   );
   const [selectedDishId, setSelectedDishId] = useState<string | null>(initialCache?.session?.dishes[0]?.id ?? null);
   const sessionRef = useRef<CookingSession | null>(initialCache?.session ?? null);
+  const sessionGeneration = useRef(0);
+  const stepRequestsInFlight = useRef(0);
   const replayRef = useRef<() => Promise<void>>(async () => undefined);
   const replayInFlight = useRef<Promise<void> | null>(null);
   const preferencesRef = useRef(preferences);
@@ -117,6 +119,7 @@ export function useCookingSession(userId: string | null = null): CookingSessionC
   useEffect(() => {
     if (sessionUserRef.current === userId) return;
     sessionUserRef.current = userId;
+    sessionGeneration.current++;
     const cached = userId ? readCookingStorage(userId) : null;
     sessionRef.current = cached?.session ?? null;
     setSession(cached?.session ?? null);
@@ -145,6 +148,7 @@ export function useCookingSession(userId: string | null = null): CookingSessionC
   }, [userId]);
 
   const storeSession = useCallback((next: CookingSession | null) => {
+    sessionGeneration.current++;
     sessionRef.current = next;
     setSession(next);
     if (userId) {
@@ -174,16 +178,23 @@ export function useCookingSession(userId: string | null = null): CookingSessionC
 
   const refresh = useCallback(async () => {
     const requestedUserId = userId;
+    const requestedGeneration = sessionGeneration.current;
     setError(null);
     try {
       const active = await webApiClient.cooking.active();
-      if (sessionUserRef.current !== requestedUserId) return;
-      storeSession(active);
+      if (sessionUserRef.current !== requestedUserId || sessionGeneration.current !== requestedGeneration) return;
+      const current = sessionRef.current;
+      const hasPendingSteps = stepRequestsInFlight.current > 0 || Boolean(userId && readCookingStorage(userId)?.queue.length);
+      // Optimistic versions may exceed the server after rejected offline work.
+      // Protect pending progress, then accept authoritative state once settled.
+      if (!active || !current || active.id !== current.id || !hasPendingSteps || active.version >= current.version) {
+        storeSession(active);
+      }
       setNotice((current) => current === "cook.offline.cached" ? null : current);
       setStatus("ready");
       await replayRef.current();
     } catch (caught) {
-      if (sessionUserRef.current !== requestedUserId) return;
+      if (sessionUserRef.current !== requestedUserId || sessionGeneration.current !== requestedGeneration) return;
       if (sessionRef.current && isNetworkFailure(caught)) {
         setNotice("cook.offline.cached");
         setStatus("ready");
@@ -244,6 +255,7 @@ export function useCookingSession(userId: string | null = null): CookingSessionC
       };
       setActionError(null);
       const optimistic = applyOptimisticCookingAction(previous, dishId, stepId, payload);
+      stepRequestsInFlight.current++;
       try {
         storeSession(optimistic);
         const canonical = await webApiClient.cooking.action(previous.id, stepId, payload);
@@ -266,6 +278,8 @@ export function useCookingSession(userId: string | null = null): CookingSessionC
           storeSession(previous);
           setActionError(caught instanceof Error ? caught.message : "Could not update cooking step");
         }
+      } finally {
+        stepRequestsInFlight.current--;
       }
     },
     [storeSession],

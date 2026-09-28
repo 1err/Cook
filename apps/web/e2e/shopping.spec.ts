@@ -485,17 +485,19 @@ test("reviews editable top picks and records only explicit user-confirmed Weee p
     });
   });
 
+  // Follow the same Produce / Pantry / Dairy order as the visible shopping list.
+  await expect(dialog.getByRole("listitem").locator("strong")).toHaveText(["Kale", "Jasmine rice", "Whole milk"]);
   await dialog.getByRole("button", { name: "Open next on Weee" }).click();
   expect(await page.evaluate(() => (
     window as typeof window & { __cartCompanionOpenedUrls?: string[] }
-  ).__cartCompanionOpenedUrls)).toEqual(["https://www.sayweee.com/product/rice-1"]);
-  await expect(dialog.getByRole("heading", { name: "Next: Jasmine rice" })).toBeVisible();
+  ).__cartCompanionOpenedUrls)).toEqual(["https://www.sayweee.com/product/kale-2"]);
+  await expect(dialog.getByRole("heading", { name: "Next: Kale" })).toBeVisible();
   await expect(dialog.getByText("0 marked as added")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Open again" })).toBeVisible();
 
   await dialog.getByRole("button", { name: "I added it" }).click();
   await expect(dialog.getByText("1 marked as added")).toBeVisible();
-  await expect(dialog.getByRole("heading", { name: "Next: Kale" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Next: Jasmine rice" })).toBeVisible();
   await dialog.getByRole("button", { name: "Close Weee cart review" }).click();
 
   await page.reload();
@@ -504,7 +506,7 @@ test("reviews editable top picks and records only explicit user-confirmed Weee p
   await reloadedReviewTrigger.click();
   const reloadedDialog = page.getByRole("dialog", { name: "Review Weee cart" });
   await expect(reloadedDialog.getByText("1 marked as added")).toBeVisible();
-  await expect(reloadedDialog.getByRole("heading", { name: "Next: Kale" })).toBeVisible();
+  await expect(reloadedDialog.getByRole("heading", { name: "Next: Jasmine rice" })).toBeVisible();
 
   await reloadedDialog.getByRole("button", { name: "Skip for now" }).click();
   await expect(reloadedDialog.getByRole("heading", { name: "Next: Whole milk" })).toBeVisible();
@@ -513,11 +515,11 @@ test("reviews editable top picks and records only explicit user-confirmed Weee p
   await expect(reloadedDialog.getByRole("heading", { name: "Handoff complete" })).toHaveCount(0);
   await reloadedDialog.getByRole("button", { name: "Close Weee cart review" }).click();
   await reloadedReviewTrigger.click();
-  await expect(reloadedDialog.getByRole("heading", { name: "Next: Kale" })).toBeVisible();
-
-  await reloadedDialog.getByRole("button", { name: "Undo Jasmine rice" }).click();
-  await expect(reloadedDialog.getByText("0 marked as added")).toBeVisible();
   await expect(reloadedDialog.getByRole("heading", { name: "Next: Jasmine rice" })).toBeVisible();
+
+  await reloadedDialog.getByRole("button", { name: "Undo Kale" }).click();
+  await expect(reloadedDialog.getByText("0 marked as added")).toBeVisible();
+  await expect(reloadedDialog.getByRole("heading", { name: "Next: Kale" })).toBeVisible();
   await reloadedDialog.getByRole("button", { name: "I added it" }).click();
   await reloadedDialog.getByRole("button", { name: "I added it" }).click();
   await reloadedDialog.getByRole("button", { name: "I added it" }).click();

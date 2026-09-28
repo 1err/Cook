@@ -93,10 +93,11 @@ async function libraryHeaderGeometry(page: Page) {
   }));
 }
 
-test("keeps the library heading, subtitle, and tabs in place when opening Friends", async ({ page }) => {
+test("keeps the library heading, subtitle, and tabs aligned when opening Friends", async ({ page }) => {
   const { mutations } = await installFriendsFixtures(page);
   await page.goto("/library");
   const libraryGeometry = await libraryHeaderGeometry(page);
+  await expect(page.getByRole("button", { name: "Make a menu", exact: true })).toBeVisible();
   await expect(page.getByRole("tab", { name: "My library", exact: true })).toHaveAttribute("aria-selected", "true");
 
   await page.getByRole("tab", { name: "Friends", exact: true }).click();
@@ -105,16 +106,26 @@ test("keeps the library heading, subtitle, and tabs in place when opening Friend
   await expect(page.getByRole("heading", { level: 2, name: "Find a friend", exact: true })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Friends", exact: true })).toHaveAttribute("aria-selected", "true");
   const friendsGeometry = await libraryHeaderGeometry(page);
+  await expect(page.getByRole("button", { name: "Make a menu", exact: true })).toHaveCount(0);
+  // The My Library action narrows the title on phones, so text may wrap.
+  // Keep the shared left edge and vertical spacing through that natural reflow.
+  const [libraryHeading, librarySubtitle, libraryTabs] = libraryGeometry;
+  const [friendsHeading, friendsSubtitle, friendsTabs] = friendsGeometry;
+  expect(Math.abs(friendsHeading.y - libraryHeading.y)).toBeLessThanOrEqual(1);
+  const subtitleGap = (heading: typeof libraryHeading, subtitle: typeof librarySubtitle) =>
+    subtitle.y - (heading.y + heading.height);
+  const tabsGap = (subtitle: typeof librarySubtitle, tabs: typeof libraryTabs) =>
+    tabs.y - (subtitle.y + subtitle.height);
+  expect(Math.abs(subtitleGap(libraryHeading, librarySubtitle) - subtitleGap(friendsHeading, friendsSubtitle))).toBeLessThanOrEqual(1);
+  expect(Math.abs(tabsGap(librarySubtitle, libraryTabs) - tabsGap(friendsSubtitle, friendsTabs))).toBeLessThanOrEqual(1);
   for (const [index, before] of libraryGeometry.entries()) {
     const after = friendsGeometry[index];
     expect(after.name).toBe(before.name);
-    // Selected tab text changes weight; preserve the shared row and each tab's vertical alignment.
-    const dimensions = ["heading", "subtitle", "tabs"].includes(before.name)
-      ? ["x", "y", "width", "height"] as const
-      : ["y", "height"] as const;
-    for (const dimension of dimensions) {
-      expect(Math.abs(after[dimension] - before[dimension]), `${before.name} ${dimension} should stay aligned`).toBeLessThanOrEqual(1);
-    }
+    expect(Math.abs(after.x - before.x), `${before.name} left edge should stay aligned`).toBeLessThanOrEqual(1);
+    if (["heading", "subtitle"].includes(before.name)) continue;
+    expect(Math.abs(after.height - before.height), `${before.name} height should stay aligned`).toBeLessThanOrEqual(1);
+    expect(Math.abs((after.y - friendsTabs.y) - (before.y - libraryTabs.y)), `${before.name} should stay aligned with its tab row`).toBeLessThanOrEqual(1);
+    if (before.name === "tabs") expect(Math.abs(after.width - before.width)).toBeLessThanOrEqual(1);
   }
   await expectNoOverflow(page);
   expect(mutations).toEqual([]);

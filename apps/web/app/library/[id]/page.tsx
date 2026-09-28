@@ -267,7 +267,7 @@ function RecipeEditContent() {
             </div>
 
             <div className={styles.coverEditor}>
-              <RecipeCoverEditor key={id} value={thumbnailUrl} onChange={setThumbnailUrl} onBusyChange={setUploadingImage} disabled={saving || deleting} />
+              <RecipeCoverEditor key={`cover:${id}`} value={thumbnailUrl} onChange={setThumbnailUrl} onBusyChange={setUploadingImage} disabled={saving || deleting} />
               <details className={styles.imageUrlDisclosure}>
                 <summary>{t("recipe.imageUrl")}</summary>
                 <input
@@ -279,7 +279,7 @@ function RecipeEditContent() {
                   placeholder="https://…"
                 />
               </details>
-              <RecipeImageGenerator key={id} recipe={{ title, description, ingredients, steps }} headingLevel={3}
+              <RecipeImageGenerator key={`generation:${id}`} recipe={{ title, description, ingredients, steps }} headingLevel={3}
                 disabled={saving || deleting || uploadingImage} onAccept={setThumbnailUrl} />
             </div>
           </div>

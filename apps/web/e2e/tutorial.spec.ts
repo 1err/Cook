@@ -97,7 +97,7 @@ test("previews tutorial estimates without persistence and saves explicit duratio
   await tutorial.getByRole("link", { name: "Edit tutorial" }).click();
   await expect(page).toHaveURL(/\/recipe\/tutorial-1\/tutorial\/edit$/);
   await page.getByRole("button", { name: "Estimate missing tutorial details" }).click();
-  await expect(page.getByText("AI estimated", { exact: true })).toBeVisible();
+  await expect(page.getByText("Estimated", { exact: true })).toBeVisible();
   expect(patchBodies).toEqual([]);
 
   await page.getByRole("button", { name: "Cancel" }).click();

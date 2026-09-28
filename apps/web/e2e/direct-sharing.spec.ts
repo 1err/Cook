@@ -91,7 +91,7 @@ async function shareIntoWebsite(page: Page, { text = "", title = "", video = fal
 test("manual video upload keeps the existing import layout and creates a reviewable draft", async ({ page }) => {
   const state = await mockImportApi(page);
   await page.goto("/import");
-  await expect(page.getByRole("heading", { name: "Import recipe", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add a recipe", exact: true })).toBeVisible();
   await expectCompactSourceLayout(page);
   await page.getByRole("tab", { name: "Upload video", exact: true }).click();
   await expect(page.getByText("Maximum file size: 30 MB.", { exact: true })).toBeVisible();
@@ -102,7 +102,7 @@ test("manual video upload keeps the existing import layout and creates a reviewa
   expect(state.uploads).toHaveLength(0);
   await expectCompactSourceLayout(page);
   await page.screenshot({ path: test.info().outputPath("manual-video-import.png"), fullPage: true });
-  await page.getByRole("button", { name: "Create draft", exact: true }).click();
+  await page.getByRole("button", { name: "Prepare draft", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Review recipe", exact: true })).toBeVisible();
   expect(state.uploads).toHaveLength(1);
   expect(state.uploads[0]).toContain('name="file"; filename="recipe.mp4"');
@@ -117,11 +117,11 @@ test("manual upload accepts a video above the old limit and blocks one byte abov
   const picker = page.getByLabel("Upload video", { exact: true });
   await picker.setInputFiles({ name: "recipe-15mb.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(15 * 1024 * 1024) });
   await expect(page.getByText("Selected: recipe-15mb.mp4", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create draft", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Prepare draft", exact: true })).toBeEnabled();
 
   await picker.setInputFiles({ name: "recipe-too-large.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(30 * 1024 * 1024 + 1) });
-  await expect(page.getByRole("alert")).toHaveText("This file exceeds the upload limit. Choose a shorter or smaller file.");
-  await expect(page.getByRole("button", { name: "Create draft", exact: true })).toBeDisabled();
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText("This file exceeds the upload limit. Choose a shorter or smaller file.");
+  await expect(page.getByRole("button", { name: "Prepare draft", exact: true })).toBeDisabled();
   expect(state.uploads).toHaveLength(0);
 });
 
@@ -135,7 +135,7 @@ test("full copied RedNote share text submits without changing the one-line sourc
   await expect(page.getByLabel(SOURCE_LABEL, { exact: true })).toHaveValue(shareText);
   expect(state.linkImports).toHaveLength(0);
   await page.screenshot({ path: test.info().outputPath("rednote-link-import.png"), fullPage: true });
-  await page.getByRole("button", { name: "Create draft", exact: true }).click();
+  await page.getByRole("button", { name: "Prepare draft", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Review recipe", exact: true })).toBeVisible();
   expect(state.linkImports).toEqual([expect.objectContaining({ mode: "link", url: sourceUrl })]);
 });
@@ -157,12 +157,12 @@ test("a shared video survives sign-in, imports without a picker, and clears its 
   await page.getByLabel("Email", { exact: true }).fill("share@example.com");
   await page.getByLabel("Password", { exact: true }).fill("fixture-password-only");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByText("Shared video ready. Choose Create draft to continue.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Shared video ready. Choose Prepare draft to continue.", { exact: true })).toBeVisible();
   await expect(page.getByText("Selected: 排骨.mp4", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Upload video", { exact: true })).toHaveValue("");
   await expectCompactSourceLayout(page);
   expect(state.uploads).toHaveLength(0);
-  await page.getByRole("button", { name: "Create draft", exact: true }).click();
+  await page.getByRole("button", { name: "Prepare draft", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Review recipe", exact: true })).toBeVisible();
   expect(state.uploads).toHaveLength(1);
   expect(state.uploads[0]).toContain(VIDEO_BYTES);
@@ -182,7 +182,7 @@ test("a shared video survives sign-in, imports without a picker, and clears its 
 test("an Android title-field link opens ready for review and can be discarded", async ({ page }) => {
   const state = await mockImportApi(page);
   await page.goto("/import");
-  await expect(page.getByRole("heading", { name: "Import recipe", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add a recipe", exact: true })).toBeVisible();
   await shareIntoWebsite(page, { title: "http://xhslink.com/a/SharedRecipe" });
   await expect(page.getByLabel(SOURCE_LABEL, { exact: true })).toHaveValue("https://xhslink.com/a/SharedRecipe");
   await expectCompactSourceLayout(page);

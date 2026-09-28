@@ -15,7 +15,7 @@ const recipe = {
   library_tags: ["healthy", "main_dish", "comfort_food"],
   description: "Crisp, savory pockets with a tender homemade wrapper.",
   total_time_minutes: 55,
-  steps: [{ text: "Mix the dough and rest it.", duration_seconds: 900, image_url: null }],
+  steps: [{ id: "9ef9c806-914c-4dfb-a4aa-57d2cdb42a22", text: "Mix the dough and rest it.", duration_seconds: 900, duration_source: "fallback", attention_type: "hands_on", action_type: "other", image_url: null }],
   tips: ["Seal every edge firmly."],
   equipment: ["Skillet"],
   source_url: "https://example.com/recipe",
@@ -39,6 +39,14 @@ async function installFixtures(page: Page) {
   await page.route(`${API_BASE}/**`, async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
+    if (pathname === "/analytics/events") {
+      await fulfillJson(route, { ok: true });
+      return;
+    }
+    if (pathname === "/recipes/image-generation/access") {
+      await fulfillJson(route, { enabled: true, allowed: true, reason: null, daily_limit: 3, remaining: 3, resets_at: "2026-09-29T00:00:00Z" });
+      return;
+    }
     if (pathname === "/auth/me") {
       await fulfillJson(route, {
         id: "00000000-0000-0000-0000-000000000001",
@@ -104,6 +112,10 @@ test("keeps the editorial recipe hero readable and responsive", async ({ page },
 });
 
 test("presents recipe editing as one clear, functional workflow", async ({ page }, testInfo) => {
+  const reactKeyWarnings: string[] = [];
+  page.on("console", (message) => {
+    if (/unique.*key|same key/.test(message.text())) reactKeyWarnings.push(message.text());
+  });
   const saveCapture: { current: Record<string, unknown> | null } = { current: null };
   await page.route(`${API_BASE}/recipes/${recipe.id}`, async (route) => {
     if (route.request().method() === "PATCH") {
@@ -117,6 +129,8 @@ test("presents recipe editing as one clear, functional workflow", async ({ page 
   await page.goto(`/library/${recipe.id}`);
 
   await expect(page.getByRole("heading", { level: 1, name: "Edit recipe" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Generate with AI", exact: true })).toBeEnabled();
+  expect(reactKeyWarnings).toEqual([]);
   const sectionHeadings = await page.getByRole("heading", { level: 2 }).allTextContents();
   expect(sectionHeadings).toEqual([
     "Basic details",
@@ -134,7 +148,7 @@ test("presents recipe editing as one clear, functional workflow", async ({ page 
 
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await expect(page.getByRole("button", { name: "Save" })).toBeInViewport();
-  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
 
   if (testInfo.project.name === "desktop") {
     await expect(page).toHaveScreenshot("recipe-edit.png", {

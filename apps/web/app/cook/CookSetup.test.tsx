@@ -88,7 +88,23 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
   vi.clearAllMocks();
+});
+
+test.each([
+  ["America/Chicago", "2026-08-28T01:00:00.000Z"],
+  ["Asia/Shanghai", "2026-08-26T20:00:00.000Z"],
+])("defaults planned cooking to the local day in %s across the UTC date boundary", async (timezone, instant) => {
+  vi.stubEnv("TZ", timezone);
+  vi.setSystemTime(new Date(instant));
+  mockMealPlanList.mockImplementation(async (start: string) => plans.filter(plan => plan.date === start));
+  render(<CookSetup onSessionCreated={vi.fn()} />);
+
+  await screen.findByRole("heading", { name: "Start cooking" });
+  expect(screen.getByLabelText("Planned meal")).toHaveValue("2026-08-27");
+  expect(screen.getByRole("button", { name: "Start 2 dishes" })).toBeEnabled();
+  expect(screen.queryByText("No recipes are saved in this meal.")).not.toBeInTheDocument();
 });
 
 test("starts all recipes from the selected planned meal", async () => {

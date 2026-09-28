@@ -5,8 +5,9 @@ import type React from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import PlannerPage from "./page";
 
-const { mockApiFetch, mockUseRouter, mockUseSearchParams, mockUseT } = vi.hoisted(() => ({
+const { mockApiFetch, mockRecipeGet, mockUseRouter, mockUseSearchParams, mockUseT } = vi.hoisted(() => ({
   mockApiFetch: vi.fn(),
+  mockRecipeGet: vi.fn(),
   mockUseRouter: vi.fn(),
   mockUseSearchParams: vi.fn(),
   mockUseT: vi.fn(),
@@ -28,7 +29,7 @@ vi.mock("../lib/api", () => ({
       const rows = await (await mockApiFetch("/recipes")).json();
       return { items: rows.filter((r: any) => (!options.q || r.title.toLowerCase().includes(options.q.toLowerCase())) && (!options.tags?.length || options.tags.every(tag => r.library_tags?.includes(tag) || r.library_category === tag))).map((r: any) => ({...r, ingredient_count:r.ingredients.length, step_count:r.steps?.length ?? 0, already_saved:true})), next_cursor:null };
     },
-    get: async (id: string) => (await (await mockApiFetch("/recipes")).json()).find((r: any) => r.id === id),
+    get: mockRecipeGet,
   } },
 }));
 vi.mock("../lib/i18n", () => ({ useT: mockUseT, useI18n: () => ({ language: "en" }) }));
@@ -152,6 +153,8 @@ async function addDinnerRecipe(
 }
 
 beforeEach(() => {
+  mockRecipeGet.mockReset();
+  mockRecipeGet.mockImplementation(async (id: string) => (await (await mockApiFetch("/recipes")).json()).find((r: any) => r.id === id));
   mockUseRouter.mockReturnValue({ push: vi.fn(), replace: vi.fn() });
   mockUseSearchParams.mockReturnValue(new URLSearchParams("week=2026-08-10"));
   mockUseT.mockReturnValue(t);
@@ -628,6 +631,44 @@ test("offers the same protected retry when the plan request rejects", async () =
       screen.getByRole("button", { name: "Choose a recipe for dinner on 2026-08-10" }),
     ).toBeEnabled();
   });
+});
+
+test("protects the saved plan and offers retry when a planned recipe fails to load", async () => {
+  const requests: Array<Record<string, unknown>> = [];
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+    if (path.startsWith("/meal-plan?")) return Promise.resolve(jsonResponse([
+      { date: "2026-08-10", breakfast: [], lunch: [], dinner: ["recipe-2"], revision: 3 },
+    ]));
+    if (path === "/recipes") return Promise.resolve(jsonResponse([
+      { id: "recipe-1", title: "First recipe", ingredients: [] },
+      { id: "recipe-2", title: "Persisted recipe", ingredients: [] },
+    ]));
+    if (path === "/meal-plan/2026-08-10" && options?.method === "PUT") {
+      const body = JSON.parse(String(options.body));
+      requests.push(body);
+      return Promise.resolve(jsonResponse({ date: "2026-08-10", ...body, revision: 4 }));
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  mockRecipeGet.mockRejectedValueOnce(new Error("Recipe temporarily unavailable"));
+  const user = userEvent.setup();
+  render(<PlannerPage />);
+
+  const choose = await screen.findByRole("button", {
+    name: "Choose a recipe for dinner on 2026-08-10",
+  });
+  expect(choose).toBeDisabled();
+  expect(screen.getByRole("status")).toHaveTextContent("Could not load this week's saved plan");
+  await user.click(choose);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(requests).toEqual([]);
+
+  await user.click(screen.getByRole("button", { name: "Retry loading plan" }));
+  expect(await screen.findByRole("button", { name: /Open Persisted recipe.*2026-08-10/ })).toBeVisible();
+  await addDinnerRecipe(user, "First recipe");
+  await waitFor(() => expect(requests).toEqual([
+    { breakfast: [], lunch: [], dinner: ["recipe-2", "recipe-1"], expected_revision: 3 },
+  ]));
 });
 
 
