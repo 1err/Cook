@@ -491,14 +491,21 @@ The slug union `RecipeTagSlug` lives in `@cooking/shared/types`.
 ### Public website and recipe library layout
 
 The web root `/` is a Chef World homepage with page-local English/Chinese switching.
-It showcases recipes, AI menus, meal planning, shopping, the Muse handoff, and guided
-cooking through actual screenshots and a click-to-play, silent 30-second feature preview. `/about`, `/privacy`, `/terms`, and `/contact` are also public.
+Its feature tabs are ordered Recipes, Planner, Shopping, Muse, Menu maker, and Cook.
+Recipes, Planner, and Shopping use keyboard-focusable, fixed-height scroll viewports
+with full-width screenshots. Cook cycles three captured sample steps with a local
+Complete & next step / Replay control; the preview does not call APIs or change a
+cooking session. Changing tabs resets the scroll/cooking preview. Missing new image
+assets fall back to the existing screenshot for that feature. The click-to-play,
+silent 30-second feature video remains a separate preview. `/about`, `/privacy`, `/terms`, and `/contact` are also public.
 Their header and footer use the same Home/About/Contact/Privacy/Terms page links under
 `apps/web/app/public-site/`. The header and home hero have an `Open app` link to `/library`;
 existing authentication handles signed-in users or redirects guests to login. The homepage defaults to English; its language switch translates only the public page
 and its navigation, without changing the saved language preference for the bilingual
 web app. Other public pages remain English. Screenshot tabs support keyboard navigation
-and enlargement; the preview has native controls, no autoplay, and a text alternative.
+and enlargement; enlarged tall screenshots remain scrollable and Cook enlarges the
+currently displayed sample step. The video has native controls, no autoplay, and a
+text alternative.
 The signed-in app header keeps its brand link pointing to `/library` and provides a small
 translated Home icon beside it for returning to `/`. My Library's outlined menu-card
 action remains visually distinct from the primary Add Recipe action.

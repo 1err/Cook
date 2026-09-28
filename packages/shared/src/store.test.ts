@@ -16,6 +16,7 @@ test.each([
   ["weee_fruits_Fuji Apples", "Fuji Apples"],
   ["weee_tofuplantbased_Firm Tofu", "Firm Tofu"],
   ["weee_grocery_Rice Flour", "Rice Flour"],
+  ["weee_dairy_Lactaid_Milk", "Lactaid Milk"],
 ])("cleans the recognized leading machine prefix in %s", (source, expected) => {
   expect(getWeeeProductDisplayName(source)).toBe(expected);
 });

@@ -17,21 +17,33 @@ export function HomePage() {
   // Public-page copy never overwrites the user's separately stored app language.
   const [language, setLanguage] = useState<HomeLanguage>("en");
   const [selected, setSelected] = useState(0);
+  const [cookStep, setCookStep] = useState(0);
+  const [failedImages, setFailedImages] = useState<Set<string>>(() => new Set());
   const [hydrated, setHydrated] = useState(false);
   const [videoStarted, setVideoStarted] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const tabs = useRef<Array<HTMLButtonElement | null>>([]);
   const dialog = useRef<HTMLDialogElement>(null);
+  const lightboxViewport = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const copy = HOME_COPY[language];
   const feature = HOME_FEATURES[selected];
   const details = feature[language];
+  const preferredImage = feature.preview === "scroll" ? feature.scrollImage
+    : feature.preview === "steps" ? feature.stepImages[cookStep] : feature.image;
+  const cookingPreviewUnavailable = feature.preview === "steps" && feature.stepImages.some(image => failedImages.has(image));
+  const previewImage = cookingPreviewUnavailable || failedImages.has(preferredImage) ? feature.image : preferredImage;
+  const isTallPreview = feature.preview === "scroll" && previewImage === feature.scrollImage;
+  const enlargeLabel = language === "en" ? `Enlarge ${details.label} screenshot` : `放大${details.label}截图`;
+  const previewAlt = feature.preview === "steps" && !cookingPreviewUnavailable
+    ? `${details.caption} ${copy.cookStep.replace("{current}", String(cookStep + 1))}` : details.caption;
   const locale = language === "zh" ? "zh-CN" : "en";
 
   useEffect(() => { setHydrated(true); }, []);
 
   function selectFeature(index: number, focus = false) {
     const next = (index + HOME_FEATURES.length) % HOME_FEATURES.length;
+    if (next !== selected) setCookStep(0);
     setSelected(next);
     if (focus) {
       tabs.current[next]?.focus();
@@ -49,6 +61,13 @@ export function HomePage() {
     }
     event.preventDefault();
     selectFeature(next, true);
+  }
+  function openScreenshot() {
+    dialog.current?.showModal();
+    if (lightboxViewport.current) lightboxViewport.current.scrollTop = 0;
+  }
+  function screenshotFailed() {
+    setFailedImages(current => current.has(preferredImage) ? current : new Set(current).add(preferredImage));
   }
   async function playPreview() {
     setVideoError(false);
@@ -85,10 +104,26 @@ export function HomePage() {
         </div>
         <div id="feature-panel" className={styles["feature-panel"]} role="tabpanel" aria-labelledby={`feature-tab-${feature.id}`} tabIndex={0}>
           <figure className={styles["screen-figure"]}>
-            <button type="button" className={styles["screen-button"]} onClick={() => dialog.current?.showModal()} aria-label={language === "en" ? `Enlarge ${details.label} screenshot` : `放大${details.label}截图`}>
-              <img src={feature.image} width={1280} height={720} alt={details.caption} loading="lazy" />
-            </button>
-            <figcaption><span>{details.caption}</span><span>{copy.enlarge}</span></figcaption>
+            {feature.preview === "scroll" ? <div
+              key={feature.id}
+              className={styles["screen-viewport"]}
+              role="region"
+              tabIndex={0}
+              aria-label={language === "en" ? `${details.label} screenshot preview` : `${details.label}截图预览`}
+              aria-describedby="feature-scroll-hint"
+            >
+              <img key={previewImage} src={previewImage} width={1280} alt={previewAlt} loading="lazy" onError={screenshotFailed} />
+            </div> : <button type="button" className={styles["screen-button"]} onClick={openScreenshot} aria-label={enlargeLabel}>
+              <img key={previewImage} src={previewImage} width={1280} height={720} alt={previewAlt} loading="lazy" onError={screenshotFailed} />
+            </button>}
+            {cookingPreviewUnavailable ? <p className={styles["video-note"]} role="status">{copy.cookUnavailable}</p> : feature.preview === "steps" ? <div className={styles["demo-controls"]}>
+              <div><span className={styles["demo-label"]}>{copy.cookDemo}</span><span role="status" aria-live="polite">{copy.cookStep.replace("{current}", String(cookStep + 1))}</span></div>
+              <button type="button" onClick={() => setCookStep(current => (current + 1) % feature.stepImages.length)}>{cookStep === feature.stepImages.length - 1 ? copy.cookReplay : copy.cookNext}</button>
+            </div> : null}
+            <figcaption><span>{details.caption}</span>{feature.preview === "scroll"
+              ? <button type="button" className={styles["enlarge-control"]} onClick={openScreenshot} aria-label={enlargeLabel}>{copy.enlarge}</button>
+              : <span>{copy.enlarge}</span>}</figcaption>
+            {feature.preview === "scroll" ? <p id="feature-scroll-hint" className={styles["scroll-hint"]}>{copy.scrollHint}</p> : null}
           </figure>
           <div className={styles["feature-copy"]}>
             <p className={styles["feature-number"]}>0{selected + 1} / {details.label}</p>
@@ -126,7 +161,9 @@ export function HomePage() {
       <section className={`${styles.wrap} ${styles.partnership}`} aria-labelledby="partnership-title"><div><h2 id="partnership-title">{copy.partnershipTitle}</h2><p>{copy.partnershipBody}</p></div><Link href="/contact">{copy.contact}</Link></section>
       <dialog ref={dialog} className={styles.dialog} aria-labelledby="feature-lightbox-title" onClick={event => { if (event.target === event.currentTarget) { const box = event.currentTarget.getBoundingClientRect(); if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) dialog.current?.close(); } }}>
         <div className={styles["lightbox-top"]}><span id="feature-lightbox-title">{details.caption}</span><button type="button" onClick={() => dialog.current?.close()} aria-label={language === "en" ? "Close screenshot" : "关闭截图"}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button></div>
-        <img src={feature.image} alt={details.caption} loading="lazy" />
+        <div ref={lightboxViewport} className={`${styles["lightbox-viewport"]} ${isTallPreview ? styles["lightbox-scroll"] : ""}`} role={feature.preview === "scroll" ? "region" : undefined} tabIndex={feature.preview === "scroll" ? 0 : undefined} aria-label={feature.preview === "scroll" ? language === "en" ? `Enlarged ${details.label} screenshot` : `放大的${details.label}截图` : undefined}>
+          <img key={previewImage} src={previewImage} alt={previewAlt} loading="lazy" onError={screenshotFailed} />
+        </div>
       </dialog>
     </main>
   </PublicShell>;

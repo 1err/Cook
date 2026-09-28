@@ -316,8 +316,11 @@ test("encodes product text as delimited data so newlines and fences cannot creat
 });
 
 
-test("exports a readable product title while retaining raw draft identity and source data", () => {
-  const product = { ...rice, name: "weee_dried_Jasmine_rice, 350 g" };
+test.each([
+  ["weee_dried_Jasmine_rice, 350 g", "Jasmine rice, 350 g"],
+  ["weee_dairy_Lactaid_Milk", "Lactaid Milk"],
+])("exports %s readably while retaining raw draft identity and source data", (rawName, displayName) => {
+  const product = { ...rice, name: rawName };
   const input = source([selection({ product })]);
   const before = structuredClone(input);
   const draft = buildMuseCartDraft(input);
@@ -325,7 +328,7 @@ test("exports a readable product title while retaining raw draft identity and so
   const signature = draft.signature;
   const prompt = promptFor(draft)!;
   const exported = JSON.parse(prompt.split("SHOPPING_DATA_JSON = ")[1]);
-  expect(exported.products[0].productName).toBe("Jasmine rice, 350 g");
+  expect(exported.products[0].productName).toBe(displayName);
   expect(exported.products[0].url).toBe(product.url);
   expect(draft.items[0].product).toEqual(product);
   expect(decodeURIComponent(id)).toContain(product.name);

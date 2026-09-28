@@ -13,7 +13,13 @@ export const HOME_COPY = {
     "heroCaption": "Your recipes. Your table.",
     "heroProof": "A real recipe library and the menu it inspired.",
     "featuresIntro": "From the dish you saved to the meal you share. Take a look inside Chef World.",
-    "enlarge": "Click to look closer",
+    "enlarge": "Look closer",
+    "scrollHint": "Scroll to explore",
+    "cookDemo": "Short cooking demo",
+    "cookStep": "Preview {current} / 3",
+    "cookNext": "Complete & next step",
+    "cookReplay": "Replay preview",
+    "cookUnavailable": "The step preview is unavailable. Here’s a cooking screenshot.",
     "screensNote": "Actual app screens. Select a feature to explore.",
     "previewEyebrow": "A look inside",
     "previewIntro": "A quick tour of recipes, menus, meal planning, shopping, and guided cooking — made with actual app screens.",
@@ -36,7 +42,13 @@ export const HOME_COPY = {
     "heroCaption": "自己的菜谱，自己的餐桌。",
     "heroProof": "真实菜谱库，和用这些菜生成的菜单。",
     "featuresIntro": "从刷到一道想做的菜，到和朋友一起开饭。看看 Chef World 能帮你做什么。",
-    "enlarge": "点击放大查看",
+    "enlarge": "放大查看",
+    "scrollHint": "向下滚动，继续看看",
+    "cookDemo": "烹饪小演示",
+    "cookStep": "演示 {current} / 3",
+    "cookNext": "完成并看下一步",
+    "cookReplay": "重新演示",
+    "cookUnavailable": "步骤演示暂时无法显示，先看看烹饪截图。",
     "screensNote": "真实应用截图，选择一个功能看看。",
     "previewEyebrow": "看看功能预览",
     "previewIntro": "用实际应用画面，快速看看菜谱、菜单、餐单、购物和烹饪步骤。",
@@ -69,28 +81,9 @@ export const HOME_FEATURES = [
       "cta": "打开菜谱库",
       "caption": "已保存的菜谱：食材和烹饪步骤一目了然。",
       "note": "链接导入受原平台访问限制；AI 整理的草稿需要核对。"
-    }
-  },
-  {
-    "id": "menus",
-    "image": "/brand/features/menu-generated.webp",
-    "path": "/library",
-    "en": {
-      "label": "Menu maker",
-      "title": "Make your table feel like your own little restaurant.",
-      "body": "Choose your dishes and describe a style. Turn them into an illustrated menu to download and share before friends come over.",
-      "cta": "Make a menu",
-      "caption": "A menu generated from the recipes in this library.",
-      "note": "AI-generated image. Check dish names before sharing. One new menu per UTC day."
     },
-    "zh": {
-      "label": "生成菜单",
-      "title": "朋友来家里吃饭，也有一张专属菜单。",
-      "body": "选好拿手菜，描述喜欢的风格，让 AI 画成一张菜单。下载发给室友或朋友，聚餐也可以很有仪式感。",
-      "cta": "去生成菜单",
-      "caption": "从这个菜谱库里选菜，实际生成的菜单。",
-      "note": "菜单为 AI 生成图片，分享前请核对菜名。每天可生成一张，按 UTC 重置。"
-    }
+    "preview": "scroll",
+    "scrollImage": "/brand/features/recipes-scroll.webp"
   },
   {
     "id": "planner",
@@ -111,7 +104,9 @@ export const HOME_FEATURES = [
       "cta": "安排这周吃什么",
       "caption": "把自己的菜谱安排到一周的早、中、晚餐。",
       "note": ""
-    }
+    },
+    "preview": "scroll",
+    "scrollImage": "/brand/features/planner-scroll.webp"
   },
   {
     "id": "shopping",
@@ -132,7 +127,9 @@ export const HOME_FEATURES = [
       "cta": "查看购物清单",
       "caption": "根据餐单汇总的清单，和匹配的 Weee 商品。",
       "note": "商品价格、库存和实际购物车以 Weee 为准；在零售商平台自行结账。"
-    }
+    },
+    "preview": "scroll",
+    "scrollImage": "/brand/features/shopping-scroll.webp"
   },
   {
     "id": "muse",
@@ -153,7 +150,30 @@ export const HOME_FEATURES = [
       "cta": "准备 Muse 购物请求",
       "caption": "核对商品包数后，再复制购物请求给 Muse。",
       "note": "需要自己的 Muse 账户。请检查执行结果，并自行在 Weee 结账。"
-    }
+    },
+    "preview": "image"
+  },
+  {
+    "id": "menus",
+    "image": "/brand/features/menu-generated.webp",
+    "path": "/library",
+    "en": {
+      "label": "Menu maker",
+      "title": "Make your table feel like your own little restaurant.",
+      "body": "Choose your dishes and describe a style. Turn them into an illustrated menu to download and share before friends come over.",
+      "cta": "Make a menu",
+      "caption": "A menu generated from the recipes in this library.",
+      "note": "AI-generated image. Check dish names before sharing. One new menu per UTC day."
+    },
+    "zh": {
+      "label": "生成菜单",
+      "title": "朋友来家里吃饭，也有一张专属菜单。",
+      "body": "选好拿手菜，描述喜欢的风格，让 AI 画成一张菜单。下载发给室友或朋友，聚餐也可以很有仪式感。",
+      "cta": "去生成菜单",
+      "caption": "从这个菜谱库里选菜，实际生成的菜单。",
+      "note": "菜单为 AI 生成图片，分享前请核对菜名。每天可生成一张，按 UTC 重置。"
+    },
+    "preview": "image"
   },
   {
     "id": "cook",
@@ -174,6 +194,12 @@ export const HOME_FEATURES = [
       "cta": "开始做饭",
       "caption": "烹饪过程中的步骤、进度和计时。",
       "note": "请保持浏览器打开，以接收烹饪声音和通知。"
-    }
+    },
+    "preview": "steps",
+    "stepImages": [
+      "/brand/features/cook-step-1.webp",
+      "/brand/features/cook-step-2.webp",
+      "/brand/features/cook-step-3.webp"
+    ]
   }
 ] as const;
