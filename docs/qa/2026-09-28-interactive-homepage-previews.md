@@ -46,3 +46,11 @@ Before release, Vercel reports chef-world.com as READY deployment dpl_ERWE8GmFYp
 - Final portrait video: 30 seconds, 1080×1920, H.264, silent; SHA256 `a974afebd2ed59918caad39bd382dc43b0ccea032bf6a92f3cd91388abaf5adf`. The Chinese copy confirms joining beta now qualifies for one year from membership launch, with feedback optional and grocery/third-party costs separate. No Rednote post was published.
 
 Deployment receipts remain in `/private/tmp/chef-homepage-release-20260928`; local visual evidence and packaging receipts are in the launch output's `qa/` folder and excluded from the consumer ZIP.
+
+## Follow-up: poster framing and shopping motion
+
+The user's screenshot review requested slightly more space around framed captures, a shorter import form and more ingredients/steps in poster 02, complete product photos/cards in poster 04, and visible shopping scroll motion in the videos. The six framed posters now use a consistent 24px inset around genuine screenshot sections; the standalone menu artwork and approved copy are unchanged. Poster 02 retains the link field/tabs while excluding the helper paragraph and shows eight ingredients plus four complete steps. Poster 04 uses one contiguous real capture with the header and six complete first-row product choices including Weee links. Independent visual review found no remaining framing issue.
+
+Both 30-second videos now pan smoothly through the genuine shopping long screenshot, within a stationary frame. The portrait video matches the updated poster inset; the landscape video's existing Cook 1/2/3 sequence remains intact. Encoded beginning/middle/end shopping frames and Cook frames were visually reviewed. No cursor, cart action or live-processing speed is fabricated. Homepage video SHA256: `1e7d6128af606e7712fc91c2f71cfbff1381ee69951b4b651bdcde056d4c55b6` (2,170,047 bytes). Portrait video SHA256: `283bebdc21415633e9b932bb25be68dd565d34e55c454d7cb1695d9c48504fb6` (2,211,521 bytes). Both are H.264, 30fps, 30 seconds, without audio.
+
+Only the homepage MP4 changes in application source for this follow-up; shopping behavior, homepage interactions, and recipe data are unchanged. Release verification for the updated asset is recorded below when complete.
