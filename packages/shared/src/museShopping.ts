@@ -1,5 +1,5 @@
 import type { CartAssistantDraft, CartAssistantIngredient, CartAssistantProduct } from "./cartAssistant";
-import { isSafeWeeeProductUrl } from "./store";
+import { getWeeeProductDisplayName, isSafeWeeeProductUrl } from "./store";
 
 export type MuseCartItem = {
   id: string;
@@ -147,7 +147,7 @@ export function buildMuseShoppingPrompt({ draft, packCounts, substitutionPolicy,
     const url = safeProductUrl(item.product.url);
     if (totalPacksInCart === null || url === null) return null;
     products.push({
-      productName: item.product.name,
+      productName: getWeeeProductDisplayName(item.product.name),
       url,
       totalPacksInCart,
       ...(quantitySources[item.id] ? { quantitySource: quantitySources[item.id] } : {}),

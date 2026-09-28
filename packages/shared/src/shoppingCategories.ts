@@ -1,16 +1,21 @@
 import type { Language } from "./i18n";
 
 export const GROCERY_CATEGORY_ORDER = [
-  "Produce",
-  "Dairy",
   "Meat & Seafood",
+  "Produce",
   "Pantry & Dry Goods",
+  "Dairy",
   "Frozen",
   "Bakery",
   "Other",
 ] as const;
 
 export type GroceryCategory = (typeof GROCERY_CATEGORY_ORDER)[number];
+
+// Display priority must not change existing ingredient/category inference.
+const CATEGORY_MATCH_ORDER: readonly GroceryCategory[] = [
+  "Produce", "Dairy", "Meat & Seafood", "Pantry & Dry Goods", "Frozen", "Bakery", "Other",
+];
 
 export const CATEGORY_TRANSLATIONS: Record<GroceryCategory, Record<Language, string>> = {
   Produce: { en: "Produce", zh: "蔬菜水果" },
@@ -45,7 +50,7 @@ const KEYWORDS: Record<string, string[]> = {
 
 export function guessGroceryCategory(name: string): GroceryCategory {
   const lower = name.toLowerCase();
-  for (const cat of GROCERY_CATEGORY_ORDER) {
+  for (const cat of CATEGORY_MATCH_ORDER) {
     if (cat === "Other") continue;
     const words = KEYWORDS[cat];
     if (words?.some((k) => lower.includes(k))) return cat;
@@ -58,7 +63,7 @@ export function normalizeGroceryCategory(raw: string | undefined | null, name: s
   if (!s) return guessGroceryCategory(name);
   const found = GROCERY_CATEGORY_ORDER.find((c) => c.toLowerCase() === s.toLowerCase());
   if (found) return found;
-  const partial = GROCERY_CATEGORY_ORDER.find((c) => s.toLowerCase().includes(c.toLowerCase()) || c.toLowerCase().includes(s.toLowerCase()));
+  const partial = CATEGORY_MATCH_ORDER.find((c) => s.toLowerCase().includes(c.toLowerCase()) || c.toLowerCase().includes(s.toLowerCase()));
   if (partial) return partial;
   return guessGroceryCategory(name);
 }

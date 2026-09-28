@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -290,7 +290,7 @@ test("bulk loading renders fresh cache hits before serial misses and advances pr
     if (path === "/recipes") return Promise.resolve(jsonResponse([]));
     if (path === "/store-products/batch") {
       expect(init?.method).toBe("POST");
-      expect(JSON.parse(String(init?.body))).toEqual({ queries: ["Rice", "Beans", "Milk", "Eggs"] });
+      expect(JSON.parse(String(init?.body))).toEqual({ queries: ["Beans", "Rice", "Milk", "Eggs"] });
       return Promise.resolve(jsonResponse({
         entries: [
           { query: "Rice", status: "fresh", products: [{ name: "Cached rice", price: "$1", image: "", url: "https://www.sayweee.com/product/cached-rice" }], expires_at: nearFutureExpiry() },
@@ -1120,7 +1120,7 @@ test("builds a review from successful matches, derives top picks, updates an alt
   await user.click(review);
   expect(screen.getByRole("dialog", { name: "Review Weee cart" })).toBeVisible();
   expect(screen.getByText("Estimated subtotal: $6.00")).toBeVisible();
-  expect(screen.getByRole("heading", { name: "Next: Rice" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Next: Kale" })).toBeVisible();
 
   await user.keyboard("{Escape}");
   await waitFor(() => expect(review).toHaveFocus());
@@ -1141,6 +1141,8 @@ test("opens one verified current product, persists explicit confirmation, and cl
   await user.click(await screen.findByRole("button", { name: "Load top picks from Weee" }));
   const review = await screen.findByRole("button", { name: "Review Weee cart (3)" });
   await user.click(review);
+  await user.click(screen.getByRole("button", { name: "Skip for now" }));
+  await user.click(screen.getByRole("button", { name: "Skip for now" }));
   await user.click(screen.getByRole("button", { name: "Open next on Weee" }));
   expect(openSpy).toHaveBeenCalledTimes(1);
   expect(openSpy).toHaveBeenCalledWith(
@@ -1151,7 +1153,7 @@ test("opens one verified current product, persists explicit confirmation, and cl
 
   await user.click(screen.getByRole("button", { name: "I added it" }));
   const riceToken = JSON.stringify(["rice", "https://www.sayweee.com/product/rice"]);
-  expect(screen.getByRole("heading", { name: "Next: Kale" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Review pass complete" })).toBeVisible();
   await waitFor(() => {
     const saved = JSON.parse(storage.get("smartShoppingCart:2026-08-10:weee") ?? "{}");
     expect(saved.confirmedTokens).toContain(riceToken);
@@ -1307,11 +1309,58 @@ test("advances a skipped item only for the open review session", async () => {
   await user.click(await screen.findByRole("button", { name: "Load top picks from Weee" }));
   const review = await screen.findByRole("button", { name: "Review Weee cart (3)" });
   await user.click(review);
-  expect(screen.getByRole("heading", { name: "Next: Rice" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Next: Kale" })).toBeVisible();
 
   await user.click(screen.getByRole("button", { name: "Skip for now" }));
-  expect(screen.getByRole("heading", { name: "Next: Kale" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Next: Ginger" })).toBeVisible();
   await user.click(screen.getByRole("button", { name: "Close Weee cart review" }));
   await user.click(review);
-  expect(screen.getByRole("heading", { name: "Next: Rice" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Next: Kale" })).toBeVisible();
+});
+
+
+test("uses the same category order for sections, cart review, and Muse while retaining source row indices", async () => {
+  const storage = stubSessionStorage();
+  storage.set("smartShoppingList:2026-08-10", JSON.stringify({
+    remove: [], likely_pantry: [],
+    purchase_items: [
+      { name: "Milk", suggested_purchase: "1 carton", category: "Dairy" },
+      { name: "Rice", suggested_purchase: "1 bag", category: "Pantry & Dry Goods" },
+      { name: "Kale", suggested_purchase: "1 bunch", category: "Produce" },
+      { name: "Beef", suggested_purchase: "1 lb", category: "Meat & Seafood" },
+    ], _ui: { hidden: [], checked: [] },
+  }));
+  mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
+    if (path.startsWith("/shopping-list?")) return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+    if (path.startsWith("/meal-plan?") || path === "/recipes") return Promise.resolve(jsonResponse([]));
+    if (path === "/store-products/batch") {
+      const { queries } = JSON.parse(String(init?.body)) as { queries: string[] };
+      return Promise.resolve(jsonResponse({ entries: queries.map(query => ({
+        query, status: "fresh", expires_at: nearFutureExpiry(),
+        products: [{ name: `${query} product`, price: "$2", image: "", url: `https://www.sayweee.com/product/${query.toLowerCase()}` }],
+      })) }));
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  const user = userEvent.setup();
+  render(<ShoppingListPage />);
+  await screen.findByRole("heading", { name: "Meat & Seafood" });
+  const categories = ["Meat & Seafood", "Produce", "Pantry & Dry Goods", "Dairy"];
+  expect(screen.getAllByRole("heading").map(heading => heading.textContent).filter(name => categories.includes(name ?? ""))).toEqual(categories);
+  await user.click(screen.getByRole("button", { name: "Load top picks from Weee" }));
+  await user.click(await screen.findByRole("button", { name: "Review Weee cart (4)" }));
+  expect(screen.getByRole("heading", { name: "Next: Beef" })).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "Close Weee cart review" }));
+  await user.click(screen.getByRole("button", { name: "shopping.museEntry" }));
+  const muse = screen.getByRole("dialog", { name: "shopping.museReviewTitle" });
+  expect(within(muse).getAllByRole("spinbutton").map(input => input.closest("li")?.querySelector("strong")?.textContent)).toEqual([
+    "Beef product", "Kale product", "Rice product", "Milk product",
+  ]);
+  await user.click(screen.getByRole("button", { name: "shopping.museClose" }));
+  await user.click(screen.getAllByRole("checkbox")[0]);
+  await waitFor(() => {
+    const saved = JSON.parse(storage.get("smartShoppingList:2026-08-10") ?? "{}");
+    expect(saved._ui.checked).toEqual([3]);
+    expect(saved.purchase_items.map((item: {name: string}) => item.name)).toEqual(["Milk", "Rice", "Kale", "Beef"]);
+  });
 });

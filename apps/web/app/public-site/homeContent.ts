@@ -120,7 +120,7 @@ export const HOME_FEATURES = [
     "en": {
       "label": "Shopping",
       "title": "One grocery list for the meals you’ve planned.",
-      "body": "Bring your ingredients together, check what you need, and browse matching Weee products without starting every search from scratch.",
+      "body": "Bring your ingredients together and browse matching Weee products. Open a product link to buy directly on Weee, or choose Muse to help prepare your cart.",
       "cta": "See the shopping list",
       "caption": "A planned grocery list with matching Weee products.",
       "note": "Review prices, stock, quantities, and your cart on Weee. Checkout stays with the retailer."
@@ -128,7 +128,7 @@ export const HOME_FEATURES = [
     "zh": {
       "label": "购物清单",
       "title": "这几顿饭要买什么，放在同一张清单里。",
-      "body": "按餐单汇总食材，合并兼容用量，再查看匹配的 Weee 商品。买菜前不用在菜谱和购物页面之间反复切换。",
+      "body": "按餐单汇总食材，合并兼容用量，再查看匹配的 Weee 商品。点击商品链接就能去 Weee 购买，也可以选择让 Muse 协助准备购物车。",
       "cta": "查看购物清单",
       "caption": "根据餐单汇总的清单，和匹配的 Weee 商品。",
       "note": "商品价格、库存和实际购物车以 Weee 为准；在零售商平台自行结账。"
@@ -141,7 +141,7 @@ export const HOME_FEATURES = [
     "en": {
       "label": "Muse",
       "title": "Your shopping plan, ready to hand to Muse.",
-      "body": "Review products, pack counts, and your budget. Copy the shopping request into Muse to ask it to prepare your Weee cart.",
+      "body": "Prefer a little help? Review products, pack counts, and your budget, then copy the shopping request into Muse to ask it to prepare your Weee cart.",
       "cta": "Prepare with Muse",
       "caption": "Review quantities before copying a request for Muse.",
       "note": "Requires your own Muse account. Check the result and complete checkout yourself on Weee."

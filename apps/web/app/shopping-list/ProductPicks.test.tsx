@@ -208,3 +208,20 @@ test.each([
   expect(screen.queryByRole("radio")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Retry" })).toBeVisible();
 });
+
+
+test("uses readable titles and accessible labels without altering the product link or source", async () => {
+  const product = { name: "weee_seasoning_Lee_Kum_Kee Soy Sauce", price: "$3", image: "/soy.jpg", url: "https://www.sayweee.com/product/soy" };
+  const onSelect = vi.fn();
+  renderPicks(<ProductPicks
+    state={{ status: "success", products: [
+      { name: "Other sauce", price: "$2", image: "", url: "https://www.sayweee.com/product/other" }, product,
+    ] }} onRetry={vi.fn()} onSelect={onSelect}
+  />);
+  expect(screen.getByText("Lee Kum Kee Soy Sauce")).toBeVisible();
+  expect(screen.getByRole("img", { name: "Lee Kum Kee Soy Sauce" })).toBeVisible();
+  await userEvent.setup().click(screen.getByRole("radio", { name: "Choose Lee Kum Kee Soy Sauce for cart" }));
+  expect(onSelect).toHaveBeenCalledWith(product.url);
+  expect(screen.getAllByRole("link", { name: "View on Weee" })[1]).toHaveAttribute("href", product.url);
+  expect(product.name).toBe("weee_seasoning_Lee_Kum_Kee Soy Sauce");
+});

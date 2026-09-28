@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  getWeeeProductDisplayName,
   isSafeWeeeProductUrl,
   type CartAssistantDraft,
   type CartAssistantIngredient,
@@ -171,7 +172,7 @@ export function CartAssistantDialog({
                 <div>
                   <strong>{selection.ingredientName}</strong>
                   <span>{selection.suggestedPurchase}</span>
-                  <small>{selection.product.name} · {selection.product.price || t("shopping.seeListing")}</small>
+                  <small>{getWeeeProductDisplayName(selection.product.name)} · {selection.product.price || t("shopping.seeListing")}</small>
                 </div>
                 {selection.confirmed ? (
                   <button
@@ -193,7 +194,7 @@ export function CartAssistantDialog({
               <h3>{t("shopping.cartNext", { name: current.ingredientName })}</h3>
               <p>{t("shopping.cartCurrentDetail", {
                 amount: current.suggestedPurchase,
-                product: current.product.name,
+                product: getWeeeProductDisplayName(current.product.name),
               })}</p>
               <div>
                 <button
@@ -210,9 +211,9 @@ export function CartAssistantDialog({
                   href={current.product.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label={t("shopping.cartDirectLink", { name: current.product.name })}
+                  aria-label={t("shopping.cartDirectLink", { name: getWeeeProductDisplayName(current.product.name) })}
                 >
-                  {t("shopping.cartDirectLink", { name: current.product.name })}
+                  {t("shopping.cartDirectLink", { name: getWeeeProductDisplayName(current.product.name) })}
                 </a>
                 <button type="button" onClick={() => onConfirm(current.confirmationToken)}>
                   {t("shopping.cartConfirm")}

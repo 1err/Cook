@@ -61,3 +61,19 @@ The earlier approved standalone prototype had also been checked at desktop and 3
 ## Delivery boundary
 
 This record covers local source, build, focused tests, and CUA checks. No push, deployment, backend release, database mutation, or retailer transaction was performed. The local review server runs at `http://127.0.0.1:3014`.
+
+## Requested refinements — September 28
+
+- Captured the user's updated seven-recipe weekly plan and generated a new nine-dish menu titled `留子大厨菜单` through the actual account. The user added the planner dishes; this task only captured that state.
+- Reordered grocery display to Meat & Seafood, Produce, Pantry & Dry Goods, then the remaining categories. Cart review, copied list, and Muse use the same ordering. Original source indices, selection URLs, ingredient classification precedence, and raw product names remain intact.
+- Removed fourteen observed leading Weee taxonomy prefixes from displayed product names, accessibility labels, and Muse copy. Brand/product descriptions and pack parsing retain their original source values.
+- Kept three product choices per ingredient on desktop while making the full selection labels single-line. The targets remain 44px tall. CUA checks at 1280px, 750px, and 390px showed no horizontal overflow and one 18.6px text line per selection label.
+- Updated homepage copy to explain both direct Weee product links and optional Muse help. Replaced planner, menu, shopping, Muse screenshots, and the landscape preview. Both videos remain 30-second silent screenshot montages.
+
+Shopping/Muse refreshed captures render the revised local components with 58 ingredient rows and seven meal records copied from the production account's visible DOM on September 28. The temporary fixture server is outside product source, runs on loopback only, and contains no production credentials. These captures verify the local UI; they do not claim a deployment or a real retailer cart action. The remaining captures and generated menu came from production. Private fixture observations are excluded from the launch ZIP.
+
+Final checks: 77 focused homepage/shopping tests passed across five files after the ordering change; web TypeScript and the production build passed, with 29 static pages (homepage 8.3kB / 115kB first-load JS). Shared checks and focused mobile tests also passed during implementation/review. The optional broad mobile TypeScript check exhausted its default 4GB heap; no native app build is claimed. The reviewed local dependency aliases resolve to this worktree for the targeted mobile checks.
+
+CUA verified a second product selection carried into Muse, with clean names and Meat first. The final production frontend build was served locally: Chinese direct-link copy displayed correctly, the refreshed video played at 1920×1080 with a 30-second duration and no media error, and the 390px homepage stayed within the viewport. The final static MP4 edit was copied after compilation and playback checked from the local production server. No code changed after the build.
+
+No deployment, push, account-permission change, membership-system change, or checkout was performed. The new menu generation is the only new production content created in this refinement round.

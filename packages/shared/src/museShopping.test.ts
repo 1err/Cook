@@ -314,3 +314,22 @@ test("encodes product text as delimited data so newlines and fences cannot creat
   expect(data.products[0].productName).toContain("Rice");
   expect(data.products[0].totalPacksInCart).toBe(2);
 });
+
+
+test("exports a readable product title while retaining raw draft identity and source data", () => {
+  const product = { ...rice, name: "weee_dried_Jasmine_rice, 350 g" };
+  const input = source([selection({ product })]);
+  const before = structuredClone(input);
+  const draft = buildMuseCartDraft(input);
+  const id = draft.items[0].id;
+  const signature = draft.signature;
+  const prompt = promptFor(draft)!;
+  const exported = JSON.parse(prompt.split("SHOPPING_DATA_JSON = ")[1]);
+  expect(exported.products[0].productName).toBe("Jasmine rice, 350 g");
+  expect(exported.products[0].url).toBe(product.url);
+  expect(draft.items[0].product).toEqual(product);
+  expect(decodeURIComponent(id)).toContain(product.name);
+  expect(draft.signature).toBe(signature);
+  expect(draft.items[0].id).toBe(id);
+  expect(input).toEqual(before);
+});

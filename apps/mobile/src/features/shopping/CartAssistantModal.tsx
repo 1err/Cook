@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import {
+  getWeeeProductDisplayName,
   isSafeWeeeProductUrl,
   type CartAssistantDraft,
   type CartAssistantSelection,
@@ -200,7 +201,7 @@ export function CartAssistantModal({
                       <Text style={styles.ingredient}>{selection.ingredientName}</Text>
                       <Text style={styles.requested}>{selection.suggestedPurchase}</Text>
                       <Text style={styles.product}>
-                        {selection.product.name} · {selection.product.price || "See listing"}
+                        {getWeeeProductDisplayName(selection.product.name)} · {selection.product.price || "See listing"}
                       </Text>
                     </View>
                     {selection.confirmed ? (
@@ -223,7 +224,7 @@ export function CartAssistantModal({
                   Next: {current.ingredientName}
                 </Text>
                 <Text style={styles.currentDetail}>
-                  {current.suggestedPurchase} · {current.product.name}
+                  {current.suggestedPurchase} · {getWeeeProductDisplayName(current.product.name)}
                 </Text>
                 <Button
                   title={currentWasAttempted ? "Open again" : "Open next on Weee"}

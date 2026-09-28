@@ -3,7 +3,7 @@ import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "r
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import type { StoreProduct } from "@cooking/api-client";
-import { WEEE_STORE_LABEL, isSafeWeeeProductUrl } from "@cooking/shared";
+import { WEEE_STORE_LABEL, getWeeeProductDisplayName, isSafeWeeeProductUrl } from "@cooking/shared";
 import { Button } from "../../components";
 import { colors, radii, spacing, typography } from "../../theme";
 
@@ -89,6 +89,7 @@ export function StoreProductPicks({
   return (
     <View style={styles.list}>
       {safeProducts.map((product, index) => {
+        const displayName = getWeeeProductDisplayName(product.name);
         const selected = selectionEnabled && product.url === effectiveSelectedUrl;
         return (
           <View
@@ -105,7 +106,7 @@ export function StoreProductPicks({
             <View style={styles.body}>
               <View style={styles.nameLine}>
                 <Text style={styles.name} numberOfLines={2}>
-                  {product.name}
+                  {displayName}
                 </Text>
                 {selectionEnabled && index === 0 ? <Text style={styles.topPick}>Top pick</Text> : null}
               </View>
@@ -118,8 +119,8 @@ export function StoreProductPicks({
                   accessibilityRole="radio"
                   accessibilityState={{ selected }}
                   accessibilityLabel={selected
-                    ? `${product.name}: Selected for cart`
-                    : `Choose ${product.name} for cart`}
+                    ? `${displayName}: Selected for cart`
+                    : `Choose ${displayName} for cart`}
                   style={({ pressed }) => [
                     styles.selectBtn,
                     pressed && styles.pressed,
@@ -140,7 +141,7 @@ export function StoreProductPicks({
                   openProduct(product.url);
                 }}
                 accessibilityRole="link"
-                accessibilityLabel={`View ${product.name} on ${WEEE_STORE_LABEL}`}
+                accessibilityLabel={`View ${displayName} on ${WEEE_STORE_LABEL}`}
                 style={({ pressed }) => [styles.linkBtn, pressed && styles.pressed]}
               >
                 <Text style={styles.linkBtnText}>View on {WEEE_STORE_LABEL}</Text>

@@ -94,11 +94,6 @@ const suppressedCartHydrationKeys = new Set<string>();
 
 const PREVIEW_MEAL_ROWS = 4;
 
-const SHOPPING_PRIMARY_CATEGORIES: GroceryCategory[] = ["Pantry & Dry Goods"];
-const SHOPPING_SECONDARY_CATEGORIES = GROCERY_CATEGORY_ORDER.filter(
-  (cat) => !SHOPPING_PRIMARY_CATEGORIES.includes(cat)
-) as GroceryCategory[];
-
 interface ShoppingListItem {
   name: string;
   total_quantity: string;
@@ -665,7 +660,11 @@ function ShoppingListPageContent() {
     if (!activeRefinedData) return [];
     return activeRefinedData.purchase_items
       .map((p, origIndex) => ({ ...p, origIndex }))
-      .filter(({ origIndex }) => !smartHidden.has(origIndex));
+      .filter(({ origIndex }) => !smartHidden.has(origIndex))
+      .sort((a, b) => (
+        GROCERY_CATEGORY_ORDER.indexOf(normalizeGroceryCategory(a.category, a.name))
+        - GROCERY_CATEGORY_ORDER.indexOf(normalizeGroceryCategory(b.category, b.name))
+      ));
   }, [activeRefinedData, smartHidden]);
 
   const allCartIngredients = useMemo<CartAssistantIngredient[]>(() => {
@@ -842,7 +841,7 @@ function ShoppingListPageContent() {
 
   const productQueueGroups = useMemo(
     () =>
-      [...SHOPPING_PRIMARY_CATEGORIES, ...SHOPPING_SECONDARY_CATEGORIES].map((category) => ({
+      GROCERY_CATEGORY_ORDER.map((category) => ({
         category,
         rows: (purchaseByCategory.get(category) ?? []).map(({ item, origIndex }) => ({
           name: item.name,
@@ -1101,7 +1100,7 @@ function ShoppingListPageContent() {
   const hasPlannedMeals = planRows.length > 0;
   const canPrepareSmart = items.length > 0 && !refining;
 
-  const orderedCategories = [...SHOPPING_PRIMARY_CATEGORIES, ...SHOPPING_SECONDARY_CATEGORIES];
+  const orderedCategories = GROCERY_CATEGORY_ORDER;
 
   const plannedMealsPanel = (
     <section className={styles.plannedMeals} aria-labelledby="shopping-planned-meals-title">

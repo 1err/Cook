@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
-  buildMuseCartDraft, buildMuseShoppingPrompt, getMusePackSuggestion, parseMuseBudgetCents, parseMusePackCount,
+  buildMuseCartDraft, buildMuseShoppingPrompt, getWeeeProductDisplayName, getMusePackSuggestion, parseMuseBudgetCents, parseMusePackCount,
   type CartAssistantDraft, type CartAssistantIngredient, type MuseQuantitySource,
 } from "@cooking/shared";
 import { useI18n, useT } from "../lib/i18n";
@@ -195,6 +195,7 @@ function MuseShoppingReview({ open, draft, pendingIngredients, stale = false, on
           {museDraft.items.length === 0 ? <p className={styles.empty}>{t(museDraft.alreadyConfirmedCount > 0 ? "shopping.museAllAdded" : "shopping.museEmpty")}</p> : null}
           <ul className={styles.productList}>
             {museDraft.items.map((item, index) => {
+              const displayName = getWeeeProductDisplayName(item.product.name);
               const value = packCounts[item.id] ?? "";
               const count = parseMusePackCount(value);
               const invalid = count === null;
@@ -205,7 +206,7 @@ function MuseShoppingReview({ open, draft, pendingIngredients, stale = false, on
                 : source === "starting" ? "museBadgeStarting" : source === "estimated" ? "museBadgeEstimated" : "museBadgeCalculated";
               return <li key={item.id} className={styles.product}>
                 <div className={styles.productCopy}>
-                  <strong>{item.product.name}</strong>
+                  <strong>{displayName}</strong>
                   {item.ingredients.map((ingredient, position) => <p key={position}>{ingredient.name} · {ingredient.suggestedPurchase}</p>)}
                   <div className={styles.productMeta}>
                     <span>{item.product.price ? t("shopping.museReviewPrice", { price: item.product.price }) : t("shopping.musePriceUnknown")}</span>
@@ -216,13 +217,13 @@ function MuseShoppingReview({ open, draft, pendingIngredients, stale = false, on
                 <div className={styles.quantity}>
                   <label htmlFor={`${id}-packs-${index}`}>{t("shopping.museReviewPacks")}</label>
                   <div className={styles.quantityControl}>
-                    <button type="button" className={styles.quantityButton} aria-label={t("shopping.museDecrease", { name: item.product.name })} disabled={count === 1}
+                    <button type="button" className={styles.quantityButton} aria-label={t("shopping.museDecrease", { name: displayName })} disabled={count === 1}
                       onClick={() => setPackOverrides((current) => ({ ...current, [item.id]: String(Math.max(1, (count ?? 2) - 1)) }))}>−</button>
-                    <input id={`${id}-packs-${index}`} aria-label={t("shopping.musePackLabel", { name: item.product.name })}
+                    <input id={`${id}-packs-${index}`} aria-label={t("shopping.musePackLabel", { name: displayName })}
                       type="number" inputMode="numeric" min="1" max="99" step="1" placeholder="—" value={value}
                       aria-invalid={invalid} aria-describedby={invalid ? `${id}-pack-error-${index}` : undefined}
                       onChange={(event) => setPackOverrides((counts) => ({ ...counts, [item.id]: event.target.value }))} />
-                    <button type="button" className={styles.quantityButton} aria-label={t("shopping.museIncrease", { name: item.product.name })} disabled={count === 99}
+                    <button type="button" className={styles.quantityButton} aria-label={t("shopping.museIncrease", { name: displayName })} disabled={count === 99}
                       onClick={() => setPackOverrides((current) => ({ ...current, [item.id]: String(Math.min(99, (count ?? 0) + 1)) }))}>+</button>
                   </div>
                   {invalid ? <small id={`${id}-pack-error-${index}`} className={styles.error}>{t("shopping.musePackError")}</small> : null}
@@ -233,14 +234,14 @@ function MuseShoppingReview({ open, draft, pendingIngredients, stale = false, on
                   "already-added": "shopping.musePackAlreadyAdded",
                 }[suggestion.reason])}</p> : null}
                 <details className={styles.productDetails}>
-                  <summary className={styles.detailsToggle} aria-label={t("shopping.museDetailsLabel", { name: item.product.name })}>{t("shopping.museDetails")}</summary>
+                  <summary className={styles.detailsToggle} aria-label={t("shopping.museDetailsLabel", { name: displayName })}>{t("shopping.museDetails")}</summary>
                   {suggestion.status !== "unavailable" ? <div id={suggestionId} className={styles.suggestion}>
                     <div className={styles.suggestionHeading}>
                       <strong>{t(suggestion.status === "starter" ? "shopping.museStarterPack" : suggestion.approximate
                         ? (suggestion.packs === 1 ? "shopping.museEstimatedPack" : "shopping.museEstimatedPacks")
                         : (suggestion.packs === 1 ? "shopping.museSuggestedPack" : "shopping.museSuggestedPacks"), { count: suggestion.packs })}</strong>
                       {packOverrides[item.id] !== undefined ? <button type="button" className={styles.textButton}
-                        aria-label={t("shopping.museUseSuggestionLabel", { name: item.product.name })}
+                        aria-label={t("shopping.museUseSuggestionLabel", { name: displayName })}
                         onClick={() => setPackOverrides((current) => { const next = { ...current }; delete next[item.id]; return next; })}>{t("shopping.museUseSuggestion")}</button> : null}
                     </div>
                     {suggestion.status === "starter" ? <p>{t({
@@ -254,10 +255,10 @@ function MuseShoppingReview({ open, draft, pendingIngredients, stale = false, on
                   <div className={styles.packageSize}>
                     <label htmlFor={`${id}-size-${index}`}>{t("shopping.musePackageSize")}</label>
                     <input id={`${id}-size-${index}`} type="text" maxLength={100}
-                      aria-label={t("shopping.musePackageSizeLabel", { name: item.product.name })}
+                      aria-label={t("shopping.musePackageSizeLabel", { name: displayName })}
                       placeholder={t("shopping.musePackageSizePlaceholder")} value={packageSizes[item.id] ?? ""}
                       onChange={(event) => setPackageSizes((current) => ({ ...current, [item.id]: event.target.value }))} />
-                    <a className={styles.productLink} href={item.product.url} target="_blank" rel="noopener noreferrer" aria-label={t("shopping.museProductLinkLabel", { name: item.product.name })}>{t("shopping.museViewProduct")} <span aria-hidden="true">↗</span></a>
+                    <a className={styles.productLink} href={item.product.url} target="_blank" rel="noopener noreferrer" aria-label={t("shopping.museProductLinkLabel", { name: displayName })}>{t("shopping.museViewProduct")} <span aria-hidden="true">↗</span></a>
                   </div>
                 </details>
               </li>;

@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { WEEE_STORE_LABEL, isSafeWeeeProductUrl } from "@cooking/shared";
+import { WEEE_STORE_LABEL, getWeeeProductDisplayName, isSafeWeeeProductUrl } from "@cooking/shared";
 import { useT } from "../lib/i18n";
 import type { ProductLookupState } from "./productLoading";
 import styles from "./ShoppingList.module.css";
@@ -76,6 +76,7 @@ export function ProductPicks({
         : undefined}
     >
       {visibleProducts.map((product, index) => {
+        const displayName = getWeeeProductDisplayName(product.name);
         const selected = selectionEnabled && product.url === selectedProductUrl;
         return (
           <div
@@ -84,12 +85,12 @@ export function ProductPicks({
             data-testid="store-product-row"
           >
             {product.image ? (
-              <img src={product.image} alt={product.name} loading="lazy" />
+              <img src={product.image} alt={displayName} loading="lazy" />
             ) : (
               <div className={styles.productPlaceholder} aria-hidden>CW</div>
             )}
             <div className={styles.productCopy}>
-              <p>{product.name}</p>
+              <p>{displayName}</p>
               <strong>{product.price || t("shopping.seeListing")}</strong>
               {selectionEnabled && index === 0 ? (
                 <span className={styles.topPick}>{t("shopping.cartTopPick")}</span>
@@ -102,8 +103,8 @@ export function ProductPicks({
                     value={product.url}
                     checked={selected}
                     aria-label={selected
-                      ? t("shopping.cartSelectedProduct", { name: product.name })
-                      : t("shopping.cartChooseProduct", { name: product.name })}
+                      ? t("shopping.cartSelectedProduct", { name: displayName })
+                      : t("shopping.cartChooseProduct", { name: displayName })}
                     onChange={() => {
                       if (!selected) onSelect(product.url);
                     }}
