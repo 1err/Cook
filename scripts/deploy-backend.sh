@@ -59,7 +59,8 @@ else
 fi
 if [ -z "$PREBUILT_IMAGE_DIGEST" ]; then
   mkdir "$RELEASE_TMP/context"
-  git archive "$SHA:backend" | tar -x -C "$RELEASE_TMP/context"
+  # Preserve tracked source readability for the non-root runtime; the parent remains private.
+  git archive "$SHA:backend" | tar -xp -C "$RELEASE_TMP/context"
 fi
 
 echo "==> preflight: committed source $SHA"

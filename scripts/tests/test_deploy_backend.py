@@ -25,6 +25,10 @@ if name == "docker":
         assert context.is_absolute(), "build must use an isolated committed context"
         assert (context / "app.py").read_text() == "COMMITTED = True\n"
         assert not (context / ".env").exists(), "local secrets reached build context"
+        if os.environ.get("ASSERT_ARCHIVE_MODES"):
+            for entry in context.rglob("*"):
+                required = 0o005 if entry.is_dir() else 0o004
+                assert entry.stat().st_mode & required == required, "archived source must be readable/searchable by container non-root user"
         for private_file in context.parent.glob("*.json"):
             assert private_file.stat().st_mode & 0o077 == 0, "release JSON must remain private"
         if os.environ.get("MUTATE_OVERRIDES"):
@@ -141,6 +145,15 @@ class DeploySafetyTests(unittest.TestCase):
 
     def assert_no_build_or_registration(self):
         self.assertFalse(any(call[0] == "docker" or call[1:3] in (["ecr", "get-login-password"], ["ecs", "register-task-definition"], ["ecs", "update-service"]) for call in self.calls()))
+
+    def test_archive_preserves_non_root_readability_under_private_release_umask(self):
+        package = self.root / "backend/package"
+        package.mkdir()
+        (package / "__init__.py").write_text("ARCHIVED = True\n")
+        self.git("add", "backend/package/__init__.py")
+        self.git("-c", "user.name=Release Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "nested source")
+        result = self.deploy(ASSERT_ARCHIVE_MODES="1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_migration_uses_new_revision_private_network_and_precedes_update(self):
         result = self.deploy()

@@ -2,7 +2,7 @@
 
 ## Verified production state
 
-Checked **2026-09-29 02:05 UTC** in AWS account `930067562682`, `us-east-1`. These infrastructure changes are independent of application deployment.
+Checked **2026-09-29 02:05 UTC** in AWS account `930067562682`, `us-east-1`. These infrastructure changes are independent of application deployment. Rechecked after the website-beta deployment at **03:10 UTC**: database available/protected with seven-day retention and no pending changes; all six alarms OK, actions disabled, zero operator subscriptions. The available point-in-time restore window was September 26 04:54:31 UTC through September 29 03:05:18 UTC (about 2.924 days); seven-day history is still accruing.
 
 - RDS `cooking-db`: available, automated backup retention **7 days**, deletion protection **enabled**, no pending modifications. Class `db.t4g.micro`, 20 GiB storage, existing maximum storage, backup window, encryption, security groups, public-address setting and single-AZ placement were preserved.
 - Retention was raised from one day after checking that backups were already enabled and there were no pending modifications. The immediate request contained only retention, deletion protection and the instance identifier. AWS documents a potential outage for transitions between zero and nonzero retention; that transition was not performed. [RDS retention behavior](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithAutomatedBackups.BackupRetention.html)

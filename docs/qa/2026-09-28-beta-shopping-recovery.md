@@ -24,8 +24,8 @@ Date: September 28, 2026 (America/Chicago). Work follows the website audit at `6
 
 ## Production and release status
 
-The application changes are local and have not been deployed. Existing backend production remains `cooking-backend:30` / source `f8daf63b6b7e352a3b91a5093ee3416aa685a3a7`. No production account, planner, recipe or mail writes were made during refinement checks.
+The application changes are deployed from `b6e596d2248168d09d4ba802c4bb26afee696699`: API `cooking-backend:31` and Vercel `dpl_Ciwo5jxo2MAPdGX7ujnuyXBo5NSe` on both public domains. See [release verification](2026-09-28-beta-release.md) for immutable identities, fresh-image checks, public verification and rollback references. No production account, planner, recipe or mail writes were made during refinement checks.
 
 The approved infrastructure work is already live: RDS backup retention 7 days and deletion protection enabled; six CloudWatch alarms created and independently verified OK. Notification actions remain **disabled** because no operator email has been designated/confirmed. Account email delivery is user-verified, which is separate from SNS operator alert delivery.
 
-See [recovery and alerts runbook](../recovery-alerts.md) for current identities, conditions, reproduction, delivery drill and restore procedure. Seven-day history accrues prospectively. A cloud restore rehearsal remains unexecuted, and unversioned recipe-image storage remains a recovery gap. No scaling, object retention, network access, historical deletion or production cutover was performed.
+See [recovery and alerts runbook](../recovery-alerts.md) for current identities, conditions, reproduction, delivery drill and restore procedure. Seven-day history accrues prospectively. A cloud restore rehearsal remains unexecuted, and unversioned recipe-image storage remains a recovery gap. Recovery setup did not change scaling, object retention or network access, delete history, or perform a database cutover.

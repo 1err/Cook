@@ -1,0 +1,247 @@
+{
+  "source_commit": "b6e596d2248168d09d4ba802c4bb26afee696699",
+  "backend": {
+    "verified_at_utc": "2026-09-29T03:09:30.071680+00:00",
+    "source_sha": "b6e596d2248168d09d4ba802c4bb26afee696699",
+    "task_definition": "arn:aws:ecs:us-east-1:930067562682:task-definition/cooking-backend:31",
+    "digest": "sha256:ae421f8ce75fa87c5c9427facbd6775bc67cd2980306b8c0a687bcec47e1dd5b",
+    "image": "930067562682.dkr.ecr.us-east-1.amazonaws.com/cooking-backend@sha256:ae421f8ce75fa87c5c9427facbd6775bc67cd2980306b8c0a687bcec47e1dd5b",
+    "running_count": 1,
+    "configuration_preserved": true,
+    "healthy_targets": 1,
+    "checks": {
+      "/health": 200,
+      "/ready": 200,
+      "/shopping-list?start=2026-09-28&end=2026-10-04": 401,
+      "unauthenticated_refine": 401,
+      "refinement_contract": "verified",
+      "cors:https://chef-world.com": "passed",
+      "cors:https://www.chef-world.com": "passed"
+    }
+  },
+  "images": {
+    "platform": "linux/amd64",
+    "source_archive_sha256": "0a99c6d28b625bc08fd860773c2e96c67fe476915ea008e4f4c4d05b806b2cfc",
+    "manifest_digest": "sha256:ae421f8ce75fa87c5c9427facbd6775bc67cd2980306b8c0a687bcec47e1dd5b",
+    "config_digest": "sha256:485de400d01f25eaa965020cbc488be64b5cc0180f3de46981d75074cb9b4f87",
+    "source_py_files_verified": 113,
+    "source_hashes_match": true,
+    "default_uid": 1001,
+    "fresh_dependencies_built": true
+  },
+  "website": {
+    "passed": true,
+    "verified_at_utc": "2026-09-29T03:12:52.752174+00:00",
+    "deployment": "dpl_Ciwo5jxo2MAPdGX7ujnuyXBo5NSe",
+    "source": "b6e596d2248168d09d4ba802c4bb26afee696699",
+    "public_routes": 36,
+    "assets_match_candidate": 126,
+    "feature_media_exact_matches": 32,
+    "security_header_scope": "Four configured recovery routes plus service worker; HSTS on all HTML routes"
+  },
+  "public_browser": {
+    "origin": "https://chef-world.com",
+    "passed": true,
+    "cases": [
+      {
+        "name": "homepage-1440",
+        "passed": true
+      },
+      {
+        "name": "homepage-390",
+        "passed": true
+      },
+      {
+        "name": "shopping-320",
+        "passed": true
+      },
+      {
+        "name": "shopping-390",
+        "passed": true
+      },
+      {
+        "name": "public-homepage-normal-worker",
+        "passed": true
+      }
+    ],
+    "traffic": "synthetic or blocked API; no real account/provider/retailer writes",
+    "service_worker_scope": "script loading and activation only; no installed-PWA/offline/share-target test"
+  },
+  "aws_audit": {
+    "observed_at": "2026-09-29T03:10:19.145569+00:00",
+    "log_window_start": "2026-09-29T02:40:19.145569+00:00",
+    "log_window_end": "2026-09-29T03:10:19.145569+00:00",
+    "services": [
+      {
+        "name": "cooking-backend-service",
+        "status": "ACTIVE",
+        "task_definition": "cooking-backend:31",
+        "desired": 1,
+        "running": 1,
+        "pending": 0,
+        "deployments": [
+          {
+            "task_definition": "cooking-backend:31",
+            "status": "PRIMARY",
+            "rollout_state": "COMPLETED",
+            "desired": 1,
+            "running": 1,
+            "pending": 0
+          }
+        ]
+      },
+      {
+        "name": "cooking-store-worker-service",
+        "status": "ACTIVE",
+        "task_definition": "cooking-store-worker:2",
+        "desired": 1,
+        "running": 1,
+        "pending": 0,
+        "deployments": [
+          {
+            "task_definition": "cooking-store-worker:2",
+            "status": "PRIMARY",
+            "rollout_state": "COMPLETED",
+            "desired": 1,
+            "running": 1,
+            "pending": 0
+          }
+        ]
+      }
+    ],
+    "logs": [
+      {
+        "role": "worker",
+        "stream": "store-worker/store-worker/66b46a08f8944388bad7a890ee3223ad",
+        "available": true,
+        "events_scanned": 0,
+        "counts": {},
+        "scan_capped": false
+      },
+      {
+        "role": "migration",
+        "stream": "ecs/backend/c054666800784a3ea948260135681496",
+        "available": true,
+        "events_scanned": 2,
+        "counts": {
+          "migration_context": 1
+        },
+        "scan_capped": false
+      },
+      {
+        "role": "api",
+        "stream": "ecs/backend/e2fa8a67bc454330a50287eeb71f3c44",
+        "available": true,
+        "events_scanned": 58,
+        "counts": {
+          "startup_complete": 1
+        },
+        "scan_capped": false
+      }
+    ],
+    "rds": {
+      "identifier": "cooking-db",
+      "status": "available",
+      "backup_retention_days": 7,
+      "deletion_protection": true,
+      "pending_modifications_count": 0,
+      "latest_restorable_time": "2026-09-29T03:05:18+00:00",
+      "automated_backup_retention_days": 7,
+      "earliest_restore_time": "2026-09-26T04:54:31.080000+00:00",
+      "latest_restore_time": "2026-09-29T03:05:18+00:00",
+      "available_history_days": 2.9242
+    },
+    "alarms": [
+      {
+        "name": "chef-world-ops-api-memory",
+        "state": "OK",
+        "actions_enabled": false,
+        "alarm_action_count": 1,
+        "ok_action_count": 1
+      },
+      {
+        "name": "chef-world-ops-api-ready",
+        "state": "OK",
+        "actions_enabled": false,
+        "alarm_action_count": 1,
+        "ok_action_count": 1
+      },
+      {
+        "name": "chef-world-ops-db-cpu",
+        "state": "OK",
+        "actions_enabled": false,
+        "alarm_action_count": 1,
+        "ok_action_count": 1
+      },
+      {
+        "name": "chef-world-ops-db-free-storage",
+        "state": "OK",
+        "actions_enabled": false,
+        "alarm_action_count": 1,
+        "ok_action_count": 1
+      },
+      {
+        "name": "chef-world-ops-http-5xx",
+        "state": "OK",
+        "actions_enabled": false,
+        "alarm_action_count": 1,
+        "ok_action_count": 1
+      },
+      {
+        "name": "chef-world-ops-worker-resource",
+        "state": "OK",
+        "actions_enabled": false,
+        "alarm_action_count": 1,
+        "ok_action_count": 1
+      }
+    ],
+    "ops_notifications": {
+      "subscription_count": 0,
+      "paginated": false,
+      "delivery_tested": false
+    },
+    "limitations": [
+      "Bounded logs cannot prove all traffic is error-free.",
+      "Worker health and fresh resource metrics do not prove queued job progress.",
+      "Seven-day retention is configured; full seven-day history is still accruing.",
+      "Notification actions remain disabled; no operator destination or delivery test was authorized."
+    ]
+  },
+  "release_helper_tests": {
+    "passed": 53,
+    "failures": 0
+  },
+  "rollback": {
+    "backend": "cooking-backend:30",
+    "website": "dpl_AjEhB4aaBLHGmdodJJHzcVfaG6US"
+  },
+  "native_release": false,
+  "website_logs": {
+    "verified_at_utc": "2026-09-29T03:14:22.621191+00:00",
+    "deployment": "dpl_Ciwo5jxo2MAPdGX7ujnuyXBo5NSe",
+    "since_utc": "2026-09-29T03:10:24Z",
+    "counts": {
+      "error_logs": {
+        "returned": 0,
+        "limit": 20
+      },
+      "http_5xx": {
+        "returned": 0,
+        "limit": 20
+      }
+    },
+    "user_log_contents_saved": false
+  },
+  "website_identity": {
+    "id": "dpl_Ciwo5jxo2MAPdGX7ujnuyXBo5NSe",
+    "url": "cook-jg1klgc2l-jerrys-projects-08f739a2.vercel.app",
+    "readyState": "READY",
+    "target": "production",
+    "projectId": "prj_x4dQTj1LKA5VUlOpZrgNG15fDcr0",
+    "aliasAssigned": true,
+    "aliasError": null,
+    "sourceSha": "b6e596d2248168d09d4ba802c4bb26afee696699",
+    "sourceArchiveSha256": "3c6465ce14c654ee52ce790fdae66e21b7a9d116b0105e1e01810e6307e80133",
+    "domain_resolution_evidence": "live-alias-verification.json"
+  }
+}
