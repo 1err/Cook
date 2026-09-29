@@ -11,6 +11,7 @@ from typing import Any
 from app.core.llm import complete_chat, get_openai_client
 from app.services.shopping_service import (
     _explicit_purchase_mass,
+    _format_number,
     _normalize_text,
     _parse_measure,
     _split_amounts,
@@ -318,6 +319,93 @@ _CONSOLIDATED_QUANTITY_RE = re.compile(
     re.I,
 )
 _VAGUE_QUANTITIES = {"适量", "少许", "按需", "几颗", "as needed", "to taste", "a little"}
+_VAGUE_ALIASES = _VAGUE_QUANTITIES | {"若干", "少量", "几瓣", "some"}
+
+
+def _sources_are_vague(sources: list[dict[str, str]]) -> bool:
+    return all(
+        part.casefold() in _VAGUE_ALIASES
+        for source in sources
+        for part in _split_amounts(_normalize_text(source["quantity"]))
+    )
+
+
+def _normalize_vague_quantity(value: Any, sources: list[dict[str, str]]) -> Any:
+    if isinstance(value, str) and value.strip().casefold() in _VAGUE_ALIASES and _sources_are_vague(sources):
+        return "适量" if _contains_cjk(sources[0]["name"]) else "as needed"
+    return value
+
+
+def _recover_exact_range(sources: list[dict[str, str]]) -> str | None:
+    parts = [_explicit_purchase_mass(part)
+             for source in sources for part in _split_amounts(_normalize_text(source["quantity"]))]
+    bounds = [_measure_bounds(part) for part in parts]
+    if not bounds or any(bound is None for bound in bounds):
+        return None
+    families = {bound[2] for bound in bounds}
+    if len(families) != 1 or not any(bound[0] != bound[1] for bound in bounds):
+        return None
+    family = bounds[0][2]
+    if family in {"mass", "volume"}:
+        unit = {"mass": "g", "volume": "ml"}[family]
+    else:
+        first = _parse_measure(parts[0])
+        unit = first.unit.label if first else (_CONSOLIDATED_QUANTITY_RE.fullmatch(parts[0])["unit"] or "")
+    lower = sum((bound[0] for bound in bounds), Fraction())
+    upper = sum((bound[1] for bound in bounds), Fraction())
+    total = _format_number(lower) if lower == upper else f"{_format_number(lower)}–{_format_number(upper)}"
+    if any(_APPROXIMATE_RE.search(part) for part in parts):
+        total = ("约 " if _contains_cjk(sources[0]["name"]) else "about ") + total
+    return f"{total} {unit}".strip()
+
+
+def _recover_group_quantities(sources: list[dict[str, str]]) -> list[dict[str, str]]:
+    # Exact aliases are local to a source-checked model group. Global structural
+    # fallback keeps its original behavior and never adds fuzzy name matching.
+    aliases = {"蒜": "大蒜", "姜": "生姜", "西红柿": "番茄"}
+    sources = [{"name": aliases.get(source["name"], source["name"]), "quantity": source["quantity"]} for source in sources]
+    original_groups = _aggregate_input_items(sources)
+    if len(original_groups) != 1:
+        # A vague requirement belongs to its own ingredient; it may be omitted
+        # beside a measured amount only after exact identity is established.
+        return original_groups
+    parts_by_source = [(source, _split_amounts(_normalize_text(source["quantity"]))) for source in sources]
+    if not any(_HAS_AMOUNT_RE.search(part) for _, parts in parts_by_source for part in parts):
+        return _aggregate_input_items(sources)
+    measured_sources = []
+    for source, parts in parts_by_source:
+        retained = [part for part in parts if part.casefold() not in _VAGUE_ALIASES]
+        if retained or not parts:
+            measured_sources.append({"name": source["name"], "quantity": "; ".join(retained)})
+    # Vague contributions do not invent an addition to a known measured total.
+    # Numeric fragments and unknown units stay for the original fallback logic.
+    recovered = _aggregate_input_items(measured_sources)
+    if len(recovered) == 1:
+        exact_range = _recover_exact_range(measured_sources)
+        if exact_range is not None:
+            recovered[0]["quantity"] = exact_range
+    return recovered
+
+
+def _has_distinct_onion_varieties(sources: list[dict[str, str]]) -> bool:
+    """Protect the observed plain/color onion distinction without fuzzy aliases."""
+    varieties = set()
+    for source in sources:
+        name = source["name"].strip().casefold()
+        english = re.fullmatch(r"(?:(red|purple|white|yellow)\s+)?onions?", name)
+        chinese = re.fullmatch(r"(?:([红紫白黄])皮?)?洋葱", name)
+        if english:
+            varieties.add(english[1] or "plain")
+        elif chinese:
+            varieties.add({"红": "red", "紫": "purple", "白": "white", "黄": "yellow"}.get(chinese[1], "plain"))
+        else:
+            return False
+    return len(varieties) > 1
+
+
+def _log_refinement_result(reason: str, source_count: int, group_count: int) -> None:
+    # Fixed reason codes and counts only: never log ingredient data or model text.
+    logger.info("shopping_refinement reason=%s source_count=%d group_count=%d", reason, source_count, group_count)
 
 
 def _measure_bounds(text: str) -> tuple[Fraction, Fraction, str, Fraction] | None:
@@ -394,7 +482,7 @@ def _valid_group_quantity(value: Any, sources: list[dict[str, str]]) -> bool:
     value = value.strip()
     source_has_amount = any(_HAS_AMOUNT_RE.search(item["quantity"]) for item in sources)
     if value.casefold() in _VAGUE_QUANTITIES:
-        return not source_has_amount
+        return _sources_are_vague(sources)
     match = _CONSOLIDATED_QUANTITY_RE.fullmatch(value)
     if match is None or not source_has_amount:
         return False
@@ -421,6 +509,12 @@ def _parse_llm_refine_response(raw: str, items: list[dict[str, str]]) -> dict[st
     sources = _prepare_source_items(items)
     fallback_items = _aggregate_input_items(sources)
     fallback = _fallback_result(fallback_items)
+    group_count = 0
+
+    def reject(reason: str) -> dict[str, Any]:
+        _log_refinement_result(reason, len(sources), group_count)
+        return fallback
+
     text = (raw or "").strip()
     if text.startswith("```"):
         text = re.sub(r"^```\w*\n?", "", text)
@@ -428,15 +522,17 @@ def _parse_llm_refine_response(raw: str, items: list[dict[str, str]]) -> dict[st
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        return fallback
+        return reject("invalid_json")
     if not isinstance(data, dict) or not isinstance(data.get("purchase_items"), list):
-        return fallback
+        return reject("invalid_shape")
     groups = data["purchase_items"]
+    group_count = len(groups)
     # Older responses are safe only for name/category cleanup. They never gain
     # permission to replace quantities or merge sources without explicit IDs.
     if not any(isinstance(group, dict) and "source_ids" in group for group in groups):
         legacy = _parse_legacy_refine_response(raw, fallback_items)
         legacy["refinement_status"] = "fallback"
+        _log_refinement_result("legacy_contract", len(sources), group_count)
         return legacy
 
     source_by_id = {item["source_id"]: item for item in sources}
@@ -445,19 +541,19 @@ def _parse_llm_refine_response(raw: str, items: list[dict[str, str]]) -> dict[st
     source_groups: list[tuple[dict[str, Any], list[dict[str, str]]]] = []
     for group in groups:
         if not isinstance(group, dict):
-            return fallback
+            return reject("invalid_group")
         ids = group.get("source_ids")
         if not isinstance(ids, list) or not ids:
-            return fallback
+            return reject("source_partition")
         for source_id in ids:
             if not isinstance(source_id, str) or source_id not in source_by_id or source_id in seen:
-                return fallback
+                return reject("source_partition")
             seen.add(source_id)
         source_groups.append((group, [source_by_id[source_id] for source_id in ids]))
     # Reject the entire proposed partition on structural errors: retaining a
     # partial merged total could silently lose or count an original entry twice.
     if seen != set(source_by_id):
-        return fallback
+        return reject("source_coverage")
 
     language_by_name = _build_input_language_map(sources)
     output_names: set[str] = set()
@@ -466,33 +562,66 @@ def _parse_llm_refine_response(raw: str, items: list[dict[str, str]]) -> dict[st
     for group, members in source_groups:
         raw_name = group.get("name")
         if not isinstance(raw_name, str) or not raw_name.strip() or len(raw_name) > 300:
-            return fallback
+            return reject("invalid_name")
         name = _normalize_purchase_item_name(raw_name, language_by_name)
         languages = {_contains_cjk(member["name"]) for member in members}
         if not name or len(languages) != 1 or _contains_cjk(name) not in languages or (
             _contains_cjk(name) and _contains_latin(name)
         ):
-            return fallback
+            return reject("name_language")
         key = name.casefold()
         if key in output_names:
-            return fallback
+            return reject("name_collision")
         # A rename must not steal the identity of another source group.
         if any(source["name"].casefold() == key and source not in members for source in sources):
-            return fallback
+            return reject("name_collision")
         output_names.add(key)
-        quantity = group.get("suggested_purchase")
-        if not _valid_group_quantity(quantity, members):
-            return fallback
         category = group.get("grocery_category")
         if not isinstance(category, str) or category.strip().casefold() not in {
             value.casefold() for value in GROCERY_CATEGORIES
         }:
             used_fallback = True
-        output.append((min(order_by_id[item["source_id"]] for item in members), {
+            _log_refinement_result("invalid_category", len(sources), group_count)
+        category = _normalize_grocery_category(category if isinstance(category, str) else None)
+        position = min(order_by_id[item["source_id"]] for item in members)
+        if _has_distinct_onion_varieties(members):
+            for row in _aggregate_input_items(members):
+                original_members = [source for source in members if source["name"].casefold() == row["name"].casefold()]
+                quantity = _normalize_vague_quantity(row["quantity"], original_members)
+                if not _valid_group_quantity(quantity, original_members):
+                    used_fallback = True
+                output.append((position, {
+                    "name": row["name"], "suggested_purchase": quantity or row["name"], "grocery_category": category,
+                }))
+            _log_refinement_result("onion_variety_restored", len(sources), group_count)
+            continue
+        quantity = _normalize_vague_quantity(group.get("suggested_purchase"), members)
+        if not _valid_group_quantity(quantity, members):
+            recovered = _recover_group_quantities(members)
+            recovered_quantity = _normalize_vague_quantity(recovered[0]["quantity"], members) if len(recovered) == 1 else None
+            if len(recovered) == 1 and _valid_group_quantity(recovered_quantity, members):
+                quantity = recovered_quantity
+                _log_refinement_result("quantity_recovered", len(sources), group_count)
+            else:
+                # Only this group's original amounts need preservation. Other
+                # source-checked groups keep their valid model totals.
+                used_fallback = True
+                for row in recovered:
+                    output.append((position, {
+                        "name": row["name"],
+                        "suggested_purchase": row["quantity"] or row["name"],
+                        "grocery_category": category,
+                    }))
+                _log_refinement_result("quantity_unresolved", len(sources), group_count)
+                continue
+        output.append((position, {
             "name": name,
             "suggested_purchase": quantity.strip(),
-            "grocery_category": _normalize_grocery_category(category if isinstance(category, str) else None),
+            "grocery_category": category,
         }))
+    # Restoring original names can introduce a collision with another group.
+    if len({item["name"].casefold() for _, item in output}) != len(output):
+        return reject("recovered_name_collision")
     return {
         "purchase_items": [item for _, item in sorted(output, key=lambda entry: entry[0])],
         "refinement_status": "fallback" if used_fallback else "refined",
