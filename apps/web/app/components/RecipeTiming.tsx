@@ -112,7 +112,6 @@ function TimingDisclosure({ label, timing }: { label: string; timing: Presentati
           {!timing.handsOnLabel && timing.totalLabel ? <><span>{t("recipe.timing.total", { duration: timing.totalLabel })}</span><br /></> : null}
           <span>{timing.passiveLabel}</span>
         </p>
-        <p className={styles.explanation}>{t("recipe.timing.explanation")}</p>
       </div>, document.body,
     ) : null}
   </>;

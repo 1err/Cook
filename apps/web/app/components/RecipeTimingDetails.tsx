@@ -23,7 +23,7 @@ export function RecipeTimingDetails({ recipe }: Props) {
         </dl>
       ) : null}
       {timing.hasDetails ? (
-        <p className={styles.breakdown} title={t("recipe.timing.explanation")}>
+        <p className={styles.breakdown}>
           {timing.estimatePrefix ? <><span>{timing.estimatePrefix}</span>{" "}</> : null}
           {timing.handsOnLabel ? <><strong>{timing.handsOnLabel}</strong>{" · "}</> : null}
           <span className={styles.passive}>{timing.passiveLabel}</span>

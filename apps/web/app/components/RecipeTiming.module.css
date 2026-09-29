@@ -41,7 +41,6 @@
 }
 .breakdown { margin: 0; }
 .breakdown strong { font-weight: 600; }
-.explanation { margin: 0.5rem 0 0; color: var(--cw-color-muted-ink); }
 @media (min-width: 841px) {
   .timing { font-size: 0.75rem; }
 }

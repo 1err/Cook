@@ -29,7 +29,7 @@ describe("library recipe timing", () => {
     expect(handsOn.tagName).toBe("STRONG");
     expect(screen.getByText("8 hr passive")).toBeVisible();
     expect(handsOn.closest("p")).toHaveTextContent("20 min hands-on · 8 hr passive");
-    expect(screen.getByRole("tooltip")).toHaveTextContent("your attention");
+    expect(screen.getByRole("tooltip")).toHaveTextContent(/^20 min hands-on · 8 hr passive$/);
     expect(screen.getByRole("link")).toHaveAttribute("href", "/recipe/slow");
     expect(screen.getByRole("button").closest("a")).toBeNull();
   });
