@@ -22,6 +22,7 @@ export interface PurchaseItem {
 
 export interface RefineResponse {
   _quantityVersion?: number;
+  refinement_status?: "refined" | "partial" | "fallback";
   remove: string[];
   likely_pantry: { name: string; reason: string }[];
   purchase_items: PurchaseItem[];

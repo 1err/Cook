@@ -49,7 +49,7 @@ class RefineResponse(BaseModel):
     remove: list[str]
     likely_pantry: list[LikelyPantryItem]
     purchase_items: list[PurchaseItem]
-    refinement_status: Literal["refined", "fallback"] = "refined"
+    refinement_status: Literal["refined", "partial", "fallback"] = "refined"
 
 
 @router.get("/shopping-list", response_model=list[ShoppingListItem])

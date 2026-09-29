@@ -142,7 +142,7 @@ def test_measured_range_cannot_be_presented_as_an_exact_scalar(quantity, status)
     assert result["purchase_items"][0]["suggested_purchase"] == ("18–23 g" if quantity == "21 g" else quantity)
 
 
-@pytest.mark.parametrize("quantity,status", [("220 g", "fallback"), ("约 220 g", "refined"), ("约 210–230 g", "refined")])
+@pytest.mark.parametrize("quantity,status", [("220 g", "partial"), ("约 220 g", "refined"), ("约 210–230 g", "refined")])
 def test_section_to_weight_estimates_require_approximation_marker(quantity, status):
     result = refine._parse_llm_refine_response(response(group(["ingredient-1", "ingredient-2"], "胡萝卜", quantity)), [
         {"name": "胡萝卜", "quantity": "1 小段"}, {"name": "胡萝卜", "quantity": "200 g"},
@@ -203,7 +203,7 @@ def test_unresolved_missing_unit_preserves_only_its_original_group():
     assert result == {"purchase_items": [
         {"name": "大葱", "suggested_purchase": "约 165–175 g", "grocery_category": "Produce"},
         {"name": "中筋面粉", "suggested_purchase": "约 30 g；2（单位待确认）", "grocery_category": "Pantry & Dry Goods"},
-    ], "refinement_status": "fallback"}
+    ], "refinement_status": "partial"}
 
 
 @pytest.mark.parametrize("name,source,output,expected", [
@@ -235,7 +235,7 @@ def test_group_recovery_does_not_merge_unknown_original_names():
         {"name": "胡萝卜", "quantity": "200 g"}, {"name": "胡萝卜", "quantity": "1 小段"},
         {"name": "salt (fine)", "quantity": "2 g"}, {"name": "salt (coarse)", "quantity": "3 g"},
     ])
-    assert result["refinement_status"] == "fallback"
+    assert result["refinement_status"] == "partial"
     assert [(item["name"], item["suggested_purchase"]) for item in result["purchase_items"]] == [
         ("胡萝卜", "约 220 g"), ("salt (coarse)", "3 g"), ("salt (fine)", "2 g"),
     ]
@@ -276,7 +276,7 @@ def test_recovery_keeps_unrecognized_and_missing_unit_amounts_while_omitting_vag
         group(["ingredient-1"], "大葱", "145 g"),
         group(["ingredient-2"], "中筋面粉", "约 30 g"),
     ), [{"name": "大葱", "quantity": "145 g"}, {"name": "中筋面粉", "quantity": "2; 0.25 杯; 少量"}])
-    assert result["refinement_status"] == "fallback"
+    assert result["refinement_status"] == "partial"
     assert result["purchase_items"] == [
         {"name": "大葱", "suggested_purchase": "145 g", "grocery_category": "Produce"},
         {"name": "中筋面粉", "suggested_purchase": "约 30 g；2（单位待确认）", "grocery_category": "Produce"},
@@ -345,7 +345,16 @@ def test_local_recovery_preserves_distinct_vague_ingredient_alongside_measured_i
         {"name": "大葱", "quantity": "145 g"}, {"name": "大葱", "quantity": "1 小段"},
         {"name": "salt (fine)", "quantity": "2 g"}, {"name": "salt (coarse)", "quantity": "some"},
     ])
-    assert result["refinement_status"] == "fallback"
+    assert result["refinement_status"] == "partial"
     assert {item["name"]: item["suggested_purchase"] for item in result["purchase_items"]} == {
         "大葱": "约 165–175 g", "salt (fine)": "2 g", "salt (coarse)": "to taste",
     }
+
+
+def test_unknown_category_preserves_accepted_totals_with_partial_status():
+    result = refine._parse_llm_refine_response(response(
+        group(["ingredient-1", "ingredient-2"], "盐", "5 g", "invented category"),
+    ), [{"name": "盐", "quantity": "2 g"}, {"name": "盐", "quantity": "3 g"}])
+    assert result == {"purchase_items": [
+        {"name": "盐", "suggested_purchase": "5 g", "grocery_category": "Other"},
+    ], "refinement_status": "partial"}

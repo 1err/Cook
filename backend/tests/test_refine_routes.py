@@ -119,7 +119,7 @@ async def test_refine_admission_still_fails_closed_without_provider_calls(refine
 
 def test_refine_status_is_an_additive_documented_response_field():
     schema = routes_shopping.RefineResponse.model_json_schema()
-    assert schema["properties"]["refinement_status"]["enum"] == ["refined", "fallback"]
+    assert schema["properties"]["refinement_status"]["enum"] == ["refined", "partial", "fallback"]
     legacy = routes_shopping.RefineResponse(remove=[], likely_pantry=[], purchase_items=[])
     assert legacy.refinement_status == "refined"
 
@@ -137,3 +137,27 @@ async def test_refine_route_preserves_more_than_200_original_entries_when_provid
         f"ingredient {i}": "1 g" for i in range(250)
     }
     provider.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_refine_route_distinguishes_retained_quantity_from_unavailable_service(refinement_app):
+    app, provider, _ = refinement_app
+    provider.return_value = completion(json.dumps({"purchase_items": [
+        {"source_ids": ["ingredient-1", "ingredient-2"], "name": "大葱",
+         "suggested_purchase": "约 170 g", "grocery_category": "Produce"},
+        {"source_ids": ["ingredient-3"], "name": "调料",
+         "suggested_purchase": "1 包（规格待确认）", "grocery_category": "Pantry & Dry Goods"},
+    ]}))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/shopping-list/refine", json={"items": [
+            {"name": "大葱", "quantity": "145 g"}, {"name": "大葱", "quantity": "1 小段"},
+            {"name": "调料", "quantity": "1 包（规格待确认）"},
+        ]})
+    assert response.status_code == 200
+    assert response.json() == {
+        "refinement_status": "partial", "remove": [], "likely_pantry": [],
+        "purchase_items": [
+            {"name": "大葱", "suggested_purchase": "约 170 g", "category": "Produce"},
+            {"name": "调料", "suggested_purchase": "1 包 (规格待确认)", "category": "Pantry & Dry Goods"},
+        ],
+    }

@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import type { RefineResult } from "@cooking/api-client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import ShoppingListPage from "./page";
 
@@ -362,7 +363,43 @@ test("a provider fallback response remains clearly labeled and retryable", async
   render(<ShoppingListPage />);
   fireEvent.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
   expect(await screen.findByRole("button", { name: "shopping.retryRefine" })).toBeEnabled();
+  expect(screen.getByText("shopping.basicList")).toBeVisible();
+  expect(screen.getByText("shopping.refineFallback")).toBeVisible();
   expect(screen.getByRole("checkbox", { name: "shopping.markAlreadyHave Rice" })).toBeEnabled();
+});
+
+test("partial refinement remains usable without an outage warning after reload", async () => {
+  const partial: RefineResult = {
+    remove: [], likely_pantry: [], refinement_status: "partial",
+    purchase_items: [
+      { name: "Rice", suggested_purchase: "500 g", category: "Pantry & Dry Goods" },
+      { name: "Milk", suggested_purchase: "250 ml + 1 carton", category: "Dairy & Eggs" },
+    ],
+  };
+  const original = mockApiFetch.getMockImplementation()!;
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => path === "/shopping-list/refine"
+    ? Promise.resolve(response(partial)) : original(path, options));
+  const view = render(<ShoppingListPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
+  expect(await screen.findByText("shopping.smartMode")).toBeVisible();
+  expect(screen.getByText("500 g")).toBeVisible();
+  expect(screen.getByText("250 ml + 1 carton")).toBeVisible();
+  expect(screen.queryByText("shopping.refineFallback")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "shopping.retryRefine" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("checkbox", { name: "shopping.markAlreadyHave Rice" }));
+  expect(screen.getByRole("checkbox", { name: "shopping.markStillNeedToBuy Rice" })).toBeChecked();
+  view.unmount();
+
+  render(<ShoppingListPage />);
+  expect(await screen.findByText("shopping.smartMode")).toBeVisible();
+  expect(screen.getByRole("checkbox", { name: "shopping.markStillNeedToBuy Rice" })).toBeChecked();
+  expect(screen.getByText("250 ml + 1 carton")).toBeVisible();
+  expect(screen.queryByText("shopping.refineFallback")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "shopping.retryRefine" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "shopping.museEntry" }));
+  expect(await screen.findByRole("dialog")).toBeVisible();
+  expect(screen.queryByText("shopping.refineFallback")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "shopping.retryRefine" })).not.toBeInTheDocument();
 });
 
 test("refinement leaves changed quantities unchecked while preserving unchanged progress", async () => {

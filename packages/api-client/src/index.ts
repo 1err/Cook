@@ -69,6 +69,7 @@ export type ApiClientOptions = {
 
 export type RefineItemInput = { name: string; quantity: string };
 export type RefineResult = {
+  refinement_status?: "refined" | "partial" | "fallback";
   remove: string[];
   likely_pantry: { name: string; reason: string }[];
   purchase_items: { name: string; suggested_purchase: string; category?: string }[];

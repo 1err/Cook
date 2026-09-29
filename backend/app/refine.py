@@ -622,9 +622,11 @@ def _parse_llm_refine_response(raw: str, items: list[dict[str, str]]) -> dict[st
     # Restoring original names can introduce a collision with another group.
     if len({item["name"].casefold() for _, item in output}) != len(output):
         return reject("recovered_name_collision")
+    # Accepted source groups remain usable even if one original quantity or
+    # category was retained. Reserve fallback for rejecting the whole result.
     return {
         "purchase_items": [item for _, item in sorted(output, key=lambda entry: entry[0])],
-        "refinement_status": "fallback" if used_fallback else "refined",
+        "refinement_status": "partial" if used_fallback else "refined",
     }
 
 

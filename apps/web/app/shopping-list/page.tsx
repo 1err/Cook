@@ -108,7 +108,7 @@ interface RefineResponse {
   purchase_items: PurchaseItem[];
   // Client cache marker: old lists remain usable, but need fresh backend totals.
   _quantityVersion?: number;
-  refinement_status?: "refined" | "fallback";
+  refinement_status?: "refined" | "partial" | "fallback";
 }
 
 interface SmartStored extends RefineResponse {
