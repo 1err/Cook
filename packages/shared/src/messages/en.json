@@ -1,4 +1,7 @@
 {
+  "shopping.refineFallback": "Smart refinement is temporarily unavailable. You can still shop with your recipe quantities below, or retry refinement.",
+  "shopping.retryRefine": "Retry refinement",
+  "shopping.refineFailed": "Could not prepare your smart list. Please try again.",
   "shopping.basicList": "Grocery checklist",
   "shopping.basicDescription": "Ready from your planned recipes. Smart refinement is optional.",
   "shopping.previewUnavailable": "Meal preview is temporarily unavailable.",

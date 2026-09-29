@@ -10,8 +10,9 @@ def test_named_shopping_aliases_share_one_total_regardless_of_input_order():
         ("生抽", "20 g"), ("生抽酱油", "10 g"), ("鲜味生抽", "1 汤匙"),
         ("老抽酱油", "5 g"), ("老抽", "10 g"),
         ("油", "10 g"), ("食用油", "20 g"), ("植物油", "1 汤匙"),
+        ("食用盐", "1 茶匙"), ("盐", "7 g"),
     ]
-    expected = {"生抽": "约 45 g", "老抽": "15 g", "食用油": "约 44 g"}
+    expected = {"生抽": "约 45 g", "老抽": "15 g", "食用油": "约 44 g", "盐": "约 13 g"}
     for rows in (ingredients, list(reversed(ingredients))):
         output = aggregate_ingredients(rows, for_purchase=True)
         assert {item.name: normalize_purchase_quantity(item.name, item.total_quantity)
@@ -19,9 +20,10 @@ def test_named_shopping_aliases_share_one_total_regardless_of_input_order():
 
 
 def test_other_sauces_oils_and_default_aggregation_remain_distinct():
-    names = ["生抽", "老抽", "酱油", "低钠生抽", "蒸鱼豉油", "橄榄油", "芝麻油", "辣椒油"]
+    names = ["生抽", "老抽", "酱油", "低钠生抽", "蒸鱼豉油", "橄榄油", "芝麻油", "辣椒油", "低钠盐", "海盐", "椒盐"]
     assert {item.name for item in aggregate_ingredients([(name, "1 g") for name in names], for_purchase=True)} == set(names)
     assert len(aggregate_ingredients([("生抽", "1 g"), ("生抽酱油", "2 g")])) == 2
+    assert len(aggregate_ingredients([("盐", "1 g"), ("食用盐", "2 g")])) == 2
 
 
 @pytest.mark.asyncio

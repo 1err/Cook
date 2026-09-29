@@ -2,6 +2,7 @@
 Shopping list aggregation and refine routes. All require auth.
 """
 from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -48,6 +49,7 @@ class RefineResponse(BaseModel):
     remove: list[str]
     likely_pantry: list[LikelyPantryItem]
     purchase_items: list[PurchaseItem]
+    refinement_status: Literal["refined", "fallback"] = "refined"
 
 
 @router.get("/shopping-list", response_model=list[ShoppingListItem])
@@ -90,6 +92,7 @@ async def shopping_list_refine(
     return RefineResponse(
         remove=[],
         likely_pantry=[],
+        refinement_status=result.get("refinement_status", "refined"),
         purchase_items=[
             PurchaseItem(
                 name=p["name"],

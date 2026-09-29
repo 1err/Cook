@@ -12,6 +12,7 @@ INGREDIENTS = [
     {"name": "sugar", "quantity": "3 g"},
     {"name": "盐", "quantity": "适量"},
     {"name": "盐", "quantity": "适量"},
+    {"name": "食用盐", "quantity": "适量"},
 ]
 
 
@@ -115,8 +116,8 @@ async def test_empty_or_blank_input_does_not_invoke_provider(monkeypatch):
     client = AsyncMock()
     monkeypatch.setattr(refine, "get_openai_client", client)
 
-    assert await refine.refine_shopping_list([]) == {"purchase_items": []}
-    assert await refine.refine_shopping_list([{"name": " ", "quantity": "1 g"}]) == {"purchase_items": []}
+    assert await refine.refine_shopping_list([]) == {"purchase_items": [], "refinement_status": "refined"}
+    assert await refine.refine_shopping_list([{"name": " ", "quantity": "1 g"}]) == {"purchase_items": [], "refinement_status": "refined"}
     client.assert_not_called()
 
 
@@ -147,3 +148,58 @@ async def test_name_cleanup_cannot_hide_distinct_ingredients_behind_duplicate_na
     for item in items:
         assert names[item["name"]]["suggested_purchase"] == item["quantity"]
         assert names[item["name"]]["grocery_category"] == "Pantry & Dry Goods"
+
+
+@pytest.mark.parametrize("source_name", ["oil (sesame)", "oil", "oil（sesame）"])
+def test_explicit_source_reference_cannot_match_a_different_ingredient_modifier(source_name):
+    result = refine._parse_llm_refine_response(json.dumps({"purchase_items": [{
+        "source_name": source_name, "name": "sesame oil", "grocery_category": "Pantry & Dry Goods",
+    }]}), [{"name": "oil (peanut)", "quantity": "20 ml"}])
+
+    assert result["purchase_items"] == [{
+        "name": "oil (peanut)", "suggested_purchase": "20 ml", "grocery_category": "Other",
+    }]
+    assert result["refinement_status"] == "fallback"
+
+
+def test_partial_refinement_keeps_useful_categories_and_reports_fallback():
+    result = refine._parse_llm_refine_response(json.dumps({"purchase_items": [{
+        "source_name": "牛肉", "name": "牛肉", "grocery_category": "Meat & Seafood",
+    }]}), [{"name": "牛肉", "quantity": "250 g"}, {"name": "姜", "quantity": "10 g"}])
+
+    assert result["refinement_status"] == "fallback"
+    assert result["purchase_items"] == [
+        {"name": "牛肉", "suggested_purchase": "250 g", "grocery_category": "Meat & Seafood"},
+        {"name": "姜", "suggested_purchase": "10 g", "grocery_category": "Other"},
+    ]
+
+
+@pytest.mark.parametrize("category", [None, "Unknown aisle", 42])
+def test_invalid_model_category_is_reported_as_fallback(category):
+    result = refine._parse_llm_refine_response(json.dumps({"purchase_items": [{
+        "source_name": "carrot", "name": "carrot", "grocery_category": category,
+    }]}), [{"name": "carrot", "quantity": "2"}])
+
+    assert result["refinement_status"] == "fallback"
+    assert result["purchase_items"][0] == {"name": "carrot", "suggested_purchase": "2", "grocery_category": "Other"}
+
+
+def test_complete_refinement_preserves_all_rows_and_quantities_at_the_api_item_limit():
+    inputs = [{"name": f"ingredient {i}", "quantity": f"{i + 1} g"} for i in range(200)]
+    rows = [{"source_name": item["name"], "name": item["name"], "grocery_category": "Other"} for item in reversed(inputs)]
+
+    result = refine._parse_llm_refine_response(json.dumps({"purchase_items": rows}), inputs)
+
+    assert result["refinement_status"] == "refined"
+    assert [(item["name"], item["suggested_purchase"]) for item in result["purchase_items"]] == [
+        (item["name"], item["quantity"]) for item in inputs
+    ]
+
+
+def test_legacy_response_without_source_reference_remains_compatible():
+    result = refine._parse_llm_refine_response(json.dumps({"purchase_items": [{
+        "name": "Milk", "grocery_category": "Dairy",
+    }]}), [{"name": "milk", "quantity": "600 ml"}])
+
+    assert result["refinement_status"] == "refined"
+    assert result["purchase_items"] == [{"name": "Milk", "suggested_purchase": "600 ml", "grocery_category": "Dairy"}]

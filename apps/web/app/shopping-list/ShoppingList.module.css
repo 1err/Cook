@@ -1150,6 +1150,24 @@
   }
 }
 
+@media (max-width: 400px) {
+  .weekBar {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0.6rem 0.65rem;
+  }
+
+  .weekBar > div:first-child {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .weekBar > div:last-child {
+    justify-content: flex-end;
+  }
+}
+
 @media (max-width: 360px) {
   .itemRow {
     grid-template-columns: minmax(0, 1fr) auto;

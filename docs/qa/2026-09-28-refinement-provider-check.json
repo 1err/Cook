@@ -1,0 +1,39 @@
+{
+  "configured_model": "gpt-4o-mini",
+  "hard_combined_cap_usd": "0.01",
+  "automatic_retries": 0,
+  "provider_calls": 2,
+  "global_spent_usd": "0.00078525",
+  "global_reserved_usd": "0.0",
+  "active_leases": 0,
+  "checks": [
+    {
+      "fixture": "chinese",
+      "http_status": 200,
+      "latency_seconds": 4.697,
+      "refinement_status": "refined",
+      "model_response": {
+        "model": "gpt-4o-mini-2024-07-18",
+        "finish_reason": "stop"
+      },
+      "input_count": 16,
+      "normalized_count": 14,
+      "output_count": 14,
+      "quantity_preserved_in_source_order": true
+    },
+    {
+      "fixture": "english",
+      "http_status": 200,
+      "latency_seconds": 5.322,
+      "refinement_status": "refined",
+      "model_response": {
+        "model": "gpt-4o-mini-2024-07-18",
+        "finish_reason": "stop"
+      },
+      "input_count": 16,
+      "normalized_count": 14,
+      "output_count": 14,
+      "quantity_preserved_in_source_order": true
+    }
+  ]
+}

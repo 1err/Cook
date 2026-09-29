@@ -18,13 +18,14 @@ export type MuseShoppingDialogProps = {
   onRefresh?: () => void;
   refreshing?: boolean;
   refreshError?: string | null;
+  refinementFallback?: boolean;
 };
 
 export function MuseShoppingDialog(props: MuseShoppingDialogProps) {
   return <MuseShoppingReview key={props.scopeKey} {...props} />;
 }
 
-function MuseShoppingReview({ open, draft, pendingIngredients, stale = false, onClose, onRefresh, refreshing = false, refreshError = null }: MuseShoppingDialogProps) {
+function MuseShoppingReview({ open, draft, pendingIngredients, stale = false, onClose, onRefresh, refreshing = false, refreshError = null, refinementFallback = false }: MuseShoppingDialogProps) {
   const t = useT();
   const { language } = useI18n();
   const id = useId();
@@ -186,6 +187,12 @@ function MuseShoppingReview({ open, draft, pendingIngredients, stale = false, on
         </ol>
       </header>
       <div className={styles.body}>
+        {refinementFallback ? <div className={styles.alert}>
+          <p role="status">{t("shopping.refineFallback")}</p>
+          {!stale && onRefresh ? <button type="button" className={styles.secondary} onClick={onRefresh} disabled={refreshing}>
+            {t(refreshing ? "shopping.refreshing" : "shopping.retryRefine")}
+          </button> : null}
+        </div> : null}
         {refreshError && (stale || refreshing) ? <p className={styles.alert} role="alert">{refreshError}</p> : null}
         <section className={styles.products} aria-labelledby={`${id}-products`}>
           <div className={styles.sectionHeading}>

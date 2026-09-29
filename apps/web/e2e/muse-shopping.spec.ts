@@ -30,7 +30,7 @@ async function fulfillJson(route: Route, body: unknown, status = 200) {
   } });
 }
 
-async function prepare(page: Page, options: { tofuAmount?: string; longList?: boolean } = {}) {
+async function prepare(page: Page, options: { tofuAmount?: string; longList?: boolean; refineUnavailable?: boolean } = {}) {
   const manyItems: ShoppingItem[] = Array.from({ length: 25 }, (_, index) => ({
     name: `Pantry ingredient ${String(index + 1).padStart(2, "0")}`,
     suggested_purchase: "600 g", category: "Pantry & Dry Goods",
@@ -41,7 +41,7 @@ async function prepare(page: Page, options: { tofuAmount?: string; longList?: bo
       name: `Wholegrain pantry ingredient ${String(index + 1).padStart(2, "0")} — family kitchen selection 350 g`,
       price: "$2.50", image: "", url: `https://www.sayweee.com/product/pantry-${index + 1}`,
     }]])) : products) as Record<string, Product[]>,
-    failRefine: false, refineRequests: 0, unexpected: [] as string[],
+    failRefine: options.refineUnavailable ?? false, refineRequests: 0, unexpected: [] as string[],
   };
   await page.addInitScript(() => localStorage.setItem("cooking-ui-language", "en"));
   // Every API request uses local fixture data; these tests never contact a retailer.
@@ -225,7 +225,7 @@ test("focuses invalid quantities and collapsed budget fields without copying", a
   expect(await copiedRequest(page, dialog)).toContain("$25.00");
 });
 
-test("keeps stale refresh errors actionable and resets product choices after a successful update", async ({ page }) => {
+test("keeps a stale fallback actionable without losing choices before changed quantities arrive", async ({ page }) => {
   const state = await prepare(page);
   await page.getByRole("radio", { name: "Choose Brown rice bag for cart" }).check();
   const dialog = await openReview(page);
@@ -237,7 +237,9 @@ test("keeps stale refresh errors actionable and resets product choices after a s
   state.failRefine = true;
   await dialog.getByRole("button", { name: "Update shopping list", exact: true }).click();
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("alert").filter({ hasText: /failed|could not|couldn’t|unable/i })).toBeVisible();
+  await expect(dialog.getByRole("status").filter({ hasText: "Smart refinement is temporarily unavailable." })).toBeVisible();
+  await expect(dialog.getByRole("spinbutton", { name: "Total packs of Firm tofu 350 g" })).toHaveValue("7");
+  await expect(dialog.getByRole("spinbutton", { name: "Total packs of Brown rice bag" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Update shopping list", exact: true })).toBeEnabled();
   expect(state.refineRequests).toBe(2);
   state.failRefine = false;
@@ -252,6 +254,34 @@ test("keeps stale refresh errors actionable and resets product choices after a s
   await expect(refreshedDialog.getByRole("spinbutton", { name: "Total packs of Jasmine rice bag" })).toBeVisible();
   await expect(refreshedDialog.getByRole("spinbutton", { name: "Total packs of Brown rice bag" })).toHaveCount(0);
   expect(state.refineRequests).toBe(3);
+  expect(state.unexpected).toEqual([]);
+});
+
+test("allows a current fallback Muse request and preserves reviewed choices when refinement recovers", async ({ page, context }, info) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const state = await prepare(page, { refineUnavailable: true });
+  await page.getByRole("radio", { name: "Choose Brown rice bag for cart" }).check();
+  const dialog = await openReview(page);
+  const fallbackNotice = dialog.getByRole("status").filter({ hasText: "Smart refinement is temporarily unavailable." });
+  await expect(fallbackNotice).toBeVisible();
+  await screenshot(page, info, "fallback");
+  await dialog.getByRole("spinbutton", { name: "Total packs of Firm tofu 350 g" }).fill("7");
+  await dialog.getByRole("button", { name: "Confirm quantities & copy", exact: true }).click();
+  await expect(dialog.getByRole("status").filter({ hasText: "Copied. Open Muse and paste your request." })).toBeVisible();
+  const request = await page.evaluate(() => navigator.clipboard.readText());
+  expect(request).toContain("https://www.sayweee.com/product/brown-rice");
+  expect(request).toContain('"totalPacksInCart":7');
+  await expect(dialog.getByRole("link", { name: "Open Muse", exact: true })).toHaveAttribute("href", "https://muse.ai/");
+  await expectNoHorizontalOverflow(page, dialog);
+
+  state.failRefine = false;
+  await dialog.getByRole("button", { name: "Retry refinement", exact: true }).click();
+  await expect(fallbackNotice).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("spinbutton", { name: "Total packs of Firm tofu 350 g" })).toHaveValue("7");
+  await expect(dialog.getByRole("spinbutton", { name: "Total packs of Brown rice bag" })).toBeVisible();
+  expect(state.refineRequests).toBe(2);
+  expect(state.unexpected).toEqual([]);
 });
 
 test("keeps the footer actionable through a 25-product review without horizontal overflow", async ({ page, context }, info) => {

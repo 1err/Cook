@@ -201,6 +201,81 @@ test("loads local Inter faces for every requested Shopping weight", async ({ pag
   ]);
 });
 
+test("recovers from refinement admission failure without losing checklist progress", async ({ page }, testInfo) => {
+  let refineCalls = 0;
+  const pageErrors: string[] = [];
+  page.on("pageerror", error => pageErrors.push(error.message));
+  await page.route(`${API_BASE}/shopping-list/refine`, async (route) => {
+    refineCalls += 1;
+    if (refineCalls === 1) {
+      await route.fulfill({
+        status: 429,
+        contentType: "application/json",
+        headers: { ...corsHeaders(), "Retry-After": "60" },
+        body: JSON.stringify({ detail: "AI usage limit reached." }),
+      });
+      return;
+    }
+    await fulfillJson(route, {
+      ...refinedList,
+      refinement_status: "refined",
+      // The checked row moves: progress must follow the ingredient, not its index.
+      purchase_items: [...refinedList.purchase_items].reverse(),
+    });
+  });
+
+  await page.getByRole("button", { name: "Prepare smart shopping list" }).click();
+  const fallbackNotice = page.getByText("Smart refinement is temporarily unavailable. You can still shop with your recipe quantities below, or retry refinement.", { exact: true });
+  await expect(fallbackNotice).toBeVisible();
+  await expect(page.getByRole("checkbox")).toHaveCount(shoppingItems.length);
+  for (const item of shoppingItems) {
+    const row = page.getByRole("checkbox", { name: `Mark ${item.name} as already have`, exact: true }).locator("xpath=../..");
+    await expect(row.getByText(item.total_quantity, { exact: true })).toBeVisible();
+  }
+  await page.getByRole("checkbox", { name: "Mark Jasmine rice as already have", exact: true }).check();
+  await expect(page.getByRole("button", { name: "Load top picks from Weee", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Copy list", exact: true })).toBeEnabled();
+  if (testInfo.project.name === "phone") {
+    await page.setViewportSize({ width: 320, height: 900 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: testInfo.outputPath("shopping-fallback-phone.png"), fullPage: true });
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await page.reload();
+  await expect(fallbackNotice).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Mark Jasmine rice as still need to buy", exact: true })).toBeChecked();
+  expect(refineCalls).toBe(1);
+  await page.getByRole("button", { name: "Retry refinement", exact: true }).click();
+  await expect(page.getByText("Smart mode", { exact: true })).toBeVisible();
+  await expect(fallbackNotice).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Retry refinement", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("checkbox", { name: "Mark Jasmine rice as still need to buy", exact: true })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Mark Whole milk as already have", exact: true })).not.toBeChecked();
+  expect(refineCalls).toBe(2);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await page.reload();
+  await expect(page.getByText("Smart mode", { exact: true })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Mark Jasmine rice as still need to buy", exact: true })).toBeChecked();
+  expect(refineCalls).toBe(2);
+  expect(pageErrors).toEqual([]);
+});
+
+test("keeps provider fallback retryable when refinement returns a successful response", async ({ page }) => {
+  await page.route(`${API_BASE}/shopping-list/refine`, (route) => fulfillJson(route, {
+    ...refinedList,
+    refinement_status: "fallback",
+  }));
+  await page.getByRole("button", { name: "Prepare smart shopping list" }).click();
+  await expect(page.getByText("Grocery checklist", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry refinement", exact: true })).toBeEnabled();
+  await expect(page.getByRole("checkbox")).toHaveCount(shoppingItems.length);
+  await page.reload();
+  await expect(page.getByText("Grocery checklist", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry refinement", exact: true })).toBeEnabled();
+});
+
 test("keeps preparation in context and renders smart groceries without horizontal overflow", async ({ page }, testInfo) => {
   await expect(page.getByRole("heading", { name: "Shopping List" })).toBeVisible();
   const preparePanel = page.getByRole("region", { name: "Prepare smart shopping list" });

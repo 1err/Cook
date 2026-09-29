@@ -396,3 +396,16 @@ test("closes on Escape and returns focus to the opener", async () => {
   await waitFor(() => expect(trigger).toHaveFocus());
   trigger.remove();
 });
+
+test("shows fallback refinement inside the dialog while keeping recipe quantities usable", () => {
+  const onRefresh = vi.fn();
+  const view = setup({ refinementFallback: true, onRefresh });
+  expect(screen.getByRole("status")).toHaveTextContent("Smart refinement is temporarily unavailable");
+  expect(confirmButton()).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Retry refinement" }));
+  expect(onRefresh).toHaveBeenCalledTimes(1);
+  view.update({ stale: true });
+  expect(screen.getByRole("status")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Update shopping list" })).toBeEnabled();
+  expect(screen.queryByRole("button", { name: "Retry refinement" })).not.toBeInTheDocument();
+});

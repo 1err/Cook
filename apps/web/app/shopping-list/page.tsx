@@ -111,6 +111,7 @@ interface RefineResponse {
   purchase_items: PurchaseItem[];
   // Client cache marker: old lists remain usable, but need fresh backend totals.
   _quantityVersion?: number;
+  refinement_status?: "refined" | "fallback";
 }
 
 interface SmartStored extends RefineResponse {
@@ -148,12 +149,21 @@ async function loadProductBatch(
   );
 }
 
+function isRefineResponse(data: RefineResponse | null): data is RefineResponse {
+  return !!data && Array.isArray(data.purchase_items)
+    && data.purchase_items.every(item => item && typeof item.name === "string"
+      && !!item.name.trim() && typeof item.suggested_purchase === "string"
+      && (item.category == null || typeof item.category === "string"))
+    && Array.isArray(data.remove) && data.remove.every(name => typeof name === "string")
+    && Array.isArray(data.likely_pantry);
+}
+
 function parseSmartStored(
   raw: string
 ): { data: RefineResponse; hidden: Set<number>; checked: Set<number>; plannerFingerprint: string | null } | null {
   try {
     const parsed = JSON.parse(raw) as SmartStored;
-    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.purchase_items)) return null;
+    if (!isRefineResponse(parsed)) return null;
     const { _ui, _plannerFingerprint, ...data } = parsed;
     if (!Array.isArray(data.likely_pantry) || !Array.isArray(data.remove)) return null;
     return {
@@ -415,6 +425,8 @@ function ShoppingListPageContent() {
   );
   const activeRefinedData = smartWeekStart === start ? refinedData : null;
   const activeSavedPlannerFingerprint = smartWeekStart === start ? savedPlannerFingerprint : null;
+  const smartProgressRef = useRef({ data: activeRefinedData, hidden: smartHidden, checked: smartChecked });
+  smartProgressRef.current = { data: activeRefinedData, hidden: smartHidden, checked: smartChecked };
 
   useEffect(() => { setCopied(false); setCopyError(null); }, [items, smartChecked, activeRefinedData]);
 
@@ -872,10 +884,12 @@ function ShoppingListPageContent() {
 
   async function handlePrepareSmartList() {
     const originWeekStart = start;
+    const originAuthGeneration = getAuthGeneration();
     const refineGeneration = refineGenerationRef.current + 1;
     refineGenerationRef.current = refineGeneration;
     const isCurrentRefine = () => (
       activeWeekStartRef.current === originWeekStart
+      && getAuthGeneration() === originAuthGeneration
       && refineGenerationRef.current === refineGeneration
     );
     setRefineError(null);
@@ -883,43 +897,90 @@ function ShoppingListPageContent() {
     try {
       const [latestListRes, latestPlanRes] = await Promise.all([
         apiFetch(`/shopping-list?start=${start}&end=${end}`),
-        apiFetch(`/meal-plan?start=${start}&end=${end}`),
+        apiFetch(`/meal-plan?start=${start}&end=${end}`).catch(() => null),
       ]);
-      if (!latestListRes.ok) throw new Error("Could not refresh your current planner list");
+      if (!latestListRes.ok) throw new Error(t("shopping.refineFailed"));
       const latestItems: ShoppingListItem[] = await latestListRes.json();
+      if (!Array.isArray(latestItems) || latestItems.some(item => !item
+        || typeof item.name !== "string" || !item.name.trim()
+        || typeof item.total_quantity !== "string")) throw new Error(t("shopping.refineFailed"));
       let latestPlans: MealPlanDay[] = [];
-      if (latestPlanRes.ok) {
-        const payload = await latestPlanRes.json();
-        if (Array.isArray(payload)) latestPlans = payload;
+      let previewFailed = !latestPlanRes?.ok;
+      if (latestPlanRes?.ok) {
+        try {
+          const payload = await latestPlanRes.json();
+          if (Array.isArray(payload)) latestPlans = payload;
+          else previewFailed = true;
+        } catch { previewFailed = true; }
       }
       if (!isCurrentRefine()) return;
       setItems(latestItems);
       setMealPlans(latestPlans);
-      setPreviewUnavailable(!latestPlanRes.ok);
+      setPreviewUnavailable(previewFailed);
       const latestPlannerFingerprint = buildWeekMealPlanFingerprint(weekDates, latestPlans);
-      const res = await apiFetch("/shopping-list/refine", {
-        method: "POST",
-        body: JSON.stringify({
-          items: latestItems.map((i) => ({ name: i.name, quantity: i.total_quantity })),
-        }),
-      });
-      if (!res.ok) throw new Error("Refine failed");
-      const data: RefineResponse = { ...await res.json(), _quantityVersion: SHOPPING_QUANTITY_VERSION };
+      let data: RefineResponse;
+      // A freshly fetched, server-aggregated list remains usable when AI is busy.
+      // Authentication/validation failures must still surface as errors.
+      let fallbackAllowed = true;
+      const controller = new AbortController();
+      const deadline = setTimeout(() => controller.abort(), 45_000);
+      try {
+        const res = await apiFetch("/shopping-list/refine", {
+          method: "POST",
+          signal: controller.signal,
+          body: JSON.stringify({
+            items: latestItems.map((i) => ({ name: i.name, quantity: i.total_quantity })),
+          }),
+        });
+        fallbackAllowed = res.ok || res.status === 429 || res.status >= 500;
+        if (!res.ok) throw new Error(t("shopping.refineFailed"));
+        const payload: RefineResponse = await res.json();
+        if (!isRefineResponse(payload) || (latestItems.length > 0 && payload.purchase_items.length === 0)) {
+          throw new Error(t("shopping.refineFailed"));
+        }
+        data = { ...payload, _quantityVersion: SHOPPING_QUANTITY_VERSION };
+      } catch (error) {
+        if (!fallbackAllowed) throw error;
+        data = {
+          remove: [], likely_pantry: [],
+          purchase_items: latestItems.map(item => ({
+            name: item.name, suggested_purchase: item.total_quantity,
+          })),
+          _quantityVersion: SHOPPING_QUANTITY_VERSION,
+          refinement_status: "fallback",
+        };
+      } finally {
+        clearTimeout(deadline);
+      }
       if (!isCurrentRefine()) return;
+      // Follow ingredient identity, not row position, when refinement reorders rows.
+      // Changed quantities must be checked again; clicks during the request count.
+      const previous = smartProgressRef.current;
+      const itemKey = (item: PurchaseItem) => JSON.stringify([item.name.trim(), item.suggested_purchase.trim()]);
+      const preserveProgress = (selected: Set<number>) => {
+        const keys = new Set(previous.data?.purchase_items
+          .filter((_, index) => selected.has(index)).map(itemKey));
+        return new Set(data.purchase_items.flatMap((item, index) => keys.has(itemKey(item)) ? [index] : []));
+      };
+      const sameIngredients = previous.data
+        && JSON.stringify(previous.data.purchase_items.map(itemKey).sort())
+          === JSON.stringify(data.purchase_items.map(itemKey).sort());
+      const hidden = preserveProgress(previous.hidden);
+      const checked = preserveProgress(previous.checked);
       setRefinedData(data);
       setSmartWeekStart(start);
       setSavedPlannerFingerprint(latestPlannerFingerprint);
-      setSmartListStale(!latestPlanRes.ok);
-      setSmartHidden(new Set());
-      setSmartChecked(new Set());
-      clearCartAssistantState(true);
-      clearStoredProductResults();
-      clearProductResults();
-      persistSmart(data, new Set(), new Set(), latestPlannerFingerprint);
-    } catch (e) {
-      if (isCurrentRefine()) {
-        setRefineError(e instanceof Error ? e.message : "Something went wrong");
+      setSmartListStale(previewFailed);
+      setSmartHidden(hidden);
+      setSmartChecked(checked);
+      if (!sameIngredients) {
+        clearCartAssistantState(true);
+        clearStoredProductResults();
+        clearProductResults();
       }
+      persistSmart(data, hidden, checked, latestPlannerFingerprint);
+    } catch {
+      if (isCurrentRefine()) setRefineError(t("shopping.refineFailed"));
     } finally {
       if (isCurrentRefine()) setRefining(false);
     }
@@ -1162,6 +1223,7 @@ function ShoppingListPageContent() {
           itemCount={smartItemCount}
           totalCount={visiblePurchaseItems.length}
           stale={smartListStale || activeRefinedData._quantityVersion !== SHOPPING_QUANTITY_VERSION}
+          fallback={activeRefinedData.refinement_status === "fallback"}
           refining={refining}
           copied={copied}
           bulkLoading={bulkLoadingProducts}
@@ -1188,6 +1250,8 @@ function ShoppingListPageContent() {
           </aside>
         ) : null}
         <div className={styles.listColumn}>
+      {activeRefinedData && refineError ? <p className={styles.error} role="alert">{refineError}</p> : null}
+      {activeRefinedData?.refinement_status === "fallback" ? <p role="status">{t("shopping.refineFallback")}</p> : null}
       {copyError ? <p className={styles.error} role="alert">{copyError}</p> : null}
       {previewUnavailable ? <p role="status">{t("shopping.previewUnavailable")}</p> : null}
       {!hasPlannedMeals && items.length === 0 ? (
@@ -1243,6 +1307,7 @@ function ShoppingListPageContent() {
             stale={smartListStale || activeRefinedData._quantityVersion !== SHOPPING_QUANTITY_VERSION}
             refreshing={refining}
             refreshError={refineError}
+            refinementFallback={activeRefinedData.refinement_status === "fallback"}
             onRefresh={() => void handlePrepareSmartList()}
             onClose={() => setMuseDialogOpen(false)}
           />

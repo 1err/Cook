@@ -51,6 +51,10 @@ Rules:
    Set source_name to the exact input name so the result can be matched safely.
    Do not merge different input ingredients or add ingredients.
 4) Normalize ingredient names into clear grocery items.
+   Preserve meaningful distinctions such as low-sodium, unsalted, specialty oils
+   and sauces, meat cuts, and dietary modifiers. Never substitute ingredients.
+   食用盐 and 盐 mean the same ingredient; use 盐. This exact alias is already
+   aggregated before input. Keep specialty salts such as 低钠盐 and 椒盐 distinct.
 5) Preserve the input ingredient language:
    - If the input ingredient name is Chinese, output a Chinese-only name.
    - If the input ingredient name is English, output an English-only name.
@@ -129,7 +133,7 @@ def _fallback_result(items: list[dict[str, str]]) -> dict[str, Any]:
                 "grocery_category": "Other",
             }
         )
-    return {"purchase_items": out}
+    return {"purchase_items": out, "refinement_status": "fallback"}
 
 
 def _contains_cjk(text: str) -> bool:
@@ -207,6 +211,7 @@ def _parse_llm_refine_response(raw: str, fallback_items: list[dict[str, str]]) -
     for name in input_by_name:
         input_names_by_match.setdefault(_normalize_name_for_match(name), []).append(name)
     refined_by_name: dict[str, dict[str, str]] = {}
+    used_fallback = False
     for x in purchase_items:
         if not isinstance(x, dict):
             continue
@@ -221,6 +226,10 @@ def _parse_llm_refine_response(raw: str, fallback_items: list[dict[str, str]]) -
             continue
         source_key = source_name.strip().casefold()
         if source_key not in input_by_name:
+            # Explicit references must identify the actual input. Stripping
+            # qualifiers here can attach sesame oil to peanut oil, for example.
+            if "source_name" in x:
+                continue
             matches = input_names_by_match.get(_normalize_name_for_match(source_key), [])
             if len(matches) != 1:
                 continue
@@ -232,7 +241,10 @@ def _parse_llm_refine_response(raw: str, fallback_items: list[dict[str, str]]) -
             _contains_cjk(original["name"]) and _contains_latin(nm)
         ):
             nm = original["name"]
+            used_fallback = True
         gc = x.get("grocery_category")
+        if not isinstance(gc, str) or gc.strip().casefold() not in {category.casefold() for category in GROCERY_CATEGORIES}:
+            used_fallback = True
         refined_by_name[source_key] = {
             "name": nm,
             # The model organizes the list; deterministic arithmetic owns totals.
@@ -251,19 +263,24 @@ def _parse_llm_refine_response(raw: str, fallback_items: list[dict[str, str]]) -
         if output_key in input_by_name and output_key != source["name"].casefold():
             purchase["name"] = source["name"]
             purchase["suggested_purchase"] = source["quantity"] or source["name"]
+            used_fallback = True
     name_counts = Counter(purchase["name"].casefold() for purchase in purchase_out)
     for source, purchase in zip(fallback_items, purchase_out):
         if name_counts[purchase["name"].casefold()] > 1:
             purchase["name"] = source["name"]
             purchase["suggested_purchase"] = source["quantity"] or source["name"]
-    return {"purchase_items": purchase_out}
+            used_fallback = True
+    return {
+        "purchase_items": purchase_out,
+        "refinement_status": "fallback" if used_fallback or len(refined_by_name) != len(fallback_items) else "refined",
+    }
 
 
 async def refine_shopping_list(items: list[dict[str, str]]) -> dict[str, Any]:
-    """Return ``{ "purchase_items": [...] }`` from aggregated ingredients."""
+    """Return authoritative quantities plus explicit refinement completeness."""
     items = _aggregate_input_items(items)
     if not items:
-        return {"purchase_items": []}
+        return {"purchase_items": [], "refinement_status": "refined"}
 
     client = get_openai_client()
     if client is None:

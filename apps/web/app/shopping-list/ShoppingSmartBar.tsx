@@ -9,6 +9,7 @@ type ShoppingSmartBarProps = {
   itemCount: number;
   totalCount: number;
   stale: boolean;
+  fallback?: boolean;
   refining: boolean;
   copied: boolean;
   bulkLoading: boolean;
@@ -28,6 +29,7 @@ export function ShoppingSmartBar({
   itemCount,
   totalCount,
   stale,
+  fallback = false,
   refining,
   copied,
   bulkLoading,
@@ -50,7 +52,7 @@ export function ShoppingSmartBar({
     <section className={styles.smartBar} aria-label="Smart shopping list controls">
       <div className={styles.smartOverview}>
         <div className={styles.smartSummary}>
-          <span>{t("shopping.smartMode")}</span>
+          <span>{t(fallback ? "shopping.basicList" : "shopping.smartMode")}</span>
           <strong>{itemCount}</strong>
           <small>{t("shopping.toBuy")}</small>
         </div>
@@ -60,9 +62,9 @@ export function ShoppingSmartBar({
         <small className={styles.progressLabel}>{checkedCount} / {totalCount}</small>
       </div>
       <div className={styles.smartActions}>
-        {stale ? (
+        {stale || fallback ? (
           <button type="button" onClick={onRefresh} disabled={refining}>
-            {refining ? t("shopping.refreshing") : t("shopping.refreshSmartList")}
+            {refining ? t("shopping.refreshing") : t(fallback ? "shopping.retryRefine" : "shopping.refreshSmartList")}
           </button>
         ) : null}
         <button type="button" onClick={onCopy}>{copied ? t("shopping.copied") : t("shopping.copyList")}</button>

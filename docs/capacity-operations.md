@@ -62,6 +62,8 @@ Keep operational telemetry free of prompts, private recipe contents, tokens, pas
 
 ## Recovery rules
 
+See [recovery and operations alerts](recovery-alerts.md) for the verified seven-day RDS backup/deletion protection, six initial metric alarms, pending notification delivery, image-recovery gap and private restore rehearsal procedure. These controls do not establish a tested RPO/RTO or user-capacity guarantee.
+
 **AI outage or ambiguous timeout:** fail boundedly and keep the monetary reservation. Unknown usage cannot be refunded automatically; reconcile the exact call from authoritative usage later. Core non-AI library/planner/cooking features remain available. Provider-denied calls are settled as denied without retrying the same operation.
 
 **Retail worker failure:** admitted jobs persist. Ownership/fencing prevents stale results from replacing current results. Automatic recovery requires confirmed browser cleanup, not merely lease expiry. A process whose containment cleanup is unknown must remain blocked until an operator confirms its container and descendants are gone. See the worker implementation and review evidence before resetting any cleanup marker.

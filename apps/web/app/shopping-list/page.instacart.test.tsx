@@ -182,17 +182,69 @@ test("changing weeks keeps shopping available without Instacart", async () => {
   expectInstacartAbsent();
 });
 
-test("a failed preparation keeps the original view free of grocery controls and allows retry", async () => {
+test.each([429, 503, 500])("refinement %s keeps a usable checklist with exact quantities and retry", async (status) => {
   const original = mockApiFetch.getMockImplementation()!;
   mockApiFetch.mockImplementation((path: string, options?: RequestInit) => path === "/shopping-list/refine"
-    ? Promise.resolve(new Response(JSON.stringify({ detail: "Monthly AI allowance reached" }), { status: 503 }))
+    ? Promise.resolve(new Response(JSON.stringify({ detail: "Unavailable" }), { status }))
     : original(path, options));
   render(<ShoppingListPage />);
   fireEvent.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
-  await screen.findByRole("alert");
-  expect(screen.getByRole("button", { name: "Prepare smart shopping list" })).toBeEnabled();
-  expectOriginalPreparation();
+  expect(await screen.findByRole("checkbox", { name: "shopping.markAlreadyHave Rice" })).toBeEnabled();
+  expect(screen.getByText("2 cups")).toBeVisible();
+  expect(screen.getByText("250 ml")).toBeVisible();
+  expect(screen.getByText("shopping.refineFallback")).toBeVisible();
+  expect(screen.getByRole("button", { name: "shopping.retryRefine" })).toBeEnabled();
   expectInstacartAbsent();
+});
+
+test("refinement network failure preserves shopping and recovered refinement preserves checkoffs", async () => {
+  const original = mockApiFetch.getMockImplementation()!;
+  let refineCalls = 0;
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+    if (path !== "/shopping-list/refine") return original(path, options);
+    if (++refineCalls === 1) return Promise.reject(new TypeError("Failed to fetch"));
+    return Promise.resolve(response({ remove: [], likely_pantry: [], purchase_items: [
+      { name: "Milk", suggested_purchase: "250 ml", category: "Dairy" },
+      { name: "Rice", suggested_purchase: "2 cups", category: "Pantry & Dry Goods" },
+    ] }));
+  });
+  const view = render(<ShoppingListPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
+  fireEvent.click(await screen.findByRole("checkbox", { name: "shopping.markAlreadyHave Rice" }));
+  view.unmount();
+  render(<ShoppingListPage />);
+  expect(await screen.findByRole("checkbox", { name: "shopping.markStillNeedToBuy Rice" })).toBeChecked();
+  fireEvent.click(screen.getByRole("button", { name: "shopping.retryRefine" }));
+  await waitFor(() => expect(screen.queryByText("shopping.refineFallback")).not.toBeInTheDocument());
+  expect(screen.getByRole("checkbox", { name: "shopping.markStillNeedToBuy Rice" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "shopping.markAlreadyHave Milk" })).not.toBeChecked();
+  expect(refineCalls).toBe(2);
+});
+
+test.each([401, 403, 422])("refinement %s does not disguise an authorization or validation failure", async (status) => {
+  const original = mockApiFetch.getMockImplementation()!;
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => path === "/shopping-list/refine"
+    ? Promise.resolve(new Response("{}", { status })) : original(path, options));
+  render(<ShoppingListPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("shopping.refineFailed");
+  expectOriginalPreparation();
+});
+
+test("unavailable optional meal preview does not block successful refinement", async () => {
+  const original = mockApiFetch.getMockImplementation()!;
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+    if (path.startsWith("/meal-plan?")) return Promise.reject(new TypeError("Failed to fetch"));
+    if (path === "/shopping-list/refine") return Promise.resolve(response({ remove: [], likely_pantry: [], purchase_items: [
+      { name: "Rice", suggested_purchase: "2 cups" },
+    ] }));
+    return original(path, options);
+  });
+  render(<ShoppingListPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
+  expect(await screen.findByRole("checkbox", { name: "shopping.markAlreadyHave Rice" })).toBeEnabled();
+  expect(screen.getByText("shopping.previewUnavailable")).toBeVisible();
+  expect(screen.queryByText("shopping.refineFallback")).not.toBeInTheDocument();
 });
 
 test("an unavailable meal preview keeps preparation available without showing raw groceries", async () => {
@@ -255,4 +307,110 @@ test("smart groceries retain checked-item filtering and clipboard failure recove
   await screen.findByRole("button", { name: "shopping.copied" });
   expect(writeText).toHaveBeenLastCalledWith("Milk — 250 ml");
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+test("a malformed refreshed list cannot replace the current checklist", async () => {
+  storage.setItem("smartShoppingList:2026-08-10", JSON.stringify({
+    remove: [], likely_pantry: [], refinement_status: "fallback",
+    purchase_items: [{ name: "Rice", suggested_purchase: "2 cups" }],
+  }));
+  const original = mockApiFetch.getMockImplementation()!;
+  let listCalls = 0;
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+    if (path.startsWith("/shopping-list?") && ++listCalls > 1) return Promise.resolve(response({ error: "Bad payload" }));
+    return original(path, options);
+  });
+  render(<ShoppingListPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "shopping.retryRefine" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("shopping.refineFailed");
+  expect(screen.getByRole("checkbox", { name: "shopping.markAlreadyHave Rice" })).toBeEnabled();
+  expect(mockApiFetch.mock.calls.some(([path]) => path === "/shopping-list/refine")).toBe(false);
+});
+
+test("an unchanged fallback retry retains Weee product and cart progress", async () => {
+  const url = "https://www.sayweee.com/product/rice";
+  const token = JSON.stringify(["rice", url]);
+  storage.setItem("smartShoppingList:2026-08-10", JSON.stringify({
+    remove: [], likely_pantry: [], refinement_status: "fallback",
+    purchase_items: rawItems.map(item => ({ name: item.name, suggested_purchase: item.total_quantity })),
+  }));
+  storage.setItem("smartShoppingProducts:2026-08-10:weee", JSON.stringify({
+    lookup: { rice: { status: "success", products: [{ name: "Jasmine rice", price: "$4", image: "", url }], expiresAt: new Date(Date.now() + 60_000).toISOString() } },
+    open: { rice: true }, queries: { rice: "Rice" },
+  }));
+  storage.setItem("smartShoppingCart:2026-08-10:weee", JSON.stringify({
+    selectedUrlByIngredient: { rice: url }, confirmedTokens: [token],
+  }));
+  const original = mockApiFetch.getMockImplementation()!;
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => path === "/shopping-list/refine"
+    ? Promise.resolve(new Response("{}", { status: 429 })) : original(path, options));
+  render(<ShoppingListPage />);
+  await screen.findByText("Jasmine rice");
+  fireEvent.click(screen.getByRole("button", { name: "shopping.retryRefine" }));
+  await waitFor(() => expect(mockApiFetch.mock.calls.some(([path]) => path === "/shopping-list/refine")).toBe(true));
+  await waitFor(() => expect(screen.getByRole("button", { name: "shopping.retryRefine" })).toBeEnabled());
+  expect(screen.getByText("Jasmine rice")).toBeVisible();
+  expect(JSON.parse(storage.getItem("smartShoppingCart:2026-08-10:weee") ?? "{}").confirmedTokens).toEqual([token]);
+});
+
+test("a provider fallback response remains clearly labeled and retryable", async () => {
+  const original = mockApiFetch.getMockImplementation()!;
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => path === "/shopping-list/refine"
+    ? Promise.resolve(response({ remove: [], likely_pantry: [], refinement_status: "fallback", purchase_items: [
+      { name: "Rice", suggested_purchase: "2 cups", category: "Pantry & Dry Goods" },
+    ] })) : original(path, options));
+  render(<ShoppingListPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
+  expect(await screen.findByRole("button", { name: "shopping.retryRefine" })).toBeEnabled();
+  expect(screen.getByRole("checkbox", { name: "shopping.markAlreadyHave Rice" })).toBeEnabled();
+});
+
+test("refinement leaves changed quantities unchecked while preserving unchanged progress", async () => {
+  storage.setItem("smartShoppingList:2026-08-10", JSON.stringify({
+    remove: [], likely_pantry: [], refinement_status: "fallback",
+    purchase_items: rawItems.map(item => ({ name: item.name, suggested_purchase: item.total_quantity })),
+    _ui: { checked: [0, 1] },
+  }));
+  const original = mockApiFetch.getMockImplementation()!;
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => path === "/shopping-list/refine"
+    ? Promise.resolve(response({ remove: [], likely_pantry: [], purchase_items: [
+      { name: "Rice", suggested_purchase: "3 cups" }, { name: "Milk", suggested_purchase: "250 ml" },
+    ] })) : original(path, options));
+  render(<ShoppingListPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "shopping.retryRefine" }));
+  expect(await screen.findByRole("checkbox", { name: "shopping.markAlreadyHave Rice" })).not.toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "shopping.markStillNeedToBuy Milk" })).toBeChecked();
+});
+
+test("a stalled refinement stops waiting and exposes the recipe checklist", async () => {
+  const original = mockApiFetch.getMockImplementation()!;
+  const timer = vi.spyOn(globalThis, "setTimeout");
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+    if (path !== "/shopping-list/refine") return original(path, options);
+    return new Promise((_resolve, reject) => options?.signal?.addEventListener("abort", () => reject(new DOMException("Timed out", "AbortError"))));
+  });
+  render(<ShoppingListPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
+  await waitFor(() => expect(mockApiFetch.mock.calls.some(([path]) => path === "/shopping-list/refine")).toBe(true));
+  const deadline = timer.mock.calls.find(([, delay]) => delay === 45_000)?.[0];
+  expect(deadline).toBeTypeOf("function");
+  await act(async () => { (deadline as () => void)(); });
+  expect(await screen.findByRole("checkbox", { name: "shopping.markAlreadyHave Rice" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "shopping.retryRefine" })).toBeEnabled();
+});
+
+test.each([
+  { purchase_items: [{ name: "Rice", suggested_purchase: "2 cups", category: {} }], remove: [], likely_pantry: [] },
+  { purchase_items: [{ name: "Rice", suggested_purchase: "2 cups" }], remove: [{}], likely_pantry: [] },
+  { purchase_items: [], remove: [], likely_pantry: [] },
+  null,
+])("malformed refinement output recovers without crashing or losing ingredients", async (payload) => {
+  const original = mockApiFetch.getMockImplementation()!;
+  mockApiFetch.mockImplementation((path: string, options?: RequestInit) => path === "/shopping-list/refine"
+    ? Promise.resolve(response(payload)) : original(path, options));
+  render(<ShoppingListPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
+  expect(await screen.findByRole("button", { name: "shopping.retryRefine" })).toBeEnabled();
+  expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+  expect(screen.getByText("2 cups")).toBeVisible();
 });

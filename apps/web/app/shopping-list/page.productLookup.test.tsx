@@ -1364,3 +1364,23 @@ test("uses the same category order for sections, cart review, and Muse while ret
     expect(saved.purchase_items.map((item: {name: string}) => item.name)).toEqual(["Milk", "Rice", "Kale", "Beef"]);
   });
 });
+
+test("late fallback after account change cannot publish the previous account's groceries", async () => {
+  const storage = stubSessionStorage();
+  bindUserStorage("alice");
+  const pending = deferredResponse();
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/shopping-list?")) return Promise.resolve(jsonResponse([{ name: "Private rice", total_quantity: "2 cups" }]));
+    if (path.startsWith("/meal-plan?") || path === "/recipes") return Promise.resolve(jsonResponse([]));
+    if (path === "/shopping-list/refine") return pending.promise;
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  render(<ShoppingListPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
+  await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith("/shopping-list/refine", expect.anything()));
+  clearUserStorage();
+  bindUserStorage("bob");
+  await act(async () => { pending.resolve(new Response("{}", { status: 503 })); });
+  expect(storage.has("smartShoppingList:2026-08-10:user:bob")).toBe(false);
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+});

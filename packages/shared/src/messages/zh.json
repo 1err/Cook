@@ -1,4 +1,7 @@
 {
+  "shopping.refineFallback": "智能整理暂时不可用。你仍可使用下方食谱用量购物，或重试智能整理。",
+  "shopping.retryRefine": "重试智能整理",
+  "shopping.refineFailed": "暂时无法准备智能清单，请重试。",
   "shopping.basicList": "购物清单",
   "shopping.basicDescription": "根据已计划的食谱汇总。也可选择智能整理。",
   "shopping.previewUnavailable": "暂时无法显示餐食预览。",
