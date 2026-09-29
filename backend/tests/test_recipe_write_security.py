@@ -183,6 +183,90 @@ async def test_shared_views_hide_import_guidance_while_owned_read_preserves_it(s
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("active_metadata", "hands_on_minutes", "is_estimate"),
+    [
+        ({"duration_seconds": 600, "duration_source": "stated", "attention_type": "hands_on"}, 10, False),
+        ({"duration_seconds": 600, "duration_source": "estimated", "attention_type": "hands_on"}, 10, True),
+        ({"duration_seconds": 600, "duration_source": "fallback", "attention_type": "hands_on"}, None, False),
+        ({"attention_type": "hands_on"}, None, False),
+        ({"duration_seconds": 600, "duration_source": "stated"}, None, False),
+        ({"duration_seconds": 600, "duration_source": "stated", "attention_type": "unknown"}, None, False),
+        ({"duration_seconds": 600, "attention_type": "hands_on"}, None, False),
+    ],
+    ids=["stated", "estimated", "fallback", "missing-duration", "missing-attention", "unknown-attention", "missing-source"],
+)
+async def test_recipe_details_share_raw_timing_without_private_import_text(
+    sql_session, active_metadata, hands_on_minutes, is_estimate,
+):
+    row = share_private_import(sql_session)
+    row.total_time_minutes = 490
+    row.steps = json.dumps([
+        {"text": "Mix dough", **active_metadata},
+        {"text": "Chill dough", "duration_seconds": 28800, "duration_source": "stated", "attention_type": "passive"},
+    ])
+    sql_session.sync.flush()
+    stored_steps = row.steps
+
+    owned = await routes_recipes.recipe_get(
+        row.id, session=sql_session, current_user=SimpleNamespace(id=OWNER_ID),
+    )
+    public = await repo_recipes.get_public_recipe(sql_session, row.id)
+    catalog = await repo_recipes.list_public_recipes(sql_session)
+    friend = await routes_users.friend_recipe_detail(
+        OWNER_ID, row.id, session=sql_session, current_user=SimpleNamespace(id=CALLER_ID),
+    )
+    friend_library = await routes_users.friend_library_recipes(
+        OWNER_ID, session=sql_session, current_user=SimpleNamespace(id=CALLER_ID),
+    )
+
+    for recipe in [owned, public, *catalog, friend, *friend_library]:
+        payload = recipe.model_dump(mode="json")
+        assert payload.get("timing_summary") == {
+            "hands_on_minutes": hands_on_minutes,
+            "passive_minutes": 480,
+            "is_estimate": is_estimate,
+        }
+        assert payload["total_time_minutes"] == 490
+        assert [step["text"] for step in payload["steps"]] == ["Mix dough", "Chill dough"]
+    for shared in [public, *catalog, friend, *friend_library]:
+        assert shared.raw_extraction_text is None
+        assert PRIVATE_IMPORT not in shared.model_dump_json()
+    assert not friend.already_saved
+    assert owned.raw_extraction_text == PRIVATE_IMPORT
+    assert sql_session.sync.get(RecipeModel, row.id).steps == stored_steps
+
+
+@pytest.mark.asyncio
+async def test_saved_detail_recomputes_timing_instead_of_accepting_client_summary(sql_session):
+    steps = [
+        {"text": "Mix dough", "duration_seconds": 600, "duration_source": "user", "attention_type": "hands_on"},
+        {"text": "Chill dough", "duration_seconds": 28800, "duration_source": "user", "attention_type": "passive"},
+    ]
+    saved = await routes_recipes.recipe_create(
+        Recipe(
+            id="timed-recipe", title="Dough", ingredients=[], total_time_minutes=490,
+            steps=steps,
+            timing_summary={"hands_on_minutes": 999, "passive_minutes": 999, "is_estimate": True},
+        ),
+        session=sql_session, current_user=SimpleNamespace(id=CALLER_ID),
+    )
+    assert saved.model_dump().get("timing_summary") == {
+        "hands_on_minutes": 10, "passive_minutes": 480, "is_estimate": False,
+    }
+
+    updated = await routes_recipes.recipe_update(
+        saved.id,
+        routes_recipes.RecipeUpdate(steps=[steps[0], {**steps[1], "duration_seconds": 14400}]),
+        session=sql_session, current_user=SimpleNamespace(id=CALLER_ID),
+    )
+    assert updated.model_dump().get("timing_summary") == {
+        "hands_on_minutes": 10, "passive_minutes": 240, "is_estimate": False,
+    }
+    assert updated.total_time_minutes == 490
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("copy_path", ["catalog", "friend"])
 async def test_cross_account_copy_does_not_persist_original_import_guidance(sql_session, copy_path):
     row = share_private_import(sql_session)

@@ -10,6 +10,7 @@ import { RequireAuth } from "../components/RequireAuth";
 import { useT } from "../lib/i18n";
 import { useEditorialCopy } from "../lib/editorialCopy";
 import { RecipeCard } from "../components/RecipeCard";
+import { RecipeTiming } from "../components/RecipeTiming";
 import { Icon } from "../components/ui/Icon";
 import { PageHeader, PageShell } from "../components/PageShell";
 import { CATEGORY_LABELS, type LibraryFilterId, type RecipeTagSlug } from "../lib/recipeCategories";
@@ -202,18 +203,18 @@ function LibraryPageContent() {
                   </div>
                   <div className={styles.publicBody}>
                     <h2 className="cw-display">{recipe.title}</h2>
-                    <div className={styles.metadata}>
-                      {recipe.total_time_minutes ? <p>{recipe.total_time_minutes} {t("recipe.totalTime.minutesSuffix")}</p> : null}
-                      {tags.length ? (
-                        <div className={styles.publicTags}>
-                          {tags.map((tag) => (
-                            <span key={tag}>{CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}</span>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
                   </div>
                 </Link>
+                <div className={styles.metadata}>
+                  <RecipeTiming {...recipe} />
+                  {tags.length ? (
+                    <div className={styles.publicTags}>
+                      {tags.map((tag) => (
+                        <span key={tag}>{CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   className={styles.addButton}

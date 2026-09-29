@@ -58,6 +58,12 @@ export interface RecipeStep {
   source_excerpt?: string | null;
 }
 
+export interface RecipeTimingSummary {
+  hands_on_minutes: number | null;
+  passive_minutes: number | null;
+  is_estimate: boolean;
+}
+
 export interface Recipe {
   id: string;
   title: string;
@@ -71,6 +77,7 @@ export interface Recipe {
   catalog_source_recipe_id?: string | null;
   description?: string | null;
   total_time_minutes?: number | null;
+  timing_summary?: RecipeTimingSummary | null;
   steps?: RecipeStep[];
   tips?: string[];
   equipment?: string[];
@@ -127,7 +134,7 @@ export interface User {
 }
 
 
-export type RecipeSummary = Pick<Recipe, "id" | "title" | "source_url" | "thumbnail_url" | "library_tags" | "library_category" | "is_public_catalog" | "catalog_source_recipe_id" | "total_time_minutes"> & {
+export type RecipeSummary = Pick<Recipe, "id" | "title" | "source_url" | "thumbnail_url" | "library_tags" | "library_category" | "is_public_catalog" | "catalog_source_recipe_id" | "total_time_minutes" | "timing_summary"> & {
   ingredient_count: number;
   step_count: number;
   already_saved: boolean;

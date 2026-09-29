@@ -69,6 +69,33 @@ async def test_equal_titles_generate_last_returned_cursor_and_lookahead_not_retu
 
 
 @pytest.mark.asyncio
+async def test_page_returns_passive_timing_without_inventing_hands_on_from_total():
+    # A 490-minute total cannot validate the ten fallback minutes left after chilling.
+    row = dict(id='timed', title='Youtiao', sort_title='youtiao', source_url=None,
+               thumbnail_url=None, library_tags='[]', library_category=None,
+               is_public_catalog=False, catalog_source_recipe_id=None,
+               total_time_minutes=490, ingredient_count=1, step_count=2,
+               already_saved=True, timing_steps=[
+                   {'duration_seconds': 28800, 'duration_source': 'stated', 'attention_type': 'passive'},
+                   {'duration_seconds': 600, 'duration_source': 'fallback', 'attention_type': 'hands_on'},
+               ])
+
+    class Result:
+        def mappings(self): return self
+        def all(self): return [row]
+
+    session = AsyncMock()
+    session.execute.return_value = Result()
+    page = await repo_recipes.recipe_page(session, uuid.uuid4())
+    payload = page.model_dump()['items'][0]
+    assert payload.get('timing_summary') == {
+        'hands_on_minutes': None, 'passive_minutes': 480, 'is_estimate': False,
+    }
+    assert payload['total_time_minutes'] == 490
+    assert not {'timing_steps', 'steps', 'text', 'raw_extraction_text'} & payload.keys()
+
+
+@pytest.mark.asyncio
 async def test_friend_page_query_rechecks_public_sharing_and_copy_state_scoped_to_caller():
     class Result:
         def mappings(self): return self

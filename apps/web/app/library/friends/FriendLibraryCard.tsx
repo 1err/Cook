@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { RecipeTiming } from "../../components/RecipeTiming";
 import { CATEGORY_LABELS } from "../../lib/recipeCategories";
 import { getRecipeTags } from "../../lib/recipeTags";
 import type { Recipe } from "../../types";
 import styles from "./Friends.module.css";
 
 type FriendLibraryCardProps = {
-  recipe: Pick<Recipe, "id" | "title" | "thumbnail_url" | "library_tags" | "library_category" | "total_time_minutes">;
+  recipe: Pick<Recipe, "id" | "title" | "thumbnail_url" | "library_tags" | "library_category" | "total_time_minutes" | "timing_summary">;
   href: string;
   state: "idle" | "copying" | "added";
   onCopy: () => void;
@@ -30,18 +31,20 @@ export function FriendLibraryCard({ recipe, href, state, onCopy }: FriendLibrary
         </div>
         <div className={styles.recipeBody}>
           <h2 className="cw-display">{recipe.title}</h2>
-          {recipe.total_time_minutes ? <p>{recipe.total_time_minutes} min</p> : null}
-          {tags.length ? (
-            <div className={styles.recipeTags} aria-label="Recipe tags">
-              {tags.map((tag) => (
-                <span key={tag} data-testid="friend-recipe-tag">
-                  {CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}
-                </span>
-              ))}
-            </div>
-          ) : null}
         </div>
       </Link>
+      <div className={styles.recipeMetadata}>
+        <RecipeTiming {...recipe} />
+        {tags.length ? (
+          <div className={styles.recipeTags} aria-label="Recipe tags">
+            {tags.map((tag) => (
+              <span key={tag} data-testid="friend-recipe-tag">
+                {CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
       <div className={styles.recipeAction}>
         <button type="button" onClick={onCopy} disabled={state !== "idle"}>
           {buttonLabel}
