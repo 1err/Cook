@@ -9,11 +9,19 @@ from decimal import Decimal, ROUND_CEILING
 
 NANO_USD = 1_000_000_000
 APP_AI_HARD_CAP_NANO = 30 * NANO_USD
-# Official GPT-4o mini model page verified 2026-09-22. Conservative higher
-# rates are allowed; lower/unreviewed rates could silently defeat the cap.
-SUPPORTED_MODELS = {'gpt-4o-mini', 'gpt-4o-mini-2024-07-18'}
-MIN_INPUT_RATE = Decimal('0.15')
-MIN_OUTPUT_RATE = Decimal('0.60')
+# Official model pages: https://developers.openai.com/api/docs/models/gpt-6-luna
+# (2026-09-29) and /gpt-4o-mini (2026-09-22). Luna uses Standard processing,
+# no tools, and at most 272K input tokens. Reserve/reconcile all input at the
+# $0.125/M cache-write rate rather than assuming $0.10/M uncached input or a
+# cache-hit discount. This ledger is a conservative estimate, not an invoice.
+# Output usage includes any reasoning tokens. Higher configured rates are safe;
+# lower/unreviewed rates could silently defeat the cap.
+MIN_TEXT_RATES = {
+    'gpt-6-luna': (Decimal('0.125'), Decimal('0.50')),
+    'gpt-4o-mini': (Decimal('0.15'), Decimal('0.60')),
+    'gpt-4o-mini-2024-07-18': (Decimal('0.15'), Decimal('0.60')),
+}
+LUNA_STANDARD_INPUT_TOKEN_BOUND = 272_000
 
 # Reviewed 2026-09-24: https://ai.google.dev/gemini-api/docs/pricing and
 # https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite
@@ -54,7 +62,7 @@ class Price:
 
 def configured_price(settings) -> Price:
     model = settings.OPENAI_MODEL
-    if (model not in SUPPORTED_MODELS or settings.AI_PRICE_MODEL != model
+    if (model not in MIN_TEXT_RATES or settings.AI_PRICE_MODEL != model
             or not settings.AI_PRICE_VERSION.strip()
             or settings.AI_INPUT_USD_PER_MILLION_TOKENS is None
             or settings.AI_OUTPUT_USD_PER_MILLION_TOKENS is None):
@@ -63,7 +71,8 @@ def configured_price(settings) -> Price:
              Decimal(str(settings.AI_OUTPUT_USD_PER_MILLION_TOKENS))]
     if any(not rate.is_finite() or rate <= 0 for rate in rates):
         raise ValueError('AI prices must be positive finite USD amounts')
-    if rates[0] < MIN_INPUT_RATE or rates[1] < MIN_OUTPUT_RATE:
+    minimum_input, minimum_output = MIN_TEXT_RATES[model]
+    if rates[0] < minimum_input or rates[1] < minimum_output:
         raise ValueError('AI rates are below the verified model price')
     return Price(model, settings.AI_PRICE_VERSION, *rates)
 
@@ -98,9 +107,12 @@ def estimate_cost_nano(price: Price, input_tokens: int, output_tokens: int) -> i
     return int(amount.to_integral_value(rounding=ROUND_CEILING))
 
 
-def prompt_token_ceiling(messages: list[dict[str, str]]) -> int:
+def prompt_token_ceiling(messages: list[dict[str, str]], *, model: str | None = None) -> int:
     if not messages or any(set(message) != {'role', 'content'}
                            or message['role'] not in {'system', 'user', 'assistant'}
                            or not isinstance(message['content'], str) for message in messages):
         raise ValueError('Only bounded text messages are supported')
-    return 1024 + sum(len(message['content'].encode('utf-8')) + 64 for message in messages)
+    bound = 1024 + sum(len(message['content'].encode('utf-8')) + 64 for message in messages)
+    if model == 'gpt-6-luna' and bound > LUNA_STANDARD_INPUT_TOKEN_BOUND:
+        raise ValueError('Prompt exceeds the reviewed Luna input price tier')
+    return bound

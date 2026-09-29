@@ -5,7 +5,7 @@ from app import refine
 
 
 @pytest.mark.asyncio
-async def test_refinement_normalizes_provider_input_and_preserves_total(monkeypatch):
+async def test_legacy_response_preserves_total_while_model_receives_original_amounts(monkeypatch):
     monkeypatch.setattr(refine, "get_openai_client", lambda: object())
     complete = AsyncMock(return_value=json.dumps({"purchase_items": [{
         "name": "Milk", "suggested_purchase": "1 bottle", "grocery_category": "Dairy",
@@ -13,7 +13,7 @@ async def test_refinement_normalizes_provider_input_and_preserves_total(monkeypa
     monkeypatch.setattr(refine, "complete_chat", complete)
     result = await refine.refine_shopping_list([{"name": "Milk", "quantity": "100 ml, 0.5 l"}])
     assert result["purchase_items"][0]["suggested_purchase"] == "600 ml"
-    assert '"quantity": "600 ml"' in complete.call_args.kwargs["messages"][1]["content"]
+    assert '"quantity": "100 ml, 0.5 l"' in complete.call_args.kwargs["messages"][1]["content"]
 
 @pytest.mark.asyncio
 async def test_provider_failure_still_returns_consolidated_quantities(monkeypatch):

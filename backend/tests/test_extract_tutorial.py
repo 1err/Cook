@@ -939,7 +939,11 @@ async def test_known_ingredient_cannot_be_substituted_for_the_one_in_the_cited_a
 
 
 @pytest.mark.asyncio
-async def test_ingredient_heading_does_not_turn_brown_rice_into_a_frying_instruction(monkeypatch):
+@pytest.mark.parametrize("source", [
+    "Ingredients: brown rice, black beans.",
+    "Ingredients: olive oil 1.5 g, brown rice, black beans.",
+])
+async def test_ingredient_heading_does_not_turn_brown_rice_into_a_frying_instruction(monkeypatch, source):
     action = {"id": "a1", "text": "Brown rice until fragrant.", "source_excerpt": "brown rice", "role": "main"}
     steps = [_step("Brown rice until fragrant.", "a1")]
     client, _ = _client_with_responses(
@@ -947,7 +951,7 @@ async def test_ingredient_heading_does_not_turn_brown_rice_into_a_frying_instruc
          "actions": [action], "steps": steps}, _audit(actions=[action], steps=steps),
     )
     monkeypatch.setattr(extract_module, "get_openai_client", lambda: client)
-    recipe = await extract_recipe_from_text("Ingredients: brown rice, black beans.", source_kind="description")
+    recipe = await extract_recipe_from_text(source, source_kind="description")
     assert recipe.import_review.status == "needs_review"
     assert recipe.steps == []
 
@@ -1061,3 +1065,31 @@ def test_extraction_and_quality_contracts_do_not_request_retired_equipment():
     assert "equipment" not in audit_prompt
     assert "Fry tofu in a pan." in audit_prompt
     assert candidate["equipment"] == ["Pan"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source, ingredient_names, instructions", [
+    (
+        "葱香鸡蛋。食材：葱10克，鸡蛋2个。第一步：葱洗净切碎。第二步：加入葱花炒匀。",
+        ["葱", "鸡蛋"], ["葱洗净切碎", "加入葱花炒匀"],
+    ),
+    (
+        "Ingredients: rice 1.5 g, oil 2 ml. Heat oil. Brown rice in oil.",
+        ["rice", "oil"], ["Heat oil.", "Brown rice in oil."],
+    ),
+])
+async def test_same_paragraph_ingredient_heading_does_not_erase_later_method(
+        monkeypatch, source, ingredient_names, instructions):
+    actions = [_action(f"a{index}", text) for index, text in enumerate(instructions)]
+    steps = [_step(text, action["id"]) for text, action in zip(instructions, actions)]
+    client, _ = _client_with_responses(
+        {"title": "Dinner", "ingredients": [{"name": name} for name in ingredient_names],
+         "actions": actions, "steps": steps},
+        _audit(actions=actions, steps=steps),
+    )
+    monkeypatch.setattr(extract_module, "get_openai_client", lambda: client)
+    recipe = await extract_recipe_from_text(source)
+    assert [step.text for step in recipe.steps] == instructions
+    assert [step.source_excerpt for step in recipe.steps] == instructions
+    assert all(step.instruction_source == "source" for step in recipe.steps)
+    assert recipe.import_review.status == "ready"

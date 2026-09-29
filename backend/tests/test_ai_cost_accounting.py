@@ -28,6 +28,8 @@ def test_unknown_price_and_model_fail_closed():
     ("gpt-4o-mini", ".01", ".60"),
     ("gpt-4o-mini", ".15", ".01"),
     ("gpt-4o", ".15", ".60"),
+    ("gpt-6-luna", ".10", ".50"),  # Cache writes can cost more than plain input.
+    ("gpt-6-luna", ".125", ".49"),
 ])
 def test_unverified_or_underpriced_models_cannot_under_reserve(model, input_rate, output_rate):
     settings = SimpleNamespace(OPENAI_MODEL=model, AI_PRICE_MODEL=model, AI_PRICE_VERSION="2026-09-22",
@@ -168,3 +170,28 @@ async def test_failure_is_terminal_and_retains_or_reconciles_reservation(monkeyp
         current_ai_request.reset(token)
     create.assert_awaited_once()
     finish.assert_awaited_once_with(call_id, denied=failure == 'denied')
+
+
+@pytest.mark.parametrize("model, input_rate, output_rate, expected_cost", [
+    ("gpt-6-luna", ".125", ".50", 625000),
+    ("gpt-4o-mini", ".15", ".60", 750000),
+    ("gpt-4o-mini-2024-07-18", ".15", ".60", 750000),
+])
+def test_reviewed_text_prices_cover_cache_writes_and_rollback_models(
+        model, input_rate, output_rate, expected_cost):
+    settings = SimpleNamespace(OPENAI_MODEL=model, AI_PRICE_MODEL=model,
+        AI_PRICE_VERSION="reviewed-2026-09-29",
+        AI_INPUT_USD_PER_MILLION_TOKENS=Decimal(input_rate),
+        AI_OUTPUT_USD_PER_MILLION_TOKENS=Decimal(output_rate))
+    price = configured_price(settings)
+    assert estimate_cost_nano(price, 1000, 1000) == expected_cost
+
+
+def test_luna_prompt_bound_rejects_the_more_expensive_long_context_tier():
+    # Two messages with 60K four-byte characters, the app's current maximum,
+    # remain in the reviewed short-context price tier including framing.
+    messages = [{"role": "system", "content": ""}, {"role": "user", "content": "🥚" * 60000}]
+    assert prompt_token_ceiling(messages, model="gpt-6-luna") == 241152
+    # Framing also counts: a large collection of empty messages is not free.
+    with pytest.raises(ValueError, match="reviewed.*input"):
+        prompt_token_ceiling([{"role": "user", "content": ""}] * 4250, model="gpt-6-luna")

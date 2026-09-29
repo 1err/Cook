@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal, localcontext
 from fractions import Fraction
 
-from app.models import ShoppingListItem
+from app.models import ShoppingListItem, ShoppingSourceItem
 
 
 _VULGAR_FRACTIONS = {
@@ -474,19 +474,24 @@ def aggregate_ingredients(
     ingredients: list[tuple[str, str]],
     *,
     for_purchase: bool = False,
+    include_sources: bool = False,
 ) -> list[ShoppingListItem]:
     """
     Group by ingredient name (case-insensitive), aggregate quantities per group.
     ingredients: list of (name, quantity).
     """
     by_key: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    sources_by_key: dict[str, list[ShoppingSourceItem]] = defaultdict(list)
     for name, qty in ingredients:
         name = (name or "").strip()
         if not name:
             continue
+        source_name = name
         if for_purchase:
             name = _PURCHASE_NAME_ALIASES.get(name, name)
         key = name.casefold()
+        if include_sources:
+            sources_by_key[key].append(ShoppingSourceItem(name=source_name, quantity=qty or ""))
         if for_purchase and (key in _GRAMS_PER_TABLESPOON or key in _GRAMS_PER_PIECE):
             # Keep recorded weights before the exact aggregator can select a
             # shared volume equivalent across different recipe contributions.
@@ -497,5 +502,8 @@ def aggregate_ingredients(
         display_name = pairs[0][0] if pairs else key
         quantities = [q for _, q in pairs if q]
         total_quantity = aggregate_quantities(quantities)
-        out.append(ShoppingListItem(name=display_name, total_quantity=total_quantity))
+        out.append(ShoppingListItem(
+            name=display_name, total_quantity=total_quantity,
+            source_items=sources_by_key[key] if include_sources else None,
+        ))
     return out

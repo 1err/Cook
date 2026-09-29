@@ -16,6 +16,8 @@ import { useEditorialCopy } from "../lib/editorialCopy";
 import type { Recipe } from "../types";
 import {
   GROCERY_CATEGORY_ORDER,
+  SHOPPING_QUANTITY_VERSION,
+  shoppingRefineInputs,
   buildCartAssistantDraft,
   buildWeekMealPlanFingerprint,
   normalizeMealPlanSlots,
@@ -29,6 +31,7 @@ import {
   type CartAssistantIngredient,
   type GroceryCategory,
   type MealPlanDay,
+  type ShoppingListItem,
 } from "@cooking/shared";
 import { ShoppingCategorySection } from "./ShoppingCategorySection";
 import { ShoppingSmartBar } from "./ShoppingSmartBar";
@@ -59,7 +62,6 @@ import {
 
 const SMART_SHOPPING_LIST_PREFIX = "smartShoppingList";
 const SMART_SHOPPING_PRODUCTS_PREFIX = "smartShoppingProducts";
-const SHOPPING_QUANTITY_VERSION = 1;
 const MAX_SAFE_TIMER_DELAY_MS = 2_147_483_647;
 
 function smartListStorageKey(weekStart: string) {
@@ -93,11 +95,6 @@ function removeSessionStorage(key: string) {
 const suppressedCartHydrationKeys = new Set<string>();
 
 const PREVIEW_MEAL_ROWS = 4;
-
-interface ShoppingListItem {
-  name: string;
-  total_quantity: string;
-}
 
 interface PurchaseItem {
   name: string;
@@ -929,7 +926,7 @@ function ShoppingListPageContent() {
           method: "POST",
           signal: controller.signal,
           body: JSON.stringify({
-            items: latestItems.map((i) => ({ name: i.name, quantity: i.total_quantity })),
+            items: shoppingRefineInputs(latestItems),
           }),
         });
         fallbackAllowed = res.ok || res.status === 429 || res.status >= 500;

@@ -59,8 +59,15 @@ async def complete_chat(client: Any, *, messages: list[dict[str, str]],
     options: dict[str, Any] = {
         "model": settings.OPENAI_MODEL,
         "messages": messages,
-        "max_tokens": settings.OPENAI_MAX_OUTPUT_TOKENS,
     }
+    if settings.OPENAI_MODEL == "gpt-6-luna":
+        options["max_completion_tokens"] = settings.OPENAI_MAX_OUTPUT_TOKENS
+        # Preserve 4o-mini's effective non-reasoning behavior on migration.
+        # The pinned SDK predates this parameter; extra_body sends it unchanged.
+        options["extra_body"] = {"reasoning_effort": "none"}
+        options["service_tier"] = "default"
+    else:
+        options["max_tokens"] = settings.OPENAI_MAX_OUTPUT_TOKENS
     if json_object:
         options["response_format"] = {"type": "json_object"}
     context = current_ai_request.get()

@@ -324,9 +324,15 @@ class MealPlan(BaseModel):
         return [*self.breakfast, *self.lunch, *self.dinner]
 
 
+class ShoppingSourceItem(BaseModel):
+    name: str
+    quantity: str
+
+
 class ShoppingListItem(BaseModel):
     name: str
     total_quantity: str
+    source_items: list[ShoppingSourceItem] | None = None
 
 
 class RecipeSummary(BaseModel):

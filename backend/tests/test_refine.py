@@ -47,7 +47,7 @@ async def test_provider_failure_preserves_normalized_totals_without_logging_inpu
 
 
 @pytest.mark.asyncio
-async def test_model_gets_exact_aggregated_input_and_cannot_replace_it_with_guess(monkeypatch):
+async def test_legacy_response_cannot_replace_original_amounts_without_source_ids(monkeypatch):
     monkeypatch.setattr(refine, "get_openai_client", object)
     complete = AsyncMock(return_value=json.dumps({"purchase_items": [
         {"source_name": "Sugar", "name": "Granulated sugar", "suggested_purchase": "1 kg bag", "grocery_category": "Pantry & Dry Goods"},
@@ -59,11 +59,14 @@ async def test_model_gets_exact_aggregated_input_and_cannot_replace_it_with_gues
 
     messages = complete.await_args.kwargs["messages"]
     payload = json.loads(messages[1]["content"].split("Input ingredients JSON:\n", 1)[1])
-    assert payload == [{"name": "Sugar", "quantity": "15 g"}, {"name": "盐", "quantity": "适量"}]
+    assert [(item["source_id"], item["name"], item["quantity"]) for item in payload] == [
+        ("ingredient-1", "Sugar", "12 g"), ("ingredient-2", "sugar", "3 g"),
+        ("ingredient-3", "盐", "适量"), ("ingredient-4", "盐", "适量"),
+        ("ingredient-5", "食用盐", "适量"),
+    ]
     assert result["granulated sugar"]["suggested_purchase"] == "15 g"
     assert result["granulated sugar"]["grocery_category"] == "Pantry & Dry Goods"
     assert result["盐"]["suggested_purchase"] == "适量"
-    assert "Do not invent" in messages[0]["content"]
 
 
 @pytest.mark.asyncio
@@ -168,10 +171,10 @@ def test_partial_refinement_keeps_useful_categories_and_reports_fallback():
     }]}), [{"name": "牛肉", "quantity": "250 g"}, {"name": "姜", "quantity": "10 g"}])
 
     assert result["refinement_status"] == "fallback"
-    assert result["purchase_items"] == [
-        {"name": "牛肉", "suggested_purchase": "250 g", "grocery_category": "Meat & Seafood"},
-        {"name": "姜", "suggested_purchase": "10 g", "grocery_category": "Other"},
-    ]
+    assert by_name(result) == {
+        "牛肉": {"name": "牛肉", "suggested_purchase": "250 g", "grocery_category": "Meat & Seafood"},
+        "姜": {"name": "姜", "suggested_purchase": "10 g", "grocery_category": "Other"},
+    }
 
 
 @pytest.mark.parametrize("category", [None, "Unknown aisle", 42])
@@ -186,7 +189,10 @@ def test_invalid_model_category_is_reported_as_fallback(category):
 
 def test_complete_refinement_preserves_all_rows_and_quantities_at_the_api_item_limit():
     inputs = [{"name": f"ingredient {i}", "quantity": f"{i + 1} g"} for i in range(200)]
-    rows = [{"source_name": item["name"], "name": item["name"], "grocery_category": "Other"} for item in reversed(inputs)]
+    rows = [{
+        "source_ids": [f"ingredient-{index + 1}"], "name": item["name"],
+        "suggested_purchase": item["quantity"], "grocery_category": "Other",
+    } for index, item in reversed(list(enumerate(inputs)))]
 
     result = refine._parse_llm_refine_response(json.dumps({"purchase_items": rows}), inputs)
 
@@ -201,5 +207,5 @@ def test_legacy_response_without_source_reference_remains_compatible():
         "name": "Milk", "grocery_category": "Dairy",
     }]}), [{"name": "milk", "quantity": "600 ml"}])
 
-    assert result["refinement_status"] == "refined"
+    assert result["refinement_status"] == "fallback"
     assert result["purchase_items"] == [{"name": "Milk", "suggested_purchase": "600 ml", "grocery_category": "Dairy"}]

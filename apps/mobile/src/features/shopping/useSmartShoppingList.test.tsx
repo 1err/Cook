@@ -156,7 +156,7 @@ test("starting a refinement does not race-persist the previous cached list", asy
   await expect(work).resolves.toEqual({ status: "succeeded", weekStart: "2026-08-10" });
   expect(mockWriteSmartList).toHaveBeenCalledWith(
     "2026-08-10",
-    REFINED,
+    expect.objectContaining(REFINED),
     expect.any(Set),
     expect.any(Set),
     expect.any(String),
@@ -279,4 +279,31 @@ test('recovers an unavailable preview after successful refinement and returns to
   expect(result.current.state).toMatchObject({ data: { previewUnavailable: false, items: latestItems } });
   await act(async () => { await result.current.backToOriginal(); });
   expect(result.current.state).toMatchObject({ data: { refinedData: null, items: latestItems } });
+});
+
+
+test("prepares the list from original recipe quantities rather than combined display totals", async () => {
+  mockShoppingList.mockResolvedValue([{ name: "盐", total_quantity: "13 g; 5–10 g", source_items: [
+    { name: "食用盐", quantity: "6 g" },
+    { name: "盐", quantity: "7 g" },
+    { name: "盐", quantity: "5–10 g" },
+  ] }]);
+  const { result } = await renderReady();
+  await act(async () => { await result.current.prepareSmartList(); });
+  expect(mockRefine).toHaveBeenCalledWith([
+    { name: "食用盐", quantity: "6 g" },
+    { name: "盐", quantity: "7 g" },
+    { name: "盐", quantity: "5–10 g" },
+  ]);
+});
+
+test("legacy compiled quantities stay visible and checked while offering refresh", async () => {
+  mockReadSmartList.mockResolvedValue({
+    data: { ...REFINED, _quantityVersion: 1 },
+    hidden: new Set(), checked: new Set([0]), plannerFingerprint: null,
+  });
+  const { result } = await renderReady();
+  expect(result.current.state).toMatchObject({ data: {
+    smartListStale: true, checked: new Set([0]), refinedData: { purchase_items: REFINED.purchase_items },
+  } });
 });

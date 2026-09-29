@@ -173,11 +173,12 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("offers to refresh legacy quantities without discarding shopping progress", async () => {
+test.each([undefined, 1])("offers to refresh legacy quantities without discarding shopping progress (version %s)", async (version) => {
   const storage = stubSessionStorage();
   storage.set("smartShoppingList:2026-08-10", JSON.stringify({
     remove: [], likely_pantry: [],
     purchase_items: [{ name: "盐", suggested_purchase: "4 /8小勺", category: "Other" }],
+    _quantityVersion: version,
     _ui: { hidden: [], checked: [0] },
   }));
   mockApiFetch.mockImplementation((path: string) => {

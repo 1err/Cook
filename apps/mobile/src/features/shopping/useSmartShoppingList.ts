@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
   buildWeekMealPlanFingerprint,
+  shoppingRefineInputs,
+  SHOPPING_QUANTITY_VERSION,
   normalizeMealPlanSlots,
   getWeekBounds,
   type MealPlanDay,
@@ -205,7 +207,9 @@ export function useSmartShoppingList(weekStart: string | undefined) {
         const hidden = cached?.hidden ?? new Set<number>();
         const checked = cached?.checked ?? new Set<number>();
         const savedFingerprint = cached?.plannerFingerprint ?? null;
-        const smartListStale = previewUnavailable || Boolean(savedFingerprint && savedFingerprint !== currentFingerprint);
+        const smartListStale = previewUnavailable
+          || Boolean(refinedData && refinedData._quantityVersion !== SHOPPING_QUANTITY_VERSION)
+          || Boolean(savedFingerprint && savedFingerprint !== currentFingerprint);
         if (cancelled) return;
         dispatch({
           type: "loaded",
@@ -284,7 +288,9 @@ export function useSmartShoppingList(weekStart: string | undefined) {
         dispatch({
           type: "setStale",
           weekStart: current.bounds.start,
-          stale: Boolean(current.data.previewUnavailable) || reference !== savedFingerprint,
+          stale: Boolean(current.data.previewUnavailable)
+            || refinedData._quantityVersion !== SHOPPING_QUANTITY_VERSION
+            || reference !== savedFingerprint,
         });
       })();
     }, []),
@@ -311,9 +317,10 @@ export function useSmartShoppingList(weekStart: string | undefined) {
         return { status: "stale", weekStart: originWeek };
       }
       const fingerprint = buildWeekMealPlanFingerprint(current.bounds.dates, mealPlans);
-      const refined = await apiClient.shopping.refine(
-        items.map((i) => ({ name: i.name, quantity: i.total_quantity })),
-      );
+      const refined: RefineResponse = {
+        ...await apiClient.shopping.refine(shoppingRefineInputs(items)),
+        _quantityVersion: SHOPPING_QUANTITY_VERSION,
+      };
       if (!mutationIsCurrent(originWeek, generation)) {
         return { status: "stale", weekStart: originWeek };
       }

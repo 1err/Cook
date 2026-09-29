@@ -47,7 +47,8 @@ def test_explicit_beta_overlay_loads_reviewed_allowance_and_model_prices():
     price = configured_price(configured)
     assert configured.AI_MONTHLY_BUDGET_USD == Decimal('29')
     assert configured.AI_ACCOUNT_MONTHLY_BUDGET_USD == Decimal('3')
-    assert (price.input_usd_per_million, price.output_usd_per_million) == (Decimal('.15'), Decimal('.60'))
+    assert price.model == 'gpt-6-luna'
+    assert (price.input_usd_per_million, price.output_usd_per_million) == (Decimal('.125'), Decimal('.50'))
 
 
 def test_production_uses_shared_jobs_and_default_zero_ai_allocation():

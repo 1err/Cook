@@ -43,7 +43,7 @@ async def reserve_provider_call(context, messages, operation, *, price: Price | 
             if input_bound is not None or output_bound is not None:
                 raise ValueError('Explicit bounds require reviewed provider pricing')
             price = configured_price(settings)
-            input_bound = prompt_token_ceiling(messages)
+            input_bound = prompt_token_ceiling(messages, model=price.model)
             output_bound = settings.OPENAI_MAX_OUTPUT_TOKENS
         elif (type(input_bound) is not int or input_bound <= 0
               or type(output_bound) is not int or output_bound <= 0

@@ -35,7 +35,8 @@ def refinement_app(monkeypatch):
     monkeypatch.setattr(ai_budget, "is_llm_enabled", lambda: False)
     monkeypatch.setattr(ai_budget, "video_analysis_available", lambda: False)
     provider = AsyncMock(return_value=completion(json.dumps({"purchase_items": [{
-        "source_name": "盐", "name": "盐", "grocery_category": "Pantry & Dry Goods",
+        "source_ids": ["ingredient-1", "ingredient-2"], "name": "盐",
+        "suggested_purchase": "约 13 g", "grocery_category": "Pantry & Dry Goods",
     }]})))
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=provider)))
     monkeypatch.setattr(refine, "get_openai_client", lambda: fake_client)
@@ -51,7 +52,7 @@ async def post_refine(app):
 
 
 @pytest.mark.asyncio
-async def test_refine_route_reports_complete_refinement_without_model_quantity_changes(refinement_app):
+async def test_refine_route_accepts_complete_source_group_and_consolidated_model_quantity(refinement_app):
     app, provider, session = refinement_app
     response = await post_refine(app)
 
@@ -62,7 +63,7 @@ async def test_refine_route_reports_complete_refinement_without_model_quantity_c
     }
     provider.assert_awaited_once()
     session.close.assert_awaited_once()
-    assert provider.await_args.kwargs["max_tokens"] == llm.settings.OPENAI_MAX_OUTPUT_TOKENS
+    assert provider.await_args.kwargs["max_completion_tokens"] == llm.settings.OPENAI_MAX_OUTPUT_TOKENS
 
 
 @pytest.mark.asyncio
@@ -121,3 +122,18 @@ def test_refine_status_is_an_additive_documented_response_field():
     assert schema["properties"]["refinement_status"]["enum"] == ["refined", "fallback"]
     legacy = routes_shopping.RefineResponse(remove=[], likely_pantry=[], purchase_items=[])
     assert legacy.refinement_status == "refined"
+
+
+@pytest.mark.asyncio
+async def test_refine_route_preserves_more_than_200_original_entries_when_provider_unavailable(refinement_app, monkeypatch):
+    app, provider, _ = refinement_app
+    monkeypatch.setattr(refine, "get_openai_client", lambda: None)
+    items = [{"name": f"ingredient {i}", "quantity": "1 g"} for i in range(250)]
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/shopping-list/refine", json={"items": items})
+    assert response.status_code == 200
+    assert response.json()["refinement_status"] == "fallback"
+    assert {row["name"]: row["suggested_purchase"] for row in response.json()["purchase_items"]} == {
+        f"ingredient {i}": "1 g" for i in range(250)
+    }
+    provider.assert_not_awaited()

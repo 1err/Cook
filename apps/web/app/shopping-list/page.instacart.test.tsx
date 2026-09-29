@@ -414,3 +414,33 @@ test.each([
   expect(screen.getAllByRole("checkbox")).toHaveLength(2);
   expect(screen.getByText("2 cups")).toBeVisible();
 });
+
+
+test("compiles original recipe contributions without counting displayed totals again", async () => {
+  let submitted: unknown;
+  const baseRequest = mockApiFetch.getMockImplementation()!;
+  mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
+    if (path.startsWith("/shopping-list?")) return Promise.resolve(response([
+      { name: "盐", total_quantity: "13 g; 5–10 g", source_items: [
+        { name: "食用盐", quantity: "6 g" },
+        { name: "盐", quantity: "7 g" },
+        { name: "盐", quantity: "5–10 g" },
+      ] },
+    ]));
+    if (path === "/shopping-list/refine") {
+      submitted = JSON.parse(String(init?.body));
+      return Promise.resolve(response({ remove: [], likely_pantry: [], refinement_status: "refined", purchase_items: [
+        { name: "盐", suggested_purchase: "18–23 g", category: "Pantry & Dry Goods" },
+      ] }));
+    }
+    return baseRequest(path, init);
+  });
+  render(<ShoppingListPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "Prepare smart shopping list" }));
+  expect(await screen.findByText("18–23 g")).toBeVisible();
+  expect(submitted).toEqual({ items: [
+    { name: "食用盐", quantity: "6 g" },
+    { name: "盐", quantity: "7 g" },
+    { name: "盐", quantity: "5–10 g" },
+  ] });
+});

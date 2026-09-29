@@ -106,9 +106,15 @@ export type MealPlanDay = {
 
 export type MealPlanSlots = Record<"breakfast" | "lunch" | "dinner", string[]>;
 
+export interface ShoppingSourceItem {
+  name: string;
+  quantity: string;
+}
+
 export interface ShoppingListItem {
   name: string;
   total_quantity: string;
+  source_items?: ShoppingSourceItem[] | null;
 }
 
 export interface User {

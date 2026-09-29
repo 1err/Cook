@@ -140,7 +140,7 @@ class Settings(BaseSettings):
     # Optional: OpenAI for extraction and refine
     OPENAI_API_KEY: str | None = Field(None, repr=False)
     OPENAI_PROJECT: str = ""
-    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_MODEL: str = "gpt-6-luna"
     # Server-only; provider development and production keys are separate.
     INSTACART_API_KEY: SecretStr | None = None
     INSTACART_ENVIRONMENT: Literal["development", "production"] = "development"

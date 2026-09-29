@@ -26,7 +26,7 @@ class RefineItem(BaseModel):
 
 
 class RefineRequest(BaseModel):
-    items: list[RefineItem] = Field(max_length=200)
+    items: list[RefineItem] = Field(max_length=1000)
 
 
 class LikelyPantryItem(BaseModel):
@@ -78,7 +78,7 @@ async def shopping_list(
                     name = (i.name or "").strip()
                     qty = preferred_shopping_quantity(i.quantity, i.metric_quantity)
                     all_ingredients.append((name, qty))
-    return aggregate_ingredients(all_ingredients, for_purchase=True)
+    return aggregate_ingredients(all_ingredients, for_purchase=True, include_sources=True)
 
 
 @router.post("/shopping-list/refine", response_model=RefineResponse, dependencies=[Depends(enforce_ai_budget)])
@@ -86,7 +86,7 @@ async def shopping_list_refine(
     body: RefineRequest,
     _user: UserModel = Depends(get_current_user),
 ):
-    """Suggest grouped purchase quantities for an aggregated list. Stateless."""
+    """Group recipe ingredient entries into purchase quantities. Stateless."""
     raw = [{"name": i.name, "quantity": i.quantity} for i in body.items]
     result = await refine_shopping_list(raw)
     return RefineResponse(

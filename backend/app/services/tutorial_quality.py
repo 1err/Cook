@@ -213,9 +213,11 @@ def _ingredient_only_evidence(excerpt: str, source_text: str, ingredients: objec
             name = item.get("name") if isinstance(item, dict) else item
             if isinstance(name, str) and clean == _normalized_text(chinese_comparison_text(name)):
                 return True
-    for line in source_text.splitlines():
-        heading = _INGREDIENT_HEADING.search(line)
-        if heading and clean and clean in _normalized_text(chinese_comparison_text(line[heading.end():])):
+    # An ingredient heading applies to its sentence, not every later method
+    # sentence on the same physical line. Keep decimal amounts such as 1.5 intact.
+    for section in re.split(r"[\n。！？!?]+|\.(?=\s|$)", source_text):
+        heading = _INGREDIENT_HEADING.search(section)
+        if heading and clean and clean in _normalized_text(chinese_comparison_text(section[heading.end():])):
             return True
     return bool(_INGREDIENT_HEADING.search(source_text) and not _action_groups(source_text))
 

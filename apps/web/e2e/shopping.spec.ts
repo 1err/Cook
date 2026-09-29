@@ -101,6 +101,10 @@ async function installShoppingFixtures(page: Page) {
     const request = route.request();
     const { pathname } = new URL(request.url());
 
+    if (pathname === "/analytics/events") {
+      await fulfillJson(route, { accepted: true });
+      return;
+    }
     if (pathname === "/auth/me") {
       await fulfillJson(route, {
         id: "00000000-0000-0000-0000-000000000001",
@@ -753,4 +757,82 @@ test("loads batch cache hits before one serial miss and permits retry after a fa
   await page.getByRole("button", { name: "Retry" }).click();
   await expect(page.getByText("Recovered eggs", { exact: true })).toBeVisible();
   expect(eggCalls).toBe(2);
+});
+
+
+test("compiles original ingredient sources into concise rows and refreshes older cached totals", async ({ page }, testInfo) => {
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+  page.on("pageerror", error => pageErrors.push(error.message));
+  page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()); });
+  const sources = [
+    { name: "大蒜", quantity: "2 瓣" },
+    { name: "蒜", quantity: "20 g" },
+    { name: "盐", quantity: "13 g" },
+    { name: "食用盐", quantity: "5–10 g" },
+    { name: "胡萝卜", quantity: "1 小段" },
+    { name: "胡萝卜", quantity: "200 g" },
+  ];
+  const submitted: unknown[] = [];
+  await page.route(`${API_BASE}/shopping-list?*`, route => fulfillJson(route, [
+    { name: "大蒜", total_quantity: "2 瓣", source_items: [sources[0]] },
+    { name: "蒜", total_quantity: "20 g", source_items: [sources[1]] },
+    { name: "盐", total_quantity: "13 g; 5–10 g", source_items: sources.slice(2, 4) },
+    { name: "胡萝卜", total_quantity: "1 小段 + 200 g", source_items: sources.slice(4) },
+  ]));
+  await page.route(`${API_BASE}/shopping-list/refine`, async route => {
+    submitted.push(route.request().postDataJSON());
+    await fulfillJson(route, {
+      remove: [], likely_pantry: [], refinement_status: "refined",
+      purchase_items: [
+        { name: "大蒜", suggested_purchase: "约 26 g", category: "Produce" },
+        { name: "盐", suggested_purchase: "18–23 g", category: "Pantry & Dry Goods" },
+        { name: "胡萝卜", suggested_purchase: "约 220 g", category: "Produce" },
+      ],
+    });
+  });
+
+  await expect(page).toHaveURL(/\/shopping-list\?week=2026-08-10$/);
+  await expect(page).toHaveTitle(/Chef World/);
+  await expect(page.getByRole("heading", { name: "Shopping List", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Prepare smart shopping list", exact: true }).click();
+  await expect(page.getByText("Smart mode", { exact: true })).toBeVisible();
+  await expect(page.getByRole("checkbox")).toHaveCount(3);
+  for (const [name, quantity] of [["大蒜", "约 26 g"], ["盐", "18–23 g"], ["胡萝卜", "约 220 g"]]) {
+    const row = page.getByRole("checkbox", { name: `Mark ${name} as already have`, exact: true }).locator("xpath=../..");
+    await expect(row.getByText(name, { exact: true })).toBeVisible();
+    await expect(row.getByText(quantity, { exact: true })).toBeVisible();
+  }
+  for (const fragment of ["蒜", "食用盐", "13 g; 5–10 g", "1 小段 + 200 g", "2 瓣"]) {
+    await expect(page.getByText(fragment, { exact: true })).toHaveCount(0);
+  }
+  expect(submitted).toEqual([{ items: sources }]);
+  await expect(page.getByRole("button", { name: "Refresh smart list", exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect(page.locator("nextjs-portal").getByRole("dialog")).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForFunction(() => window.scrollY === 0);
+  await page.screenshot({ path: testInfo.outputPath("shopping-consolidated-quantities.png"), fullPage: false });
+  if (testInfo.project.name === "phone") {
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.screenshot({ path: testInfo.outputPath("shopping-consolidated-quantities-list.png"), fullPage: false });
+  }
+
+  await page.getByRole("checkbox", { name: "Mark 盐 as already have", exact: true }).check();
+  await page.evaluate(() => {
+    const key = Object.keys(sessionStorage).find(candidate => candidate.startsWith("smartShoppingList:2026-08-10:"));
+    if (!key) throw new Error("Expected the compiled shopping list to be cached");
+    const cached = JSON.parse(sessionStorage.getItem(key)!);
+    sessionStorage.setItem(key, JSON.stringify({ ...cached, _quantityVersion: 1 }));
+  });
+  await page.reload();
+  await expect(page.getByRole("checkbox", { name: "Mark 盐 as still need to buy", exact: true })).toBeChecked();
+  await page.getByRole("button", { name: "Refresh smart list", exact: true }).click();
+  await expect.poll(() => submitted.length).toBe(2);
+  await expect(page.getByRole("button", { name: "Refresh smart list", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("checkbox", { name: "Mark 盐 as still need to buy", exact: true })).toBeChecked();
+  await expect(page.getByRole("checkbox")).toHaveCount(3);
+  expect(submitted).toEqual([{ items: sources }, { items: sources }]);
+  expect(pageErrors).toEqual([]);
+  expect(consoleErrors).toEqual([]);
 });
