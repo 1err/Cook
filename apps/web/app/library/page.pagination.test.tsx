@@ -7,11 +7,35 @@ const { mine, catalog, query } = vi.hoisted(() => ({mine:vi.fn(),catalog:vi.fn()
 vi.mock('../lib/auth', () => ({ useAuth: () => ({ user: { id: 'account-a' } }) }));
 vi.mock('next/navigation', () => ({useSearchParams: () => new URLSearchParams(query.value)}));
 vi.mock('../components/RequireAuth', () => ({RequireAuth: ({children}: {children:ReactNode}) => <>{children}</>}));
-vi.mock('../lib/i18n', () => ({useT: () => (key:string) => key, useI18n: () => ({language:'en'})}));
+vi.mock('../lib/i18n', async () => {
+  const { MESSAGE_MAP } = await import('@cooking/shared');
+  return {useT: () => (key:string, vars?: Record<string, string | number>) => key.startsWith('recipe.timing.') || key === 'recipe.totalTime.minutesSuffix'
+    ? (MESSAGE_MAP.en[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => String(vars?.[name] ?? ''))
+    : key, useI18n: () => ({language:'en'})};
+});
 vi.mock('../lib/api', () => ({apiFetch:vi.fn(),webApiClient:{recipes:{page:mine,catalogPage:catalog}}}));
 const page = (id:string, next_cursor:string|null=null, already_saved=false):RecipePage => ({items:[{id,title:id,ingredient_count:0,step_count:0,already_saved}],next_cursor});
 beforeEach(() => {query.value="";mine.mockReset();catalog.mockReset();vi.stubGlobal('ResizeObserver',class {observe(){}disconnect(){}});});
 afterEach(() => {cleanup();vi.unstubAllGlobals();});
+
+test('public cards use timing summaries and retain the independent copy action', async () => {
+  query.value = 'view=public';
+  mine.mockResolvedValue(page('Private recipe'));
+  catalog.mockResolvedValue({ items: [{ ...page('Slow public recipe').items[0], total_time_minutes: 500,
+    timing_summary: { hands_on_minutes: 20, passive_minutes: 480, is_estimate: false } }], next_cursor: null });
+  const { apiFetch } = await import('../lib/api');
+  vi.mocked(apiFetch).mockResolvedValue(new Response('{}'));
+  render(<LibraryPage />);
+  const heading = await screen.findByRole('heading', { name: 'Slow public recipe' });
+  expect(screen.getByText('20 min hands-on')).toBeVisible();
+  expect(screen.getByText('8 hr passive')).toBeVisible();
+  expect(heading.closest('a')).toHaveAttribute('href', '/library/public/Slow%20public%20recipe');
+  const copy = screen.getByRole('button', { name: 'library.addToMyLibrary' });
+  expect(copy.closest('a')).toBeNull();
+  fireEvent.click(copy);
+  expect(await screen.findByRole('button', { name: 'library.inYourLibrary' })).toBeDisabled();
+  expect(apiFetch).toHaveBeenLastCalledWith('/recipes/catalog/Slow public recipe/copy', { method: 'POST' });
+});
 
 test('loads one page on demand, searches server-side, and uses per-row copy state without private-library scans', async () => {
   mine.mockResolvedValueOnce(page('First','next')).mockResolvedValueOnce(page('Later')).mockResolvedValueOnce(page('Needle'));

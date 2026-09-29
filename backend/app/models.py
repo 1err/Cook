@@ -329,6 +329,12 @@ class ShoppingListItem(BaseModel):
     total_quantity: str
 
 
+class RecipeTimingSummary(BaseModel):
+    hands_on_minutes: int | None = Field(default=None, ge=0)
+    passive_minutes: int | None = Field(default=None, ge=0)
+    is_estimate: bool = False
+
+
 class RecipeSummary(BaseModel):
     """List projection; recipe instructions and private import text are detail-only."""
     id: str
@@ -340,6 +346,7 @@ class RecipeSummary(BaseModel):
     is_public_catalog: bool = False
     catalog_source_recipe_id: Optional[str] = None
     total_time_minutes: Optional[int] = None
+    timing_summary: RecipeTimingSummary | None = None
     ingredient_count: int = 0
     step_count: int = 0
     already_saved: bool = False

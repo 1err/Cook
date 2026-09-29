@@ -1,19 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useT } from "../lib/i18n";
+import { RecipeTiming } from "./RecipeTiming";
 import type { Recipe } from "../types";
 import { CATEGORY_LABELS } from "../lib/recipeCategories";
 import { getRecipeTags } from "../lib/recipeTags";
 import styles from "./RecipeCard.module.css";
 
 type RecipeCardProps = {
-  recipe: Pick<Recipe, "id" | "title" | "thumbnail_url" | "library_tags" | "library_category" | "total_time_minutes">;
+  recipe: Pick<Recipe, "id" | "title" | "thumbnail_url" | "library_tags" | "library_category" | "total_time_minutes" | "timing_summary">;
   isHighlighted?: boolean;
 };
 
 export function RecipeCard({ recipe, isHighlighted = false }: RecipeCardProps) {
-  const t = useT();
   const featuredTags = getRecipeTags(recipe).slice(0, 2);
 
   return (
@@ -33,9 +32,7 @@ export function RecipeCard({ recipe, isHighlighted = false }: RecipeCardProps) {
           <h2 className={`cw-display ${styles.title}`}>{recipe.title}</h2>
 
           <div className={styles.metadata}>
-          {typeof recipe.total_time_minutes === "number" ? (
-            <p className={styles.time}>{recipe.total_time_minutes} {t("recipe.totalTime.minutesSuffix")}</p>
-          ) : null}
+            <RecipeTiming {...recipe} />
 
           {featuredTags.length ? (
             <div className={styles.tags} aria-label="Recipe tags">

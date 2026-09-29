@@ -170,13 +170,6 @@
   -webkit-line-clamp: 2;
 }
 
-.publicBody > p {
-  margin: 0.55rem 0 0;
-  color: var(--cw-color-muted-ink);
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
 .publicTags {
   display: flex;
   flex-wrap: wrap;
@@ -270,7 +263,6 @@
   .publicMedia { border-radius: 10px; }
   .publicBody { padding-block: 0.5rem; }
   .publicBody h2 { font-size: 1.125rem; }
-  .publicBody > p { font-size: 0.75rem; }
   .addButton { min-height: 36px; padding: 0.5rem 0.7rem; font-size: 0.8125rem; }
 }
 
@@ -305,10 +297,9 @@
 
 .tab[aria-selected="true"] { font-weight: 600; }
 .metadata { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.25rem 0.6rem; margin-top: 0.35rem; color: var(--cw-color-muted-ink); }
-.metadata p { margin: 0; font-size: 0.875rem; }
 .publicTags { margin: 0; align-items: baseline; }
 .publicTags span { padding: 0; border: 0; font-weight: 400; }
-.publicTags span + span::before, .metadata p + .publicTags::before { content: "·"; margin-right: 0.4rem; }
+.publicTags span + span::before, .metadata p:not([data-timing-breakdown]) + .publicTags::before { content: "·"; margin-right: 0.4rem; }
 .addButton:hover:not(:disabled) { background: var(--cw-color-action); color: var(--cw-color-on-action); }
 .emptyDescription { display: block; margin-top: 0.75rem; line-height: 1.7; }
 .empty p { font-family: var(--cw-font-display); font-size: 1.65rem; font-weight: 600; }

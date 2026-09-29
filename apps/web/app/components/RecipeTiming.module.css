@@ -1,0 +1,26 @@
+.timing {
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.primary {
+  color: var(--cw-color-ink);
+  font-weight: 600;
+}
+
+.breakdown { flex-basis: 100%; }
+.passive { display: inline-block; max-width: 100%; }
+
+.detail {
+  display: block;
+  margin-top: 0.1rem;
+}
+
+@media (min-width: 841px) {
+  .timing { font-size: 0.75rem; }
+}

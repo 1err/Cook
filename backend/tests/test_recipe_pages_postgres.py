@@ -1,5 +1,6 @@
 """Opt-in PostgreSQL paging contracts; synthetic rows always roll back."""
 import os
+import json
 import uuid
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
@@ -8,6 +9,94 @@ from app.db.repo_recipes import recipe_page
 
 URL = os.environ.get('TEST_DATABASE_URL', '')
 pytestmark = [pytest.mark.asyncio, pytest.mark.skipif(not URL, reason='Requires disposable PostgreSQL')]
+
+
+async def test_timing_projection_is_one_query_and_keeps_instruction_evidence_private():
+    from sqlalchemy import event
+    engine = create_async_engine(URL)
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            owner, friend, prefix = uuid.uuid4(), uuid.uuid4(), uuid.uuid4().hex
+            session.add_all([UserModel(id=id, email=f'{id}@example.test', is_library_public=id == owner)
+                             for id in [owner, friend]])
+            await session.flush()
+            private_text = 'PRIVATE INSTRUCTION AND SOURCE EVIDENCE'
+            session.add_all([RecipeModel(
+                id=prefix+source, user_id=owner, title=prefix+source, ingredients='[]',
+                is_public_catalog=True, total_time_minutes=490,
+                raw_extraction_text=private_text,
+                steps=json.dumps([
+                    {'text': private_text, 'source_excerpt': private_text, 'duration_seconds': 600,
+                     'duration_source': source, 'attention_type': 'hands_on'},
+                    {'text': private_text, 'duration_seconds': 28800,
+                     'duration_source': 'stated', 'attention_type': 'passive'},
+                ]),
+            ) for source in ['estimated', 'fallback']])
+            await session.flush()
+            queries = []
+            def record_query(_conn, _cursor, statement, _parameters, _context, _many):
+                queries.append(statement)
+            event.listen(engine.sync_engine, 'before_cursor_execute', record_query)
+            for caller, scope in [(owner, {}), (friend, {'catalog': True}), (friend, {'owner_id': owner})]:
+                before = len(queries)
+                page = await recipe_page(session, caller, q=prefix, **scope)
+                assert len(queries) == before + 1
+                payload = page.model_dump()
+                assert [row['timing_summary'] for row in payload['items']] == [
+                    {'hands_on_minutes': 10, 'passive_minutes': 480, 'is_estimate': True},
+                    {'hands_on_minutes': None, 'passive_minutes': 480, 'is_estimate': False},
+                ]
+                assert all(row['step_count'] == 2 for row in payload['items'])
+                assert private_text not in page.model_dump_json()
+                assert all(not {'timing_steps', 'steps', 'raw_extraction_text'} & row.keys()
+                           for row in payload['items'])
+            await session.rollback()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.parametrize('stored_steps', ['null', '{}', '"legacy instruction"', '[]'])
+async def test_timing_projection_accepts_null_and_non_array_legacy_json(stored_steps):
+    engine = create_async_engine(URL)
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            caller, recipe_id = uuid.uuid4(), uuid.uuid4().hex
+            session.add(UserModel(id=caller, email=f'{caller}@example.test'))
+            await session.flush()
+            session.add(RecipeModel(id=recipe_id, user_id=caller, title='Legacy',
+                                    ingredients='[]', steps=stored_steps))
+            await session.flush()
+            page = await recipe_page(session, caller)
+            assert len(page.items) == 1
+            assert page.items[0].timing_summary is None
+            assert page.items[0].step_count == 0
+            await session.rollback()
+    finally:
+        await engine.dispose()
+
+
+async def test_timing_projection_retains_unknown_entries_in_completeness_check():
+    engine = create_async_engine(URL)
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            caller, recipe_id = uuid.uuid4(), uuid.uuid4().hex
+            session.add(UserModel(id=caller, email=f'{caller}@example.test'))
+            await session.flush()
+            session.add(RecipeModel(id=recipe_id, user_id=caller, title='Partially timed', ingredients='[]',
+                                    steps=json.dumps([
+                                        None, 'legacy instruction',
+                                        {'duration_seconds': 600, 'duration_source': 'stated'},
+                                        {'duration_seconds': 28800, 'duration_source': 'stated', 'attention_type': 'passive'},
+                                    ])))
+            await session.flush()
+            page = await recipe_page(session, caller)
+            assert page.items[0].timing_summary.model_dump() == {
+                'hands_on_minutes': None, 'passive_minutes': 480, 'is_estimate': False,
+            }
+            assert page.items[0].step_count == 4
+            await session.rollback()
+    finally:
+        await engine.dispose()
 
 async def test_real_keyset_scopes_filters_copy_state_and_live_changes():
     engine = create_async_engine(URL)

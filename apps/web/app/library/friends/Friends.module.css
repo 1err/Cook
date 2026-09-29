@@ -207,9 +207,6 @@
 
 .recipeBody > p {
   margin: 0.55rem 0 0;
-  color: var(--cw-color-muted-ink);
-  font-size: 0.82rem;
-  font-weight: 650;
 }
 
 .recipeTags {

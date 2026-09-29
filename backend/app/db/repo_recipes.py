@@ -9,7 +9,7 @@ import json
 import uuid
 from typing import Optional
 
-from sqlalchemy import and_, cast, func, literal, or_, select, tuple_
+from sqlalchemy import and_, case, cast, column, func, literal, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased
 from app.core.config import settings
@@ -25,6 +25,7 @@ from app.models import (
     coerce_string_list,
 )
 from app.db.models import RecipeModel, UserModel
+from app.services.recipe_timing import summarize_recipe_timing
 
 
 class RecipeOwnershipConflict(ValueError):
@@ -308,11 +309,25 @@ async def recipe_page(
     ).exists()
     if owner_id is None and not catalog:
         already_saved = literal(True)
+    steps_json = cast(r.steps, JSONB)
+    steps_array = case(
+        (func.jsonb_typeof(steps_json) == 'array', steps_json),
+        else_=cast(literal('[]'), JSONB),
+    )
+    timing_step = func.jsonb_array_elements(steps_array).table_valued(
+        column('value', JSONB),
+    ).alias('timing_step')
+    timing_steps = select(func.jsonb_agg(func.jsonb_build_object(
+        'duration_seconds', timing_step.c.value['duration_seconds'],
+        'duration_source', timing_step.c.value['duration_source'],
+        'attention_type', timing_step.c.value['attention_type'],
+    ))).select_from(timing_step).correlate(r).scalar_subquery()
     statement = select(
         r.id, r.title, func.lower(r.title).label("sort_title"), r.source_url, r.thumbnail_url,
         r.library_tags, r.library_category, r.is_public_catalog, r.catalog_source_recipe_id,
         r.total_time_minutes, func.jsonb_array_length(cast(r.ingredients, JSONB)).label("ingredient_count"),
-        func.jsonb_array_length(cast(r.steps, JSONB)).label("step_count"), already_saved.label("already_saved"),
+        func.jsonb_array_length(steps_array).label("step_count"), already_saved.label("already_saved"),
+        timing_steps.label('timing_steps'),
     )
     if catalog:
         statement = statement.where(r.is_public_catalog.is_(True))
@@ -339,6 +354,7 @@ async def recipe_page(
     for row in rows[:limit]:
         values = dict(row)
         values.pop("sort_title")
+        values['timing_summary'] = summarize_recipe_timing(values.pop('timing_steps', None))
         values["library_tags"] = coerce_library_tags(json.loads(values["library_tags"] or "[]") or values["library_category"])
         values["library_category"] = values["library_tags"][0] if values["library_tags"] else None
         items.append(RecipeSummary(**values))

@@ -10,6 +10,7 @@ import { RequireAuth } from "../components/RequireAuth";
 import { useT } from "../lib/i18n";
 import { useEditorialCopy } from "../lib/editorialCopy";
 import { RecipeCard } from "../components/RecipeCard";
+import { RecipeTiming } from "../components/RecipeTiming";
 import { Icon } from "../components/ui/Icon";
 import { PageHeader, PageShell } from "../components/PageShell";
 import { CATEGORY_LABELS, type LibraryFilterId, type RecipeTagSlug } from "../lib/recipeCategories";
@@ -203,7 +204,7 @@ function LibraryPageContent() {
                   <div className={styles.publicBody}>
                     <h2 className="cw-display">{recipe.title}</h2>
                     <div className={styles.metadata}>
-                      {recipe.total_time_minutes ? <p>{recipe.total_time_minutes} {t("recipe.totalTime.minutesSuffix")}</p> : null}
+                      <RecipeTiming {...recipe} />
                       {tags.length ? (
                         <div className={styles.publicTags}>
                           {tags.map((tag) => (
