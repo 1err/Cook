@@ -27,6 +27,10 @@ test('public cards use timing summaries and retain the independent copy action',
   vi.mocked(apiFetch).mockResolvedValue(new Response('{}'));
   render(<LibraryPage />);
   const heading = await screen.findByRole('heading', { name: 'Slow public recipe' });
+  expect(screen.queryByText('20 min hands-on')).not.toBeInTheDocument();
+  const timing = screen.getByRole('button', { name: 'Timing details: 8 hr 20 min' });
+  expect(timing.closest('a')).toBeNull();
+  fireEvent.focus(timing);
   expect(screen.getByText('20 min hands-on')).toBeVisible();
   expect(screen.getByText('8 hr passive')).toBeVisible();
   expect(heading.closest('a')).toHaveAttribute('href', '/library/public/Slow%20public%20recipe');

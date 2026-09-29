@@ -23,6 +23,17 @@ const { mockActive, mockApiFetch, mockPush, mockUploadRecipeImage, translate } =
       "recipe.cover.saveFailed": "Your cover photo could not be saved. Please try again.",
       "recipe.cover.updated": "Cover photo updated",
       "recipe.steps": "Steps",
+      "recipe.totalTime": "Total time",
+      "recipe.estimatedTotal": "Estimated total",
+      "recipe.totalTime.minutesSuffix": "min",
+      "recipe.timing.details": "Timing details",
+      "recipe.timing.hours": "{hours} hr",
+      "recipe.timing.hoursMinutes": "{hours} hr {minutes} min",
+      "recipe.timing.handsOn": "{duration} hands-on",
+      "recipe.timing.passive": "{duration} passive",
+      "recipe.timing.includesPassive": "Includes {duration} passive",
+      "recipe.timing.includesEstimatedPassive": "Includes about {duration} passive",
+      "recipe.timing.about": "About",
       "recipe.equipment": "Equipment",
       "recipe.tutorial.edit": "Edit tutorial",
       "recipe.tutorial.duration.aboutMinutes": "About {minutes} min",
@@ -104,6 +115,24 @@ it("keeps destructive actions behind an explicit overflow control", async () => 
 });
 
 afterEach(cleanup);
+
+it.each([
+  { total: 500, hands: 20, passive: 480, expectedTotal: "8 hr 20 min", expectedPassive: "8 hr passive", expectedHands: "20 min hands-on" },
+  { total: 490, hands: null, passive: 480, expectedTotal: "8 hr 10 min", expectedPassive: "Includes 8 hr passive", expectedHands: null },
+  { total: 500, hands: 20, passive: 60, expectedTotal: "8 hr 20 min", expectedPassive: "Includes 1 hr passive", expectedHands: null },
+])("shows useful timing in recipe details without inventing effort ($expectedTotal, $expectedHands)", async ({ total, hands, passive, expectedTotal, expectedPassive, expectedHands }) => {
+  mockApiFetch.mockResolvedValue(new Response(JSON.stringify({
+    id: "recipe-1", title: "Slow recipe", ingredients: [], steps: [], total_time_minutes: total,
+    timing_summary: { hands_on_minutes: hands, passive_minutes: passive, is_estimate: false },
+  })));
+  render(<RecipeDetailPage />);
+  const timing = await screen.findByRole("group", { name: "Timing details" });
+  expect(within(timing).getByText(expectedTotal)).toBeVisible();
+  expect(within(timing).getByText(expectedPassive)).toBeVisible();
+  if (expectedHands) expect(within(timing).getByText(expectedHands)).toBeVisible();
+  else expect(within(timing).queryByText(/hands-on/)).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/library/recipe-1");
+});
 
 it("integrates the timed tutorial without losing existing recipe actions", async () => {
   render(<RecipeDetailPage />);

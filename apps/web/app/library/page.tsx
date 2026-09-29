@@ -203,18 +203,18 @@ function LibraryPageContent() {
                   </div>
                   <div className={styles.publicBody}>
                     <h2 className="cw-display">{recipe.title}</h2>
-                    <div className={styles.metadata}>
-                      <RecipeTiming {...recipe} />
-                      {tags.length ? (
-                        <div className={styles.publicTags}>
-                          {tags.map((tag) => (
-                            <span key={tag}>{CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}</span>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
                   </div>
                 </Link>
+                <div className={styles.metadata}>
+                  <RecipeTiming {...recipe} />
+                  {tags.length ? (
+                    <div className={styles.publicTags}>
+                      {tags.map((tag) => (
+                        <span key={tag}>{CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   className={styles.addButton}

@@ -31,18 +31,20 @@ export function FriendLibraryCard({ recipe, href, state, onCopy }: FriendLibrary
         </div>
         <div className={styles.recipeBody}>
           <h2 className="cw-display">{recipe.title}</h2>
-          <RecipeTiming {...recipe} />
-          {tags.length ? (
-            <div className={styles.recipeTags} aria-label="Recipe tags">
-              {tags.map((tag) => (
-                <span key={tag} data-testid="friend-recipe-tag">
-                  {CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}
-                </span>
-              ))}
-            </div>
-          ) : null}
         </div>
       </Link>
+      <div className={styles.recipeMetadata}>
+        <RecipeTiming {...recipe} />
+        {tags.length ? (
+          <div className={styles.recipeTags} aria-label="Recipe tags">
+            {tags.map((tag) => (
+              <span key={tag} data-testid="friend-recipe-tag">
+                {CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
       <div className={styles.recipeAction}>
         <button type="button" onClick={onCopy} disabled={state !== "idle"}>
           {buttonLabel}

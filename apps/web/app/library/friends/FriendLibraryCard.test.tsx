@@ -25,6 +25,10 @@ describe("FriendLibraryCard", () => {
     const onCopy = vi.fn();
     const slowRecipe = { ...recipe, total_time_minutes: 500, timing_summary: { hands_on_minutes: 20, passive_minutes: 480, is_estimate: false } };
     render(<FriendLibraryCard recipe={slowRecipe} href="/library/friends/one/friend-recipe" state="idle" onCopy={onCopy} />);
+    expect(screen.queryByText("20 min hands-on")).not.toBeInTheDocument();
+    const timing = screen.getByRole("button", { name: "Timing details: 8 hr 20 min" });
+    expect(timing.closest("a")).toBeNull();
+    fireEvent.focus(timing);
     expect(screen.getByText("20 min hands-on")).toBeVisible();
     expect(screen.getByText("8 hr passive")).toBeVisible();
     const link = screen.getByRole("link", { name: `Open ${recipe.title}` });

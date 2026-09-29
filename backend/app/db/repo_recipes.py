@@ -45,6 +45,8 @@ def _row_to_recipe(row: RecipeModel) -> Recipe:
     raw_tags = json.loads(row.library_tags or "[]") if getattr(row, "library_tags", None) else []
     normalized_tags = coerce_library_tags(raw_tags or row.library_category)
     steps_raw = json.loads(row.steps or "[]") if getattr(row, "steps", None) else []
+    # Summarize recorded metadata before normalization supplies legacy defaults.
+    timing_summary = summarize_recipe_timing(steps_raw)
     tips_raw = json.loads(row.tips or "[]") if getattr(row, "tips", None) else []
     equipment_raw = json.loads(row.equipment or "[]") if getattr(row, "equipment", None) else []
     return Recipe(
@@ -60,6 +62,7 @@ def _row_to_recipe(row: RecipeModel) -> Recipe:
         catalog_source_recipe_id=row.catalog_source_recipe_id,
         description=row.description,
         total_time_minutes=row.total_time_minutes,
+        timing_summary=timing_summary,
         steps=coerce_steps(steps_raw, row.total_time_minutes),
         tips=coerce_string_list(tips_raw),
         equipment=coerce_string_list(equipment_raw),

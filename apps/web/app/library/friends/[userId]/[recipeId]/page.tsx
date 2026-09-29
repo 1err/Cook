@@ -9,6 +9,7 @@ import { apiFetch } from "../../../../lib/api";
 import { CATEGORY_LABELS } from "../../../../lib/recipeCategories";
 import { getRecipeTags } from "../../../../lib/recipeTags";
 import type { Recipe } from "../../../../types";
+import { RecipeTimingDetails } from "../../../../components/RecipeTimingDetails";
 
 function splitTitleAccent(title: string): { lead: string; accent: string } {
   const t = title.trim();
@@ -215,6 +216,7 @@ function FriendRecipeContent({ userId, recipeId }: { userId: string; recipeId: s
             {blurb}
           </p>
         ) : null}
+        <RecipeTimingDetails recipe={recipe} />
         <div className="recipe-editorial__stats">
           <div>
             <p className="recipe-editorial__stats-label font-headline">Shared by</p>

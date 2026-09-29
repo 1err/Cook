@@ -74,6 +74,17 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it("shows the timing breakdown on public details while leaving the source read-only", async () => {
+  fixture({ catalog: [{ ...publicRecipe, total_time_minutes: 135,
+    timing_summary: { hands_on_minutes: 15, passive_minutes: 120, is_estimate: false } }] });
+  render(<PublicRecipePage />);
+  expect(await screen.findByText("2 hr 15 min")).toBeVisible();
+  expect(screen.getByText("15 min hands-on")).toBeVisible();
+  expect(screen.getByText("2 hr passive")).toBeVisible();
+  expect(screen.queryByRole("link", { name: /Edit/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Add to my library" })).toBeEnabled();
+});
+
 it("lets a regular user read complete public details without copying or editing the original", async () => {
   render(<PublicRecipePage />);
 

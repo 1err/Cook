@@ -30,22 +30,20 @@ export function RecipeCard({ recipe, isHighlighted = false }: RecipeCardProps) {
 
         <div className={styles.body}>
           <h2 className={`cw-display ${styles.title}`}>{recipe.title}</h2>
-
-          <div className={styles.metadata}>
-            <RecipeTiming {...recipe} />
-
-          {featuredTags.length ? (
-            <div className={styles.tags} aria-label="Recipe tags">
-              {featuredTags.map((tag) => (
-                <span key={tag} className={styles.tag} data-testid="recipe-tag">
-                  {CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          </div>
         </div>
       </Link>
+      <div className={styles.metadata}>
+        <RecipeTiming {...recipe} />
+        {featuredTags.length ? (
+          <div className={styles.tags} aria-label="Recipe tags">
+            {featuredTags.map((tag) => (
+              <span key={tag} className={styles.tag} data-testid="recipe-tag">
+                {CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </article>
   );
 }

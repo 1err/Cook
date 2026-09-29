@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../lib/i18n";
 import { RecipeCard } from "./RecipeCard";
@@ -9,7 +9,10 @@ const recipe = { id: "slow", title: "Slow braised beef", total_time_minutes: 500
 const summary = { hands_on_minutes: 20, passive_minutes: 480, is_estimate: false };
 
 function show(total: number | null | undefined, timing: unknown = summary) {
-  return render(<I18nProvider><RecipeCard recipe={{ ...recipe, total_time_minutes: total, timing_summary: timing } as typeof recipe} /></I18nProvider>);
+  const result = render(<I18nProvider><RecipeCard recipe={{ ...recipe, total_time_minutes: total, timing_summary: timing } as typeof recipe} /></I18nProvider>);
+  const trigger = screen.queryByRole("button");
+  if (trigger) fireEvent.focus(trigger);
+  return result;
 }
 
 beforeEach(() => {
@@ -26,9 +29,9 @@ describe("library recipe timing", () => {
     expect(handsOn.tagName).toBe("STRONG");
     expect(screen.getByText("8 hr passive")).toBeVisible();
     expect(handsOn.closest("p")).toHaveTextContent("20 min hands-on · 8 hr passive");
-    expect(handsOn.closest("p")).toHaveAttribute("title", expect.stringContaining("your attention"));
+    expect(screen.getByRole("tooltip")).toHaveTextContent("your attention");
     expect(screen.getByRole("link")).toHaveAttribute("href", "/recipe/slow");
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getByRole("button").closest("a")).toBeNull();
   });
 
   it("marks the whole estimated split once", () => {
@@ -96,7 +99,7 @@ describe("library recipe timing", () => {
   it("can display a complete trustworthy split without a recorded total", () => {
     show(null);
     expect(screen.getByText("20 min hands-on")).toBeVisible();
-    expect(screen.getByText("8 hr passive")).toBeVisible();
+    expect(within(screen.getByRole("tooltip")).getByText("8 hr passive")).toBeVisible();
   });
 
   it.each([
@@ -106,7 +109,7 @@ describe("library recipe timing", () => {
     [0, true, "About 8 hr passive"],
   ])("preserves a known long wait without total or positive hands-on time (%s, %s)", (handsOn, estimated, expected) => {
     show(null, { ...summary, hands_on_minutes: handsOn, is_estimate: estimated });
-    expect(screen.getByText((_, element) => element?.tagName === "P" && element.textContent === expected)).toBeVisible();
+    expect(within(screen.getByRole("tooltip")).getByText((_, element) => element?.tagName === "P" && element.textContent === expected)).toBeVisible();
     expect(screen.queryByText(/hands-on|total/)).not.toBeInTheDocument();
   });
 

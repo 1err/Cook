@@ -13,6 +13,7 @@ import { presentIngredient } from "../../../lib/ingredientPresentation";
 import { CATEGORY_LABELS } from "../../../lib/recipeCategories";
 import { getRecipeTags } from "../../../lib/recipeTags";
 import { RecipeTutorial } from "../../../recipe/[id]/RecipeTutorial";
+import { RecipeTimingDetails } from "../../../components/RecipeTimingDetails";
 import styles from "../../../recipe/[id]/RecipeDetail.module.css";
 import type { Recipe } from "../../../types";
 
@@ -127,14 +128,7 @@ function PublicRecipeContent({ id }: { id: string }) {
             <h1 className="cw-display">{recipe.title}</h1>
             {recipe.description ? <p>{recipe.description}</p> : null}
             <div className={styles.recipeMetadata}>
-              {typeof recipe.total_time_minutes === "number" ? (
-                <dl className={styles.meta}>
-                  <div>
-                    <dt>{t(recipe.steps?.some(step => step.duration_source === "estimated" || step.duration_source === "fallback") ? "recipe.estimatedTotal" : "recipe.totalTime")}</dt>
-                    <dd>{recipe.total_time_minutes} {t("recipe.totalTime.minutesSuffix")}</dd>
-                  </div>
-                </dl>
-              ) : null}
+              <RecipeTimingDetails recipe={recipe} />
               {tags.length ? (
                 <div className={styles.tags}>
                   {tags.map(tag => <span key={tag}>{CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}</span>)}

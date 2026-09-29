@@ -274,8 +274,15 @@ class RecipeCreate(BaseModel):
         return coerce_library_category(v)
 
 
+class RecipeTimingSummary(BaseModel):
+    hands_on_minutes: int | None = Field(default=None, ge=0)
+    passive_minutes: int | None = Field(default=None, ge=0)
+    is_estimate: bool = False
+
+
 class Recipe(RecipeCreate):
     import_review: ImportReview | None = None
+    timing_summary: RecipeTimingSummary | None = None
     id: str
 
 
@@ -327,12 +334,6 @@ class MealPlan(BaseModel):
 class ShoppingListItem(BaseModel):
     name: str
     total_quantity: str
-
-
-class RecipeTimingSummary(BaseModel):
-    hands_on_minutes: int | None = Field(default=None, ge=0)
-    passive_minutes: int | None = Field(default=None, ge=0)
-    is_estimate: bool = False
 
 
 class RecipeSummary(BaseModel):

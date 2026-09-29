@@ -208,6 +208,8 @@
   "recipe.timing.includesPassive": "含 {duration}等待",
   "recipe.timing.includesEstimatedPassive": "含约 {duration}等待",
   "recipe.timing.about": "约",
+  "recipe.timing.details": "用时详情",
+  "recipe.timing.detailsLabel": "用时详情：{time}",
   "recipe.timing.explanation": "动手时间需要你操作或留意；等待时间包括无需持续操作的烹饪、静置等。",
   "recipe.totalTime.placeholder": "例如 30",
   "recipe.steps": "步骤",
