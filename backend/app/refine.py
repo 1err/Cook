@@ -74,10 +74,13 @@ Rules:
    2瓣 garlic, 1小段 carrot or 1小块 ginger DOES have a usable kitchen unit.
    Estimate its typical weight and add it to any measured weight. Variable size
    is a reason to use a broad approximate range, NOT to leave mixed-unit fragments.
-   Illustrative estimates: 大蒜40g + 蒜2瓣 -> 约45-50g;
-   胡萝卜100g + 1小段 -> 约120-140g; 生姜5g + 姜1小块 -> 约10-20g.
-   These illustrate consolidation, not fixed universal portion weights; use the
-   ingredient and any size context supplied. Mark estimates with 约 (Chinese) or
+   Estimate ONLY the unmeasured contribution, then add each recorded measured
+   amount ONCE. Never reuse an example's final total as a portion weight.
+   For example, with 胡萝卜200g + 1小段: if the small section is estimated at
+   20-40g, the calculation is 200 + (20-40) = 约220-240g.
+   The 20-40g refers only to that illustrative small section; choose an estimate
+   from the actual ingredient and size context. Do not estimate the whole vegetable
+   when the source specifies only a small section. Mark estimates with 约 (Chinese) or
    about (English), and preserve any existing approximation. Do not imply exact
    weights for variable-sized pieces. Use practical precision, avoiding unnecessary
    decimal places (for example 约15.2 g + 10-20 g -> 约25-35 g).
