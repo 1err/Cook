@@ -22,8 +22,8 @@ vi.mock("../lib/i18n", async () => {
   return {
     useI18n: () => ({ language: "en" }),
     useT: () => (key: string, vars?: Record<string, string | number>) => (
-      ["shopping.instacartCreate", "shopping.instacartOpen", "shopping.instacartReady"].includes(key)
-        ? MESSAGE_MAP.en[key] : `${key}${vars?.name ? ` ${vars.name}` : ""}`
+      ["shopping.instacartCreate", "shopping.instacartOpen", "shopping.instacartReady", "shopping.prepare", "shopping.preparing", "shopping.prepareTitle", "shopping.plannedMeals", "shopping.recipes", "shopping.recipeCountOne", "shopping.recipeCount", "shopping.mealCount", "shopping.showMore", "shopping.showLess", "shopping.noRecipeSlots", "shopping.weekRange", "shopping.removedCount", "shopping.controls", "shopping.loadError", "common.ingredients"].includes(key)
+        ? MESSAGE_MAP.en[key].replace(/\{(\w+)\}/g, (_, name: string) => String(vars?.[name] ?? "")) : `${key}${vars?.name ? ` ${vars.name}` : ""}`
     ),
   };
 });

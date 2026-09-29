@@ -5,7 +5,7 @@ import { CookScreen } from "./CookScreen";
 export default function CookPage() {
   return (
     <RequireAuth>
-      <PageShell size="wide">
+      <PageShell>
         <CookScreen />
       </PageShell>
     </RequireAuth>

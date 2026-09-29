@@ -67,7 +67,7 @@
 .dialog { width:min(1360px,calc(100vw - 44px)); max-height:94vh; overflow:hidden; border:0; border-radius:10px; padding:12px; color:var(--ink); background:var(--white); box-shadow:0 25px 90px #0005; }
 .dialog::backdrop { background:#211b16bb; backdrop-filter:blur(4px); }
 .lightbox-top { display:flex; justify-content:space-between; align-items:center; gap:20px; padding:4px 5px 12px; font-size:13px; }
-.lightbox-top button { border:0; background:#efe8de; width:34px; height:34px; border-radius:50%; display:grid; place-items:center; }
+.lightbox-top button { border:0; background:#efe8de; width:44px; height:44px; border-radius:50%; display:grid; place-items:center; }
 .lightbox-top svg { width:18px; height:18px; }
 .lightbox-viewport { max-height:calc(94vh - 84px); overflow:auto; overscroll-behavior:contain; }
 .dialog img { margin:auto; max-height:calc(94vh - 84px); width:100%; object-fit:contain; }
@@ -97,3 +97,7 @@
 
 .homepage .partnership a:hover { color:#fff; border-bottom-color:#fff; }
 .homepage .partnership a:focus-visible { outline-color:#fff; }
+
+.hero-visual { padding-bottom: 20px; }
+.hero-visual figcaption { position: static; max-width: 70%; margin-top: 10px; }
+@media (max-width: 760px) { .hero-visual { padding-bottom: 16px; } .hero-visual figcaption { max-width: 76%; font-size: 11px; } }

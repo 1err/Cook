@@ -1038,3 +1038,5 @@
 .ingredientExtraFields label { display:grid; gap:.4rem; min-width:0; font-size:.75rem; color:var(--cw-color-muted-ink); }
 .ingredientExtraFields input { width:100%; min-width:0; min-height:2.75rem; padding:.6rem .75rem; border:1px solid var(--cw-color-divider); border-radius:var(--cw-radius-control); background:var(--cw-color-canvas); color:var(--cw-color-ink); font:inherit; font-size:.875rem; }
 @media (max-width:540px) { .ingredientRow { gap:.4rem; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) 2.25rem; } .ingredientRow .removeButton { width:2.25rem; } .ingredientExtraFields { grid-template-columns:minmax(0,1fr); } }
+
+@media (max-width: 640px) { .sourceTabs button { min-height: 44px; } }

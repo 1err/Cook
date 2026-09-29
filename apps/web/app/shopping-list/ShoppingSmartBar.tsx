@@ -49,7 +49,7 @@ export function ShoppingSmartBar({
   const progress = totalCount > 0 ? (checkedCount / totalCount) * 100 : 0;
 
   return (
-    <section className={styles.smartBar} aria-label="Smart shopping list controls">
+    <section className={styles.smartBar} aria-label={t("shopping.controls")}>
       <div className={styles.smartOverview}>
         <div className={styles.smartSummary}>
           <span>{t(fallback ? "shopping.basicList" : "shopping.smartMode")}</span>

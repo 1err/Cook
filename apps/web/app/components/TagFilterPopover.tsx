@@ -5,7 +5,6 @@ import styles from "./TagFilterPopover.module.css";
 import { Icon } from "./ui/Icon";
 import { useT } from "../lib/i18n";
 import {
-  CATEGORY_LABELS,
   RECIPE_TAG_GROUPS,
   type LibraryFilterId,
   type RecipeTagSlug,
@@ -30,9 +29,10 @@ export function TagFilterPopover({
   onClear,
   ariaLabel,
   triggerLabel,
-  allOptionLabel = "All tags",
+  allOptionLabel,
 }: TagFilterPopoverProps) {
   const t = useT();
+  const allLabel = allOptionLabel ?? t("recipe.filters.all");
   const summaryId = useId();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -94,13 +94,13 @@ export function TagFilterPopover({
     triggerLabel ??
     (isMultiSelect
       ? selectedValues.length === 0
-        ? allOptionLabel
+        ? allLabel
         : selectedValues.length === 1
-          ? CATEGORY_LABELS[selectedValues[0]]
-          : `${selectedValues.length} tags`
+          ? t(`recipe.tag.${selectedValues[0]}`)
+          : t("recipe.filters.count", { count: selectedValues.length })
       : value === "all" || value == null
-        ? allOptionLabel
-        : CATEGORY_LABELS[value]);
+        ? allLabel
+        : t(`recipe.tag.${value}`));
 
   return (
     <div className={`tag-filter-popover ${styles.root}`} ref={rootRef} onKeyDownCapture={(event) => {
@@ -144,12 +144,12 @@ export function TagFilterPopover({
               close();
             }}
           >
-            {allOptionLabel}
+            {allLabel}
           </button>
 
           {RECIPE_TAG_GROUPS.map((group) => (
             <div key={group.id} className="tag-filter-popover__group">
-              <p className="tag-filter-popover__group-title">{group.label}</p>
+              <p className="tag-filter-popover__group-title">{t(`recipe.tagGroup.${group.id}`)}</p>
               <div className="tag-filter-popover__group-options">
                 {group.tags.map((tag) => (
                   <button
@@ -167,7 +167,7 @@ export function TagFilterPopover({
                     }}
                   >
                     <span className={styles.check} aria-hidden="true">{(isMultiSelect ? selectedValues.includes(tag.id) : value === tag.id) ? "✓" : ""}</span>
-                    {tag.label}
+                    {t(`recipe.tag.${tag.id}`)}
                   </button>
                 ))}
               </div>

@@ -26,7 +26,7 @@ import {
   type MealPlanSlots,
   type MealType,
 } from "@cooking/shared";
-import { CATEGORY_LABELS, type LibraryFilterId } from "../lib/recipeCategories";
+import { type LibraryFilterId } from "../lib/recipeCategories";
 import { getRecipeTags } from "../lib/recipeTags";
 import { useEditorialCopy } from "../lib/editorialCopy";
 import { PlannerRecipeRail } from "./components/PlannerRecipeRail";
@@ -489,7 +489,7 @@ function PlannerPageContent() {
                     {tags.length > 0
                       ? tags
                           .slice(0, 2)
-                          .map((tag) => CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " "))
+                          .map((tag) => t(`recipe.tag.${tag}`))
                           .join(" • ")
                       : t("recipe.ingredientsCount", { count: r.ingredient_count })}
                   </p>

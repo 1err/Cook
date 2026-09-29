@@ -69,3 +69,13 @@ describe("planned meal presentation", () => {
     )).toEqual([]);
   });
 });
+
+it("localizes the full and compact shopping meal schedule in Chinese", () => {
+ const occurrences = [
+  {date:"2026-08-10",dayShort:"Mon",slot:"breakfast" as const},
+  {date:"2026-08-11",dayShort:"Tue",slot:"dinner" as const},
+  {date:"2026-08-12",dayShort:"Wed",slot:"lunch" as const},
+ ];
+ expect(formatMealOccurrence(occurrences[0], "zh")).toBe("周一早餐");
+ expect(formatPlannedMealSchedule({recipeId:"x",title:"Rice",occurrences},"zh")).toBe("3 餐 · 周一早餐 · 另 2 餐");
+});

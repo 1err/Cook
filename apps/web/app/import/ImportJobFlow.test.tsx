@@ -8,7 +8,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../lib/api", () => ({ apiFetch: mocks.apiFetch, webApiClient: { recipes: mocks } }));
 vi.mock("../lib/auth", () => ({ useAuth: () => ({ user: { id: "test-user" }, loading: false }) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock("../components/PageShell", () => ({ PageShell: ({ children }: any) => <div>{children}</div> }));
 vi.mock("../components/RequireAuth", () => ({ RequireAuth: ({ children }: any) => <div>{children}</div> }));
 vi.mock("../lib/editorialCopy", () => ({ useEditorialCopy: () => ({ "import.tagline": "Import recipes" }) }));
 vi.mock("../lib/i18n", async () => {

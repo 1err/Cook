@@ -4,8 +4,9 @@ import { createManualRecipeDraft, extractSharedVideoUrl, formatStepDuration, get
 import { runRecipeImport } from "@cooking/api-client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PageShell } from "../components/PageShell";
+import { PageHeader, PageShell } from "../components/PageShell";
 import { RequireAuth } from "../components/RequireAuth";
+import { Button } from "../components/ui/Button";
 import { Icon } from "../components/ui/Icon";
 import { webApiClient } from "../lib/api";
 import { useEditorialCopy } from "../lib/editorialCopy";
@@ -311,10 +312,8 @@ function ImportPageContent({ userId }: { userId: string }) {
           />
       ) : (
         <>
-          <header className={styles.sourceHeader}>
-            <h1>{t("import.importRecipe")}</h1><p>{editorialCopy["import.tagline"]}</p>
-            {draftRecipe ? <button type="button" disabled={loading} onClick={() => { setShowSource(false); setError(null); }}>{t("import.resumeDraft")}</button> : null}
-          </header>
+          <PageHeader title={t("import.importRecipe")} description={editorialCopy["import.tagline"]}
+            actions={draftRecipe ? <Button variant="secondary" disabled={loading} onClick={() => { setShowSource(false); setError(null); }}>{t("import.resumeDraft")}</Button> : undefined} />
           <div className={styles.sourceLayout}>
             <div>
               {pendingShareId && !loading ? <div className={styles.sharedNotice}>

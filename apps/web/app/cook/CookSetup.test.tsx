@@ -44,6 +44,10 @@ const messages: Record<string, string> = {
   "cook.setup.noPlannedRecipes": "No recipes are saved in this meal.",
   "cook.setup.plannedMeal": "Planned meal",
   "cook.setup.startCount": "Start {count} dishes",
+  "cook.setup.selectToStart": "Select recipes to start",
+  "cook.setup.emptyLibrary": "Add your first recipe to start cooking.",
+  "library.browsePublic": "Browse public recipes",
+  "common.noMatches": "No matches",
 };
 
 const recipes: Recipe[] = [
@@ -156,4 +160,15 @@ test("offers resume and discard choices after an active-session conflict", async
 
   await waitFor(() => expect(onSessionCreated).toHaveBeenCalledWith(created));
   expect(mockActive).toHaveBeenCalledTimes(1);
+});
+
+test("an empty cooking library has a next step and never says start zero dishes", async () => {
+ mockRecipesList.mockResolvedValue([]); mockMealPlanList.mockResolvedValue([]);
+ render(<CookSetup onSessionCreated={vi.fn()} />);
+ await screen.findByRole("heading", {name:"Start cooking"});
+ await userEvent.click(screen.getByRole("tab",{name:"Choose recipes"}));
+ expect(await screen.findByText("Add your first recipe to start cooking.")).toBeVisible();
+ expect(screen.getByRole("link",{name:"Browse public recipes"})).toHaveAttribute("href","/library?view=public");
+ expect(screen.getByRole("button",{name:"Select recipes to start"})).toBeDisabled();
+ expect(screen.queryByText("Start 0 dishes")).not.toBeInTheDocument();
 });

@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, resolveRecipeDetails } from "@cooking/api-client";
 import type { CookingSession, MealPlanDay, MealType, Recipe } from "@cooking/shared";
-import { Button } from "../components/ui/Button";
+import { PageHeader } from "../components/PageShell";
+import { Button, ActionLink } from "../components/ui/Button";
 import { webApiClient } from "../lib/api";
 import { useT } from "../lib/i18n";
 import { useRecipePage } from "../lib/useRecipePage";
@@ -110,11 +111,7 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
 
   return (
     <section className={styles.setup}>
-      <header className={styles.setupHeader}>
-        <p className={styles.eyebrow}>{t("nav.cook")}</p>
-        <h1>{t("cook.empty.title")}</h1>
-        <p>{t("cook.empty.description")}</p>
-      </header>
+      <PageHeader title={t("cook.empty.title")} description={t("cook.empty.description")} />
 
       <div className={styles.modeTabs} role="tablist" aria-label={t("cook.empty.title")}>
         <button
@@ -186,6 +183,12 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
               onChange={(event) => setSearch(event.target.value)}
             />
           </label>
+          {page.loading ? <p role="status">{t("common.loading")}</p> : !page.error && filteredRecipes.length === 0 ? (
+            <div className={styles.emptyChoices}>
+              <p>{t(search.trim() ? "common.noMatches" : "cook.setup.emptyLibrary")}</p>
+              {!search.trim() ? <ActionLink href="/library?view=public" variant="secondary">{t("library.browsePublic")}</ActionLink> : null}
+            </div>
+          ) : null}
           <div className={styles.recipeChoices} role="group" aria-label={t("cook.setup.chooseRecipes")}>
             {filteredRecipes.map((recipe) =>
               recipe.step_count ? (
@@ -224,7 +227,7 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
       {error ? <p role="alert" className={styles.error}>{error}</p> : null}
       <div className={styles.setupAction}>
         <Button disabled={selected.length === 0} loading={submitting} onClick={() => void start()}>
-          {t("cook.setup.startCount", { count: selected.length })}
+          {selected.length ? t("cook.setup.startCount", { count: selected.length }) : t("cook.setup.selectToStart")}
         </Button>
       </div>
 

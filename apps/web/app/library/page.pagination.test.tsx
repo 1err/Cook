@@ -78,7 +78,7 @@ test('retains private recipes across a catalog failure and retries only the fail
   render(<LibraryPage />);
   await screen.findByRole('heading', { name: 'My saved recipe' });
   fireEvent.click(screen.getByRole('tab', { name: 'library.publicLibrary' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Catalog offline');
+  expect(await screen.findByRole('alert')).toHaveTextContent('library.loadErrorTitle');
   fireEvent.click(screen.getByRole('button', { name: 'library.retry' }));
   await screen.findByRole('heading', { name: 'Recovered public recipe' });
   fireEvent.click(screen.getByRole('tab', { name: 'library.myLibrary' }));

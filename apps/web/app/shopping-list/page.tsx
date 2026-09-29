@@ -10,6 +10,7 @@ import { ApiError, normalizeStoreProductResponse, resolveRecipeDetails } from "@
 import { apiFetch } from "../lib/api";
 import { getAuthGeneration, userLocalStorage, userSessionStorage } from "../lib/userStorage";
 import { RequireAuth } from "../components/RequireAuth";
+import { Button } from "../components/ui/Button";
 import { PageHeader, PageShell } from "../components/PageShell";
 import { useI18n, useT } from "../lib/i18n";
 import { useEditorialCopy } from "../lib/editorialCopy";
@@ -1147,14 +1148,14 @@ function ShoppingListPageContent() {
     if (ingredient) void ensureProductsLoaded(ingredient.name, true, true);
   }
 
-  if (loading) return <p className="shop-muted shop-page--wide">{t("common.loading")}</p>;
-  if (error) return <div className="shop-error shop-page--wide"><p role="alert">{error}</p><button type="button" onClick={() => setLoadVersion(value => value + 1)}>{t("shopping.retry")}</button></div>;
+  if (loading) return <PageShell><PageHeader title={t("shopping.title")} description={editorialCopy["shopping.tagline"]} /><p role="status">{t("common.loading")}</p></PageShell>;
+  if (error) return <PageShell><PageHeader title={t("shopping.title")} description={editorialCopy["shopping.tagline"]} /><p role="alert">{t("shopping.loadError")}</p><Button variant="secondary" onClick={() => setLoadVersion(value => value + 1)}>{t("shopping.retry")}</Button></PageShell>;
 
   const smartItemCount = visiblePurchaseItems.filter((r) => !smartChecked.has(r.origIndex)).length;
   const mealRowsVisible = planMealsExpanded ? planRows : planRows.slice(0, PREVIEW_MEAL_ROWS);
   const moreMealsCount = Math.max(0, planRows.length - PREVIEW_MEAL_ROWS);
   const plannedMealCount = planRows.reduce((count, row) => count + row.occurrences.length, 0);
-  const weekRangeLabel = formatWeekRangeDisplay(start, end);
+  const weekRangeLabel = formatWeekRangeDisplay(start, end, language);
   const hasPlannedMeals = planRows.length > 0;
   const canPrepareSmart = items.length > 0 && !refining;
 
@@ -1165,11 +1166,11 @@ function ShoppingListPageContent() {
       <header>
         <div>
           <span className={styles.contextLabel}>{editorialCopy["shopping.thisWeek"]}</span>
-          <h2 className="cw-display" id="shopping-planned-meals-title">Planned meals</h2>
+          <h2 className="cw-display" id="shopping-planned-meals-title">{t("shopping.plannedMeals")}</h2>
         </div>
         <span>
-          {planRows.length} {planRows.length === 1 ? "recipe" : "recipes"}
-          {plannedMealCount !== planRows.length ? ` · ${plannedMealCount} meals` : ""}
+          {t(planRows.length === 1 ? "shopping.recipeCountOne" : "shopping.recipeCount", { count: planRows.length })}
+          {plannedMealCount !== planRows.length ? ` · ${t("shopping.mealCount", { count: plannedMealCount })}` : ""}
         </span>
       </header>
       {hasPlannedMeals ? (
@@ -1183,19 +1184,19 @@ function ShoppingListPageContent() {
               ) : null}
               <span className={styles.mealCopy}>
                 <strong>{row.title}</strong>
-                <span aria-label={row.occurrences.map(formatMealOccurrence).join(", ")}>
-                  {formatPlannedMealSchedule(row)}
+                <span aria-label={row.occurrences.map(occurrence => formatMealOccurrence(occurrence, language)).join(", ")}>
+                  {formatPlannedMealSchedule(row, language)}
                 </span>
               </span>
             </Link>
           ))}
           {moreMealsCount > 0 ? (
             <button type="button" onClick={() => setPlanMealsExpanded((expanded) => !expanded)}>
-              {planMealsExpanded ? "Show less" : `+ ${moreMealsCount} more`}
+              {planMealsExpanded ? t("shopping.showLess") : t("shopping.showMore", { count: moreMealsCount })}
             </button>
           ) : null}
         </div>
-      ) : <p>No recipe slots filled for this range yet.</p>}
+      ) : <p>{t("shopping.noRecipeSlots")}</p>}
     </section>
   );
 
@@ -1203,7 +1204,7 @@ function ShoppingListPageContent() {
     <PageShell className={styles.page}>
       <PageHeader title={t("shopping.title")} description={editorialCopy["shopping.tagline"]} />
 
-      <section className={styles.weekBar} aria-label="Week range">
+      <section className={styles.weekBar} aria-label={t("shopping.weekRange")}>
         <div>
           <span>{t("shopping.currentRange")}</span>
           <strong>{weekRangeLabel}</strong>
@@ -1239,13 +1240,8 @@ function ShoppingListPageContent() {
 
       <section
         className={`${styles.workspace}${activeRefinedData ? ` ${styles.smartWorkspace}` : ""}`}
-        aria-label={activeRefinedData ? undefined : "Prepare smart shopping list"}
+        aria-label={activeRefinedData ? undefined : t("shopping.prepare")}
       >
-        {!activeRefinedData ? (
-          <aside className={styles.retailerColumn}>
-            {plannedMealsPanel}
-          </aside>
-        ) : null}
         <div className={styles.listColumn}>
       {activeRefinedData && refineError ? <p className={styles.error} role="alert">{refineError}</p> : null}
       {activeRefinedData?.refinement_status === "fallback" ? <p role="status">{t("shopping.refineFallback")}</p> : null}
@@ -1315,7 +1311,7 @@ function ShoppingListPageContent() {
                 event.preventDefault();
                 setSmartRemovedCollapsed((collapsed) => !collapsed);
               }}>
-                Removed items ({activeRefinedData.remove.length})
+                {t("shopping.removedCount", { count: activeRefinedData.remove.length })}
               </summary>
               <ul>{activeRefinedData.remove.map((name, index) => <li key={`${name}-${index}`}>{name}</li>)}</ul>
             </details>
@@ -1324,18 +1320,23 @@ function ShoppingListPageContent() {
       ) : (
           <section className={styles.prepareAction}>
             <span className={styles.contextLabel}>{editorialCopy["shopping.originalList"]}</span>
-            <h2 className="cw-display">Prepare smart list</h2>
+            <h2 className="cw-display">{t("shopping.prepareTitle")}</h2>
             <dl>
-              <div><dt>Recipes</dt><dd>{planRows.length}</dd></div>
-              <div><dt>Ingredients</dt><dd>{items.length}</dd></div>
+              <div><dt>{t("shopping.recipes")}</dt><dd>{planRows.length}</dd></div>
+              <div><dt>{t("common.ingredients")}</dt><dd>{items.length}</dd></div>
             </dl>
             {refineError ? <p className={styles.error} role="alert">{refineError}</p> : null}
             <button type="button" onClick={() => void handlePrepareSmartList()} disabled={!canPrepareSmart}>
-              {refining ? "Preparing…" : "Prepare smart shopping list"}
+              {refining ? t("shopping.preparing") : t("shopping.prepare")}
             </button>
           </section>
       )}
         </div>
+        {!activeRefinedData ? (
+          <aside className={styles.retailerColumn}>
+            {plannedMealsPanel}
+          </aside>
+        ) : null}
       </section>
     </PageShell>
   );

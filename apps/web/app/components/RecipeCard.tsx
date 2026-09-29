@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { RecipeTiming } from "./RecipeTiming";
 import type { Recipe } from "../types";
-import { CATEGORY_LABELS } from "../lib/recipeCategories";
+import { useT } from "../lib/i18n";
 import { getRecipeTags } from "../lib/recipeTags";
 import styles from "./RecipeCard.module.css";
 
@@ -13,6 +13,7 @@ type RecipeCardProps = {
 };
 
 export function RecipeCard({ recipe, isHighlighted = false }: RecipeCardProps) {
+  const t = useT();
   const featuredTags = getRecipeTags(recipe).slice(0, 2);
 
   return (
@@ -35,10 +36,10 @@ export function RecipeCard({ recipe, isHighlighted = false }: RecipeCardProps) {
       <div className={styles.metadata}>
         <RecipeTiming {...recipe} />
         {featuredTags.length ? (
-          <div className={styles.tags} aria-label="Recipe tags">
+          <div className={styles.tags} aria-label={t("recipe.tags")}>
             {featuredTags.map((tag) => (
               <span key={tag} className={styles.tag} data-testid="recipe-tag">
-                {CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}
+                {t(`recipe.tag.${tag}`)}
               </span>
             ))}
           </div>

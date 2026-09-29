@@ -62,9 +62,10 @@ export function formatWeekLabel(start: string, end: string): string {
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-export function formatWeekRangeDisplay(start: string, end: string): string {
+export function formatWeekRangeDisplay(start: string, end: string, language: "en" | "zh" = "en"): string {
   const [sy, sm, sd] = start.split("-").map(Number);
   const [ey, em, ed] = end.split("-").map(Number);
+  if (language === "zh") return sm === em && sy === ey ? `${sm}月${sd}日 — ${ed}日` : `${sm}月${sd}日 — ${em}月${ed}日`;
   const m1 = MONTHS[sm - 1];
   const m2 = MONTHS[em - 1];
   if (sy === ey && sm === em) {

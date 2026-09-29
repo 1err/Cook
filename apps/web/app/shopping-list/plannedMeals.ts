@@ -69,12 +69,22 @@ export function buildPlannedMealRows(
   return rows;
 }
 
-export function formatMealOccurrence(occurrence: PlannedMealOccurrence): string {
+export function formatMealOccurrence(occurrence: PlannedMealOccurrence, language: "en" | "zh" = "en"): string {
+  if (language === "zh") {
+    const days: Record<string, string> = { Mon: "周一", Tue: "周二", Wed: "周三", Thu: "周四", Fri: "周五", Sat: "周六", Sun: "周日" };
+    const meals = { breakfast: "早餐", lunch: "午餐", dinner: "晚餐" };
+    return `${days[occurrence.dayShort] ?? occurrence.dayShort}${meals[occurrence.slot]}`;
+  }
   return `${occurrence.dayShort} ${occurrence.slot}`;
 }
 
-export function formatPlannedMealSchedule(row: PlannedMealRow): string {
-  const labels = row.occurrences.map(formatMealOccurrence);
+export function formatPlannedMealSchedule(row: PlannedMealRow, language: "en" | "zh" = "en"): string {
+  const labels = row.occurrences.map(occurrence => formatMealOccurrence(occurrence, language));
+  if (language === "zh") {
+    if (labels.length === 1) return labels[0];
+    if (labels.length === 2) return `2 餐 · ${labels.join(" · ")}`;
+    return `${labels.length} 餐 · ${labels[0]} · 另 ${labels.length - 1} 餐`;
+  }
   if (labels.length === 1) return labels[0];
   if (labels.length === 2) return `2 meals · ${labels.join(" · ")}`;
   return `${labels.length} meals · ${labels[0]} · +${labels.length - 1} more`;

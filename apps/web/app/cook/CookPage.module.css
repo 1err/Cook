@@ -1087,3 +1087,9 @@
     grid-template-columns: 1fr;
   }
 }
+
+.setup { padding-top: 0; }
+.setup > :first-child { margin-bottom: 0; }
+.emptyChoices { padding: 1.25rem; border: 1px solid var(--cw-color-divider); border-radius: var(--cw-radius-card); background: var(--cw-color-surface); }
+.emptyChoices p { margin: 0 0 1rem; }
+@media (max-width: 640px) { .dateField input, .searchField input { font-size: 16px; } .emptyChoices a { min-height: 44px; width: 100%; } }

@@ -1,5 +1,5 @@
 .page {
-  padding-top: clamp(2.25rem, 4vw, 4.5rem);
+  min-width: 0;
 }
 
 .productList {
@@ -980,9 +980,7 @@
 }
 
 @media (max-width: 600px) {
-  .page {
-    padding-top: 0.75rem;
-  }
+  .page { min-width: 0; }
 
   .weekBar {
     display: grid;
@@ -1184,4 +1182,16 @@
   .itemMenu {
     justify-self: end;
   }
+}
+
+@media (max-width: 720px) {
+  .workspace:not(.smartWorkspace) { display: flex; flex-direction: column; }
+  .workspace:not(.smartWorkspace) > .listColumn { width: 100%; }
+  .workspace:not(.smartWorkspace) > .retailerColumn { width: 100%; }
+  .smartActions > button, .prepareAction > button { min-height: 44px; }
+}
+
+@media (min-width: 1101px) {
+  .workspace:not(.smartWorkspace) > .listColumn { grid-column: 2; grid-row: 1; }
+  .workspace:not(.smartWorkspace) > .retailerColumn { grid-column: 1; grid-row: 1; }
 }

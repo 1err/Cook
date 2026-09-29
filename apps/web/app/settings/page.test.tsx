@@ -26,7 +26,7 @@ vi.mock("../lib/editorialCopy", () => ({
   useEditorialCopy: () => ({ "settings.tagline": "Settings" }),
 }));
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 beforeEach(() => {
   mockSetLibraryVisibility.mockReset().mockResolvedValue(undefined);
@@ -45,4 +45,13 @@ it("keeps the sharing consequence beside a clearly labeled control", async () =>
   await user.click(control);
 
   expect(mockSetLibraryVisibility).toHaveBeenCalledWith(true);
+});
+
+it("translates library visibility and its consequences in Chinese", async () => {
+  vi.stubGlobal("localStorage", {getItem: () => "zh", setItem: vi.fn()});
+  render(<I18nProvider><SettingsPage /></I18nProvider>);
+  expect(await screen.findByRole("heading", {name: "设置", exact:true})).toBeVisible();
+  expect(screen.getByRole("checkbox", {name: "分享我的菜谱库"})).toBeEnabled();
+  expect(screen.getByText("知道你邮箱地址的人可以浏览并复制你的菜谱。")).toBeVisible();
+  expect(screen.getByText("关闭", {exact:true})).toBeVisible();
 });

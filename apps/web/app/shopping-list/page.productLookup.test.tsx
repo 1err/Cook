@@ -25,6 +25,23 @@ vi.mock("../lib/i18n", () => ({
   useI18n: () => ({ language: "en" }),
   useT: () => (key: string, vars?: Record<string, string | number>) => {
     const messages: Record<string, string> = {
+      "shopping.prepare": "Prepare smart shopping list",
+      "shopping.preparing": "Preparing…",
+      "shopping.prepareTitle": "Prepare smart list",
+      "shopping.plannedMeals": "Planned meals",
+      "shopping.recipes": "Recipes",
+      "shopping.recipeCountOne": "{count} recipe",
+      "shopping.recipeCount": "{count} recipes",
+      "shopping.mealCount": "{count} meals",
+      "shopping.showMore": "+ {count} more",
+      "shopping.showLess": "Show less",
+      "shopping.noRecipeSlots": "No recipe slots filled for this range yet.",
+      "shopping.weekRange": "Week range",
+      "shopping.removedCount": "Removed items ({count})",
+      "shopping.controls": "Smart shopping list controls",
+      "shopping.loadError": "Your shopping list couldn’t be loaded. Check your connection and try again.",
+      "common.ingredients": "Ingredients",
+
       "common.loading": "Loading...",
       "shopping.viewProducts": "View products",
       "shopping.hideProducts": "Hide products",

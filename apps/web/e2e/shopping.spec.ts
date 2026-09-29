@@ -308,7 +308,9 @@ test("keeps preparation in context and renders smart groceries without horizonta
     expect(preparationLayout[0]!.x).toBeLessThan(preparationLayout[1]!.x);
     expect(preparationLayout[0]!.width).toBeGreaterThan(preparationLayout[1]!.width);
   } else {
-    expect(preparationLayout[0]!.y).toBeLessThan(preparationLayout[1]!.y);
+    expect(preparationLayout[1]!.y).toBeLessThan(preparationLayout[0]!.y);
+    const firstControl = preparePanel.locator("button, a").first();
+    await expect(firstControl).toHaveText("Prepare smart shopping list");
   }
 
   const shellMetrics = await page.locator('[data-page-shell="default"]').evaluate((shell) => {

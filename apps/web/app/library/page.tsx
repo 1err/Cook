@@ -11,9 +11,10 @@ import { useT } from "../lib/i18n";
 import { useEditorialCopy } from "../lib/editorialCopy";
 import { RecipeCard } from "../components/RecipeCard";
 import { RecipeTiming } from "../components/RecipeTiming";
+import { Button, ActionLink } from "../components/ui/Button";
 import { Icon } from "../components/ui/Icon";
 import { PageHeader, PageShell } from "../components/PageShell";
-import { CATEGORY_LABELS, type LibraryFilterId, type RecipeTagSlug } from "../lib/recipeCategories";
+import { type LibraryFilterId, type RecipeTagSlug } from "../lib/recipeCategories";
 import { getRecipeTags } from "../lib/recipeTags";
 import { TagFilterPopover } from "../components/TagFilterPopover";
 import { useRecipePage } from "../lib/useRecipePage";
@@ -50,10 +51,10 @@ function LibraryPageContent() {
   const [savedPublicIds, setSavedPublicIds] = useState(new Set<string>());
 
   const mineFilterLabel = useMemo(() => {
-    if (mineFilters.length === 0) return "All tags";
-    if (mineFilters.length === 1) return CATEGORY_LABELS[mineFilters[0]];
-    return `${mineFilters.length} tags`;
-  }, [mineFilters]);
+    if (mineFilters.length === 0) return t("recipe.filters.all");
+    if (mineFilters.length === 1) return t(`recipe.tag.${mineFilters[0]}`);
+    return t("recipe.filters.count", { count: mineFilters.length });
+  }, [mineFilters, t]);
 
   function toggleMineFilter(tag: RecipeTagSlug) {
     setMineFilters((current) =>
@@ -72,7 +73,7 @@ function LibraryPageContent() {
       void minePage.refresh();
     } catch (caught) {
       if (!mounted.current) return;
-      setError(caught instanceof Error ? caught.message : "Could not add recipe");
+      setError(t("library.copyError"));
     } finally {
       if (mounted.current) setCopyingId(null);
     }
@@ -147,9 +148,9 @@ function LibraryPageContent() {
       </div>
 
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
-      {page.error ? <div>
-        <p className={styles.error} role="alert">{page.error}</p>
-        <button type="button" disabled={page.loading} onClick={() => void page.refresh()}>{t("library.retry")}</button>
+      {page.error ? <div className={styles.recovery}>
+        <div role="alert"><strong>{t("library.loadErrorTitle")}</strong><p>{t("library.loadErrorHelp")}</p></div>
+        <Button variant="secondary" loading={page.loading} onClick={() => void page.refresh()}>{t("library.retry")}</Button>
       </div> : null}
 
       {loading ? (
@@ -167,13 +168,16 @@ function LibraryPageContent() {
           </p>
           <span className={styles.emptyDescription}>
             {view === "mine" && recipes.length === 0 && !hasFilters
-              ? t("library.importRecipePrompt")
+              ? t("library.firstRecipeHelp")
               : hasFilters
                 ? t("library.tryAnotherFilter")
                 : t("library.publicShelfEmptyDesc")}
           </span>
           {view === "mine" && recipes.length === 0 && !hasFilters ? (
-            <Link href="/import">{t("library.addRecipe")} →</Link>
+            <div className={styles.emptyActions}>
+              <Button onClick={() => { setCatalogVisited(true); setView("public"); }}>{t("library.browsePublic")}</Button>
+              <ActionLink href="/import" variant="secondary">{t("library.addRecipe")}</ActionLink>
+            </div>
           ) : null}
         </div>
       ) : (
@@ -210,7 +214,7 @@ function LibraryPageContent() {
                   {tags.length ? (
                     <div className={styles.publicTags}>
                       {tags.map((tag) => (
-                        <span key={tag}>{CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}</span>
+                        <span key={tag}>{t(`recipe.tag.${tag}`)}</span>
                       ))}
                     </div>
                   ) : null}
