@@ -1,0 +1,209 @@
+{
+  "applicationSource": "f56f0ad9add845eeaad120b8c8bbf91a0937bf5e",
+  "production": {
+    "accountMonthlyBudgetUSD": "3",
+    "globalMonthlyBudgetUSD": "29",
+    "analysisTimeoutSeconds": "120",
+    "taskDefinition": "arn:aws:ecs:us-east-1:930067562682:task-definition/cooking-backend:40",
+    "image": "930067562682.dkr.ecr.us-east-1.amazonaws.com/cooking-backend@sha256:e0c4af80834ee62ce1c92b96ce4bdea13886c4c3fe726447f9e0526c4f78d90c",
+    "rolloutState": "COMPLETED",
+    "deployments": 1,
+    "running": 1,
+    "desired": 1,
+    "configFingerprint": "b8b444fb9bac573671daf71612cb500eb9358c8e85bae54cadfe447761f0136d",
+    "serviceFingerprint": "4657e12fd8d8449ae42857a5ab898dadc55c45ddb084324e521dcab5f0420d39",
+    "retailerWorkerRevision": "arn:aws:ecs:us-east-1:930067562682:task-definition/cooking-store-worker:2",
+    "runningImages": [
+      {
+        "digest": "sha256:e0c4af80834ee62ce1c92b96ce4bdea13886c4c3fe726447f9e0526c4f78d90c",
+        "status": "RUNNING",
+        "health": "HEALTHY"
+      }
+    ],
+    "verifiedAt": "2026-09-30T05:55:29.109294+00:00",
+    "configurationExceptAllowedAccountAllowancePreserved": true,
+    "sourceCommit": "f56f0ad9add845eeaad120b8c8bbf91a0937bf5e",
+    "adminAccountBudgetPolicy": "remaining shared monthly budget"
+  },
+  "localImageRuntime": {
+    "sourceCommit": "f56f0ad9add845eeaad120b8c8bbf91a0937bf5e",
+    "backendImage": "chef-youtube-backend:f56f0ad",
+    "webImage": "chef-youtube-web:f56f0ad",
+    "health": 200,
+    "ready": 200,
+    "webImport": 200,
+    "nonRootUID": 1001,
+    "browserMediaRedNoteChecks": "passed",
+    "trustedAdminPolicy": "passed"
+  },
+  "publishedImageRuntime": {
+    "sourceCommit": "f56f0ad9add845eeaad120b8c8bbf91a0937bf5e",
+    "backendImage": "930067562682.dkr.ecr.us-east-1.amazonaws.com/cooking-backend@sha256:e0c4af80834ee62ce1c92b96ce4bdea13886c4c3fe726447f9e0526c4f78d90c",
+    "webImage": "chef-youtube-web:f56f0ad",
+    "health": 200,
+    "ready": 200,
+    "webImport": 200,
+    "nonRootUID": 1001,
+    "browserMediaRedNoteChecks": "passed",
+    "trustedAdminPolicy": "passed"
+  },
+  "publicHTTP": {
+    "checkedAt": "2026-09-30T05:55:31.246733+00:00",
+    "checks": [
+      {
+        "url": "https://chef-world.com/import",
+        "status": 200
+      },
+      {
+        "origin": "https://chef-world.com",
+        "cors": 200,
+        "credentials": true
+      },
+      {
+        "url": "https://www.chef-world.com/import",
+        "status": 200
+      },
+      {
+        "origin": "https://www.chef-world.com",
+        "cors": 200,
+        "credentials": true
+      },
+      {
+        "path": "/health",
+        "status": 200
+      },
+      {
+        "path": "/ready",
+        "status": 200
+      },
+      {
+        "unauthenticatedImport": 401
+      }
+    ],
+    "passed": 7
+  },
+  "preRetryLogs": {
+    "windowStartUtc": "2026-09-30T05:37:46.017000+00:00",
+    "windowEndUtc": "2026-09-30T05:47:46.017000+00:00",
+    "results": [
+      {
+        "service": "cooking-backend-service",
+        "revision": "40",
+        "eventsScanned": 46,
+        "errorCount": 0,
+        "http5xxCount": 0,
+        "stageFailureCount": 0,
+        "urlLogCount": 0,
+        "healthy": "HEALTHY",
+        "status": "RUNNING"
+      },
+      {
+        "service": "cooking-store-worker-service",
+        "revision": "2",
+        "eventsScanned": 0,
+        "errorCount": 0,
+        "http5xxCount": 0,
+        "stageFailureCount": 0,
+        "urlLogCount": 0,
+        "healthy": "HEALTHY",
+        "status": "RUNNING"
+      }
+    ]
+  },
+  "regressionTests": {
+    "passed": 1581,
+    "skipped": 6,
+    "existingWarnings": 2
+  },
+  "adminBudgetTests": {
+    "passed": 5,
+    "independentReview": "no critical or important findings"
+  },
+  "websiteRuntimeInputsUnchanged": true,
+  "builderCleanup": {
+    "sourceCommit": "f56f0ad9add845eeaad120b8c8bbf91a0937bf5e",
+    "projectRemoved": true,
+    "bucketRemoved": true,
+    "roleRemoved": true,
+    "temporaryBuildLogsRemoved": true
+  },
+  "localCleanup": {
+    "ownedRuntimeContainersRemoved": true,
+    "disposableDatabaseRemoved": true,
+    "ownedNetworkRemoved": true
+  },
+  "postRetryLogs": {
+    "windowStartUtc": "2026-09-30T05:46:16.258000+00:00",
+    "windowEndUtc": "2026-09-30T05:56:16.258000+00:00",
+    "results": [
+      {
+        "service": "cooking-backend-service",
+        "revision": "40",
+        "eventsScanned": 202,
+        "videoProviderFailureCount": 0,
+        "aiAllowanceDenialCount": 0,
+        "completenessAuditFailureCount": 0,
+        "errorCount": 0,
+        "http5xxCount": 0,
+        "stageFailureCount": 0,
+        "urlLogCount": 0,
+        "healthy": "HEALTHY",
+        "status": "RUNNING"
+      },
+      {
+        "service": "cooking-store-worker-service",
+        "revision": "2",
+        "eventsScanned": 0,
+        "videoProviderFailureCount": 0,
+        "aiAllowanceDenialCount": 0,
+        "completenessAuditFailureCount": 0,
+        "errorCount": 0,
+        "http5xxCount": 0,
+        "stageFailureCount": 0,
+        "urlLogCount": 0,
+        "healthy": "HEALTHY",
+        "status": "RUNNING"
+      }
+    ]
+  },
+  "retiredWorkerGate": {
+    "onlyNewReleaseAcceptingTraffic": true,
+    "targets": [
+      {
+        "revision": "40",
+        "state": "healthy"
+      }
+    ],
+    "apiWorkers": [
+      {
+        "revision": "40",
+        "lastStatus": "RUNNING",
+        "desiredStatus": "RUNNING"
+      },
+      {
+        "revision": "37",
+        "lastStatus": "STOPPED",
+        "desiredStatus": "STOPPED"
+      },
+      {
+        "revision": "39",
+        "lastStatus": "STOPPED",
+        "desiredStatus": "STOPPED"
+      },
+      {
+        "revision": "38",
+        "lastStatus": "STOPPED",
+        "desiredStatus": "STOPPED"
+      }
+    ],
+    "allRetiredWorkersStopped": true
+  },
+  "liveYouTubeResult": {
+    "verifiedAt": "2026-09-30T05:54:46.608Z",
+    "title": "\u864e\u76ae\u9752\u6912\u70e7\u6392\u9aa8",
+    "ingredients": 15,
+    "steps": 11,
+    "draftReady": true,
+    "recipeSaved": false
+  }
+}
