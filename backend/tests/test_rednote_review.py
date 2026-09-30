@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from app import rednote
+from app.core.logging import setup_logging
 from fastapi import HTTPException
 from app.video_import import parse_video_source
 
@@ -16,6 +17,42 @@ from app.video_import import parse_video_source
 NOTE_ID = "6411cf99000000001300b6d9"
 NOTE_URL = f"https://www.xiaohongshu.com/explore/{NOTE_ID}"
 MEDIA_URL = "https://sns-video-bd.xhscdn.com/example.mp4"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["download", "prepare", "success"])
+async def test_video_failure_reports_stage_without_source_or_exception_secrets(monkeypatch, caplog, phase):
+    signed_url = MEDIA_URL + "?signature=do-not-log"
+    video = b'\0\0\0\x18ftypisom' + b'\0' * 32
+
+    def handler(request):
+        if phase == "download":
+            raise httpx.ReadTimeout(signed_url, request=request)
+        return httpx.Response(200, headers={"Content-Type": "video/mp4"}, content=video)
+
+    async def fail_preparation(*args):
+        if phase == "success":
+            return video
+        raise TimeoutError(signed_url)
+
+    monkeypatch.setattr(rednote, "MAX_MEDIA_BYTES", 16)
+    monkeypatch.setattr(rednote, "compress_public_video", fail_preparation)
+    setup_logging()
+    with caplog.at_level("INFO"):
+        if phase == "success":
+            content, mime = await rednote.download_rednote_video(signed_url, transport=httpx.MockTransport(handler))
+            assert content == video and mime == "video/mp4"
+        else:
+            with pytest.raises(HTTPException) as caught:
+                await rednote.download_rednote_video(signed_url, transport=httpx.MockTransport(handler))
+            assert caught.value.detail["code"] == "source_unavailable"
+    if phase == "success":
+        assert "rednote_public_video_prepared" in caplog.text
+    else:
+        assert f"phase={phase}" in caplog.text
+        assert "error_type=" in caplog.text
+    assert "do-not-log" not in caplog.text
+    assert "xhscdn.com" not in caplog.text
 
 
 def recipe_page():

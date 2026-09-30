@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import time
 from http.client import HTTPException
@@ -28,6 +29,7 @@ MEDIA_HOSTS = {"sns-video-bd.xhscdn.com", "sns-video-qc.xhscdn.com", "sns-video-
 MEDIA_HOSTS |= {f'sns-{kind}-v{number}.xhscdn.com' for kind in ('video', 'bak') for number in range(1, 100)}
 MAX_PUBLIC_VIDEO_BYTES = 150 * 1024 * 1024
 FALLBACK = "This RedNote (小红书) post is unavailable or does not expose enough recipe content. Upload the saved video or paste its recipe text."
+logger = logging.getLogger(__name__)
 _URL_RE = re.compile(r"https?://[^\s<>\"'，。！？；、（）【】]+")
 _JSON_TOKENS = re.compile(r'"(?:\\.|[^"\\])*"|\bundefined\b')
 
@@ -207,6 +209,7 @@ async def download_rednote_video(url: str, *, transport=None) -> tuple[bytes, st
     current = safe_rednote_media_url(url)
     if not current:
         raise fail()
+    started, phase, size = time.monotonic(), 'download', 0
     try:
         async with asyncio.timeout(310), httpx.AsyncClient(timeout=15, follow_redirects=False, trust_env=False, transport=transport) as client:
             for _ in range(4):
@@ -235,17 +238,25 @@ async def download_rednote_video(url: str, *, transport=None) -> tuple[bytes, st
                                 file.write(chunk)
                         with path.open('rb') as file:
                             prefix = file.read(32)
+                        phase = 'validate'
                         mime = response.headers.get('content-type', '').split(';', 1)[0].strip().lower()
                         if mime in {'', 'application/octet-stream'}:
                             mime = 'video/webm' if prefix.startswith(b'\x1a\x45\xdf\xa3') else 'video/mp4'
                         if mime not in {'video/mp4', 'video/webm', 'video/quicktime', 'video/mov'}:
                             break
                         mime = validate_media_input(prefix, mime)
+                        logger.info('rednote_public_video_downloaded bytes=%d elapsed_seconds=%.1f',
+                                    size, time.monotonic() - started)
+                        phase = 'prepare'
                         content = (await compress_public_video(path, mime) if size > MAX_MEDIA_BYTES
                                    else path.read_bytes())
+                        logger.info('rednote_public_video_prepared input_bytes=%d output_bytes=%d elapsed_seconds=%.1f',
+                                    size, len(content), time.monotonic() - started)
                         return content, validate_media_input(content, 'video/mp4' if size > MAX_MEDIA_BYTES else mime)
     except APIException:
         raise
-    except (httpx.HTTPError, TimeoutError, ValueError, OSError):
-        pass
+    except (httpx.HTTPError, TimeoutError, ValueError, OSError) as error:
+        # Never log exception strings: HTTP errors can contain signed media URLs.
+        logger.warning('rednote_public_video_failed phase=%s error_type=%s bytes=%d elapsed_seconds=%.1f',
+                       phase, type(error).__name__, size, time.monotonic() - started)
     raise fail()

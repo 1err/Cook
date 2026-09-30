@@ -61,7 +61,7 @@ async def compress_public_video(source: Path, media_type: str) -> bytes:
         '-map', '0:v:0', '-map', '0:a:0?', '-vf', "fps=15,scale='min(720,iw)':-2",
         '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '1', '-crf', '24',
         '-maxrate', f'{bitrate}k', '-bufsize', f'{bitrate*2}k',
-        '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart', str(target), timeout=180)
+        '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart', str(target), timeout=260)
     if not 0 < target.stat().st_size <= MAX_MEDIA_BYTES:
         raise ValueError('Prepared video is too large')
     return target.read_bytes()

@@ -22,6 +22,10 @@ def setup_logging(level: str = "INFO") -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
         stream=sys.stdout,
     )
+    # Transport INFO/DEBUG logs contain complete signed CDN and share URLs.
+    # Keep operational warnings; application diagnostics record safe fields.
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
     access_logger = logging.getLogger("uvicorn.access")
     if not any(isinstance(item, AccessQueryFilter) for item in access_logger.filters):
         access_logger.addFilter(AccessQueryFilter())
