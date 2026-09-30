@@ -49,7 +49,7 @@ for (const flow of ["import", "edit"] as const) {
     });
     if (flow === "import") {
       await page.goto("/import");
-      await page.getByLabel("YouTube, TikTok, or RedNote URL").fill("https://www.youtube.com/watch?v=recipe");
+      await page.getByLabel("YouTube or RedNote URL").fill("https://www.youtube.com/watch?v=recipe");
       await page.getByRole("button", { name: "Prepare draft" }).click();
     } else {
       await page.goto(`/library/${recipe.id}`);

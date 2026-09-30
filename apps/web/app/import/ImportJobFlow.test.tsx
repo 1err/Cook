@@ -26,7 +26,7 @@ beforeEach(() => {
 afterEach(cleanup);
 async function importPartial() {
   render(<ImportPage />);
-  fireEvent.change(screen.getByLabelText("YouTube, TikTok, or RedNote URL"), { target: { value: source } });
+  fireEvent.change(screen.getByLabelText("YouTube or RedNote URL"), { target: { value: source } });
   fireEvent.click(screen.getByRole("button", { name: "Prepare draft" }));
   await screen.findByLabelText("Recipe title");
 }
@@ -53,10 +53,10 @@ test("does not replace manual edits until a new analysis is explicitly applied",
 test("job errors retain the input and permit text fallback", async () => {
   mocks.createImportJob.mockResolvedValue({ id: "job", status: "failed", error: { code: "missing", message: "No captions available." } });
   render(<ImportPage />);
-  fireEvent.change(screen.getByLabelText("YouTube, TikTok, or RedNote URL"), { target: { value: source } });
+  fireEvent.change(screen.getByLabelText("YouTube or RedNote URL"), { target: { value: source } });
   fireEvent.click(screen.getByRole("button", { name: "Prepare draft" }));
   await screen.findByRole("alert");
-  expect(screen.getByLabelText("YouTube, TikTok, or RedNote URL")).toHaveValue(source);
+  expect(screen.getByLabelText("YouTube or RedNote URL")).toHaveValue(source);
   fireEvent.click(screen.getByRole("tab", { name: "Paste recipe text" }));
   expect(screen.getByText("The original source link will be kept.")).toBeVisible();
 });
@@ -64,7 +64,7 @@ test("unmount cancels a late-created job and never publishes its result", async 
   let resolve!: (job: RecipeImportJob) => void;
   mocks.createImportJob.mockImplementation(() => new Promise(done => { resolve = done; }));
   const view = render(<ImportPage />);
-  fireEvent.change(screen.getByLabelText("YouTube, TikTok, or RedNote URL"), { target: { value: source } });
+  fireEvent.change(screen.getByLabelText("YouTube or RedNote URL"), { target: { value: source } });
   fireEvent.click(screen.getByRole("button", { name: "Prepare draft" }));
   view.unmount();
   await act(async () => resolve({ id: "late", status: "queued" }));
@@ -83,7 +83,7 @@ test("honors an intentionally changed video URL while keeping the existing draft
   await importPartial();
   fireEvent.click(screen.getByRole("button", { name: "Back to source" }));
   const replacement = "https://www.youtube.com/watch?v=9hE5-98ZeCg";
-  fireEvent.change(screen.getByLabelText("YouTube, TikTok, or RedNote URL"), { target: { value: replacement } });
+  fireEvent.change(screen.getByLabelText("YouTube or RedNote URL"), { target: { value: replacement } });
   fireEvent.click(screen.getByRole("button", { name: "Prepare draft" }));
   await waitFor(() => expect(mocks.createImportJob).toHaveBeenLastCalledWith(expect.objectContaining({ mode: "link", url: replacement })));
   await screen.findByRole("button", { name: "Keep current draft" });
@@ -209,12 +209,12 @@ test("preparing replaces the source form and cancellation restores its inputs", 
   let resolve!: (job: RecipeImportJob) => void;
   mocks.createImportJob.mockImplementation(() => new Promise(done => { resolve = done; }));
   render(<ImportPage />);
-  fireEvent.change(screen.getByLabelText("YouTube, TikTok, or RedNote URL"), { target: { value: source } });
+  fireEvent.change(screen.getByLabelText("YouTube or RedNote URL"), { target: { value: source } });
   fireEvent.click(screen.getByRole("button", { name: "Prepare draft" }));
-  expect(screen.queryByLabelText("YouTube, TikTok, or RedNote URL")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("YouTube or RedNote URL")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Create recipe manually" })).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Cancel import" }));
-  expect(screen.getByLabelText("YouTube, TikTok, or RedNote URL")).toHaveValue(source);
+  expect(screen.getByLabelText("YouTube or RedNote URL")).toHaveValue(source);
   await act(async () => resolve({ id: "late-source", status: "completed", recipe: partial }));
   expect(screen.queryByLabelText("Recipe title")).not.toBeInTheDocument();
 });
@@ -263,7 +263,7 @@ test("video recovery from an edited source uses the newly entered URL", async ()
   await importPartial();
   fireEvent.click(screen.getByRole("button", { name: "Back to source" }));
   const replacement = "https://www.youtube.com/watch?v=9hE5-98ZeCg";
-  fireEvent.change(screen.getByLabelText("YouTube, TikTok, or RedNote URL"), { target: { value: replacement } });
+  fireEvent.change(screen.getByLabelText("YouTube or RedNote URL"), { target: { value: replacement } });
   mocks.createImportJob.mockResolvedValueOnce({ id: "failed-link", status: "failed", error: { message: "Captions unavailable." } });
   fireEvent.click(screen.getByRole("button", { name: "Prepare draft" }));
   await screen.findByRole("alert");

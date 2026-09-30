@@ -111,7 +111,7 @@ export function ImportSourceStep({
             inputMode="url"
             autoCapitalize="none"
             spellCheck={false}
-            placeholder="https://www.youtube.com/watch?v=..."
+            placeholder="https://xhslink.com/… or https://youtu.be/…"
             value={values.url}
             onChange={(event) => update("url", event.target.value)}
             disabled={parsing}

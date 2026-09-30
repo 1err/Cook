@@ -3,7 +3,7 @@ import { API_BASE } from "./api";
 
 const USER_ID = "share-test-user";
 const VIDEO_BYTES = "synthetic shared video bytes";
-const SOURCE_LABEL = "YouTube, TikTok, or RedNote URL";
+const SOURCE_LABEL = "YouTube or RedNote URL";
 const RECIPE = {
   id: "shared-draft",
   title: "擂辣椒烧排骨",

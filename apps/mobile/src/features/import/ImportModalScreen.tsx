@@ -112,7 +112,7 @@ export function ImportModalScreen({ navigation, route }: Props) {
     if (active.current || picking || state.saving) return;
     const sourceUrl = state.draft?.source_url || state.url.trim();
     if ((analyzeVideo || state.mode === "link") && !sourceUrl) {
-      dispatch({ type: "previewFailed", error: "Paste a YouTube or TikTok URL first." }); return;
+      dispatch({ type: "previewFailed", error: "Paste a YouTube or RedNote URL first." }); return;
     }
     if (!analyzeVideo && state.mode === "transcript" && !state.transcript.trim()) {
       dispatch({ type: "previewFailed", error: "Paste a transcript first." }); return;

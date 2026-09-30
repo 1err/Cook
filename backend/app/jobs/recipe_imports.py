@@ -6,7 +6,7 @@ import logging
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.api.ai_budget import AIConcurrencyUnavailable, enforce_ai_budget
+from app.api.ai_budget import AIConcurrencyUnavailable, enforce_ai_budget, enforce_rednote_import_budget
 from app.api.routes_recipes import (ParseLinkBody, ParseTranscriptBody, parse_from_link,
     parse_from_transcript, _apply_import_overrides)
 from app.core.config import settings
@@ -15,6 +15,7 @@ from app.db import session as database, repo_import_jobs as jobs
 from app.db.import_job_models import ImportJobModel as Job
 from app.db.models import UserModel
 from app.extract import extract_recipe_from_video
+from app.video_import import parse_video_source
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,10 @@ async def _run_admitted(job):
         await session.close()
         admitted = False
         try:
-            async with asynccontextmanager(enforce_ai_budget)(session=session, user=user):
+            rednote_link = (job.payload['mode'] == 'link'
+                and parse_video_source(job.payload['url']).provider == 'xiaohongshu')
+            budget = enforce_rednote_import_budget if rednote_link else enforce_ai_budget
+            async with asynccontextmanager(budget)(session=session, user=user):
                 admitted = True
                 return await perform_import(job, user)
         except AIConcurrencyUnavailable as exc:
@@ -109,7 +113,8 @@ async def _worker():
                 await asyncio.sleep(1)
                 continue
             async with maker.begin() as session:
-                job = await jobs.claim_job(session, lease_seconds=settings.AI_OPERATION_TIMEOUT_SECONDS + 15)
+                job = await jobs.claim_job(session, lease_seconds=max(settings.AI_OPERATION_TIMEOUT_SECONDS,
+                    settings.REDNOTE_IMPORT_TIMEOUT_SECONDS) + 15)
             if job is None:
                 await asyncio.sleep(1)
             else:

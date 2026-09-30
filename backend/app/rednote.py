@@ -6,24 +6,50 @@ import json
 import re
 import time
 from http.client import HTTPException
+from io import BytesIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin, urlsplit, urlunsplit
-from urllib.request import Request, build_opener
+from urllib.parse import parse_qs, urljoin, urlsplit, urlunsplit
+from urllib.request import Request
 
 import httpx
+from curl_cffi import CurlOpt, requests as browser_requests
 from fastapi import HTTPException as APIException
 
 from app.services.video_analysis import MAX_MEDIA_BYTES, validate_media_input
+from app.services.public_video import compress_public_video
 
-from app.video_import import VideoSource, VideoTextResult, _RejectRedirects
+from app.video_import import VideoSource, VideoTextResult
 
 NOTE_HOSTS = {"www.xiaohongshu.com", "xiaohongshu.com", "m.xiaohongshu.com"}
 SHORT_HOSTS = {"xhslink.com", "www.xhslink.com"}
 MEDIA_HOSTS = {"sns-video-bd.xhscdn.com", "sns-video-qc.xhscdn.com", "sns-video-hw.xhscdn.com", "sns-video-al.xhscdn.com"}
+MEDIA_HOSTS |= {f'sns-{kind}-v{number}.xhscdn.com' for kind in ('video', 'bak') for number in range(1, 100)}
+MAX_PUBLIC_VIDEO_BYTES = 150 * 1024 * 1024
 FALLBACK = "This RedNote (小红书) post is unavailable or does not expose enough recipe content. Upload the saved video or paste its recipe text."
-_OPENER = build_opener(_RejectRedirects())
 _URL_RE = re.compile(r"https?://[^\s<>\"'，。！？；、（）【】]+")
 _JSON_TOKENS = re.compile(r'"(?:\\.|[^"\\])*"|\bundefined\b')
+
+
+def _open_public_page(request, *, timeout):
+    # Anonymous browser-compatible TLS; never load a user's cookies or account.
+    chunks = []
+    size = 0
+    def receive(chunk):
+        nonlocal size
+        size += len(chunk)
+        if size > 3_000_000:
+            return 0
+        chunks.append(chunk)
+        return len(chunk)
+    with browser_requests.Session(impersonate='chrome', trust_env=False,
+            curl_options={CurlOpt.MAXFILESIZE_LARGE: 3_000_000}) as client:
+        response = client.get(request.full_url, timeout=timeout, allow_redirects=False,
+            headers={'Accept-Language':'zh-CN,zh;q=0.9,en;q=0.5'}, content_callback=receive)
+        if response.status_code >= 300:
+            raise HTTPError(request.full_url, response.status_code, 'Public source unavailable', response.headers, None)
+    return BytesIO(b''.join(chunks))
 
 
 def _trusted_url(value: str, hosts: set[str]) -> str | None:
@@ -107,8 +133,9 @@ def _parse_note(page: bytes, source: VideoSource) -> VideoTextResult:
 
 
 def fetch_rednote_text(source: VideoSource, *, opener=None) -> VideoTextResult:
-    opener = opener or _OPENER.open
+    opener = opener or _open_public_page
     current = source
+    recovered_login = False
     deadline = time.monotonic() + 25
     for _ in range(5):
         request = Request(current.original_url, headers={"User-Agent": "ChefWorld/1.0", "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.5"})
@@ -139,6 +166,18 @@ def fetch_rednote_text(source: VideoSource, *, opener=None) -> VideoTextResult:
                 target = urljoin(current.original_url, exc.headers.get("Location", ""))
                 trusted_target = _trusted_url(target, NOTE_HOSTS)
                 if trusted_target and urlsplit(trusted_target).path.rstrip("/") == "/login":
+                    # Some public share links are wrapped in a login URL. Retry
+                    # only its exact trusted, token-bearing note, once. A real
+                    # sign-in requirement remains an actionable fallback.
+                    nested = parse_qs(urlsplit(trusted_target).query).get('redirectPath', [])
+                    candidate = _trusted_url(nested[0], NOTE_HOSTS) if len(nested) == 1 else None
+                    resolved = parse_rednote_source(candidate) if candidate else None
+                    if (not recovered_login and resolved and resolved.external_id
+                            and parse_qs(urlsplit(candidate).query).get('xsec_token')
+                            and (not current.external_id or current.external_id == resolved.external_id)):
+                        current = resolved
+                        recovered_login = True
+                        continue
                     return VideoTextResult(
                         "access_required", "", current,
                         message="RedNote (小红书) requires sign-in before Chef World can read this post. "
@@ -155,7 +194,7 @@ def fetch_rednote_text(source: VideoSource, *, opener=None) -> VideoTextResult:
             if exc.code in {429, 500, 502, 503, 504}:
                 return VideoTextResult("fetch_failed", "", current, message="RedNote is temporarily unavailable. Try again, upload the saved video, or paste recipe text.")
             break
-        except (HTTPException, URLError, TimeoutError, OSError):
+        except (HTTPException, URLError, TimeoutError, OSError, browser_requests.RequestsError):
             return VideoTextResult("fetch_failed", "", current, message="RedNote could not be reached. Try again, upload the saved video, or paste recipe text.")
     return VideoTextResult("no_transcript", "", current, message=FALLBACK)
 
@@ -169,7 +208,7 @@ async def download_rednote_video(url: str, *, transport=None) -> tuple[bytes, st
     if not current:
         raise fail()
     try:
-        async with asyncio.timeout(30), httpx.AsyncClient(timeout=10, follow_redirects=False, trust_env=False, transport=transport) as client:
+        async with asyncio.timeout(310), httpx.AsyncClient(timeout=15, follow_redirects=False, trust_env=False, transport=transport) as client:
             for _ in range(4):
                 async with client.stream("GET", current, headers={"User-Agent": "ChefWorld/1.0", "Accept-Encoding": "identity"}) as response:
                     if response.status_code in {301, 302, 303, 307, 308}:
@@ -183,22 +222,30 @@ async def download_rednote_video(url: str, *, transport=None) -> tuple[bytes, st
                     length = int(response.headers.get("content-length", "0"))
                     if length < 0:
                         break
-                    if length > MAX_MEDIA_BYTES:
-                        raise fail("media_too_large", f"This video exceeds {MAX_MEDIA_BYTES // 1024 // 1024} MB. Upload a shorter clip or paste recipe text.", 413)
-                    data = bytearray()
-                    async for chunk in response.aiter_bytes(64 * 1024):
-                        if len(data) + len(chunk) > MAX_MEDIA_BYTES:
-                            raise fail("media_too_large", f"This video exceeds {MAX_MEDIA_BYTES // 1024 // 1024} MB. Upload a shorter clip or paste recipe text.", 413)
-                        data.extend(chunk)
-                    content = bytes(data)
-                    mime = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-                    if mime in {"", "application/octet-stream"}:
-                        mime = "video/webm" if content.startswith(b"\x1a\x45\xdf\xa3") else "video/mp4"
-                    if not mime.startswith("video/"):
-                        break
-                    return content, validate_media_input(content, mime)
+                    if length > MAX_PUBLIC_VIDEO_BYTES:
+                        raise fail('media_too_large', 'This public video exceeds 150 MB. Upload a shorter clip or paste recipe text.', 413)
+                    with TemporaryDirectory(prefix='chef-public-video-') as directory:
+                        path = Path(directory) / 'source.video'
+                        size = 0
+                        with path.open('wb') as file:
+                            async for chunk in response.aiter_bytes(64 * 1024):
+                                size += len(chunk)
+                                if size > MAX_PUBLIC_VIDEO_BYTES:
+                                    raise fail('media_too_large', 'This public video exceeds 150 MB. Upload a shorter clip or paste recipe text.', 413)
+                                file.write(chunk)
+                        with path.open('rb') as file:
+                            prefix = file.read(32)
+                        mime = response.headers.get('content-type', '').split(';', 1)[0].strip().lower()
+                        if mime in {'', 'application/octet-stream'}:
+                            mime = 'video/webm' if prefix.startswith(b'\x1a\x45\xdf\xa3') else 'video/mp4'
+                        if mime not in {'video/mp4', 'video/webm', 'video/quicktime', 'video/mov'}:
+                            break
+                        mime = validate_media_input(prefix, mime)
+                        content = (await compress_public_video(path, mime) if size > MAX_MEDIA_BYTES
+                                   else path.read_bytes())
+                        return content, validate_media_input(content, 'video/mp4' if size > MAX_MEDIA_BYTES else mime)
     except APIException:
         raise
-    except (httpx.HTTPError, TimeoutError, ValueError):
+    except (httpx.HTTPError, TimeoutError, ValueError, OSError):
         pass
     raise fail()

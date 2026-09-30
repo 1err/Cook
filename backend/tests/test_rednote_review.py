@@ -81,7 +81,7 @@ class Chunks(httpx.AsyncByteStream):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("announce_length", [True, False], ids=["content-length", "stream-overflow"])
 async def test_download_preserves_actionable_size_error(monkeypatch, tmp_path, announce_length):
-    monkeypatch.setattr(rednote, "MAX_MEDIA_BYTES", 8)
+    monkeypatch.setattr(rednote, "MAX_PUBLIC_VIDEO_BYTES", 8)
 
     def handler(request):
         headers = {"Content-Length": "10"} if announce_length else {}
@@ -155,11 +155,24 @@ async def test_download_accepts_larger_supported_public_video(size):
 
 
 @pytest.mark.asyncio
-async def test_download_announced_size_one_byte_over_new_limit_is_actionable():
+async def test_download_announced_size_above_source_limit_is_actionable():
     with pytest.raises(HTTPException) as caught:
         await rednote.download_rednote_video(MEDIA_URL,
             transport=httpx.MockTransport(lambda request: httpx.Response(200,
-                headers={'Content-Length':str(30*1024*1024+1)})))
+                headers={'Content-Length':str(150*1024*1024+1)})))
     assert caught.value.status_code == 413
     assert caught.value.detail['code'] == 'media_too_large'
-    assert '30 MB' in caught.value.detail['message']
+    assert '150 MB' in caught.value.detail['message']
+
+
+@pytest.mark.asyncio
+async def test_larger_public_video_is_compressed_before_analysis(monkeypatch):
+    from unittest.mock import AsyncMock
+    data = b'\x00\x00\x00\x18ftypisom' + b'\0' * (30*1024*1024)
+    small = b'\x00\x00\x00\x18ftypisom' + b'\0'*16
+    compress = AsyncMock(return_value=small)
+    monkeypatch.setattr(rednote, 'compress_public_video', compress)
+    received, mime = await rednote.download_rednote_video(MEDIA_URL,
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, content=data)))
+    assert received == small and mime == 'video/mp4'
+    compress.assert_awaited_once()

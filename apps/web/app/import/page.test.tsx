@@ -24,7 +24,7 @@ vi.mock("../lib/editorialCopy", () => ({
   useEditorialCopy: () => ({ "import.tagline": "Import recipes" }),
 }));
 vi.mock("../lib/i18n", () => ({
-  useT: () => (key: string) => ({ "import.sourceUrlLabel": "YouTube, TikTok, or RedNote URL", "import.videoLink": "Video link", "import.recipeText": "Paste recipe text", "import.createDraft": "Create draft" })[key] || key,
+  useT: () => (key: string) => ({ "import.sourceUrlLabel": "YouTube or RedNote URL", "import.videoLink": "Video link", "import.recipeText": "Paste recipe text", "import.createDraft": "Create draft" })[key] || key,
 }));
 
 beforeEach(() => {
@@ -46,7 +46,7 @@ describe("ImportPage source errors", () => {
     const user = userEvent.setup();
     render(<ImportPage />);
 
-    const url = screen.getByLabelText("YouTube, TikTok, or RedNote URL");
+    const url = screen.getByLabelText("YouTube or RedNote URL");
     await user.type(url, "https://vm.tiktok.com/ZMrecipe/");
     await user.click(screen.getByRole("button", { name: "Create draft" }));
 
@@ -54,7 +54,7 @@ describe("ImportPage source errors", () => {
       "TikTok only exposed an attribution caption.",
     );
 
-    await user.type(screen.getByLabelText("YouTube, TikTok, or RedNote URL"), "x");
+    await user.type(screen.getByLabelText("YouTube or RedNote URL"), "x");
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: "Create draft" }));

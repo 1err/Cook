@@ -39,17 +39,8 @@ describe("extractSharedVideoUrl", () => {
       "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
       "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
     ],
-    [
-      "https://www.tiktok.com/@chef/video/7412345678901234567?is_from_webapp=1",
-      "https://www.tiktok.com/@chef/video/7412345678901234567?is_from_webapp=1",
-    ],
-    [
-      "https://m.tiktok.com/@chef/video/7412345678901234567",
-      "https://m.tiktok.com/@chef/video/7412345678901234567",
-    ],
-    ["https://vm.tiktok.com/ZMexample/", "https://vm.tiktok.com/ZMexample/"],
-    ["https://vt.tiktok.com/ZSexample_1", "https://vt.tiktok.com/ZSexample_1"],
-    ["https://www.tiktok.com/t/ZTexample-2/", "https://www.tiktok.com/t/ZTexample-2/"],
+    ["http://xhslink.com/o/QFcd665bHC", "https://xhslink.com/o/QFcd665bHC"],
+    ["https://www.xiaohongshu.com/explore/69eaf618000000001a035987?xsec_token=fixture", "https://www.xiaohongshu.com/explore/69eaf618000000001a035987?xsec_token=fixture"],
     ["https://youtu.be:443/dQw4w9WgXcQ", "https://youtu.be/dQw4w9WgXcQ"],
   ])("accepts every backend-supported video URL form", (input, expected) => {
     expect(extractSharedVideoUrl(input, null)).toBe(expected);
@@ -64,6 +55,9 @@ describe("extractSharedVideoUrl", () => {
     "https://www.youtube.com/shorts/dQw4w9WgXcQ/extra",
     "https://youtu.be/dQw4w9WgXc",
     "https://youtube-nocookie.com/watch?v=dQw4w9WgXcQ",
+    "https://v.douyin.com/yEtHaXkpL6g/",
+    "https://www.tiktok.com/@chef/video/7412345678901234567",
+    "https://vm.tiktok.com/ZMrecipe/",
     "https://tiktok.com/@chef/video/7412345678901234567",
     "https://www.tiktok.com/",
     "https://www.tiktok.com/@chef/photo/7412345678901234567",
@@ -85,8 +79,8 @@ describe("extractSharedVideoUrl", () => {
     ["https://youtu.be/dQw4w9WgXcQ", null, "https://youtu.be/dQw4w9WgXcQ"],
     [
       null,
-      "Try this https://vm.tiktok.com/ZMrecipe/ from TikTok",
-      "https://vm.tiktok.com/ZMrecipe/",
+      "试试这个 http://xhslink.com/o/QFcd665bHC，复制后打开小红书",
+      "https://xhslink.com/o/QFcd665bHC",
     ],
     ["https://example.com/video", null, null],
     [null, "no link", null],

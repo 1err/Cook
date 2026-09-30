@@ -7,7 +7,9 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
-    && playwright install --with-deps chromium
+    && playwright install --with-deps chromium \
+    && apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 RUN chmod -R a+rX /ms-playwright \
     && groupadd --gid 1001 cooking \
     && useradd --uid 1001 --gid cooking --create-home cooking

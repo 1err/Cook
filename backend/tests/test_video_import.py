@@ -28,13 +28,14 @@ import app.video_import as video_import
 from app.extract import TranscriptFetchResult, fetch_transcript_from_video_link
 from app.video_import import (
     UnsupportedVideoUrl,
+    VideoSource,
     fetch_tiktok_text,
     fetch_youtube_text,
     parse_video_source,
 )
 
 
-TIKTOK_SOURCE = parse_video_source("https://www.tiktok.com/@chef/video/7412345678901234567")
+TIKTOK_SOURCE = VideoSource("tiktok", "https://www.tiktok.com/@chef/video/7412345678901234567", "https://www.tiktok.com/@chef/video/7412345678901234567", "7412345678901234567")
 
 
 @pytest.fixture(autouse=True)
@@ -94,8 +95,6 @@ def fake_json_response(payload: object):
         ("https://youtube.com/live/dQw4w9WgXcQ?feature=share", "youtube", "dQw4w9WgXcQ", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
         ("https://youtube-nocookie.com/embed/dQw4w9WgXcQ", "youtube", "dQw4w9WgXcQ", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
         ("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ", "youtube", "dQw4w9WgXcQ", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
-        ("https://www.tiktok.com/@chef/video/7412345678901234567?is_from_webapp=1", "tiktok", "7412345678901234567", "https://www.tiktok.com/@chef/video/7412345678901234567"),
-        ("https://vm.tiktok.com/ZMexample/", "tiktok", None, "https://vm.tiktok.com/ZMexample/"),
     ],
 )
 def test_parse_video_source_accepts_supported_forms(raw, provider, external_id, canonical):

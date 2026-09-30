@@ -98,7 +98,7 @@ test("keeps internal-only diagnostics out of review while preserving them on the
   const diagnostics = ["Garlic is prepared but no later use is explained; check the source.", "The tutorial completeness check could not finish. Review the method against the source."];
   mockParseLink.mockResolvedValueOnce({ ...parsedDraft, import_review: { ...parsedDraft.import_review!, warnings: diagnostics } });
   await render(<ImportModalScreen navigation={navigation().value as never} route={{} as never} />);
-  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), "https://youtu.be/example");
+  await fireEvent.changeText(screen.getByLabelText("YouTube or RedNote URL"), "https://youtu.be/example");
   await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
   expect(await screen.findByText("Your draft is ready")).toBeOnTheScreen();
   expect(screen.queryByRole("button", { name: "Details to check" })).not.toBeOnTheScreen();
@@ -113,7 +113,7 @@ test("shows only actionable deduplicated review notices", async () => {
   const internal = "The completeness check omitted or changed previously identified source actions.";
   mockParseLink.mockResolvedValueOnce({ ...parsedDraft, import_review: { ...parsedDraft.import_review!, warnings: [internal, missing, "  The amount of salt is not specified.  ", "The amount of salt is not specified."] } });
   await render(<ImportModalScreen navigation={navigation().value as never} route={{} as never} />);
-  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), "https://youtu.be/example");
+  await fireEvent.changeText(screen.getByLabelText("YouTube or RedNote URL"), "https://youtu.be/example");
   await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
   expect(await screen.findByText(missing)).toBeOnTheScreen();
   expect(screen.getAllByText("The amount of salt is not specified.")).toHaveLength(1);
@@ -124,7 +124,7 @@ test("reviews imported tutorial metadata and saves user edits without dropping h
   const nav = navigation();
   await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
 
-  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), "https://youtu.be/example");
+  await fireEvent.changeText(screen.getByLabelText("YouTube or RedNote URL"), "https://youtu.be/example");
   await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
 
   expect(await screen.findByText("About 5 min · Rough estimate · Hands-on")).toBeOnTheScreen();
@@ -150,7 +150,7 @@ test("does not save an import while a local tutorial duration is invalid", async
   const nav = navigation();
   await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
 
-  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), "https://youtu.be/example");
+  await fireEvent.changeText(screen.getByLabelText("YouTube or RedNote URL"), "https://youtu.be/example");
   await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
   const minutes = await screen.findByLabelText("Step 1 minutes");
   await fireEvent.changeText(minutes, "");
@@ -160,21 +160,21 @@ test("does not save an import while a local tutorial duration is invalid", async
   expect(mockCreate).not.toHaveBeenCalled();
 });
 
-test("prefills a shared TikTok URL and previews it through the normal link flow", async () => {
+test("prefills a shared RedNote URL and previews it through the normal link flow", async () => {
   const nav = navigation();
   await render(
     <ImportModalScreen
       navigation={nav.value as never}
-      route={{ params: { initialUrl: "https://vm.tiktok.com/ZMrecipe/" } } as never}
+      route={{ params: { initialUrl: "https://xhslink.com/o/QFcd665bHC" } } as never}
     />,
   );
 
-  expect(screen.getByLabelText("YouTube or TikTok URL")).toHaveDisplayValue("https://vm.tiktok.com/ZMrecipe/");
+  expect(screen.getByLabelText("YouTube or RedNote URL")).toHaveDisplayValue("https://xhslink.com/o/QFcd665bHC");
   expect(screen.getByRole("tab", { name: "Video link" })).toBeOnTheScreen();
   await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
 
   await waitFor(() =>
-    expect(mockParseLink).toHaveBeenCalledWith(expect.objectContaining({ url: "https://vm.tiktok.com/ZMrecipe/" })),
+    expect(mockParseLink).toHaveBeenCalledWith(expect.objectContaining({ url: "https://xhslink.com/o/QFcd665bHC" })),
   );
 });
 
@@ -183,11 +183,11 @@ test("locks link input and source tabs while a preview is parsing", async () => 
   mockParseLink.mockImplementationOnce(() => new Promise<Recipe>(() => {}));
 
   await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
-  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), "https://youtu.be/example");
+  await fireEvent.changeText(screen.getByLabelText("YouTube or RedNote URL"), "https://youtu.be/example");
   fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
 
   await waitFor(() => {
-    expect(screen.getByLabelText("YouTube or TikTok URL")).toBeDisabled();
+    expect(screen.getByLabelText("YouTube or RedNote URL")).toBeDisabled();
     expect(screen.getByRole("tab", { name: "Transcript" })).toBeDisabled();
   });
 });
@@ -216,24 +216,24 @@ test("locks transcript and expanded optional controls while a preview is parsing
 
 test("preserves a parse error until a source edit or mode change clears it", async () => {
   const nav = navigation();
-  mockParseLink.mockRejectedValue(new Error("This TikTok does not expose enough recipe text."));
+  mockParseLink.mockRejectedValue(new Error("This RedNote post does not expose enough recipe text."));
 
   await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
-  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), "https://vm.tiktok.com/ZMrecipe/");
+  await fireEvent.changeText(screen.getByLabelText("YouTube or RedNote URL"), "https://xhslink.com/o/QFcd665bHC");
   await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
 
-  expect(await screen.findByText("This TikTok does not expose enough recipe text.")).toBeOnTheScreen();
+  expect(await screen.findByText("This RedNote post does not expose enough recipe text.")).toBeOnTheScreen();
   await fireEvent.press(screen.getByRole("button", { name: "Optional details" }));
-  expect(screen.getByText("This TikTok does not expose enough recipe text.")).toBeOnTheScreen();
+  expect(screen.getByText("This RedNote post does not expose enough recipe text.")).toBeOnTheScreen();
 
-  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), "https://youtu.be/dQw4w9WgXcQ");
-  expect(screen.queryByText("This TikTok does not expose enough recipe text.")).not.toBeOnTheScreen();
+  await fireEvent.changeText(screen.getByLabelText("YouTube or RedNote URL"), "https://youtu.be/dQw4w9WgXcQ");
+  expect(screen.queryByText("This RedNote post does not expose enough recipe text.")).not.toBeOnTheScreen();
 
   await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
-  expect(await screen.findByText("This TikTok does not expose enough recipe text.")).toBeOnTheScreen();
+  expect(await screen.findByText("This RedNote post does not expose enough recipe text.")).toBeOnTheScreen();
 
   await fireEvent.press(screen.getByRole("tab", { name: "Transcript" }));
-  expect(screen.queryByText("This TikTok does not expose enough recipe text.")).not.toBeOnTheScreen();
+  expect(screen.queryByText("This RedNote post does not expose enough recipe text.")).not.toBeOnTheScreen();
 });
 
 test('creates and saves a manual recipe without calling either parsing provider', async () => {
@@ -273,7 +273,7 @@ test('does not navigate from a save belonging to an unmounted account view', asy
 test("partial drafts keep the source and edits while reviewing a replacement", async () => {
   const nav = navigation();
   await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
-  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), parsedDraft.source_url!);
+  await fireEvent.changeText(screen.getByLabelText("YouTube or RedNote URL"), parsedDraft.source_url!);
   await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
   expect(await screen.findByText("Your draft is ready")).toBeOnTheScreen();
   expect(screen.getByText("Finishing steps could not be verified.")).toBeOnTheScreen();
@@ -294,14 +294,14 @@ test("cancelled background jobs cannot publish a late draft", async () => {
   let complete!: (job: RecipeImportJob) => void;
   mockJobCreate.mockImplementationOnce(() => new Promise<RecipeImportJob>(resolve => { complete = resolve; }));
   await render(<ImportModalScreen navigation={nav.value as never} route={{} as never} />);
-  await fireEvent.changeText(screen.getByLabelText("YouTube or TikTok URL"), parsedDraft.source_url!);
+  await fireEvent.changeText(screen.getByLabelText("YouTube or RedNote URL"), parsedDraft.source_url!);
   void fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
   await waitFor(() => expect(mockJobCreate).toHaveBeenCalledTimes(1));
   await fireEvent.press(screen.getByRole("button", { name: "Cancel import" }));
   await act(async () => { complete({ id: "late-job", status: "queued" }); });
   await waitFor(() => expect(mockJobCancel).toHaveBeenCalledWith("late-job"));
   expect(screen.queryByLabelText("Title")).not.toBeOnTheScreen();
-  expect(screen.getByLabelText("YouTube or TikTok URL")).toHaveDisplayValue(parsedDraft.source_url!);
+  expect(screen.getByLabelText("YouTube or RedNote URL")).toHaveDisplayValue(parsedDraft.source_url!);
 });
 
 test("uploads a selected native video through the media job and preserves source", async () => {

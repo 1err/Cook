@@ -11,8 +11,6 @@ const YOUTUBE_NOCOOKIE_HOSTS = new Set([
   "youtube-nocookie.com",
   "www.youtube-nocookie.com",
 ]);
-const TIKTOK_CANONICAL_HOSTS = new Set(["www.tiktok.com", "m.tiktok.com"]);
-const TIKTOK_SHORT_HOSTS = new Set(["vm.tiktok.com", "vt.tiktok.com"]);
 const REDNOTE_HOSTS = new Set(["xiaohongshu.com", "www.xiaohongshu.com", "m.xiaohongshu.com"]);
 const REDNOTE_SHORT_HOSTS = new Set(["xhslink.com", "www.xhslink.com"]);
 const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -51,16 +49,7 @@ function isSupportedVideoUrl(parsed: URL): boolean {
   if (YOUTUBE_NOCOOKIE_HOSTS.has(host)) {
     return /^\/embed\/[A-Za-z0-9_-]{11}\/?$/.test(parsed.pathname);
   }
-  if (
-    TIKTOK_CANONICAL_HOSTS.has(host) &&
-    /^\/@[^/]+\/video\/\d+\/?$/.test(parsed.pathname)
-  ) {
-    return true;
-  }
-  if (TIKTOK_SHORT_HOSTS.has(host)) {
-    return /^\/[A-Za-z0-9_-]+\/?$/.test(parsed.pathname);
-  }
-  return host === "www.tiktok.com" && /^\/t\/[A-Za-z0-9_-]+\/?$/.test(parsed.pathname);
+  return false;
 }
 
 function findSupportedUrl(value: string | null | undefined): string | null {

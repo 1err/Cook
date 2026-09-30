@@ -128,7 +128,7 @@ function ImportPageContent({ userId }: { userId: string }) {
           setValues({ ...INITIAL_VALUES, url });
         } else {
           if (!text) throw new Error("This shared item is empty. Share a recipe link or video.");
-          if (/https?:\/\//i.test(text)) throw new Error("Share a YouTube, TikTok, or RedNote recipe link.");
+          if (/https?:\/\//i.test(text)) throw new Error("Share a YouTube or RedNote recipe link.");
           setValues({ ...INITIAL_VALUES, mode: "transcript", transcript: text });
         }
         setPendingShareId(shareId);

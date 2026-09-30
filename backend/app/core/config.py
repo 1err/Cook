@@ -172,6 +172,8 @@ class Settings(BaseSettings):
     AI_GLOBAL_MAX_INFLIGHT: int = Field(4, ge=1, le=100)
     AI_USER_MAX_INFLIGHT: int = Field(1, ge=1, le=20)
     AI_OPERATION_TIMEOUT_SECONDS: float = Field(85, gt=0, le=120)
+    # Queued public RedNote imports can download and compress before analysis.
+    REDNOTE_IMPORT_TIMEOUT_SECONDS: float = Field(420, ge=120, le=600)
 
     STORE_JOBS_MODE: Literal["auto", "local", "durable"] = "auto"
     STORE_JOBS_QUEUE_MAX: int = Field(100, ge=1, le=10000)

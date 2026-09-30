@@ -1,4 +1,5 @@
 import json
+from urllib.parse import quote
 from io import BytesIO
 from urllib.error import HTTPError
 
@@ -84,6 +85,13 @@ def test_media_only_note_exposes_allowlisted_video_for_analysis():
     assert result.media_url == "https://sns-video-bd.xhscdn.com/stream/test.mp4"
 
 
+def test_public_note_supports_numbered_video_and_backup_cdns():
+    from app.rednote import safe_rednote_media_url
+    assert safe_rednote_media_url('http://sns-video-v28.xhscdn.com/stream/recipe.mp4') == 'https://sns-video-v28.xhscdn.com/stream/recipe.mp4'
+    assert safe_rednote_media_url('https://sns-bak-v11.xhscdn.com/stream/recipe.mp4')
+    assert safe_rednote_media_url('https://sns-video-v28.xhscdn.com.evil.test/private') is None
+
+
 @pytest.mark.parametrize("url", ["https://sns-video-bd.xhscdn.com.evil.test/a", "https://user@sns-video-bd.xhscdn.com/a", "https://127.0.0.1/a", "file:///etc/passwd", "https://sns-video-bd.xhscdn.com:444/a"])
 def test_media_host_validation(url):
     from app.rednote import safe_rednote_media_url
@@ -110,3 +118,35 @@ def test_lookalike_login_redirect_is_not_attributed_to_rednote():
     def opener(request, **kwargs):
         raise HTTPError(request.full_url, 302, "Found", {"Location": "https://www.xiaohongshu.com.evil.test/login"}, None)
     assert fetch_rednote_text(parse_video_source(URL), opener=opener).status == "no_transcript"
+
+
+def test_public_share_recovers_token_bearing_note_from_login_wrapper():
+    from app.rednote import fetch_rednote_text
+    target = URL.replace('/explore/', '/discovery/item/').replace('https:', 'http:') + '?xsec_token=public-share%3D'
+    calls = []
+    def opener(request, **kwargs):
+        calls.append(request.full_url)
+        if len(calls) == 1:
+            raise HTTPError(request.full_url, 302, 'Found', {'Location': 'https://www.xiaohongshu.com/login?redirectPath=' + quote(target, safe='')}, None)
+        return Response(note_page())
+    result = fetch_rednote_text(parse_video_source('http://xhslink.com/o/Test'), opener=opener)
+    assert result.status == 'ok'
+    assert calls[1] == target.replace('http:', 'https:')
+    assert result.source.canonical_url == URL
+
+
+@pytest.mark.parametrize('target', ['https://127.0.0.1/private', URL, URL.replace(NOTE_ID, 'a'*24) + '?xsec_token=abc', 'https://evil.test/?url=' + URL + '?xsec_token=abc'])
+def test_login_wrapper_cannot_change_source_or_follow_untrusted_url(target):
+    from app.rednote import fetch_rednote_text
+    calls = []
+    def opener(request, **kwargs):
+        calls.append(request.full_url)
+        raise HTTPError(request.full_url, 302, 'Found', {'Location': '/login?redirectPath=' + quote(target, safe='')}, None)
+    assert fetch_rednote_text(parse_video_source(URL), opener=opener).status == 'access_required'
+    assert calls == [URL]
+
+
+@pytest.mark.parametrize('url', ['https://www.tiktok.com/@chef/video/7412345678901234567', 'https://vm.tiktok.com/Example/', 'https://v.douyin.com/yEtHaXkpL6g/', 'https://www.douyin.com/video/7690375454679248314'])
+def test_only_youtube_and_rednote_are_supported(url):
+    with pytest.raises(UnsupportedVideoUrl, match='YouTube.*RedNote'):
+        parse_video_source(url)

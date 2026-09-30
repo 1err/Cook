@@ -52,7 +52,7 @@ it("submits the shared File to the async media job and retains it on failure", a
 it("uses Android title-field links without overriding the dish title", async () => {
   mocks.read.mockResolvedValue({ id, createdAt: Date.now(), title: source, text: "", url: "", video: null });
   render(<ImportPage />);
-  await waitFor(() => expect(screen.getByLabelText("YouTube, TikTok, or RedNote URL")).toHaveValue(source));
+  await waitFor(() => expect(screen.getByLabelText("YouTube or RedNote URL")).toHaveValue(source));
   fireEvent.click(screen.getByRole("button", { name: "Prepare draft" })); await screen.findByRole("alert");
   expect(mocks.link).toHaveBeenCalledWith(expect.objectContaining({ mode: "link", url: source, title: undefined }));
 });
@@ -70,12 +70,12 @@ it("keeps expired shares out of the importer", async () => {
 
 it.each([
   "https://www.youtube.com/watch?v=A6bByqI_TH8",
-  "https://vm.tiktok.com/ZMrecipe/",
+  "https://xhslink.com/o/QFcd665bHC",
   "https://www.xiaohongshu.com/explore/69eaf618000000001a035987?xsec_token=keep",
 ])("extracts the URL from pasted share text before queuing %s", async url => {
   window.history.replaceState({}, "", "/import");
   render(<ImportPage />);
-  fireEvent.change(screen.getByLabelText("YouTube, TikTok, or RedNote URL"), { target: { value: `Try this recipe ${url}` } });
+  fireEvent.change(screen.getByLabelText("YouTube or RedNote URL"), { target: { value: `Try this recipe ${url}` } });
   fireEvent.click(screen.getByRole("button", { name: "Prepare draft" }));
   await screen.findByRole("alert");
   expect(mocks.link).toHaveBeenCalledWith(expect.objectContaining({ url, mode: "link" }));

@@ -172,7 +172,7 @@ describe("RootStack shared video bridge", () => {
     expect(mockNavigate).toHaveBeenCalledTimes(1);
     expect(replayReset).not.toHaveBeenCalled();
 
-    const nextUrl = "https://vm.tiktok.com/ZMnextRecipe/";
+    const nextUrl = "https://xhslink.com/o/NextRecipe";
     mockShareContext = {
       ...mockShareContext,
       shareIntent: {

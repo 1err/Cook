@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import time
+from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import Depends, HTTPException
@@ -31,13 +32,25 @@ class AIConcurrencyUnavailable(HTTPException):
 
 async def enforce_ai_budget(session: AsyncSession = Depends(get_session),
                             user: UserModel = Depends(get_current_user)):
+    async with asynccontextmanager(_enforce_ai_budget)(session, user,
+            duration=settings.AI_OPERATION_TIMEOUT_SECONDS):
+        yield
+
+
+async def enforce_rednote_import_budget(session, user):
+    """Longer source preparation only for bounded, durable RedNote imports."""
+    async with asynccontextmanager(_enforce_ai_budget)(session, user,
+            duration=settings.REDNOTE_IMPORT_TIMEOUT_SECONDS):
+        yield
+
+
+async def _enforce_ai_budget(session, user, *, duration):
     if not is_llm_enabled() and not video_analysis_available():
         await session.close()
         yield
         return
     request_id = uuid4()
     account_id = str(user.id)
-    duration = settings.AI_OPERATION_TIMEOUT_SECONDS
     deadline = time.monotonic() + duration
     token = None
     admission_finished = False

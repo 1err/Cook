@@ -68,7 +68,7 @@ describe("ImportSourceStep", () => {
 
     expect(
       screen.getByText(
-        "Paste a public recipe link or copied share text. If the post cannot be opened, upload the video or paste its recipe text.",
+        "Paste a public YouTube or RedNote recipe link, or the full copied share text. We’ll prepare a draft for you to review. If a post cannot be read, upload its video or paste the recipe text.",
       ),
     ).toBeVisible();
   });
@@ -77,7 +77,7 @@ describe("ImportSourceStep", () => {
     const user = userEvent.setup();
     render(
       <ImportSourceStep
-        values={{ ...values, url: "https://vm.tiktok.com/ZMrecipe/" }}
+        values={{ ...values, url: "https://xhslink.com/o/QFcd665bHC" }}
         mediaEnabled
         parsing
         error="retry"
@@ -89,7 +89,7 @@ describe("ImportSourceStep", () => {
     expect(screen.getByRole("tab", { name: "Video link" })).toBeDisabled();
     expect(screen.getByRole("tab", { name: "Upload video" })).toBeDisabled();
     expect(screen.getByRole("tab", { name: "Paste recipe text" })).toBeDisabled();
-    expect(screen.getByLabelText("YouTube, TikTok, or RedNote URL")).toBeDisabled();
+    expect(screen.getByLabelText("YouTube or RedNote URL")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Optional details" })).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: "Optional details" }));
@@ -148,7 +148,7 @@ describe("ImportSourceStep", () => {
       />,
     );
 
-    await user.type(screen.getByLabelText("YouTube, TikTok, or RedNote URL"), "https://youtu.be/dQw4w9WgXcQ");
+    await user.type(screen.getByLabelText("YouTube or RedNote URL"), "https://youtu.be/dQw4w9WgXcQ");
     expect(onChange).toHaveBeenCalled();
   });
 
@@ -177,7 +177,7 @@ describe("ImportSourceStep", () => {
       <ImportSourceStep values={{ ...values, url: shareText }} parsing={false} error={null} onChange={vi.fn()} onSubmit={onSubmit} />,
     );
 
-    const input = screen.getByLabelText("YouTube, TikTok, or RedNote URL") as HTMLInputElement;
+    const input = screen.getByLabelText("YouTube or RedNote URL") as HTMLInputElement;
     expect(input).toHaveValue(shareText);
     expect(input.checkValidity()).toBe(true);
     await user.click(screen.getByRole("button", { name: "Prepare draft" }));

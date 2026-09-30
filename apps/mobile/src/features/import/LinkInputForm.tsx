@@ -30,8 +30,8 @@ export function LinkInputForm({
   return (
     <View>
       <TextField
-        label="YouTube or TikTok URL"
-        placeholder="https://youtube.com/watch?v=… or https://tiktok.com/@…/video/…"
+        label="YouTube or RedNote URL"
+        placeholder="https://youtu.be/… or https://xhslink.com/…"
         value={url}
         onChangeText={onUrlChange}
         editable={!disabled}

@@ -106,7 +106,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/import");
 });
 
-test("imports a TikTok link, then saves the streamlined Review draft", async ({ page }, testInfo) => {
+test("imports a RedNote link, then saves the streamlined Review draft", async ({ page }, testInfo) => {
   await expect(page.getByRole("heading", { name: "Add a recipe", exact: true })).toBeVisible();
   const sourcePanel = await page.locator("main form").evaluate((form) => {
     const rect = form.closest('[class*="importWorkspace"]')!.getBoundingClientRect();
@@ -119,13 +119,13 @@ test("imports a TikTok link, then saves the streamlined Review draft", async ({ 
   await expect(page.getByLabel("Title (optional)")).toBeVisible();
   await page.getByRole("button", { name: "Optional details" }).click();
 
-  await page.getByLabel("YouTube, TikTok, or RedNote URL").fill("https://www.tiktok.com/@chef/video/7412345678901234567");
+  await page.getByLabel("YouTube or RedNote URL").fill("https://www.xiaohongshu.com/explore/69eaf618000000001a035987");
   const parseRequest = page.waitForRequest(
     (request) => request.method() === "POST" && new URL(request.url()).pathname === "/recipes/import-jobs",
   );
   await page.getByRole("button", { name: "Prepare draft" }).click();
   expect((await parseRequest).postDataJSON()).toMatchObject({
-    url: "https://www.tiktok.com/@chef/video/7412345678901234567",
+    url: "https://www.xiaohongshu.com/explore/69eaf618000000001a035987",
   });
 
   await expect(page.getByRole("button", { name: "Back to source" })).toBeVisible();
@@ -216,7 +216,7 @@ test("imports a TikTok link, then saves the streamlined Review draft", async ({ 
 });
 
 test("sends YouTube links to the link parser", async ({ page }) => {
-  await page.getByLabel("YouTube, TikTok, or RedNote URL").fill("https://www.youtube.com/watch?v=recipe");
+  await page.getByLabel("YouTube or RedNote URL").fill("https://www.youtube.com/watch?v=recipe");
   const parseRequest = page.waitForRequest(
     (request) => request.method() === "POST" && new URL(request.url()).pathname === "/recipes/import-jobs",
   );

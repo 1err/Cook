@@ -81,7 +81,7 @@ For the authoritative architecture, API table, deployment notes, and codebase co
 
 ## Flow
 
-1. **Import** (`/import`): Supported YouTube or TikTok link, or pasted recipe text/transcript, with optional title + tag overrides → server-side AI extraction → draft review → explicit save. Extraction requires a configured API key.
+1. **Import** (`/import`): Supported YouTube or RedNote link, or pasted recipe text/transcript, with optional title + tag overrides → server-side AI extraction → draft review → explicit save. Extraction requires a configured API key.
 2. **Library** (`/library`, `/library/[id]`): Browse, edit, delete, upload thumbnails (local disk or S3), and copy public or intentionally shared friend recipes.
 3. **Planner** (`/planner`): Weekly meal plan; desktop drag recipes into breakfast / lunch / dinner, while phones use slot-based pickers; tied to `?week=` (Monday).
 4. **Cook** (`/cook`): Coordinate multiple dishes with ordered steps, passive timers, device synchronization and offline step replay.
@@ -89,20 +89,22 @@ For the authoritative architecture, API table, deployment notes, and codebase co
 
 ## Video import support
 
-Video-link import does not download audiovisual media. It sends provider-exposed text through the existing recipe extraction and review flow.
+Public YouTube and RedNote links enter a durable import job and produce an editable recipe draft. Nothing is added to the recipe library until the user saves it.
 
-| Provider | Text used | Current limitations |
-|----------|-----------|---------------------|
-| YouTube | Public caption tracks from [`youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api), preferring English or Chinese and falling back to another available track; public title/description text is used when YouTube blocks the caption file | Ingredient-only fallback text gets one conservative step-recovery attempt. Private, age-restricted, region-locked, unavailable, or still-unrecoverable videos ask for a pasted transcript. |
-| TikTok | Public post title/caption returned by TikTok's oEmbed endpoint | This does **not** transcribe the video's speech. Ingredient-only text gets the same constrained recovery attempt; sparse, private, unavailable, or still-unrecoverable posts ask for a transcript. Arbitrary TikTok speech transcription needs a future provider. |
+| Provider | Content used | Availability |
+|----------|--------------|--------------|
+| YouTube | Public captions and descriptions; configured Gemini video analysis when captions are insufficient | Public videos; blocked or unavailable videos can be uploaded or supplied as recipe text. |
+| RedNote (小红书) | Public note description and video retrieved with an anonymous browser-compatible client | Paste a link or full copied share text, including HTTP `xhslink.com` short links. Token-bearing public destinations inside trusted login redirects are retried once. Genuine sign-in requirements remain a fallback. |
 
-- **Supported links:** Use public HTTPS YouTube or TikTok video URLs. RedNote and uploaded video files are not supported.
+- **Supported links:** YouTube and RedNote only. TikTok and Douyin are currently unavailable.
+- **Public video preparation:** RedNote CDN downloads are allowlisted, bounded to 150 MiB, and held in temporary files. Videos above the 30 MiB analysis limit are compressed locally with ffmpeg, up to ten minutes and 4K input. Prepared video stays within 30 MiB. The queued RedNote operation has a bounded seven-minute deadline and retains account/global admission and dollar limits. Uploads retain their 30 MiB limit.
+- **Retrieval cost:** No paid third-party downloader, platform login, personal cookies, or proxy subscription. AI analysis uses the existing configured providers and quotas.
 - **Env:** Create a `backend/.env` file (see `.env.example`). Configure a server-only `OPENAI_API_KEY`, dated model prices, and explicit account/app AI monetary allowances within the combined operating budget for recipe extraction; the default AI monetary allowance is zero. Without a key, import reports that AI is unavailable. Shopping refinement and tutorial timing can use conservative local fallbacks. Never put a provider key in web/mobile public environment variables.
 - **Fallback:** When caption retrieval is blocked, YouTube import tries retained player metadata, the public watch page, bounded requests to YouTube player hosts, and finally an anonymous Jina Reader request for the canonical video description. This last fallback depends on a third-party public-page service and can be rate-limited. If extraction finds ingredients but no usable method, the model makes one constrained step-recovery attempt using only the extracted dish and ingredients. If no usable steps remain, the link import returns a clear request for a pasted transcript instead of an empty tutorial. Manual URL entry remains the Share Sheet fallback and the supported Android path.
 
 ### iOS Share Sheet
 
-The mobile app can receive public YouTube/TikTok URLs through “Import to Chef World,” but the share extension is native code. Expo Go cannot contain or test it. Build a custom iOS development client, then run Metro in dev-client mode:
+The mobile app can receive public YouTube/RedNote URLs through “Import to Chef World,” but the share extension is native code. Expo Go cannot contain or test it. Build a custom iOS development client, then run Metro in dev-client mode:
 
 ```bash
 cd apps/mobile
@@ -114,7 +116,4 @@ The current `development` EAS profile targets the iOS simulator; use the interna
 
 ## TODOs (integrations)
 
-- Arbitrary TikTok speech transcription via a future provider; current TikTok import uses public oEmbed title/caption text only.
-- RedNote link import.
-- Transcript from upload: Whisper (or similar) on uploaded video.
-- Optional OCR on frames that show ingredient lists.
+- Revisit TikTok and Douyin retrieval when a dependable provider is available.

@@ -437,7 +437,9 @@ async def test_total_menu_deadline_releases_lease_and_retains_unknown_spend(menu
     provider = AsyncOpenAI(api_key='test-only-key', max_retries=0,
                            http_client=httpx.AsyncClient(transport=httpx.MockTransport(hang)))
     monkeypatch.setattr(menu_app.service, 'get_openai_client', lambda: provider)
-    monkeypatch.setattr(settings, 'AI_OPERATION_TIMEOUT_SECONDS', 0.02)
+    # Allow admission and SDK startup to reach the mocked provider before the
+    # deadline. This test covers unknown spend after dispatch, not preflight.
+    monkeypatch.setattr(settings, 'AI_OPERATION_TIMEOUT_SECONDS', 0.5)
     async def cleanup(call_id):
         cleanups.append(call_id)
     monkeypatch.setattr(menu_app.routes, 'cleanup_lease', cleanup)

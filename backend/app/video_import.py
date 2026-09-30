@@ -89,9 +89,9 @@ def parse_video_source(raw_url: str) -> VideoSource:
         parsed = urlsplit(original)
         port = parsed.port
     except ValueError as exc:
-        raise UnsupportedVideoUrl("Paste a public YouTube, TikTok, or RedNote (小红书) post link.") from exc
+        raise UnsupportedVideoUrl("Paste a public YouTube or RedNote (小红书) post link.") from exc
     if parsed.scheme != "https" or parsed.username or parsed.password or port not in (None, 443):
-        raise UnsupportedVideoUrl("Paste a public YouTube, TikTok, or RedNote (小红书) post link.")
+        raise UnsupportedVideoUrl("Paste a public YouTube or RedNote (小红书) post link.")
 
     host = (parsed.hostname or "").lower().rstrip(".")
     youtube_id = _youtube_id(host, parsed.path, parse_qs(parsed.query))
@@ -103,24 +103,7 @@ def parse_video_source(raw_url: str) -> VideoSource:
             external_id=youtube_id,
         )
 
-    tiktok_match = re.fullmatch(r"/@([^/]+)/video/(\d+)/?", parsed.path)
-    if host in {"www.tiktok.com", "m.tiktok.com"} and tiktok_match:
-        creator, post_id = tiktok_match.groups()
-        return VideoSource(
-            provider="tiktok",
-            original_url=original,
-            canonical_url=f"https://www.tiktok.com/@{creator}/video/{post_id}",
-            external_id=post_id,
-        )
-    if (
-        host in {"vm.tiktok.com", "vt.tiktok.com"}
-        and re.fullmatch(r"/[A-Za-z0-9_-]+/?", parsed.path)
-    ) or (
-        host == "www.tiktok.com"
-        and re.fullmatch(r"/t/[A-Za-z0-9_-]+/?", parsed.path)
-    ):
-        return VideoSource("tiktok", original, original, None)
-    raise UnsupportedVideoUrl("Paste a public YouTube, TikTok, or RedNote (小红书) post link.")
+    raise UnsupportedVideoUrl("Paste a public YouTube or RedNote (小红书) post link.")
 
 
 def _failure(source: VideoSource, status: str, message: str) -> VideoTextResult:
