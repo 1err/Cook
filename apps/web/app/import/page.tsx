@@ -20,6 +20,17 @@ import styles from "./ImportFlow.module.css";
 
 const INITIAL_VALUES: ImportSourceValues = { mode: "link", url: "", transcript: "", notes: "", title: "", libraryTags: [] };
 
+type LinkWaitKey = "import.waitYouTube" | "import.waitRedNote";
+
+function linkWaitKey(source: string | null | undefined): LinkWaitKey | null {
+  const url = extractSharedVideoUrl(source, undefined);
+  if (!url) return null;
+  const host = new URL(url).hostname.toLowerCase().replace(/\.+$/, "");
+  if (/(^|\.)(xiaohongshu|xhslink)\.com$/.test(host)) return "import.waitRedNote";
+  if (host === "youtu.be" || /(^|\.)youtube(?:-nocookie)?\.com$/.test(host)) return "import.waitYouTube";
+  return null;
+}
+
 function draftWithAdditionalText(draft: Recipe, text: string): string {
   return [
     "Update the current recipe with the additional recipe text. Retain the current details unless the added text corrects them.",
@@ -97,6 +108,7 @@ function ImportPageContent({ userId }: { userId: string }) {
   const [values, setValues] = useState<ImportSourceValues>(INITIAL_VALUES);
   const [manual, setManual] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [pendingWaitKey, setPendingWaitKey] = useState<LinkWaitKey | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draftRecipe, setDraftRecipe] = useState<Recipe | null>(null);
   const [candidate, setCandidate] = useState<Recipe | null>(null);
@@ -158,7 +170,7 @@ function ImportPageContent({ userId }: { userId: string }) {
   }, []);
 
   function cancelImport() {
-    active.current?.abort(); active.current = null; setLoading(false);
+    active.current?.abort(); active.current = null; setLoading(false); setPendingWaitKey(null);
   }
 
   function applyCandidate() {
@@ -188,6 +200,8 @@ function ImportPageContent({ userId }: { userId: string }) {
     const sourceUrl = updatingDraft && !showSource
       ? draftRecipe?.source_url || pastedUrl
       : pastedUrl || draftRecipe?.source_url;
+    const mode = analyzeVideo ? "video" : recipeText !== undefined || values.mode === "transcript" ? "text" : "link";
+    setPendingWaitKey(!importingMedia && mode !== "text" ? linkWaitKey(sourceUrl) : null);
     try {
       const payload = {
         url: sourceUrl || undefined,
@@ -206,7 +220,7 @@ function ImportPageContent({ userId }: { userId: string }) {
         }
         return webApiClient.recipes.createImportJob({
           ...payload,
-          mode: analyzeVideo ? "video" : recipeText !== undefined || values.mode === "transcript" ? "text" : "link",
+          mode,
           transcript: analyzeVideo ? undefined : recipeText ?? (values.mode === "transcript" ? values.transcript : undefined),
         });
       };
@@ -222,7 +236,7 @@ function ImportPageContent({ userId }: { userId: string }) {
       if (controller.signal.aborted || active.current !== controller) return;
       setError(caught instanceof Error ? caught.message : t("import.failed"));
     } finally {
-      if (active.current === controller) { active.current = null; setLoading(false); }
+      if (active.current === controller) { active.current = null; setLoading(false); setPendingWaitKey(null); }
     }
   }
 
@@ -242,9 +256,13 @@ function ImportPageContent({ userId }: { userId: string }) {
       <li aria-current="step">{t("import.createDraft")}</li>
       <li>{t("import.stageReview")}</li>
     </ol>
-    <Icon name="chef" size={32} className={styles.progressIcon} />
+    <div className={styles.progressHeading}>
+      <Icon name="chef" size={32} className={styles.progressIcon} />
+      {pendingWaitKey ? <span className={styles.waitEstimate}>{t(pendingWaitKey)}</span> : null}
+    </div>
     <h2 id="import-preparing-title" role="status">{t("import.processing")}</h2>
     <p>{t("import.preparingHelp")}</p>
+    {pendingWaitKey ? <p className={styles.waitHelp}>{t("import.waitHelp")}</p> : null}
     {sourceSummary ? <p className={styles.progressSource}>{sourceSummary.length > 140 ? `${sourceSummary.slice(0, 140)}…` : sourceSummary}</p> : null}
     <div className={styles.progressFooter}>
       <p>{t("import.reviewBeforeSaving")}</p>

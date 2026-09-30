@@ -205,6 +205,47 @@ test("review details retain actionable notices among internal diagnostics", asyn
   expect(screen.queryByText(internal)).not.toBeInTheDocument();
 });
 
+test.each([
+  [source, "YouTube · about 1–2 minutes"],
+  ["https://youtu.be/A6bByqI_TH8", "YouTube · about 1–2 minutes"],
+  ["复制这条分享 http://xhslink.com/o/QFcd665bHC，打开小红书查看菜谱", "RedNote · around 3 minutes"],
+  ["https://www.xiaohongshu.com/explore/65abcdef0123456789abcdef", "RedNote · around 3 minutes"],
+])("preparation shows the estimate for the submitted link %s", async (url, estimate) => {
+  mocks.createImportJob.mockImplementation(() => new Promise(() => {}));
+  render(<ImportPage />);
+  fireEvent.change(screen.getByLabelText("YouTube or RedNote URL"), { target: { value: url } });
+  fireEvent.click(screen.getByRole("button", { name: "Prepare draft" }));
+  expect(screen.getByText(estimate)).toBeVisible();
+  expect(screen.getByText("Larger videos can take longer. Keep this page open while we prepare your draft.")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel import" }));
+  expect(screen.queryByText(estimate)).not.toBeInTheDocument();
+  expect(screen.getByLabelText("YouTube or RedNote URL")).toHaveValue(url);
+});
+
+test("text recovery clears the previous link estimate despite retaining the source URL", async () => {
+  await importPartial();
+  fireEvent.click(screen.getByRole("button", { name: "Add recipe text" }));
+  fireEvent.change(screen.getByLabelText("Additional recipe text"), { target: { value: "Cut tofu and simmer." } });
+  mocks.createImportJob.mockImplementation(() => new Promise(() => {}));
+  fireEvent.click(screen.getByRole("button", { name: "Prepare updated draft" }));
+  expect(screen.getByText("Preparing your draft…")).toBeVisible();
+  expect(screen.queryByText("YouTube · about 1–2 minutes")).not.toBeInTheDocument();
+  expect(screen.queryByText("RedNote · around 3 minutes")).not.toBeInTheDocument();
+});
+
+test("video uploads do not inherit an estimate from a retained link", async () => {
+  mocks.createMediaImportJob.mockImplementation(() => new Promise(() => {}));
+  render(<ImportPage />);
+  await screen.findByRole("tab", { name: "Upload video" });
+  fireEvent.change(screen.getByLabelText("YouTube or RedNote URL"), { target: { value: source } });
+  fireEvent.click(screen.getByRole("tab", { name: "Upload video" }));
+  fireEvent.change(screen.getByLabelText("Upload video"), { target: { files: [new File(["video"], "recipe.mp4", { type: "video/mp4" })] } });
+  fireEvent.click(screen.getByRole("button", { name: "Prepare draft" }));
+  expect(screen.getByText("Preparing your draft…")).toBeVisible();
+  expect(screen.queryByText("YouTube · about 1–2 minutes")).not.toBeInTheDocument();
+  expect(screen.queryByText("RedNote · around 3 minutes")).not.toBeInTheDocument();
+});
+
 test("preparing replaces the source form and cancellation restores its inputs", async () => {
   let resolve!: (job: RecipeImportJob) => void;
   mocks.createImportJob.mockImplementation(() => new Promise(done => { resolve = done; }));

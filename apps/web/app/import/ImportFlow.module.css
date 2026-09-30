@@ -983,7 +983,10 @@
 .progressSteps li::before { content: counter(stage); display: grid; width: 1.4rem; height: 1.4rem; flex-shrink: 0; place-items: center; border-radius: 50%; background: var(--cw-color-canvas); }
 .progressSteps [aria-current="step"] { color: var(--cw-color-action); font-weight: 600; }
 .progressSteps [aria-current="step"]::before { background: var(--cw-color-action); color: var(--cw-color-on-action); }
-.progressIcon { color: var(--cw-color-action); margin-bottom: 1rem; }
+.progressHeading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; }
+.progressIcon { color: var(--cw-color-action); flex-shrink: 0; }
+.waitEstimate { padding: 0.45rem 0.75rem; border: 1px solid var(--cw-color-divider); border-radius: 8px; background: var(--cw-color-canvas); color: var(--cw-color-muted-ink); font-size: 0.8125rem; line-height: 1.5; }
+.preparingPanel .waitHelp { margin-top: -0.75rem; font-size: 0.8125rem; }
 .preparingPanel .progressSource { padding: 0.85rem 1rem; border: 1px solid var(--cw-color-divider); border-radius: 8px; background: var(--cw-color-canvas); font-size: 0.8125rem; max-width: 100%; overflow-wrap: anywhere; }
 .progressFooter { display: flex; align-items: center; justify-content: space-between; gap: 1.2rem; border-top: 1px solid var(--cw-color-divider); padding-top: 1rem; }
 .progressFooter p { margin: 0; font-size: 0.75rem; }
