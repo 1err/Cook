@@ -7,6 +7,7 @@ from uuid import UUID
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
@@ -129,6 +130,84 @@ async def test_patch_preserves_publication_and_copy_source(sql_session):
     assert saved.title == "Edited recipe"
     assert saved.is_public_catalog
     assert saved.catalog_source_recipe_id == "real-source"
+
+
+@pytest.mark.asyncio
+async def test_source_link_patch_adds_replaces_and_clears_without_changing_recipe(sql_session):
+    row = seed_recipe(sql_session, owner=CALLER_ID, public=True, source="real-source")
+    row.description = "Keep my edited description"
+    row.ingredients = json.dumps([{"name": "Onion", "quantity": "1"}])
+    row.steps = json.dumps([{"id": "00000000-0000-0000-0000-000000000123", "text": "Chop the onion"}])
+    row.raw_extraction_text = "Private import notes"
+    sql_session.sync.flush()
+    original = await repo_recipes.get_recipe(sql_session, row.id, CALLER_ID)
+    original_content = original.model_dump(exclude={"source_url"})
+
+    for source, expected in [
+        ("  https://example.com/recipe?language=zh  ", "https://example.com/recipe?language=zh"),
+        ("http://another.example/recipe", "http://another.example/recipe"),
+        (None, None),
+        ("https://example.com/new-source", "https://example.com/new-source"),
+        ("   ", None),
+    ]:
+        saved = await routes_recipes.recipe_update(
+            row.id, routes_recipes.RecipeUpdate(source_url=source),
+            session=sql_session, current_user=SimpleNamespace(id=CALLER_ID),
+        )
+        assert saved.source_url == expected
+        assert saved.model_dump(exclude={"source_url"}) == original_content
+        sql_session.sync.expire_all()
+        reloaded = await repo_recipes.get_recipe(sql_session, row.id, CALLER_ID)
+        assert reloaded.source_url == expected
+        assert reloaded.model_dump(exclude={"source_url"}) == original_content
+
+
+@pytest.mark.asyncio
+async def test_patch_omitting_source_link_preserves_existing_source(sql_session):
+    row = seed_recipe(sql_session, owner=CALLER_ID)
+    row.source_url = "https://example.com/original"
+    sql_session.sync.flush()
+    saved = await routes_recipes.recipe_update(
+        row.id, routes_recipes.RecipeUpdate(title="Updated title"),
+        session=sql_session, current_user=SimpleNamespace(id=CALLER_ID),
+    )
+    assert saved.source_url == "https://example.com/original"
+
+
+@pytest.mark.asyncio
+async def test_source_link_patch_cannot_edit_another_users_public_recipe(sql_session):
+    row = seed_recipe(sql_session, public=True)
+    row.source_url = "https://example.com/original"
+    sql_session.sync.flush()
+    with pytest.raises(HTTPException) as error:
+        await routes_recipes.recipe_update(
+            row.id, routes_recipes.RecipeUpdate(source_url="https://example.com/replacement"),
+            session=sql_session, current_user=SimpleNamespace(id=CALLER_ID),
+        )
+    assert error.value.status_code == 404
+    sql_session.sync.expire_all()
+    assert sql_session.sync.get(RecipeModel, row.id).source_url == "https://example.com/original"
+
+
+@pytest.mark.parametrize("source", [
+    "javascript:alert(1)",
+    "data:text/html,test",
+    "ftp://example.com/recipe",
+    "/relative-recipe",
+    "https://",
+    "https://user:password@example.com/recipe",
+    "https://user@example.com/recipe",
+    "https://example.com/with space",
+    "https://example.com/with\nnewline",
+    "https://example.com/with\ttab",
+    "https://example.com/with\x00null",
+    "https://example.com/with\x7fdelete",
+    "https://example.com\\@other.example/recipe",
+    "https://example.com/" + "a" * 4096,
+])
+def test_source_link_patch_rejects_unsafe_or_invalid_urls(source):
+    with pytest.raises(ValidationError):
+        routes_recipes.RecipeUpdate(source_url=source)
 
 
 @pytest.mark.asyncio

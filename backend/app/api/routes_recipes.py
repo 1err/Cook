@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from starlette.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AnyHttpUrl, BaseModel, Field, TypeAdapter, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api._types import LibraryTags, StepList, StringList
@@ -336,6 +336,7 @@ async def recipe_set_catalog_visibility(
 
 class RecipeUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=1024)
+    source_url: Optional[str] = Field(default=None, max_length=4096)
     thumbnail_url: Optional[str] = None
     ingredients: Optional[list[IngredientItem]] = None
     library_tags: Optional[LibraryTags] = None
@@ -344,6 +345,21 @@ class RecipeUpdate(BaseModel):
     steps: Optional[StepList] = None
     tips: Optional[StringList] = None
     equipment: Optional[StringList] = None
+
+    @field_validator("source_url")
+    @classmethod
+    def normalize_source_url(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            return None
+        if "\\" in value or any(ord(char) <= 32 or ord(char) == 127 for char in value):
+            raise ValueError("Use a valid http or https source link")
+        url = TypeAdapter(AnyHttpUrl).validate_python(value)
+        if not url.host or url.username or url.password:
+            raise ValueError("Use a source link without a username or password")
+        return value
 
     @field_validator("title", "ingredients", mode="before")
     @classmethod

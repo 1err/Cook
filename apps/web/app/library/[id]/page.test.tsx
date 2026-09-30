@@ -32,6 +32,15 @@ vi.mock("../../lib/i18n", () => ({
       "common.saving": "Saving",
       "common.tags": "Tags",
       "recipe.coverImage": "Cover image",
+      "recipe.sourceLinkLabel": "Source link",
+      "recipe.addSourceLink": "Add link",
+      "recipe.editSourceLink": "Edit link",
+      "recipe.saveSourceLink": "Save link",
+      "recipe.openSourceLink": "Open source link",
+      "recipe.sourceLinkInvalid": "Invalid source link",
+      "recipe.sourceLinkSaveError": "Could not save source link",
+      "recipe.sourceLinkSaved": "Source link saved",
+
       "recipe.deleteRecipe": "Delete recipe",
       "recipe.description": "Description",
       "recipe.editRecipeTitle": "Edit recipe",
@@ -164,5 +173,84 @@ describe("full recipe editor tutorial validity", () => {
       expect.objectContaining({ method: "PATCH" }),
     ));
     expect(mockPush).toHaveBeenCalledWith("/library");
+  });
+});
+
+
+describe("source link editing for ordinary recipe owners", () => {
+  function storedRecipe(source_url: string | null = null, fail = false) {
+    let stored = { ...recipe, source_url };
+    mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
+      if (path === "/recipes/catalog/editor-status") return new Response(JSON.stringify({ can_manage: false }));
+      if (options?.method === "PATCH") {
+        if (fail) return new Response("Failed", { status: 500 });
+        stored = { ...stored, ...JSON.parse(options.body as string) };
+      }
+      return new Response(JSON.stringify(stored));
+    });
+  }
+
+  it("adds and reloads a source without saving unrelated draft edits", async () => {
+    storedRecipe();
+    const user = userEvent.setup();
+    const view = render(<RecipeEditPage />);
+    const title = await screen.findByLabelText("Recipe title");
+    await user.clear(title);
+    await user.type(title, "Unsaved recipe title");
+    await user.click(screen.getByRole("button", { name: "Add link" }));
+    await user.type(screen.getByLabelText("Source link"), "  https://example.com/original  ");
+    await user.click(screen.getByRole("button", { name: "Save link" }));
+    expect(await screen.findByRole("link", { name: "Open source link ↗" })).toHaveAttribute("href", "https://example.com/original");
+    expect(title).toHaveValue("Unsaved recipe title");
+    expect(mockPush).not.toHaveBeenCalled();
+    const updates = mockApiFetch.mock.calls.filter(([, options]) => options?.method === "PATCH");
+    expect(updates).toHaveLength(1);
+    expect(JSON.parse(updates[0][1].body)).toEqual({ source_url: "https://example.com/original" });
+    view.unmount();
+    render(<RecipeEditPage />);
+    expect(await screen.findByRole("link", { name: "Open source link ↗" })).toHaveAttribute("href", "https://example.com/original");
+  });
+
+  it("cancels without writing and can replace an existing source", async () => {
+    storedRecipe("https://example.com/old");
+    const user = userEvent.setup();
+    render(<RecipeEditPage />);
+    await user.click(await screen.findByRole("button", { name: "Edit link" }));
+    const input = screen.getByLabelText("Source link");
+    expect(input).toHaveValue("https://example.com/old");
+    await user.clear(input);
+    await user.type(input, "https://example.com/new");
+    const formCancel = screen.getAllByRole("button", { name: "Cancel" }).at(-1)!;
+    await user.click(formCancel);
+    expect(mockApiFetch.mock.calls.filter(([, options]) => options?.method === "PATCH")).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Edit link" }));
+    expect(screen.getByLabelText("Source link")).toHaveValue("https://example.com/old");
+    await user.clear(screen.getByLabelText("Source link"));
+    await user.type(screen.getByLabelText("Source link"), "https://example.com/new");
+    await user.click(screen.getByRole("button", { name: "Save link" }));
+    expect(await screen.findByRole("link", { name: "Open source link ↗" })).toHaveAttribute("href", "https://example.com/new");
+  });
+
+  it.each(["javascript:alert(1)", "https://user:password@example.com/a", "https://example.com/with space"])("rejects unsafe source %s", async (url) => {
+    storedRecipe();
+    const user = userEvent.setup();
+    render(<RecipeEditPage />);
+    await user.click(await screen.findByRole("button", { name: "Add link" }));
+    await user.type(screen.getByLabelText("Source link"), url);
+    await user.click(screen.getByRole("button", { name: "Save link" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Invalid source link");
+    expect(mockApiFetch.mock.calls.filter(([, options]) => options?.method === "PATCH")).toHaveLength(0);
+  });
+
+  it("keeps the entered source available after a failed save", async () => {
+    storedRecipe(null, true);
+    const user = userEvent.setup();
+    render(<RecipeEditPage />);
+    await user.click(await screen.findByRole("button", { name: "Add link" }));
+    await user.type(screen.getByLabelText("Source link"), "https://example.com/original");
+    await user.click(screen.getByRole("button", { name: "Save link" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not save source link");
+    expect(screen.getByLabelText("Source link")).toHaveValue("https://example.com/original");
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 });

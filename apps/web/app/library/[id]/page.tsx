@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { isSafeExternalUrl } from "@cooking/shared";
+import { SourceLinkEditor } from "./SourceLinkEditor";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "../../lib/api";
 import { uploadRecipeImage } from "../../lib/uploadRecipeImage";
@@ -38,6 +38,7 @@ function RecipeEditContent() {
   const [tips, setTips] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [sourceSaving, setSourceSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [catalogSaving, setCatalogSaving] = useState(false);
@@ -117,7 +118,7 @@ function RecipeEditContent() {
   }
 
   async function handleSave() {
-    if (!id || !stepsValid || saving || uploadingImage || deleting) return;
+    if (!id || !stepsValid || sourceSaving || saving || uploadingImage || deleting) return;
     setSaving(true);
     setError(null);
     try {
@@ -145,7 +146,7 @@ function RecipeEditContent() {
   }
 
   async function handleDelete() {
-    if (!id || !recipe || uploadingImage || saving || deleting) return;
+    if (!id || !recipe || sourceSaving || uploadingImage || saving || deleting) return;
     if (!confirm(`Delete “${recipe.title}”?`)) return;
     setDeleting(true);
     setError(null);
@@ -201,7 +202,7 @@ function RecipeEditContent() {
             type="button"
             className={styles.saveButton}
             onClick={handleSave}
-            disabled={saving || uploadingImage || deleting || !stepsValid}
+            disabled={sourceSaving || saving || uploadingImage || deleting || !stepsValid}
           >
             {saving ? t("common.saving") : t("common.save")}
           </button>
@@ -408,7 +409,7 @@ function RecipeEditContent() {
                   type="button"
                   className={styles.secondaryButton}
                   onClick={handleCatalogToggle}
-                  disabled={catalogSaving}
+                  disabled={catalogSaving || sourceSaving}
                 >
                   {catalogSaving
                     ? t("common.saving")
@@ -418,11 +419,14 @@ function RecipeEditContent() {
                 </button>
               </div>
             ) : null}
-            {isSafeExternalUrl(recipe.source_url) ? (
-              <a href={recipe.source_url} target="_blank" rel="noopener noreferrer" className={styles.sourceLink}>
-                {t("recipe.openSourceLink")} ↗
-              </a>
-            ) : null}
+            <SourceLinkEditor
+              key={id}
+              recipeId={id}
+              value={recipe.source_url}
+              disabled={saving || deleting || catalogSaving}
+              onBusyChange={setSourceSaving}
+              onSaved={(source_url) => setRecipe((current) => current ? { ...current, source_url } : current)}
+            />
           </div>
         </section>
 
@@ -431,7 +435,7 @@ function RecipeEditContent() {
             <strong>{t("recipe.deleteRecipe")}</strong>
             <p>{recipe.title}</p>
           </div>
-          <button type="button" onClick={handleDelete} disabled={deleting || saving || uploadingImage}>
+          <button type="button" onClick={handleDelete} disabled={sourceSaving || deleting || saving || uploadingImage}>
             {deleting ? t("recipe.deleting") : t("common.delete")}
           </button>
         </section>
