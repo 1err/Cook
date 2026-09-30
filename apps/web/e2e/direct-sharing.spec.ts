@@ -59,10 +59,12 @@ async function expectCompactSourceLayout(page: Page) {
 }
 
 async function shareIntoWebsite(page: Page, { text = "", title = "", video = false } = {}) {
-  await page.waitForFunction(async () => {
-    const registration = await navigator.serviceWorker.getRegistration();
-    return registration?.active?.state === "activated" && Boolean(navigator.serviceWorker.controller);
-  }, undefined, { timeout: 10_000 });
+  // Fresh test contexts must first establish the installed app's worker.
+  // waitForFunction treats a Promise as truthy, so poll a synchronous state.
+  await page.evaluate(async () => { await navigator.serviceWorker.ready; });
+  if (!await page.evaluate(() => Boolean(navigator.serviceWorker.controller))) await page.reload();
+  await page.waitForFunction(() => navigator.serviceWorker.controller?.state === "activated",
+    undefined, { timeout: 30_000 });
   await page.evaluate(async (payload) => {
     const form = document.createElement("form");
     form.action = "/share-target";
@@ -86,6 +88,12 @@ async function shareIntoWebsite(page: Page, { text = "", title = "", video = fal
     document.body.append(form);
     form.submit();
   }, { title, text, video, bytes: VIDEO_BYTES });
+  await page.waitForURL((url) => {
+    const target = url.pathname === "/login"
+      ? new URL(url.searchParams.get("redirect") || "/", url.origin) : url;
+    return target.pathname === "/import"
+      && (target.searchParams.has("share") || target.searchParams.has("shareError"));
+  }, { timeout: 20_000 });
 }
 
 test("manual video upload keeps the existing import layout and creates a reviewable draft", async ({ page }) => {

@@ -54,9 +54,12 @@ async def compress_public_video(source: Path, media_type: str) -> bytes:
         raise ValueError('Use a recipe video up to 10 minutes and 4K resolution')
     target = source.with_name('prepared.mp4')
     bitrate = min(1600, int((MAX_MEDIA_BYTES * 0.85 * 8 / duration) / 1000) - 96)
-    await _run('ffmpeg', '-v', 'error', '-nostdin', '-y', *options,
-        '-map', '0:v:0', '-map', '0:a:0?', '-vf', "scale='min(720,iw)':-2",
-        '-c:v', 'libx264', '-preset', 'veryfast', '-threads', '1', '-crf', '24',
+    # The production task has half a CPU. Bound decoding/filter threads too,
+    # and retain 15 fps plus audio so recipe evidence fits the preparation limit.
+    await _run('ffmpeg', '-v', 'error', '-nostdin', '-y', '-filter_threads', '1',
+        '-threads', '1', *options,
+        '-map', '0:v:0', '-map', '0:a:0?', '-vf', "fps=15,scale='min(720,iw)':-2",
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '1', '-crf', '24',
         '-maxrate', f'{bitrate}k', '-bufsize', f'{bitrate*2}k',
         '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart', str(target), timeout=180)
     if not 0 < target.stat().st_size <= MAX_MEDIA_BYTES:

@@ -54,7 +54,7 @@ Link imports currently accept only YouTube and RedNote (小红书), including fu
 
 RedNote retrieval uses pinned curl-cffi with an anonymous browser-compatible client, not a paid downloader or personal cookies. It retries the exact token-bearing public note inside a trusted login redirect once; source attribution and completed jobs omit the share token. Genuine authentication requirements remain actionable upload/text fallbacks. Known numbered video/backup CDN hosts are allowlisted alongside the existing named CDNs.
 
-Public RedNote downloads are bounded to 150 MiB on temporary disk. Above the 30 MiB Gemini limit, local ffmpeg preparation accepts up to ten minutes/4K and returns a bounded MP4. Compression subprocesses are killed/reaped on timeout or cancellation. Durable RedNote imports use a seven-minute account/global admission deadline; other AI operations retain the existing 85-second deadline, monetary limits and quotas. No schema change is required.
+Public RedNote downloads are bounded to 150 MiB on temporary disk. Above the 30 MiB Gemini limit, local ffmpeg preparation accepts up to ten minutes/4K and returns a bounded MP4. Preparation preserves audio, uses up to 720px width and 15 fps, and bounds decoder/filter/encoder threads for the half-CPU production task. Compression subprocesses are killed/reaped on timeout or cancellation. Durable RedNote imports use a seven-minute account/global admission deadline; other AI operations retain the existing 85-second deadline, monetary limits and quotas. No schema change is required.
 
 ## Deployment (last recorded production context)
 
