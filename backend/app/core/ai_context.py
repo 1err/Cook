@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import time
 from uuid import UUID, uuid4
 
+from app.core.admin import is_admin_account_id
 from app.core.config import settings
 from app.core.ai_cost import Price, configured_price, prompt_token_ceiling, usd_to_nano
 from app.db import session as database
@@ -52,12 +53,14 @@ async def reserve_provider_call(context, messages, operation, *, price: Price | 
                      [price.input_usd_per_million, price.output_usd_per_million])):
             raise ValueError('Provider calls require reviewed positive token bounds and pricing')
         call_id = uuid4()
+        global_cap = usd_to_nano(settings.AI_MONTHLY_BUDGET_USD)
+        account_cap = (global_cap if is_admin_account_id(context.account_id)
+                       else usd_to_nano(settings.AI_ACCOUNT_MONTHLY_BUDGET_USD))
         async with session_factory()() as session:
             await reserve_call(session, call_id=call_id, request_id=context.request_id,
                                account_id=context.account_id, operation=operation, price=price,
                                input_bound=input_bound, output_bound=output_bound,
-                               global_cap=usd_to_nano(settings.AI_MONTHLY_BUDGET_USD),
-                               account_cap=usd_to_nano(settings.AI_ACCOUNT_MONTHLY_BUDGET_USD))
+                               global_cap=global_cap, account_cap=account_cap)
             await session.commit()
         return call_id
     except BaseException:
