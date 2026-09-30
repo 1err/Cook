@@ -1,0 +1,24 @@
+{
+  "backendApplicationSource": "bef00f31f07d6708675458abd449bcf17b1c92ba",
+  "backendTaskRevision": 38,
+  "test": "real production public API login and durable import job",
+  "source": "http://xhslink.com/o/QFcd665bHC",
+  "submittedFullShareText": true,
+  "title": "擂辣椒烧排骨",
+  "ingredientCount": 15,
+  "stepCount": 15,
+  "sampleIngredients": [
+    {
+      "name": "排骨",
+      "quantity": "500g"
+    },
+    {
+      "name": "螺丝椒",
+      "quantity": "400g"
+    }
+  ],
+  "observedSecondsAfterAdmission": 194.0,
+  "libraryRecipesSaved": 0,
+  "temporaryVerificationAccountRemoved": true,
+  "retiredApiTasksFullyStoppedBeforeTest": true
+}
