@@ -90,7 +90,7 @@ export function FocusedCookingStep({ dish, layout = "focused", onAction, onFocus
     <header className={styles.stackedHeading}><p>{t("cook.step.number", { current: index + 1, total: dish.steps.length })}</p><h2>{dish.title}</h2></header>
     <div className={styles.stackedStatus}><span className={badgeClassName}>{stateLabel}</span><p className={styles.stackedMobileMetadata}>{formatRecipeStepMetadata(step, t)}</p></div>
     <div className={styles.stackedInstruction}><p className={styles.stepText}>{step.text}</p><p className={styles.stepMeta}>{formatRecipeStepMetadata(step, t)}</p></div>
-    <div className={styles.stackedControls}>{liveTimer ? <div className={styles.stackedTimerPanel}>{timer}{timerActions}</div> : null}<div className={styles.stepActions}>{!liveTimer ? timerActions : null}{focusButton}</div></div>
+    <div className={styles.stackedControls}>{liveTimer ? <div className={styles.stackedTimerPanel}>{timer}<div className={styles.stackedTimerActions}>{timerActions}</div></div> : null}<div className={styles.stepActions}>{!liveTimer ? timerActions : null}{focusButton}</div></div>
     <div aria-label={t("cook.navigation.positionProgress", { progress })} className={styles.stackedProgress}>{progressBar}<span className={styles.liveRegion}>{t("cook.navigation.positionProgress", { progress })}</span></div>
     <div className={styles.stackedNavigation}>{navigation}</div>{takeover}
   </section>;
