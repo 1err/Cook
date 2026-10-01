@@ -2,6 +2,8 @@ export { RecipePager } from "./recipePager";
 export { runRecipeImport } from "./recipeImport";
 export { loadStoreProductBatches } from "./storeProductBatches";
 import type {
+  IngredientOption,
+  LibrarySearchPage,
   CookingActionPayload,
   CookingSession,
   InstacartItem,
@@ -20,6 +22,15 @@ import { normalizeStoreProductResponse } from "./storeProductExpiry";
 export { normalizeStoreProductResponse } from "./storeProductExpiry";
 
 export type RecipePageOptions = { limit?: number; cursor?: string | null; q?: string; tags?: RecipeTagSlug[] };
+export type LibrarySearchOptions = RecipePageOptions & { scope?: "all" | "mine" | "catalog"; ingredients?: string[]; match?: "all" | "any"; includeIngredients?: boolean };
+export function librarySearchQuery(options: LibrarySearchOptions = {}): string {
+  const params = new URLSearchParams(recipePageQuery(options));
+  params.set("scope", options.scope ?? "all");
+  params.set("match", options.match ?? "all");
+  if (options.includeIngredients) params.set("include_ingredients", "true");
+  for (const name of options.ingredients ?? []) params.append("ingredients", name);
+  return params.toString();
+}
 export function recipePageQuery(options: RecipePageOptions = {}): string {
   const params = new URLSearchParams({ limit: String(options.limit ?? 40) });
   if (options.cursor) params.set("cursor", options.cursor);
@@ -275,6 +286,8 @@ export function createApiClient(options: ApiClientOptions) {
       cancelImportJob: (id: string) => json<RecipeImportJob>(`/recipes/import-jobs/${encodeURIComponent(id)}`, { method: "DELETE" }),
       /** @deprecated Compatibility for older releases; use page for lists. */
       list: () => json<Recipe[]>("/recipes"),
+      ingredientOptions: () => json<IngredientOption[]>("/recipes/ingredient-options"),
+      searchPage: (options: LibrarySearchOptions = {}) => json<LibrarySearchPage>(`/recipes/search/page?${librarySearchQuery(options)}`),
       page: (options: RecipePageOptions = {}) => json<RecipePage>(`/recipes/page?${recipePageQuery(options)}`),
       catalogPage: (options: RecipePageOptions = {}) => json<RecipePage>(`/recipes/catalog/page?${recipePageQuery(options)}`),
       get: (id: string) => json<Recipe>(`/recipes/${encodeURIComponent(id)}`),

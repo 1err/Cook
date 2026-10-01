@@ -362,3 +362,14 @@ class RecipeSummary(BaseModel):
 class RecipePage(BaseModel):
     items: list[RecipeSummary]
     next_cursor: Optional[str] = None
+
+
+class LibraryRecipeSummary(RecipeSummary):
+    is_owned: bool
+    matched_ingredients: list[str] = Field(default_factory=list)
+    remaining_ingredients: list[str] | None = None
+
+class LibrarySearchPage(BaseModel):
+    items: list[LibraryRecipeSummary]
+    next_cursor: str | None = None
+    total_count: int = 0

@@ -140,3 +140,8 @@ export type RecipeSummary = Pick<Recipe, "id" | "title" | "source_url" | "thumbn
   already_saved: boolean;
 };
 export type RecipePage = { items: RecipeSummary[]; next_cursor: string | null };
+
+
+export type IngredientOption = { id: string; en: string; zh: string; aliases: string[] };
+export type LibraryRecipeSummary = RecipeSummary & { is_owned: boolean; matched_ingredients: string[]; remaining_ingredients: string[] | null };
+export type LibrarySearchPage = { items: LibraryRecipeSummary[]; next_cursor: string | null; total_count: number };

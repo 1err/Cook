@@ -7,7 +7,7 @@ Recipe without persisting; the client edits and then ``POST /recipes`` saves it.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import Query, APIRouter, Depends, File, HTTPException, Request, UploadFile
 from starlette.concurrency import run_in_threadpool
 from pydantic import AnyHttpUrl, BaseModel, Field, TypeAdapter, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +33,7 @@ from app.models import IngredientItem, Recipe, RecipeStep, RecipePage, ImportRev
 from app.services.video_analysis import video_analysis_available
 from app.services.recipe_language import normalize_import_display_fields
 from app.rednote import download_rednote_video
+from app.models import LibrarySearchPage
 from app.api.recipe_pages import RecipePageQuery, read_page
 from app.services.storage_service import (
     matches_image_signature,
@@ -232,6 +233,28 @@ async def catalog_editor_status(
     current_user: UserModel = Depends(get_current_user),
 ):
     return CatalogEditorStatus(can_manage=_can_manage_public_catalog(current_user))
+
+
+@router.get("/ingredient-options")
+async def ingredient_options(current_user: UserModel = Depends(get_current_user)):
+    from app.services.ingredient_search import OPTIONS
+    return OPTIONS
+
+
+@router.get("/search/page", response_model=LibrarySearchPage)
+async def library_search_page(
+    scope: str = Query("all", pattern="^(all|mine|catalog)$"),
+    match: str = Query("all", pattern="^(all|any)$"),
+    ingredients: list[str] = Query(default=[], max_length=20),
+    include_ingredients: bool = Query(False),
+    query: RecipePageQuery = Depends(), session: AsyncSession = Depends(get_session),
+    current_user: UserModel = Depends(get_current_user),
+):
+    from app.db.repo_library_search import search_library
+    try:
+        return await search_library(session,current_user.id,scope=scope,match=match,ingredients=ingredients,include_ingredients=include_ingredients,**query.values)
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
 
 
 @router.get("/page", response_model=RecipePage)

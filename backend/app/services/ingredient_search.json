@@ -1,0 +1,522 @@
+[
+  {
+    "id": "chicken",
+    "en": "Chicken",
+    "zh": "鸡肉",
+    "aliases": [
+      "chicken",
+      "chickens",
+      "chicken breast",
+      "chicken breasts",
+      "chicken thigh",
+      "chicken thighs",
+      "chicken leg",
+      "chicken legs",
+      "chicken wing",
+      "chicken wings",
+      "boneless chicken",
+      "鸡",
+      "鸡肉",
+      "鸡胸",
+      "鸡胸肉",
+      "鸡腿",
+      "鸡腿肉",
+      "鸡翅",
+      "整鸡",
+      "三黄鸡",
+      "童子鸡"
+    ]
+  },
+  {
+    "id": "chicken stock",
+    "en": "Chicken stock",
+    "zh": "鸡汤",
+    "aliases": [
+      "chicken stock",
+      "chicken broth",
+      "鸡汤",
+      "鸡高汤"
+    ]
+  },
+  {
+    "id": "potato",
+    "en": "Potato",
+    "zh": "土豆",
+    "aliases": [
+      "potato",
+      "potatoes",
+      "土豆",
+      "马铃薯"
+    ]
+  },
+  {
+    "id": "sweet potato",
+    "en": "Sweet potato",
+    "zh": "红薯",
+    "aliases": [
+      "sweet potato",
+      "sweet potatoes",
+      "红薯",
+      "番薯"
+    ]
+  },
+  {
+    "id": "potato starch",
+    "en": "Potato starch",
+    "zh": "土豆淀粉",
+    "aliases": [
+      "potato starch",
+      "土豆淀粉",
+      "马铃薯淀粉"
+    ]
+  },
+  {
+    "id": "egg",
+    "en": "Egg",
+    "zh": "鸡蛋",
+    "aliases": [
+      "egg",
+      "eggs",
+      "鸡蛋",
+      "鸡蛋液",
+      "蛋液"
+    ]
+  },
+  {
+    "id": "tomato",
+    "en": "Tomato",
+    "zh": "番茄",
+    "aliases": [
+      "tomato",
+      "tomatoes",
+      "番茄",
+      "西红柿"
+    ]
+  },
+  {
+    "id": "tofu",
+    "en": "Tofu",
+    "zh": "豆腐",
+    "aliases": [
+      "tofu",
+      "firm tofu",
+      "soft tofu",
+      "豆腐",
+      "嫩豆腐",
+      "老豆腐",
+      "北豆腐",
+      "南豆腐"
+    ]
+  },
+  {
+    "id": "eggplant",
+    "en": "Eggplant",
+    "zh": "茄子",
+    "aliases": [
+      "eggplant",
+      "eggplants",
+      "aubergine",
+      "aubergines",
+      "茄子",
+      "长茄子"
+    ]
+  },
+  {
+    "id": "pork",
+    "en": "Pork",
+    "zh": "猪肉",
+    "aliases": [
+      "pork",
+      "猪肉",
+      "猪里脊",
+      "里脊肉"
+    ]
+  },
+  {
+    "id": "pork belly",
+    "en": "Pork belly",
+    "zh": "五花肉",
+    "aliases": [
+      "pork belly",
+      "五花肉"
+    ]
+  },
+  {
+    "id": "beef",
+    "en": "Beef",
+    "zh": "牛肉",
+    "aliases": [
+      "beef",
+      "牛肉",
+      "牛里脊"
+    ]
+  },
+  {
+    "id": "shrimp",
+    "en": "Shrimp",
+    "zh": "虾",
+    "aliases": [
+      "shrimp",
+      "prawns",
+      "prawn",
+      "虾",
+      "虾仁"
+    ]
+  },
+  {
+    "id": "salmon",
+    "en": "Salmon",
+    "zh": "三文鱼",
+    "aliases": [
+      "salmon",
+      "三文鱼"
+    ]
+  },
+  {
+    "id": "mushroom",
+    "en": "Mushroom",
+    "zh": "蘑菇",
+    "aliases": [
+      "mushroom",
+      "mushrooms",
+      "蘑菇",
+      "白蘑菇"
+    ]
+  },
+  {
+    "id": "shiitake mushroom",
+    "en": "Shiitake mushroom",
+    "zh": "香菇",
+    "aliases": [
+      "shiitake mushroom",
+      "shiitake mushrooms",
+      "shiitake",
+      "香菇"
+    ]
+  },
+  {
+    "id": "onion",
+    "en": "Onion",
+    "zh": "洋葱",
+    "aliases": [
+      "onion",
+      "onions",
+      "洋葱"
+    ]
+  },
+  {
+    "id": "spring onion",
+    "en": "Spring onion",
+    "zh": "葱",
+    "aliases": [
+      "spring onion",
+      "spring onions",
+      "scallion",
+      "scallions",
+      "green onion",
+      "green onions",
+      "葱",
+      "小葱",
+      "香葱",
+      "葱花",
+      "葱段"
+    ]
+  },
+  {
+    "id": "ginger",
+    "en": "Ginger",
+    "zh": "姜",
+    "aliases": [
+      "ginger",
+      "姜",
+      "生姜",
+      "姜片",
+      "姜丝",
+      "姜末"
+    ]
+  },
+  {
+    "id": "garlic",
+    "en": "Garlic",
+    "zh": "蒜",
+    "aliases": [
+      "garlic",
+      "garlic clove",
+      "garlic cloves",
+      "蒜",
+      "大蒜",
+      "蒜瓣",
+      "蒜末",
+      "蒜片"
+    ]
+  },
+  {
+    "id": "rice",
+    "en": "Rice",
+    "zh": "大米",
+    "aliases": [
+      "rice",
+      "white rice",
+      "大米",
+      "米"
+    ]
+  },
+  {
+    "id": "noodles",
+    "en": "Noodles",
+    "zh": "面条",
+    "aliases": [
+      "noodles",
+      "noodle",
+      "面条"
+    ]
+  },
+  {
+    "id": "milk",
+    "en": "Milk",
+    "zh": "牛奶",
+    "aliases": [
+      "milk",
+      "牛奶"
+    ]
+  },
+  {
+    "id": "butter",
+    "en": "Butter",
+    "zh": "黄油",
+    "aliases": [
+      "butter",
+      "黄油"
+    ]
+  },
+  {
+    "id": "flour",
+    "en": "Flour",
+    "zh": "面粉",
+    "aliases": [
+      "flour",
+      "all purpose flour",
+      "all-purpose flour",
+      "面粉",
+      "中筋面粉"
+    ]
+  },
+  {
+    "id": "cornstarch",
+    "en": "Cornstarch",
+    "zh": "玉米淀粉",
+    "aliases": [
+      "cornstarch",
+      "corn starch",
+      "玉米淀粉"
+    ]
+  },
+  {
+    "id": "salt",
+    "en": "Salt",
+    "zh": "盐",
+    "aliases": [
+      "salt",
+      "sea salt",
+      "食盐",
+      "盐"
+    ]
+  },
+  {
+    "id": "sugar",
+    "en": "Sugar",
+    "zh": "糖",
+    "aliases": [
+      "sugar",
+      "white sugar",
+      "granulated sugar",
+      "糖",
+      "白糖",
+      "白砂糖"
+    ]
+  },
+  {
+    "id": "oil",
+    "en": "Cooking oil",
+    "zh": "食用油",
+    "aliases": [
+      "oil",
+      "cooking oil",
+      "vegetable oil",
+      "食用油",
+      "植物油",
+      "油"
+    ]
+  },
+  {
+    "id": "soy sauce",
+    "en": "Soy sauce",
+    "zh": "生抽",
+    "aliases": [
+      "soy sauce",
+      "light soy sauce",
+      "酱油",
+      "生抽",
+      "生抽酱油"
+    ]
+  },
+  {
+    "id": "dark soy sauce",
+    "en": "Dark soy sauce",
+    "zh": "老抽",
+    "aliases": [
+      "dark soy sauce",
+      "老抽",
+      "老抽酱油"
+    ]
+  },
+  {
+    "id": "oyster sauce",
+    "en": "Oyster sauce",
+    "zh": "蚝油",
+    "aliases": [
+      "oyster sauce",
+      "蚝油"
+    ]
+  },
+  {
+    "id": "vinegar",
+    "en": "Vinegar",
+    "zh": "醋",
+    "aliases": [
+      "vinegar",
+      "醋"
+    ]
+  },
+  {
+    "id": "sesame oil",
+    "en": "Sesame oil",
+    "zh": "香油",
+    "aliases": [
+      "sesame oil",
+      "香油",
+      "芝麻油"
+    ]
+  },
+  {
+    "id": "black pepper",
+    "en": "Black pepper",
+    "zh": "黑胡椒",
+    "aliases": [
+      "black pepper",
+      "黑胡椒",
+      "黑胡椒粉"
+    ]
+  },
+  {
+    "id": "white pepper",
+    "en": "White pepper",
+    "zh": "白胡椒",
+    "aliases": [
+      "white pepper",
+      "白胡椒",
+      "白胡椒粉"
+    ]
+  },
+  {
+    "id": "chili",
+    "en": "Chili",
+    "zh": "辣椒",
+    "aliases": [
+      "chili",
+      "chilli",
+      "chili pepper",
+      "chilli pepper",
+      "辣椒"
+    ]
+  },
+  {
+    "id": "carrot",
+    "en": "Carrot",
+    "zh": "胡萝卜",
+    "aliases": [
+      "carrot",
+      "carrots",
+      "胡萝卜"
+    ]
+  },
+  {
+    "id": "cabbage",
+    "en": "Cabbage",
+    "zh": "白菜",
+    "aliases": [
+      "cabbage",
+      "chinese cabbage",
+      "白菜",
+      "大白菜"
+    ]
+  },
+  {
+    "id": "baby cabbage",
+    "en": "Baby cabbage",
+    "zh": "娃娃菜",
+    "aliases": [
+      "baby cabbage",
+      "娃娃菜"
+    ]
+  },
+  {
+    "id": "spinach",
+    "en": "Spinach",
+    "zh": "菠菜",
+    "aliases": [
+      "spinach",
+      "菠菜"
+    ]
+  },
+  {
+    "id": "broccoli",
+    "en": "Broccoli",
+    "zh": "西兰花",
+    "aliases": [
+      "broccoli",
+      "西兰花"
+    ]
+  },
+  {
+    "id": "cucumber",
+    "en": "Cucumber",
+    "zh": "黄瓜",
+    "aliases": [
+      "cucumber",
+      "cucumbers",
+      "黄瓜"
+    ]
+  },
+  {
+    "id": "lemon",
+    "en": "Lemon",
+    "zh": "柠檬",
+    "aliases": [
+      "lemon",
+      "lemons",
+      "柠檬"
+    ]
+  },
+  {
+    "id": "basil",
+    "en": "Basil",
+    "zh": "罗勒",
+    "aliases": [
+      "basil",
+      "罗勒",
+      "九层塔"
+    ]
+  },
+  {
+    "id": "cooking wine",
+    "en": "Cooking wine",
+    "zh": "料酒",
+    "aliases": [
+      "cooking wine",
+      "shaoxing wine",
+      "料酒",
+      "绍兴酒"
+    ]
+  }
+]

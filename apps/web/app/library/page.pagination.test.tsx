@@ -13,9 +13,13 @@ vi.mock('../lib/i18n', async () => {
     ? (MESSAGE_MAP.en[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => String(vars?.[name] ?? ''))
     : key, useI18n: () => ({language:'en'})};
 });
-vi.mock('../lib/api', () => ({apiFetch:vi.fn(),webApiClient:{recipes:{page:mine,catalogPage:catalog}}}));
+vi.mock('../lib/api', () => ({apiFetch:vi.fn(),webApiClient:{recipes:{page:mine,catalogPage:catalog,ingredientOptions:async()=>[],searchPage:async (options:any)=>{
+ const {scope,ingredients,match,includeIngredients,...filters}=options;
+ const result=await (scope==="catalog"?catalog:mine)(filters);
+ return {...result,total_count:result.total_count??result.items.length,items:result.items.map((item:any)=>({...item,is_owned:scope!=="catalog",matched_ingredients:[],remaining_ingredients:includeIngredients?["garlic","ginger","salt","oil","spring onion"]:null}))};
+}}}}));
 const page = (id:string, next_cursor:string|null=null, already_saved=false):RecipePage => ({items:[{id,title:id,ingredient_count:0,step_count:0,already_saved}],next_cursor});
-beforeEach(() => {query.value="";mine.mockReset();catalog.mockReset();vi.stubGlobal('ResizeObserver',class {observe(){}disconnect(){}});});
+beforeEach(() => {query.value="view=mine";mine.mockReset();catalog.mockReset();vi.stubGlobal('ResizeObserver',class {observe(){}disconnect(){}});});
 afterEach(() => {cleanup();vi.unstubAllGlobals();});
 
 test('public cards use timing summaries and retain the independent copy action', async () => {

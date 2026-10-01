@@ -8,9 +8,9 @@ vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams()
 vi.mock("../components/RequireAuth", () => ({ RequireAuth: ({children}: any) => children }));
 vi.mock("../lib/auth", () => ({ useAuth: () => ({ user: {id:"audit"} }) }));
 vi.mock("../lib/api", () => ({apiFetch: vi.fn()}));
-vi.mock("../lib/useRecipePage", () => ({useRecipePage: (scope: string, _:unknown, enabled=true) => {
+vi.mock("../lib/useLibrarySearch", () => ({useLibrarySearch: (scope: string, _:unknown, enabled=true) => {
  if(enabled) state.scopes.push(scope);
- return {items:[], loading:false, error:scope === "mine" ? state.error : null, refresh:state.refresh, next:null};
+ return {items:[], loading:false, error:state.error, refresh:state.refresh, next:null};
 }}));
 beforeEach(() => {vi.spyOn(HTMLElement.prototype, "getClientRects").mockReturnValue([{}] as unknown as DOMRectList);vi.stubGlobal("localStorage", {getItem: () => "en", setItem: vi.fn()});state.error=null;state.refresh.mockClear();state.scopes=[];});
 afterEach(() => {cleanup();vi.unstubAllGlobals();vi.restoreAllMocks();});
@@ -27,7 +27,7 @@ test("an empty library offers public recipes and switches to that catalog", asyn
  await userEvent.click(screen.getByRole("button", {name:"Browse public recipes"}));
  expect(screen.getByRole("tab", {name:"Public library"})).toHaveAttribute("aria-selected","true");
  expect(state.scopes).toContain("catalog");
- expect(screen.getByRole("tab", {name:"Friends"})).toHaveAttribute("href","/library/friends");
+ expect(screen.getByRole("link", {name:"Friends"})).toHaveAttribute("href","/library/friends");
 });
 test("Chinese filters translate the summary, group, and recipe tags", async () => {
  vi.stubGlobal("localStorage", {getItem: () => "zh", setItem: vi.fn()});

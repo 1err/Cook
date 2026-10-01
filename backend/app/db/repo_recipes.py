@@ -326,6 +326,32 @@ def _decode_page_cursor(cursor: str, scope: list) -> tuple[str, str]:
         raise ValueError("Invalid recipe cursor for this library or filter") from exc
 
 
+
+def recipe_summary_statement(caller_id):
+    r = RecipeModel
+    copied = aliased(r)
+    already_saved = select(copied.id).where(copied.user_id == caller_id, copied.is_library_hidden.is_(False), or_(copied.id == r.id, copied.catalog_source_recipe_id == r.id)).exists()
+    steps_json = cast(r.steps, JSONB)
+    steps_array = case(
+        (func.jsonb_typeof(steps_json) == 'array', steps_json),
+        else_=cast(literal('[]'), JSONB),
+    )
+    timing_step = func.jsonb_array_elements(steps_array).table_valued(
+        column('value', JSONB),
+    ).alias('timing_step')
+    timing_steps = select(func.jsonb_agg(func.jsonb_build_object(
+        'duration_seconds', timing_step.c.value['duration_seconds'],
+        'duration_source', timing_step.c.value['duration_source'],
+        'attention_type', timing_step.c.value['attention_type'],
+    ))).select_from(timing_step).correlate(r).scalar_subquery()
+    return select(
+        r.id, r.title, func.lower(r.title).label("sort_title"), r.source_url, r.thumbnail_url,
+        r.library_tags, r.library_category, r.is_public_catalog, r.catalog_source_recipe_id,
+        r.total_time_minutes, func.jsonb_array_length(cast(r.ingredients, JSONB)).label("ingredient_count"),
+        func.jsonb_array_length(steps_array).label("step_count"), already_saved.label("already_saved"),
+        timing_steps.label('timing_steps'),
+    )
+
 async def recipe_page(
     session: AsyncSession, caller_id: uuid.UUID, *, owner_id: uuid.UUID | None = None,
     catalog: bool = False, limit: int = 40, cursor: str | None = None,
@@ -347,34 +373,7 @@ async def recipe_page(
         raise ValueError("Choose one library scope")
     scope = [f"friend:{owner_id}" if owner_id is not None else "catalog" if catalog else "mine", str(caller_id), q, tags]
     r = RecipeModel
-    copied = aliased(r)
-    already_saved = select(copied.id).where(
-        copied.user_id == caller_id,
-        copied.is_library_hidden.is_(False),
-        or_(copied.id == r.id, copied.catalog_source_recipe_id == r.id),
-    ).exists()
-    if owner_id is None and not catalog:
-        already_saved = literal(True)
-    steps_json = cast(r.steps, JSONB)
-    steps_array = case(
-        (func.jsonb_typeof(steps_json) == 'array', steps_json),
-        else_=cast(literal('[]'), JSONB),
-    )
-    timing_step = func.jsonb_array_elements(steps_array).table_valued(
-        column('value', JSONB),
-    ).alias('timing_step')
-    timing_steps = select(func.jsonb_agg(func.jsonb_build_object(
-        'duration_seconds', timing_step.c.value['duration_seconds'],
-        'duration_source', timing_step.c.value['duration_source'],
-        'attention_type', timing_step.c.value['attention_type'],
-    ))).select_from(timing_step).correlate(r).scalar_subquery()
-    statement = select(
-        r.id, r.title, func.lower(r.title).label("sort_title"), r.source_url, r.thumbnail_url,
-        r.library_tags, r.library_category, r.is_public_catalog, r.catalog_source_recipe_id,
-        r.total_time_minutes, func.jsonb_array_length(cast(r.ingredients, JSONB)).label("ingredient_count"),
-        func.jsonb_array_length(steps_array).label("step_count"), already_saved.label("already_saved"),
-        timing_steps.label('timing_steps'),
-    )
+    statement = recipe_summary_statement(caller_id)
     if catalog:
         statement = statement.where(r.is_public_catalog.is_(True))
     elif owner_id is not None:
