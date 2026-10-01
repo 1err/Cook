@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 from app.core.admin import is_admin_account_id
 from app.core.config import settings
-from app.core.ai_cost import Price, configured_price, prompt_token_ceiling, usd_to_nano
+from app.core.ai_cost import Price, configured_price, prompt_token_ceiling, usd_to_nano, text_output_token_limit
 from app.db import session as database
 from app.db.repo_ai_cost import reserve_call, reconcile_call, release_lease
 
@@ -45,7 +45,7 @@ async def reserve_provider_call(context, messages, operation, *, price: Price | 
                 raise ValueError('Explicit bounds require reviewed provider pricing')
             price = configured_price(settings)
             input_bound = prompt_token_ceiling(messages, model=price.model)
-            output_bound = settings.OPENAI_MAX_OUTPUT_TOKENS
+            output_bound = text_output_token_limit(settings, operation)
         elif (type(input_bound) is not int or input_bound <= 0
               or type(output_bound) is not int or output_bound <= 0
               or not price.model or not price.version

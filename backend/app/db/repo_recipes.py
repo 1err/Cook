@@ -9,7 +9,7 @@ import json
 import uuid
 from typing import Optional
 
-from sqlalchemy import and_, case, cast, column, func, literal, or_, select, tuple_
+from sqlalchemy import and_, case, cast, column, func, literal, or_, select, tuple_, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased
 from app.core.config import settings
@@ -33,7 +33,7 @@ class RecipeOwnershipConflict(ValueError):
 
 
 async def _lock_copy_owner(session: AsyncSession, user_id: uuid.UUID) -> bool:
-    """Serialize both copy routes before checking whether a source was copied."""
+    """Serialize library save/remove operations before checking whether a source was copied."""
     result = await session.execute(
         select(UserModel.id).where(UserModel.id == user_id).with_for_update()
     )
@@ -105,7 +105,7 @@ async def save_recipe(session: AsyncSession, recipe: Recipe, user_id: uuid.UUID)
     # The database checks ownership at the same instant it resolves an ID
     # conflict. A prior SELECT alone would leave a cross-account write race.
     statement = insert(RecipeModel).values(**values)
-    protected = {"id", "user_id", "is_public_catalog", "catalog_source_recipe_id"}
+    protected = {"id", "user_id", "is_public_catalog", "catalog_source_recipe_id", "is_library_hidden"}
     statement = statement.on_conflict_do_update(
         index_elements=[RecipeModel.id],
         set_={key: getattr(statement.excluded, key) for key in values if key not in protected},
@@ -147,7 +147,7 @@ async def get_recipes_by_ids(
 async def list_recipes(session: AsyncSession, user_id: uuid.UUID) -> list[Recipe]:
     result = await session.execute(
         select(RecipeModel)
-        .where(RecipeModel.user_id == user_id)
+        .where(RecipeModel.user_id == user_id, RecipeModel.is_library_hidden.is_(False))
         .order_by(func.lower(RecipeModel.title), RecipeModel.id)
     )
     rows = list(result.scalars().all())
@@ -195,21 +195,22 @@ async def copy_public_recipe_to_user(
     session: AsyncSession, recipe_id: str, user_id: uuid.UUID,
     created_outcome: list[bool] | None = None,
 ) -> Optional[Recipe]:
+    if not await _lock_copy_owner(session, user_id):
+        return None
     result = await session.execute(
         select(RecipeModel).where(
             RecipeModel.id == recipe_id,
             RecipeModel.is_public_catalog.is_(True),
-        )
+        ).execution_options(populate_existing=True)
     )
     source = result.scalars().one_or_none()
     if not source:
         return None
 
     if source.user_id == user_id:
+        source.is_library_hidden = False
+        await session.flush()
         return _row_to_recipe(source)
-
-    if not await _lock_copy_owner(session, user_id):
-        return None
     existing_result = await session.execute(
         select(RecipeModel).where(
             RecipeModel.user_id == user_id,
@@ -218,6 +219,8 @@ async def copy_public_recipe_to_user(
     )
     existing = existing_result.scalars().one_or_none()
     if existing:
+        existing.is_library_hidden = False
+        await session.flush()
         return _row_to_recipe(existing)
 
     clone = RecipeModel(
@@ -243,6 +246,45 @@ async def copy_public_recipe_to_user(
     if created_outcome is not None:
         created_outcome.append(True)
     return _row_to_recipe(clone)
+
+
+async def catalog_bookmark_states(session: AsyncSession, user_id: uuid.UUID, recipe_ids: list[str]) -> dict[str, bool]:
+    """Reconcile only affected catalog cards, including published personal copies."""
+    copied = aliased(RecipeModel)
+    saved = select(copied.id).where(
+        copied.user_id == user_id, copied.is_library_hidden.is_(False),
+        or_(copied.id == RecipeModel.id, copied.catalog_source_recipe_id == RecipeModel.id),
+    ).exists()
+    result = await session.execute(select(RecipeModel.id, saved).where(
+        RecipeModel.id.in_(recipe_ids), RecipeModel.is_public_catalog.is_(True),
+    ))
+    return dict(result.all())
+
+
+async def unsave_public_recipe(session: AsyncSession, recipe_id: str, user_id: uuid.UUID) -> dict[str, bool] | None:
+    """Hide only the caller's saved rows; retain public sources and all recipe data.
+
+    The same account lock as copying makes repeated or concurrent toggles safe.
+    Hide legacy duplicate copies together; saving restores one existing edited row.
+    """
+    if not await _lock_copy_owner(session, user_id):
+        return None
+    source = await session.execute(select(RecipeModel.id).where(
+        RecipeModel.id == recipe_id, RecipeModel.is_public_catalog.is_(True),
+    ))
+    if source.scalar_one_or_none() is None:
+        return None
+    removed = await session.execute(update(RecipeModel).where(
+        RecipeModel.user_id == user_id,
+        or_(RecipeModel.id == recipe_id, RecipeModel.catalog_source_recipe_id == recipe_id),
+    ).values(is_library_hidden=True).returning(RecipeModel.id, RecipeModel.catalog_source_recipe_id))
+    affected = {recipe_id}
+    for row_id, source_id in removed.all():
+        affected.add(row_id)
+        if source_id:
+            affected.add(source_id)
+    await session.flush()
+    return await catalog_bookmark_states(session, user_id, list(affected))
 
 
 async def delete_recipe(session: AsyncSession, recipe_id: str, user_id: uuid.UUID) -> bool:
@@ -308,6 +350,7 @@ async def recipe_page(
     copied = aliased(r)
     already_saved = select(copied.id).where(
         copied.user_id == caller_id,
+        copied.is_library_hidden.is_(False),
         or_(copied.id == r.id, copied.catalog_source_recipe_id == r.id),
     ).exists()
     if owner_id is None and not catalog:
@@ -335,11 +378,11 @@ async def recipe_page(
     if catalog:
         statement = statement.where(r.is_public_catalog.is_(True))
     elif owner_id is not None:
-        statement = statement.where(r.user_id == owner_id, select(UserModel.id).where(
+        statement = statement.where(r.user_id == owner_id, r.is_library_hidden.is_(False), select(UserModel.id).where(
             UserModel.id == owner_id, UserModel.is_library_public.is_(True), UserModel.id != caller_id,
         ).exists())
     else:
-        statement = statement.where(r.user_id == caller_id)
+        statement = statement.where(r.user_id == caller_id, r.is_library_hidden.is_(False))
     if q:
         statement = statement.where(func.lower(r.title).contains(q, autoescape=True))
     for tag in tags:

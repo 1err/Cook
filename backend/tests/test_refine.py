@@ -173,7 +173,7 @@ def test_partial_refinement_keeps_useful_categories_and_reports_fallback():
     assert result["refinement_status"] == "fallback"
     assert by_name(result) == {
         "牛肉": {"name": "牛肉", "suggested_purchase": "250 g", "grocery_category": "Meat & Seafood"},
-        "姜": {"name": "姜", "suggested_purchase": "10 g", "grocery_category": "Other"},
+        "生姜": {"name": "生姜", "suggested_purchase": "10 g", "grocery_category": "Other"},
     }
 
 

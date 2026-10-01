@@ -130,7 +130,7 @@ class _ScalarsResult:
 
 class _CopySession:
     def __init__(self, source: object) -> None:
-        self._results = iter([source, UUID("30000000-0000-0000-0000-000000000004"), None])
+        self._results = iter([UUID("30000000-0000-0000-0000-000000000004"), source, None])
         self.added: list[object] = []
 
     async def execute(self, statement: object) -> "_CopySession":

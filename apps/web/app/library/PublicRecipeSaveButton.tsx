@@ -20,18 +20,19 @@ export function PublicRecipeSaveButton({ title, saved, saving, onSave }: {
     document.addEventListener("keydown", dismissHint);
     return () => document.removeEventListener("keydown", dismissHint);
   }, []);
-  const label = t(saved ? "library.inYourLibrary" : saving ? "library.adding" : "library.addToMyLibrary");
+  const label = t(saving ? saved ? "library.removing" : "library.adding" : saved ? "library.removeFromLibrary" : "library.addToMyLibrary");
 
   return <div className={styles.saveControl} data-hint-dismissed={hintDismissed}>
     <button
       type="button"
       className={`${styles.saveButton} ${saved ? styles.saveButtonSaved : ""}`}
       aria-label={`${label}: ${title}`}
-      aria-disabled={saved || saving}
+      aria-pressed={saved}
+      aria-disabled={saving}
       aria-busy={saving}
       onPointerEnter={() => setHintDismissed(false)}
       onFocus={() => setHintDismissed(false)}
-      onClick={() => { if (!saved && !saving) onSave(); }}
+      onClick={() => { if (!saving) onSave(); }}
     >
       {saving ? <span className={styles.saveSpinner} aria-hidden="true" /> : <Icon name="bookmark" size={20} />}
     </button>

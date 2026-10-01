@@ -67,8 +67,7 @@ def test_invalid_source_partition_falls_back_without_dropping_or_doublecounting(
     inputs = [{"name": "大蒜", "quantity": "10 g"}, {"name": "蒜", "quantity": "10 g"}]
     result = refine._parse_llm_refine_response(response(*rows), inputs)
     assert result == {"purchase_items": [
-        {"name": "大蒜", "suggested_purchase": "10 g", "grocery_category": "Other"},
-        {"name": "蒜", "suggested_purchase": "10 g", "grocery_category": "Other"},
+        {"name": "大蒜", "suggested_purchase": "20 g", "grocery_category": "Other"},
     ], "refinement_status": "fallback"}
 
 
@@ -116,7 +115,9 @@ def test_translated_group_name_does_not_keep_renamed_group_quantity():
     inputs = [{"name": "大蒜", "quantity": "10 g"}, {"name": "蒜", "quantity": "5 g"}]
     result = refine._parse_llm_refine_response(response(group(["ingredient-1", "ingredient-2"], "garlic", "15 g")), inputs)
     assert result["refinement_status"] == "fallback"
-    assert {item["name"] for item in result["purchase_items"]} == {"大蒜", "蒜"}
+    assert result["purchase_items"] == [{
+        "name": "大蒜", "suggested_purchase": "15 g", "grocery_category": "Other",
+    }]
 
 
 def test_source_approximation_is_not_silently_removed():

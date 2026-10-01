@@ -63,7 +63,7 @@ async def test_refine_route_accepts_complete_source_group_and_consolidated_model
     }
     provider.assert_awaited_once()
     session.close.assert_awaited_once()
-    assert provider.await_args.kwargs["max_completion_tokens"] == llm.settings.OPENAI_MAX_OUTPUT_TOKENS
+    assert provider.await_args.kwargs["max_completion_tokens"] == llm.settings.OPENAI_SHOPPING_MAX_OUTPUT_TOKENS
 
 
 @pytest.mark.asyncio

@@ -254,7 +254,15 @@ async def recipes_catalog_list(
     return await repo_recipes.list_public_recipes(session)
 
 
-@router.post("/catalog/{recipe_id}/copy", response_model=Recipe)
+class CatalogBookmarkResponse(BaseModel):
+    bookmark_states: dict[str, bool]
+
+
+class CatalogRecipeCopy(Recipe):
+    bookmark_states: dict[str, bool]
+
+
+@router.post("/catalog/{recipe_id}/copy", response_model=CatalogRecipeCopy)
 async def copy_catalog_recipe(
     recipe_id: str,
     session: AsyncSession = Depends(get_session),
@@ -267,7 +275,21 @@ async def copy_catalog_recipe(
         raise HTTPException(404, "Recipe not found in the public catalog")
     if request is not None:
         request.state.analytics_skip = not bool(created)
-    return recipe
+    states = await repo_recipes.catalog_bookmark_states(session, current_user.id,
+        [id for id in [recipe_id, recipe.id, recipe.catalog_source_recipe_id] if id])
+    return CatalogRecipeCopy(**recipe.model_dump(), bookmark_states=states)
+
+
+@router.delete("/catalog/{recipe_id}/saved", response_model=CatalogBookmarkResponse)
+async def unsave_catalog_recipe(
+    recipe_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserModel = Depends(get_current_user),
+):
+    states = await repo_recipes.unsave_public_recipe(session, recipe_id, current_user.id)
+    if states is None:
+        raise HTTPException(404, "Recipe not found in the public catalog")
+    return CatalogBookmarkResponse(bookmark_states=states)
 
 
 @router.get("", response_model=list[Recipe], deprecated=True)

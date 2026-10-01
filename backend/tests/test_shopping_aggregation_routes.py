@@ -117,8 +117,10 @@ async def test_raw_sources_preserve_aliases_repeated_meals_and_recorded_equivale
         {"name": "食用盐", "quantity": "6 g"}, {"name": "盐", "quantity": "5–10 g"},
         {"name": "食用盐", "quantity": "6 g"}, {"name": "盐", "quantity": "5–10 g"},
     ]
-    assert rows["大蒜"]["source_items"] == [{"name": "大蒜", "quantity": "1 瓣"}] * 2
-    assert rows["蒜"]["source_items"] == [{"name": "蒜", "quantity": "20 g"}] * 2
+    assert rows["大蒜"]["source_items"] == [
+        {"name": "大蒜", "quantity": "1 瓣"}, {"name": "蒜", "quantity": "20 g"},
+    ] * 2
+    assert "蒜" not in rows
     assert rows["白糖"]["source_items"] == [{"name": "白糖", "quantity": "适量"}] * 2
     assert sum(len(row["source_items"]) for row in rows.values()) == 10
 

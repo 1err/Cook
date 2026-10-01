@@ -69,11 +69,13 @@ async def friend_recipe_detail(user_id: uuid.UUID, recipe_id: str,
                                session: AsyncSession = Depends(get_session),
                                current_user: UserModel = Depends(get_current_user)):
     await require_shared_owner(session, user_id, current_user.id)
-    recipe = await repo_recipes.get_recipe(session, recipe_id, user_id)
+    row = await repo_users.get_friend_library_recipe(session, user_id, recipe_id)
+    recipe = _row_to_shared_recipe(row) if row is not None else None
     if recipe is None:
         raise HTTPException(404, "Recipe not found.")
     saved = await session.execute(select(RecipeModel.id).where(
         RecipeModel.user_id == current_user.id,
+        RecipeModel.is_library_hidden.is_(False),
         or_(RecipeModel.id == recipe_id, RecipeModel.catalog_source_recipe_id == recipe_id),
     ).limit(1))
     return SharedRecipeDetail(**recipe.model_copy(update={"raw_extraction_text": None}).model_dump(), already_saved=saved.scalar_one_or_none() is not None)

@@ -17,7 +17,7 @@ async def database_ready() -> bool:
                 # image. Do not require an exact Alembic head: old replicas must
                 # remain ready during a subsequent additive migration/rollout.
                 await session.execute(text("""
-                    SELECT users.id, recipes.id, ai_call_ledger.id,
+                    SELECT users.id, recipes.id, recipes.is_library_hidden, ai_call_ledger.id,
                            store_jobs.id, request_limit_counters.scope,
                            meal_plan.revision, upload_budgets.scope,
                            store_request_leases.expires_at, users.auth_version, users.email_verified,

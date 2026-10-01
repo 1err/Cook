@@ -37,6 +37,7 @@ function LibraryPageContent() {
   const [search, setSearch] = useState("");
   const [catalogVisited, setCatalogVisited] = useState(searchParams.get("view") === "public");
   const [view, setView] = useState<"mine" | "public">(searchParams.get("view") === "public" ? "public" : "mine");
+  const knownBookmarkParents = useRef(new Map<string, string>());
   const copying = useRef(new Set<string>());
   const [copyingIds, setCopyingIds] = useState(new Set<string>());
   const [copyStatus, setCopyStatus] = useState("");
@@ -51,7 +52,28 @@ function LibraryPageContent() {
   const loading = page.loading && !page.items.length;
   const filteredMine = recipes;
   const filteredPublic = publicRecipes;
-  const [savedPublicIds, setSavedPublicIds] = useState(new Set<string>());
+  const [savedPublicState, setSavedPublicState] = useState(new Map<string, boolean>());
+  const bookmarkParents = useMemo(() => {
+    const parents = new Map(knownBookmarkParents.current);
+    for (const recipe of catalogPage.items) {
+      if (recipe.catalog_source_recipe_id) parents.set(recipe.id, recipe.catalog_source_recipe_id);
+    }
+    return parents;
+  }, [catalogPage.items]);
+  function relatedBookmarks(first: string, second: string) {
+    function ancestors(id: string) {
+      const ids = new Set<string>();
+      while (!ids.has(id)) {
+        ids.add(id);
+        const parent = bookmarkParents.get(id);
+        if (!parent) break;
+        id = parent;
+      }
+      return ids;
+    }
+    const firstIds = ancestors(first);
+    return [...ancestors(second)].some(id => firstIds.has(id));
+  }
 
   const mineFilterLabel = useMemo(() => {
     if (mineFilters.length === 0) return t("recipe.filters.all");
@@ -65,23 +87,33 @@ function LibraryPageContent() {
     );
   }
 
-  async function handleCopyPublicRecipe(recipeId: string, title: string) {
-    if (copying.current.has(recipeId)) return;
+  async function handleTogglePublicRecipe(recipeId: string, title: string, saved: boolean) {
+    if ([...copying.current].some(id => relatedBookmarks(recipeId, id))) return;
+    knownBookmarkParents.current = bookmarkParents;
     copying.current.add(recipeId);
     setCopyingIds(new Set(copying.current));
-    setCopyStatus(`${t("library.adding")}: ${title}`);
+    setCopyStatus(`${t(saved ? "library.removing" : "library.adding")}: ${title}`);
     setError(null);
     try {
-      const response = await apiFetch(`/recipes/catalog/${recipeId}/copy`, { method: "POST" });
+      const id = encodeURIComponent(recipeId);
+      const response = await apiFetch(`/recipes/catalog/${id}/${saved ? "saved" : "copy"}`, { method: saved ? "DELETE" : "POST" });
       if (!response.ok) throw new Error((await response.text()) || "Could not add recipe");
+      const result = response.status === 204 ? {} : await response.json();
       if (!mounted.current) return;
-      setSavedPublicIds(current => new Set(current).add(recipeId));
-      setCopyStatus(`${t("library.inYourLibrary")}: ${title}`);
+      setSavedPublicState(current => {
+        const next = new Map(current).set(recipeId, !saved);
+        for (const [id, value] of Object.entries(result.bookmark_states ?? {})) {
+          if (typeof value === "boolean") next.set(id, value);
+        }
+        return next;
+      });
+      setCopyStatus(`${t(saved ? "library.removedFromLibrary" : "library.inYourLibrary")}: ${title}`);
       void minePage.refresh();
+      // Keep loaded catalog pages and focus; membership is patched above.
     } catch (caught) {
       if (!mounted.current) return;
       setCopyStatus("");
-      setError(t("library.copyError"));
+      setError(t(saved ? "library.removeError" : "library.copyError"));
     } finally {
       copying.current.delete(recipeId);
       if (mounted.current) setCopyingIds(new Set(copying.current));
@@ -206,7 +238,7 @@ function LibraryPageContent() {
               );
             }
 
-            const alreadyAdded = recipe.already_saved || savedPublicIds.has(recipe.id);
+            const alreadyAdded = savedPublicState.get(recipe.id) ?? Boolean(recipe.already_saved);
             const tags = getRecipeTags(recipe).slice(0, 2);
             return (
               <div key={recipe.id} role="listitem" className={styles.publicCard}>
@@ -235,8 +267,8 @@ function LibraryPageContent() {
                 <PublicRecipeSaveButton
                   title={recipe.title}
                   saved={Boolean(alreadyAdded)}
-                  saving={copyingIds.has(recipe.id)}
-                  onSave={() => void handleCopyPublicRecipe(recipe.id, recipe.title)}
+                  saving={[...copyingIds].some(id => relatedBookmarks(recipe.id, id))}
+                  onSave={() => void handleTogglePublicRecipe(recipe.id, recipe.title, alreadyAdded)}
                 />
               </div>
             );

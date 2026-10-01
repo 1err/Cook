@@ -372,3 +372,85 @@ async def test_copy_retry_does_not_rewrite_historical_import_data(sql_session):
     copied = await repo_recipes.copy_public_recipe_to_user(sql_session, source.id, CALLER_ID)
     assert copied.id == legacy.id
     assert sql_session.sync.get(RecipeModel, legacy.id).raw_extraction_text == "Existing historical data"
+
+
+@pytest.mark.asyncio
+async def test_unbookmark_owned_source_keeps_public_recipe_and_restores_same_edits(sql_session):
+    source = share_private_import(sql_session)
+    original = (await repo_recipes.get_recipe(sql_session, source.id, OWNER_ID)).model_dump()
+    for _ in range(2):
+        response = await routes_recipes.unsave_catalog_recipe(
+            source.id, session=sql_session, current_user=SimpleNamespace(id=OWNER_ID),
+        )
+        assert response.bookmark_states == {source.id: False}
+    assert await repo_recipes.list_recipes(sql_session, OWNER_ID) == []
+    assert await repo_users.list_friend_library_recipes(sql_session, OWNER_ID) == []
+    assert (await repo_recipes.get_public_recipe(sql_session, source.id)).id == source.id
+    assert [r.id for r in await repo_recipes.list_public_recipes(sql_session)] == [source.id]
+    # Existing planner references and editing still resolve the owned recipe.
+    assert (await repo_recipes.get_recipes_by_ids(sql_session, [source.id], OWNER_ID))[0].model_dump() == original
+    restored = await repo_recipes.copy_public_recipe_to_user(sql_session, source.id, OWNER_ID)
+    assert restored.model_dump() == original
+    assert [r.id for r in await repo_recipes.list_recipes(sql_session, OWNER_ID)] == [source.id]
+    assert sql_session.sync.scalar(select(func.count()).select_from(RecipeModel)) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('restore_path', ['catalog', 'friend'])
+async def test_unbookmark_only_hides_callers_copies_and_restores_edited_copy(sql_session, restore_path):
+    source = share_private_import(sql_session)
+    copy = await repo_recipes.copy_public_recipe_to_user(sql_session, source.id, CALLER_ID)
+    row = sql_session.sync.get(RecipeModel, copy.id)
+    row.title = 'My edited soup'
+    row.raw_extraction_text = 'My private edits'
+    sql_session.sync.flush()
+    original = (await repo_recipes.get_recipe(sql_session, copy.id, CALLER_ID)).model_dump()
+    await repo_recipes.unsave_public_recipe(sql_session, source.id, CALLER_ID)
+    assert await repo_recipes.list_recipes(sql_session, CALLER_ID) == []
+    assert [r.id for r in await repo_recipes.list_recipes(sql_session, OWNER_ID)] == [source.id]
+    detail = await routes_users.friend_recipe_detail(
+        OWNER_ID, source.id, session=sql_session, current_user=SimpleNamespace(id=CALLER_ID),
+    )
+    assert not detail.already_saved
+    if restore_path == 'catalog':
+        restored = await repo_recipes.copy_public_recipe_to_user(sql_session, source.id, CALLER_ID)
+    else:
+        restored = repo_recipes._row_to_recipe(await repo_users.copy_friend_recipe_to_user(sql_session, OWNER_ID, source.id, CALLER_ID))
+    assert restored.model_dump() == original
+    assert sql_session.sync.scalar(select(func.count()).select_from(RecipeModel)) == 2
+
+
+@pytest.mark.asyncio
+async def test_unbookmark_missing_private_source_cannot_hide_other_accounts_recipe(sql_session):
+    row = seed_recipe(sql_session)
+    with pytest.raises(HTTPException) as error:
+        await routes_recipes.unsave_catalog_recipe(row.id, session=sql_session, current_user=SimpleNamespace(id=CALLER_ID))
+    assert error.value.status_code == 404
+    assert [r.id for r in await repo_recipes.list_recipes(sql_session, OWNER_ID)] == [row.id]
+
+
+@pytest.mark.asyncio
+async def test_hidden_library_recipe_cannot_be_read_or_copied_through_friend_library(sql_session):
+    source = share_private_import(sql_session)
+    await repo_recipes.unsave_public_recipe(sql_session, source.id, OWNER_ID)
+    with pytest.raises(HTTPException) as error:
+        await routes_users.friend_recipe_detail(OWNER_ID, source.id, session=sql_session, current_user=SimpleNamespace(id=CALLER_ID))
+    assert error.value.status_code == 404
+    assert await repo_users.copy_friend_recipe_to_user(sql_session, OWNER_ID, source.id, CALLER_ID) is None
+    assert await repo_recipes.get_public_recipe(sql_session, source.id) is not None
+
+
+@pytest.mark.asyncio
+async def test_related_published_copy_bookmarks_reconcile_without_losing_recipe_data(sql_session):
+    source = share_private_import(sql_session)
+    copy = await repo_recipes.copy_public_recipe_to_user(sql_session, source.id, CALLER_ID)
+    row = sql_session.sync.get(RecipeModel, copy.id)
+    row.is_public_catalog = True
+    row.title = 'My published edited copy'
+    sql_session.sync.flush()
+    states = await repo_recipes.unsave_public_recipe(sql_session, source.id, CALLER_ID)
+    assert states == {source.id: False, copy.id: False}
+    response = await routes_recipes.copy_catalog_recipe(copy.id, session=sql_session, current_user=SimpleNamespace(id=CALLER_ID))
+    assert response.id == copy.id and response.title == 'My published edited copy'
+    assert response.bookmark_states == {source.id: True, copy.id: True}
+    assert sql_session.sync.scalar(select(func.count()).select_from(RecipeModel)) == 2

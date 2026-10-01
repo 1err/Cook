@@ -57,10 +57,18 @@ async def list_friend_library_recipes(
     """
     result = await session.execute(
         select(RecipeModel)
-        .where(RecipeModel.user_id == owner_user_id)
+        .where(RecipeModel.user_id == owner_user_id, RecipeModel.is_library_hidden.is_(False))
         .order_by(func.lower(RecipeModel.title), RecipeModel.id)
     )
     return list(result.scalars().all())
+
+
+async def get_friend_library_recipe(session: AsyncSession, owner_user_id: uuid.UUID, recipe_id: str) -> Optional[RecipeModel]:
+    result = await session.execute(select(RecipeModel).where(
+        RecipeModel.id == recipe_id, RecipeModel.user_id == owner_user_id,
+        RecipeModel.is_library_hidden.is_(False),
+    ))
+    return result.scalars().one_or_none()
 
 
 async def copy_friend_recipe_to_user(
@@ -87,13 +95,7 @@ async def copy_friend_recipe_to_user(
     if owner is None or not bool(owner.is_library_public):
         return None
 
-    source_result = await session.execute(
-        select(RecipeModel).where(
-            RecipeModel.id == recipe_id,
-            RecipeModel.user_id == source_user_id,
-        )
-    )
-    source = source_result.scalars().one_or_none()
+    source = await get_friend_library_recipe(session, source_user_id, recipe_id)
     if source is None:
         return None
 
@@ -107,6 +109,8 @@ async def copy_friend_recipe_to_user(
     )
     existing = existing_result.scalars().one_or_none()
     if existing is not None:
+        existing.is_library_hidden = False
+        await session.flush()
         return existing
 
     clone = RecipeModel(

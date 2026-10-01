@@ -24,7 +24,7 @@ test('public cards use timing summaries and retain the independent copy action',
   catalog.mockResolvedValue({ items: [{ ...page('Slow public recipe').items[0], total_time_minutes: 500,
     timing_summary: { hands_on_minutes: 20, passive_minutes: 480, is_estimate: false } }], next_cursor: null });
   const { apiFetch } = await import('../lib/api');
-  vi.mocked(apiFetch).mockResolvedValue(new Response('{}'));
+  vi.mocked(apiFetch).mockImplementation(async () => new Response('{}'));
   render(<LibraryPage />);
   const heading = await screen.findByRole('heading', { name: 'Slow public recipe' });
   expect(screen.queryByText('20 min hands-on')).not.toBeInTheDocument();
@@ -37,8 +37,8 @@ test('public cards use timing summaries and retain the independent copy action',
   const copy = screen.getByRole('button', { name: /^library.addToMyLibrary:/ });
   expect(copy.closest('a')).toBeNull();
   fireEvent.click(copy);
-  expect(await screen.findByRole('button', { name: /^library.inYourLibrary:/ })).toHaveAttribute('aria-disabled', 'true');
-  expect(apiFetch).toHaveBeenLastCalledWith('/recipes/catalog/Slow public recipe/copy', { method: 'POST' });
+  expect(await screen.findByRole('button', { name: /^library.removeFromLibrary:/ })).toHaveAttribute('aria-pressed', 'true');
+  expect(apiFetch).toHaveBeenLastCalledWith('/recipes/catalog/Slow%20public%20recipe/copy', { method: 'POST' });
 });
 
 test('loads one page on demand, searches server-side, and uses per-row copy state without private-library scans', async () => {
@@ -56,7 +56,7 @@ test('loads one page on demand, searches server-side, and uses per-row copy stat
   expect(screen.queryByRole('heading',{name:'First'})).not.toBeInTheDocument();
   expect(mine).toHaveBeenLastCalledWith({q:'Needle',tags:[],cursor:null});
   fireEvent.click(screen.getByRole('tab',{name:'library.publicLibrary'}));
-  expect(await screen.findByRole('button',{name:/^library.inYourLibrary:/})).toHaveAttribute('aria-disabled', 'true');
+  expect(await screen.findByRole('button',{name:/^library.removeFromLibrary:/})).toHaveAttribute('aria-pressed', 'true');
   expect(mine).toHaveBeenCalledTimes(3);
 });
 
@@ -89,14 +89,14 @@ test('retains private recipes across a catalog failure and retries only the fail
 
 test('a catalog copy refreshes the retained private library', async () => {
   const { apiFetch } = await import('../lib/api');
-  vi.mocked(apiFetch).mockResolvedValue(new Response('{}'));
+  vi.mocked(apiFetch).mockImplementation(async () => new Response('{}'));
   mine.mockResolvedValueOnce(page('Previously saved')).mockResolvedValueOnce(page('Newly copied'));
   catalog.mockResolvedValueOnce(page('Public recipe'));
   render(<LibraryPage />);
   await screen.findByRole('heading', { name: 'Previously saved' });
   fireEvent.click(screen.getByRole('tab', { name: 'library.publicLibrary' }));
   fireEvent.click(await screen.findByRole('button', { name: /^library.addToMyLibrary:/ }));
-  await screen.findByRole('button', { name: /^library.inYourLibrary:/ });
+  await screen.findByRole('button', { name: /^library.removeFromLibrary:/ });
   fireEvent.click(screen.getByRole('tab', { name: 'library.myLibrary' }));
   await screen.findByRole('heading', { name: 'Newly copied' });
 });
@@ -136,8 +136,8 @@ test('opens public recipe details before copying, including recipes already save
 
   const heading = await screen.findByRole('heading', { name: 'Public recipe' });
   expect(heading.closest('a')).toHaveAttribute('href', '/library/public/Public%20recipe');
-  const copyButton = screen.getByRole('button', { name: /^library.inYourLibrary:/ });
-  expect(copyButton).toHaveAttribute('aria-disabled', 'true');
+  const copyButton = screen.getByRole('button', { name: /^library.removeFromLibrary:/ });
+  expect(copyButton).toHaveAttribute('aria-pressed', 'true');
   expect(copyButton.closest('a')).toBeNull();
 });
 
@@ -158,15 +158,14 @@ test('bookmarks track simultaneous copies independently and prevent duplicate su
   expect(apiFetch).toHaveBeenCalledTimes(2);
   expect(first).toHaveAttribute('aria-busy', 'true');
   expect(second).toHaveAttribute('aria-busy', 'true');
-  await act(async () => { pending.get('/recipes/catalog/Second recipe/copy')!(new Response('{}')); });
+  await act(async () => { pending.get('/recipes/catalog/Second%20recipe/copy')!(new Response('{}')); });
   expect(first).toHaveAttribute('aria-busy', 'true');
   expect(second).toHaveAttribute('aria-busy', 'false');
-  expect(second).toHaveAttribute('aria-label', 'library.inYourLibrary: Second recipe');
-  await act(async () => { pending.get('/recipes/catalog/First recipe/copy')!(new Response('{}')); });
+  expect(second).toHaveAttribute('aria-label', 'library.removeFromLibrary: Second recipe');
+  await act(async () => { pending.get('/recipes/catalog/First%20recipe/copy')!(new Response('{}')); });
   expect(first).toHaveFocus();
-  expect(first).toHaveAttribute('aria-label', 'library.inYourLibrary: First recipe');
-  fireEvent.click(first);
-  expect(apiFetch).toHaveBeenCalledTimes(2);
+  expect(first).toHaveAttribute('aria-label', 'library.removeFromLibrary: First recipe');
+  expect(first).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getByRole('status')).toHaveTextContent('library.inYourLibrary: First recipe');
 });
 
@@ -183,7 +182,106 @@ test('a failed bookmark keeps the recipe browsable and lets the same control ret
   expect(bookmark).toHaveAttribute('aria-disabled', 'false');
   expect(screen.getByRole('heading', { name: 'Public recipe' }).closest('a')).toHaveAttribute('href', '/library/public/Public%20recipe');
   fireEvent.click(bookmark);
-  await waitFor(() => expect(bookmark).toHaveAttribute('aria-label', 'library.inYourLibrary: Public recipe'));
+  await waitFor(() => expect(bookmark).toHaveAttribute('aria-label', 'library.removeFromLibrary: Public recipe'));
   expect(apiFetch).toHaveBeenCalledTimes(2);
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+
+test('a saved bookmark removes and restores the same card despite a stale catalog response', async () => {
+  query.value = 'view=public';
+  mine.mockResolvedValue(page('Private recipe'));
+  catalog.mockResolvedValue(page('Saved recipe', null, true));
+  const { apiFetch } = await import('../lib/api');
+  let finish!: (response: Response) => void;
+  vi.mocked(apiFetch).mockReset().mockImplementationOnce(() => new Promise<Response>(resolve => { finish = resolve; })).mockImplementation(async () => new Response('{}'));
+  render(<LibraryPage />);
+  const bookmark = await screen.findByRole('button', { name: 'library.removeFromLibrary: Saved recipe' });
+  bookmark.focus();
+  fireEvent.click(bookmark);
+  fireEvent.click(bookmark);
+  expect(apiFetch).toHaveBeenCalledTimes(1);
+  expect(apiFetch).toHaveBeenLastCalledWith('/recipes/catalog/Saved%20recipe/saved', { method: 'DELETE' });
+  expect(bookmark).toHaveAttribute('aria-busy', 'true');
+  expect(bookmark).toHaveAttribute('aria-label', 'library.removing: Saved recipe');
+  await act(async () => { finish(new Response(null, { status: 204 })); });
+  await waitFor(() => expect(bookmark).toHaveAttribute('aria-pressed', 'false'));
+  expect(bookmark).toHaveFocus();
+  expect(bookmark).toHaveAttribute('aria-label', 'library.addToMyLibrary: Saved recipe');
+  expect(screen.getByRole('status')).toHaveTextContent('library.removedFromLibrary: Saved recipe');
+  expect(catalog).toHaveBeenCalledTimes(1);
+  fireEvent.click(bookmark);
+  await waitFor(() => expect(bookmark).toHaveAttribute('aria-pressed', 'true'));
+  expect(apiFetch).toHaveBeenLastCalledWith('/recipes/catalog/Saved%20recipe/copy', { method: 'POST' });
+  expect(screen.getByRole('heading', { name: 'Saved recipe' })).toBeVisible();
+});
+
+test('a failed removal keeps the filled bookmark and allows retry', async () => {
+  query.value = 'view=public';
+  mine.mockResolvedValue(page('Private recipe'));
+  catalog.mockResolvedValue(page('Saved recipe', null, true));
+  const { apiFetch } = await import('../lib/api');
+  vi.mocked(apiFetch).mockReset().mockResolvedValueOnce(new Response('{}', { status: 500 })).mockResolvedValueOnce(new Response(null, { status: 204 }));
+  render(<LibraryPage />);
+  const bookmark = await screen.findByRole('button', { name: 'library.removeFromLibrary: Saved recipe' });
+  fireEvent.click(bookmark);
+  expect(await screen.findByRole('alert')).toHaveTextContent('library.removeError');
+  expect(bookmark).toHaveAttribute('aria-pressed', 'true');
+  expect(bookmark).toHaveAttribute('aria-disabled', 'false');
+  fireEvent.click(bookmark);
+  await waitFor(() => expect(bookmark).toHaveAttribute('aria-pressed', 'false'));
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+
+test('toggling a recipe on a later catalog page preserves loaded cards and keyboard focus', async () => {
+  query.value = 'view=public';
+  mine.mockResolvedValue(page('Private recipe'));
+  catalog.mockResolvedValueOnce(page('First recipe', 'page-two'))
+    .mockResolvedValueOnce(page('Later recipe', null, true))
+    .mockResolvedValue(page('First recipe', 'page-two'));
+  const { apiFetch } = await import('../lib/api');
+  vi.mocked(apiFetch).mockReset().mockImplementation(async () => new Response('{}'));
+  render(<LibraryPage />);
+  await screen.findByRole('heading', { name: 'First recipe' });
+  fireEvent.click(screen.getByRole('button', { name: 'common.loadMoreRecipes' }));
+  const bookmark = await screen.findByRole('button', { name: 'library.removeFromLibrary: Later recipe' });
+  bookmark.focus();
+  fireEvent.click(bookmark);
+  await waitFor(() => expect(bookmark).toHaveAttribute('aria-pressed', 'false'));
+  expect(screen.getByRole('heading', { name: 'Later recipe' })).toBeVisible();
+  expect(bookmark).toHaveFocus();
+  fireEvent.click(bookmark);
+  await waitFor(() => expect(bookmark).toHaveAttribute('aria-pressed', 'true'));
+  expect(screen.getByRole('heading', { name: 'First recipe' })).toBeVisible();
+  expect(screen.getByRole('heading', { name: 'Later recipe' })).toBeVisible();
+  expect(bookmark).toHaveFocus();
+  expect(catalog).toHaveBeenCalledTimes(2);
+});
+
+
+test('linked public cards reconcile together and wait for the related pending mutation', async () => {
+  query.value = 'view=public';
+  mine.mockResolvedValue(page('Private recipe'));
+  catalog.mockResolvedValue({ items: [page('Source', null, true).items[0],
+    {...page('Published copy', null, true).items[0], catalog_source_recipe_id: 'Source'}], next_cursor: null });
+  const { apiFetch } = await import('../lib/api');
+  let finish!: (response: Response) => void;
+  vi.mocked(apiFetch).mockReset().mockImplementationOnce(() => new Promise<Response>(resolve => { finish = resolve; }))
+    .mockImplementation(async () => new Response(JSON.stringify({bookmark_states: {Source: true, 'Published copy': true}})));
+  render(<LibraryPage />);
+  const source = await screen.findByRole('button', { name: 'library.removeFromLibrary: Source' });
+  const copy = screen.getByRole('button', { name: 'library.removeFromLibrary: Published copy' });
+  fireEvent.click(source);
+  fireEvent.click(copy);
+  expect(apiFetch).toHaveBeenCalledTimes(1);
+  expect(copy).toHaveAttribute('aria-busy','true');
+  await act(async () => {finish(new Response(JSON.stringify({bookmark_states: {Source: false, 'Published copy': false}})));});
+  await waitFor(() => expect(source).toHaveAttribute('aria-pressed','false'));
+  expect(copy).toHaveAttribute('aria-pressed','false');
+  fireEvent.click(copy);
+  await waitFor(() => expect(source).toHaveAttribute('aria-pressed','true'));
+  expect(copy).toHaveAttribute('aria-pressed','true');
+  expect(apiFetch).toHaveBeenCalledTimes(2);
+  expect(catalog).toHaveBeenCalledTimes(1);
 });

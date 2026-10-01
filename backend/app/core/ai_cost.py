@@ -60,6 +60,16 @@ class Price:
     output_usd_per_million: Decimal
 
 
+def text_output_token_limit(settings, operation: str) -> int:
+    """Use the same bounded completion allowance for requests and reservations."""
+    limit = (settings.OPENAI_SHOPPING_MAX_OUTPUT_TOKENS if operation == "shopping_refine"
+             else settings.OPENAI_MAX_OUTPUT_TOKENS)
+    # Reviewed model limit: https://developers.openai.com/api/docs/models/gpt-4o-mini
+    if settings.OPENAI_MODEL in {"gpt-4o-mini", "gpt-4o-mini-2024-07-18"}:
+        return min(limit, 16384)
+    return limit
+
+
 def configured_price(settings) -> Price:
     model = settings.OPENAI_MODEL
     if (model not in MIN_TEXT_RATES or settings.AI_PRICE_MODEL != model

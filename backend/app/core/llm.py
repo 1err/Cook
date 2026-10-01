@@ -9,6 +9,7 @@ from typing import Any
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.core.ai_cost import text_output_token_limit
 from app.core.ai_context import current_ai_request, reserve_provider_call, finish_provider_call
 
 
@@ -18,8 +19,9 @@ _client: AsyncOpenAI | None = None
 
 
 class AIUnavailableError(RuntimeError):
-    def __init__(self) -> None:
+    def __init__(self, reason: str = "unavailable") -> None:
         super().__init__("AI is temporarily unavailable. Please try again later.")
+        self.reason = reason
 
 
 class AIInputTooLargeError(ValueError):
@@ -56,22 +58,24 @@ async def complete_chat(client: Any, *, messages: list[dict[str, str]],
     if sum(len(message["content"]) for message in messages) > MAX_PROMPT_CHARACTERS:
         raise AIInputTooLargeError("The recipe text is too long. Please shorten it and try again.")
     started = time.monotonic()
+    output_limit = text_output_token_limit(settings, operation)
     options: dict[str, Any] = {
         "model": settings.OPENAI_MODEL,
         "messages": messages,
     }
     if settings.OPENAI_MODEL == "gpt-6-luna":
-        options["max_completion_tokens"] = settings.OPENAI_MAX_OUTPUT_TOKENS
+        options["max_completion_tokens"] = output_limit
         # Preserve 4o-mini's effective non-reasoning behavior on migration.
         # The pinned SDK predates this parameter; extra_body sends it unchanged.
         options["extra_body"] = {"reasoning_effort": "none"}
         options["service_tier"] = "default"
     else:
-        options["max_tokens"] = settings.OPENAI_MAX_OUTPUT_TOKENS
+        options["max_tokens"] = output_limit
     if json_object:
         options["response_format"] = {"type": "json_object"}
     context = current_ai_request.get()
     call_id = None
+    usage = None
     if is_llm_enabled() and context is None:
         # A route/service added without admission must never create unmetered spend.
         raise AIUnavailableError()
@@ -94,11 +98,14 @@ async def complete_chat(client: Any, *, messages: list[dict[str, str]],
                 output_tokens=getattr(usage, "completion_tokens", None),
                 provider_request_id=getattr(response, "_request_id", None))
         choice = response.choices[0]
-        if getattr(choice, "finish_reason", None) in {"length", "content_filter"}:
-            raise AIUnavailableError()
+        finish_reason = getattr(choice, "finish_reason", None)
+        if finish_reason == "length":
+            raise AIUnavailableError("output_limit")
+        if finish_reason == "content_filter":
+            raise AIUnavailableError("content_filter")
         content = choice.message.content
         if not isinstance(content, str) or not content.strip():
-            raise AIUnavailableError()
+            raise AIUnavailableError("empty_response")
     except BaseException as exc:
         if context is not None:
             context.denied = True
@@ -114,8 +121,15 @@ async def complete_chat(client: Any, *, messages: list[dict[str, str]],
             raise
         if not isinstance(exc, Exception):
             raise
-        logger.warning("ai_call_failed operation=%s error_type=%s", operation, type(exc).__name__)
-        raise AIUnavailableError() from None
+        reason = exc.reason if isinstance(exc, AIUnavailableError) else (
+            "timeout" if isinstance(exc, TimeoutError) else "provider_error"
+        )
+        logger.warning(
+            "ai_call_failed operation=%s error_type=%s reason=%s latency_ms=%d input_tokens=%s output_tokens=%s",
+            operation, type(exc).__name__, reason, (time.monotonic() - started) * 1000,
+            getattr(usage, "prompt_tokens", None), getattr(usage, "completion_tokens", None),
+        )
+        raise AIUnavailableError(reason) from None
     finally:
         if context is not None:
             context.call_active = False
