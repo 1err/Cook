@@ -40,6 +40,7 @@ describe("extractSharedVideoUrl", () => {
       "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
     ],
     ["http://xhslink.com/o/QFcd665bHC", "https://xhslink.com/o/QFcd665bHC"],
+    ["http://xhslink.cn/o/9wzZ6DxJYSS", "https://xhslink.cn/o/9wzZ6DxJYSS"],
     ["https://www.xiaohongshu.com/explore/69eaf618000000001a035987?xsec_token=fixture", "https://www.xiaohongshu.com/explore/69eaf618000000001a035987?xsec_token=fixture"],
     ["https://youtu.be:443/dQw4w9WgXcQ", "https://youtu.be/dQw4w9WgXcQ"],
   ])("accepts every backend-supported video URL form", (input, expected) => {
@@ -82,6 +83,7 @@ describe("extractSharedVideoUrl", () => {
       "试试这个 http://xhslink.com/o/QFcd665bHC，复制后打开小红书",
       "https://xhslink.com/o/QFcd665bHC",
     ],
+    [null, "零失败的懒人教程｜苹果牛肋条 https://xhslink.cn/o/9wzZ6DxJYSS Copy and open rednote to view the note", "https://xhslink.cn/o/9wzZ6DxJYSS"],
     ["https://example.com/video", null, null],
     [null, "no link", null],
   ])("extracts only supported shared video URLs", (webUrl, text, expected) => {

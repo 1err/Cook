@@ -30,6 +30,35 @@ def test_rednote_rejects_unsafe_links(value):
         parse_video_source(value)
 
 
+@pytest.mark.parametrize("value, expected", [
+    ("https://xhslink.cn/o/9wzZ6DxJYSS", "https://xhslink.cn/o/9wzZ6DxJYSS"),
+    ("http://xhslink.cn/o/9wzZ6DxJYSS", "https://xhslink.cn/o/9wzZ6DxJYSS"),
+    ("https://www.xhslink.cn/o/9wzZ6DxJYSS", "https://www.xhslink.cn/o/9wzZ6DxJYSS"),
+    ("零失败的懒人教程｜苹果牛肋条 🥣材料： 肥瘦三七开带... https://xhslink.cn/o/9wzZ6DxJYSS Copy and open rednote to view the note", "https://xhslink.cn/o/9wzZ6DxJYSS"),
+    ("看看这个 http://xhslink.cn/o/9wzZ6DxJYSS，复制后打开小红书！", "https://xhslink.cn/o/9wzZ6DxJYSS"),
+])
+def test_rednote_cn_links_and_whole_share_text(value, expected):
+    result = parse_video_source(value)
+    assert result.provider == "xiaohongshu"
+    assert result.original_url == expected
+    assert result.canonical_url == expected
+    assert result.external_id is None
+
+
+@pytest.mark.parametrize("value", [
+    "https://xhslink.cn.evil.test/o/9wzZ6DxJYSS",
+    "https://evil.xhslink.cn/o/9wzZ6DxJYSS",
+    "https://user@xhslink.cn/o/9wzZ6DxJYSS",
+    "https://user:secret@xhslink.cn/o/9wzZ6DxJYSS",
+    "https://xhslink.cn:444/o/9wzZ6DxJYSS",
+    "https://xhslink.cn/o/9wzZ6DxJYSS/extra",
+    "https://xhslink.cn/",
+])
+def test_rednote_cn_rejects_unsafe_links(value):
+    with pytest.raises(UnsupportedVideoUrl):
+        parse_video_source(value)
+
+
 class Response(BytesIO):
     headers = {}
 
@@ -57,7 +86,8 @@ def test_login_wrong_note_and_empty_pages_never_become_recipes(page):
     assert "upload" in result.message.lower()
 
 
-def test_short_link_redirect_preserves_token_and_rejects_untrusted_targets():
+@pytest.mark.parametrize("short_url", ["http://xhslink.com/a/Abc123", "http://xhslink.cn/o/9wzZ6DxJYSS"])
+def test_short_link_redirect_preserves_token_and_rejects_untrusted_targets(short_url):
     from app.rednote import fetch_rednote_text
     calls = []
     def opener(request, **kw):
@@ -65,9 +95,9 @@ def test_short_link_redirect_preserves_token_and_rejects_untrusted_targets():
         if len(calls) == 1:
             raise HTTPError(request.full_url, 302, "Found", {"Location": URL + "?xsec_token=abc%3D"}, None)
         return Response(note_page())
-    result = fetch_rednote_text(parse_video_source("http://xhslink.com/a/Abc123"), opener=opener)
+    result = fetch_rednote_text(parse_video_source(short_url), opener=opener)
     assert result.status == "ok"
-    assert calls[1] == URL + "?xsec_token=abc%3D"
+    assert calls == [short_url.replace("http:", "https:"), URL + "?xsec_token=abc%3D"]
     assert result.source.canonical_url == URL
     calls.clear()
     def unsafe(request, **kw):
@@ -120,7 +150,8 @@ def test_lookalike_login_redirect_is_not_attributed_to_rednote():
     assert fetch_rednote_text(parse_video_source(URL), opener=opener).status == "no_transcript"
 
 
-def test_public_share_recovers_token_bearing_note_from_login_wrapper():
+@pytest.mark.parametrize("short_url", ["http://xhslink.com/o/Test", "http://xhslink.cn/o/9wzZ6DxJYSS"])
+def test_public_share_recovers_token_bearing_note_from_login_wrapper(short_url):
     from app.rednote import fetch_rednote_text
     target = URL.replace('/explore/', '/discovery/item/').replace('https:', 'http:') + '?xsec_token=public-share%3D'
     calls = []
@@ -129,7 +160,7 @@ def test_public_share_recovers_token_bearing_note_from_login_wrapper():
         if len(calls) == 1:
             raise HTTPError(request.full_url, 302, 'Found', {'Location': 'https://www.xiaohongshu.com/login?redirectPath=' + quote(target, safe='')}, None)
         return Response(note_page())
-    result = fetch_rednote_text(parse_video_source('http://xhslink.com/o/Test'), opener=opener)
+    result = fetch_rednote_text(parse_video_source(short_url), opener=opener)
     assert result.status == 'ok'
     assert calls[1] == target.replace('http:', 'https:')
     assert result.source.canonical_url == URL

@@ -209,6 +209,8 @@ test.each([
   [source, "YouTube · about 1–2 minutes"],
   ["https://youtu.be/A6bByqI_TH8", "YouTube · about 1–2 minutes"],
   ["复制这条分享 http://xhslink.com/o/QFcd665bHC，打开小红书查看菜谱", "RedNote · around 3 minutes"],
+  ["https://xhslink.cn/o/9wzZ6DxJYSS", "RedNote · around 3 minutes"],
+  ["零失败的懒人教程｜苹果牛肋条 https://xhslink.cn/o/9wzZ6DxJYSS Copy and open rednote to view the note", "RedNote · around 3 minutes"],
   ["https://www.xiaohongshu.com/explore/65abcdef0123456789abcdef", "RedNote · around 3 minutes"],
 ])("preparation shows the estimate for the submitted link %s", async (url, estimate) => {
   mocks.createImportJob.mockImplementation(() => new Promise(() => {}));

@@ -80,3 +80,14 @@ it.each([
   await screen.findByRole("alert");
   expect(mocks.link).toHaveBeenCalledWith(expect.objectContaining({ url, mode: "link" }));
 });
+
+it("opens a copied RedNote cn share as a link without automatically importing", async () => {
+  mocks.read.mockResolvedValue({ id, createdAt: Date.now(), title: "", text: "零失败的懒人教程｜苹果牛肋条 🥣材料： 肥瘦三七开带... https://xhslink.cn/o/9wzZ6DxJYSS Copy and open rednote to view the note", url: "", video: null });
+  render(<ImportPage />);
+  await waitFor(() => expect(screen.getByLabelText("YouTube or RedNote URL")).toHaveValue("https://xhslink.cn/o/9wzZ6DxJYSS"));
+  expect(screen.getByRole("tab", { name: "Video link" })).toHaveAttribute("aria-selected", "true");
+  expect(mocks.link).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Prepare draft" }));
+  await screen.findByRole("alert");
+  expect(mocks.link).toHaveBeenCalledWith(expect.objectContaining({ url: "https://xhslink.cn/o/9wzZ6DxJYSS", mode: "link" }));
+});
