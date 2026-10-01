@@ -21,6 +21,7 @@ CookingStepState = Literal[
     "skipped",
 ]
 CookingAction = Literal[
+    "stop_timer",
     "start_timer",
     "pause_timer",
     "resume_timer",
@@ -188,16 +189,25 @@ def apply_step_action(
         raise CookingConflict("timer_duration_unknown", "Set a duration before using a timer for this step.")
 
     if body.action == "start_timer":
-        _require_state(step, "ready")
+        _require_state(step, "ready", "locked", "completed", "skipped")
+        if any(other.id != step.id and other.state in {"timer_running", "timer_paused", "needs_attention"} for other in dish.steps):
+            raise CookingConflict("active_timer_blocks_start", "Stop the active timer before starting another timer for this dish.")
         if step.attention_type != "passive":
             raise CookingConflict(
                 "timer_requires_passive_step", "Only passive steps use countdown timers."
             )
         step.state = "timer_running"
+        step.resolved_at = None
         step.timer_started_at = occurred
         step.timer_ends_at = occurred + timedelta(seconds=step.duration_seconds)
         step.paused_remaining_seconds = None
         step.notification_owner_device_id = body.device_id
+
+    elif body.action == "stop_timer":
+        _require_state(step, "timer_running", "timer_paused", "needs_attention")
+        _clear_timer(step)
+        step.state = "ready"
+        step.resolved_at = None
 
     elif body.action == "pause_timer":
         _require_state(step, "timer_running")

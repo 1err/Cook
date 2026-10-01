@@ -177,3 +177,28 @@ test("unknown-duration steps count toward progress and complete without a timer"
   const skipped = applyOptimisticCookingAction(current, "dish-a", "step-1", action("skip"));
   expect(skipped.dishes[0].steps[1].state).toBe("ready");
 });
+
+
+describe("independent recipe timers", () => {
+  test.each(["locked", "completed", "skipped"] as const)("starts a timer on a %s browsed step without completing previous steps", state => {
+    const value = session([dish("dish-a", 0, [step("a0", "ready", 120), step("a1", state, 60, {attention_type:"passive",resolved_at: state === "locked" ? null : new Date(NOW).toISOString()})])]);
+    const result=applyOptimisticCookingAction(value,"dish-a","a1",action("start_timer"));
+    expect(result.dishes[0].steps[0]).toEqual(value.dishes[0].steps[0]);
+    expect(result.dishes[0].steps[1]).toMatchObject({state:"timer_running",resolved_at:null,timer_ends_at:new Date(NOW+60000).toISOString()});
+  });
+  test.each(["timer_running", "timer_paused", "needs_attention"] as const)("stops a %s timer without completing or unlocking other steps", state => {
+    const value=session([dish("dish-a",0,[step("a0","ready",120),step("a1",state,60,{attention_type:"passive",timer_started_at:new Date(NOW).toISOString(),timer_ends_at:new Date(NOW+60000).toISOString(),paused_remaining_seconds:60,notification_owner_device_id:"device-1"})])]);
+    const result=applyOptimisticCookingAction(value,"dish-a","a1",action("stop_timer" as CookingAction));
+    expect(result.dishes[0].steps[0]).toEqual(value.dishes[0].steps[0]);
+    expect(result.dishes[0].steps[1]).toMatchObject({state:"ready",resolved_at:null,timer_started_at:null,timer_ends_at:null,paused_remaining_seconds:null,notification_owner_device_id:null,revision:2});
+  });
+});
+
+
+test.each(["timer_running", "timer_paused", "needs_attention"] as const)("a second device cannot start another timer while the dish timer is %s", state => {
+  const initial = session([dish("dish-a", 0, [step("a0", "ready", 120, {attention_type:"passive"}), step("a1", "locked", 60, {attention_type:"passive"})])]);
+  const running = applyOptimisticCookingAction(initial, "dish-a", "a0", action("start_timer"));
+  running.dishes[0].steps[0].state = state;
+  expect(() => applyOptimisticCookingAction(running, "dish-a", "a1", {...action("start_timer"), device_id:"device-2"})).toThrow("Stop the active timer");
+  expect(running.dishes[0].steps[1]).toMatchObject({state:"locked", revision:1});
+});

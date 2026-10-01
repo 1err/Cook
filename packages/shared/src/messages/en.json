@@ -1079,5 +1079,11 @@
   "library.ingredients.noMatchHelp": "Try Match any or remove an ingredient.",
   "library.ingredients.clearFilters": "Clear search",
   "library.ingredients.tryAny": "Try Match any",
-  "library.resultsCountOne": "1 recipe"
+  "library.resultsCountOne": "1 recipe",
+  "cook.navigation.positionProgress": "{progress}% of steps",
+  "cook.navigation.viewing": "Viewing",
+  "cook.navigation.returnTimer": "Back to timer",
+  "cook.navigation.stopTimer": "Stop timer",
+  "cook.navigation.endSession": "End session",
+  "cook.navigation.noSteps": "No steps in this recipe."
 }

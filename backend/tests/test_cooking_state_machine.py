@@ -235,3 +235,48 @@ def test_invalid_timer_extensions_have_a_stable_reason(extension: int | None) ->
         apply_step_action(dish, step, body("extend_timer", extension_seconds=extension), NOW)
 
     assert exc_info.value.code == "invalid_extension"
+
+
+@pytest.mark.parametrize("state", ["locked", "completed", "skipped"])
+def test_start_browsed_step_timer_does_not_resolve_other_steps(state: str) -> None:
+    earlier = make_step(0, "ready")
+    target = make_step(1, state, attention_type="passive")
+    target.resolved_at = NOW if state in {"completed", "skipped"} else None
+    dish = make_dish(earlier, target)
+    apply_step_action(dish, target, body("start_timer"), NOW)
+    assert target.state == "timer_running"
+    assert target.resolved_at is None
+    assert target.timer_ends_at == NOW + timedelta(seconds=120)
+    assert earlier.state == "ready" and earlier.revision == 1 and earlier.resolved_at is None
+
+
+@pytest.mark.parametrize("state", ["timer_running", "timer_paused", "needs_attention"])
+def test_stop_timer_clears_only_its_clock_without_completing_steps(state: str) -> None:
+    earlier = make_step(0, "ready")
+    target = make_step(1, state, attention_type="passive")
+    target.timer_started_at = NOW - timedelta(seconds=30)
+    target.timer_ends_at = NOW + timedelta(seconds=90)
+    target.paused_remaining_seconds = 90
+    target.notification_owner_device_id = "device-a"
+    dish = make_dish(earlier, target)
+    apply_step_action(dish, target, body("stop_timer"), NOW)
+    assert target.state == "ready" and target.resolved_at is None
+    assert target.timer_started_at is None and target.timer_ends_at is None
+    assert target.paused_remaining_seconds is None and target.notification_owner_device_id is None
+    assert target.revision == 2
+    assert earlier.state == "ready" and earlier.revision == 1
+
+
+@pytest.mark.parametrize("state", ["timer_running", "timer_paused", "needs_attention"])
+def test_second_device_cannot_start_a_second_timer_in_the_same_dish(state: str) -> None:
+    first = make_step(0, "ready", attention_type="passive")
+    target = make_step(1, "locked", attention_type="passive")
+    dish = make_dish(first, target)
+    apply_step_action(dish, first, body("start_timer"), NOW)
+    first.state = state
+    other_device = body("start_timer")
+    other_device.device_id = "device-b"
+    with pytest.raises(CookingConflict) as exc_info:
+        apply_step_action(dish, target, other_device, NOW)
+    assert exc_info.value.code == "active_timer_blocks_start"
+    assert target.state == "locked" and target.revision == 1

@@ -6,7 +6,7 @@ import { FocusedCookingStep } from "./FocusedCookingStep";
 vi.mock("../lib/i18n", () => ({
   useT: () => (key: string, vars?: Record<string, string | number>) => {
     if (key === "cook.step.number") return `Step ${vars?.current} of ${vars?.total}`;
-    if (key === "cook.progress") return `${vars?.progress}% complete`;
+    if (key === "cook.navigation.positionProgress") return `${vars?.progress}% of steps`;
     return key;
   },
 }));
@@ -128,16 +128,16 @@ test("presents one compact progress treatment without repeating the step counter
   const focus = within(screen.getByTestId("focused-step"));
   expect(focus.getByRole("heading", { name: "Finish the dish" })).toBeVisible();
   expect(focus.getAllByText("Step 2 of 2")).toHaveLength(1);
-  expect(focus.getAllByText("50% complete")).toHaveLength(1);
+  expect(focus.getAllByText("100% of steps")).toHaveLength(1);
 });
 
 for (const layout of ["focused", "stacked"] as const) {
-  test(`unknown-duration passive steps allow finishing the dish without offering a timer in ${layout} view`, () => {
+  test(`unknown-duration passive steps allow browsing without offering a timer or completing the dish in ${layout} view`, () => {
     const onAction = vi.fn();
     render(<FocusedCookingStep layout={layout} dish={cookingDish([cookingStep({ attention_type: "passive", duration_seconds: null, duration_source: "unknown" })])} onAction={onAction} />);
     expect(screen.queryByRole("button", { name: "cook.action.startTimer" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "cook.navigation.finishDish" }));
-    expect(onAction).toHaveBeenCalledWith("step-1", "complete");
+    expect(screen.getByRole("button", { name: "cook.navigation.next" })).toBeDisabled();
+    expect(onAction).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "cook.navigation.previous" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "cook.action.skip" })).not.toBeInTheDocument();
   });
