@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { RecipeTiming } from "./RecipeTiming";
 import type { Recipe } from "../types";
 import { useT } from "../lib/i18n";
@@ -10,9 +11,10 @@ import styles from "./RecipeCard.module.css";
 type RecipeCardProps = {
   recipe: Pick<Recipe, "id" | "title" | "thumbnail_url" | "library_tags" | "library_category" | "total_time_minutes" | "timing_summary">;
   isHighlighted?: boolean;
+  children?: ReactNode;
 };
 
-export function RecipeCard({ recipe, isHighlighted = false }: RecipeCardProps) {
+export function RecipeCard({ recipe, isHighlighted = false, children }: RecipeCardProps) {
   const t = useT();
   const featuredTags = getRecipeTags(recipe).slice(0, 2);
 
@@ -45,6 +47,7 @@ export function RecipeCard({ recipe, isHighlighted = false }: RecipeCardProps) {
           </div>
         ) : null}
       </div>
+      {children}
     </article>
   );
 }
