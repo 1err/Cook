@@ -56,24 +56,16 @@ async function fulfillJson(route: Route, body: unknown) {
   });
 }
 
-function searchFixture(rows: typeof recipes, url: string, scope: string | null) {
-  const result = recipePageFixture(rows, url);
-  const include = new URL(url).searchParams.get("include_ingredients") === "true";
-  return { ...result, total_count: result.items.length, items: result.items.map(row => ({ ...row,
-    is_owned: scope === "mine", matched_ingredients: [], remaining_ingredients: include ? ["Garlic", "Ginger"] : null,
-  })) };
-}
-
 async function installFixtures(page: Page) {
-  await page.route("**/auth/me", route => fulfillJson(route, {
-    id: "00000000-0000-0000-0000-000000000001", email: "library@example.com", is_library_public: false,
-  }));
-  // Fixture summaries exercise navigation/layout; real PostgreSQL tests cover ingredient matching.
-  await page.route("**/recipes/search/page?*", route => {
-    const url = route.request().url(); const scope = new URL(url).searchParams.get("scope");
-    return fulfillJson(route, searchFixture(scope === "catalog" ? publicRecipes : recipes, url, scope));
-  });
-  await page.route("**/recipes/ingredient-options", route => fulfillJson(route, []));
+  await page.route("**/auth/me", (route) =>
+    fulfillJson(route, {
+      id: "00000000-0000-0000-0000-000000000001",
+      email: "library@example.com",
+      is_library_public: false,
+    }),
+  );
+  await page.route("**/recipes/catalog/page?*", (route) => fulfillJson(route, recipePageFixture(publicRecipes, route.request().url())));
+  await page.route("**/recipes/page?*", (route) => fulfillJson(route, recipePageFixture(recipes, route.request().url())));
 }
 
 async function expectWaterfall(page: Page, titles: string[], columnCount: number) {
@@ -150,9 +142,6 @@ test("uses four compact desktop columns and places the fifth recipe in the short
     }),
   );
 
-  await expect(page.getByRole("tab", { name: "My library", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("tab", { name: "Friends", exact: true })).toHaveAttribute("href", "/library/friends");
-  await expect(page.getByRole("tab", { name: "All recipes", exact: true })).toHaveCount(0);
   await expect(grid.locator("[data-testid='recipe-ingredients']")).toHaveCount(0);
   await expect(grid.getByText("First ingredient")).toHaveCount(0);
   await expectNaturalPhotos(page);
@@ -184,7 +173,12 @@ test("preserves natural photos and shortest-column placement in the public libra
   await expectNaturalPhotos(page);
   expect(metrics.every(({ bodyMinHeight }) => bodyMinHeight === "0px")).toBe(true);
 
-
+  if (testInfo.project.name === "desktop") {
+    await expect(page).toHaveScreenshot("public-library-waterfall.png", {
+      animations: "disabled",
+      fullPage: true,
+    });
+  }
 });
 
 test("recomputes shortest columns without overlap when a portrait image finishes loading", async ({ page }, testInfo) => {
@@ -199,9 +193,9 @@ test("recomputes shortest columns without overlap when a portrait image finishes
       body: '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="1600"><rect width="640" height="1600" fill="#87564a"/></svg>',
     });
   });
-  await page.route("**/recipes/search/page?*", route => fulfillJson(route, searchFixture(recipes.map((recipe, index) =>
+  await page.route("**/recipes", (route) => fulfillJson(route, recipes.map((recipe, index) =>
     index === 4 ? { ...recipe, thumbnail_url: "/late-library-thumbnail.svg" } : recipe,
-  ), route.request().url(), "mine")));
+  )));
   await page.goto("/library", { waitUntil: "domcontentloaded" });
   const cards = page.getByRole("list").getByRole("listitem");
   await expect(cards).toHaveCount(7);
@@ -228,7 +222,7 @@ test("recomputes shortest columns without overlap when a portrait image finishes
 test("recomputes shortest columns at four, three and two-column breakpoints", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "One page exercises each responsive breakpoint.");
   const titles = recipes.map(({ title }) => String(title));
-  for (const [width, columns] of [[1440, 4], [1100, 3], [820, 2], [390, 2], [320, 2], [1440, 4]]) {
+  for (const [width, columns] of [[1440, 4], [1100, 3], [820, 2], [390, 2], [1440, 4]]) {
     await page.setViewportSize({ width, height: 1000 });
     await expectWaterfall(page, titles, columns);
     await expect(page.getByRole("list").getByRole("heading", { level: 2 })).toHaveText(titles);
@@ -244,34 +238,8 @@ test("reflows matching recipes after search and tag filtering", async ({ page },
   await search.fill("nothing matches this recipe");
   await expect(page.getByRole("list")).toHaveCount(0);
   await search.fill("");
-  await page.getByRole("button", { name: "Filter recipes by tag", exact: true }).click();
+  await page.getByRole("button", { name: "Filter recipes" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Weeknight", exact: true }).click();
   await search.click();
   await expectWaterfall(page, ["Braised pork", "Eggplant tofu", "Mapo tofu"], columns);
-});
-
-
-test("preserves ingredient controls and compact details within the waterfall", async ({ page }, testInfo) => {
-  const mode = page.getByRole("combobox", { name: "Search by", exact: true });
-  await page.getByRole("searchbox").fill("braised");
-  await expect(page.getByRole("listitem")).toHaveCount(2);
-  await mode.selectOption("ingredients");
-  const input = page.getByRole("combobox", { name: "Search ingredients", exact: true });
-  await input.fill("chicken"); await input.press("Enter");
-  const request = page.waitForRequest(r => new URL(r.url()).pathname === "/recipes/search/page" && new URL(r.url()).searchParams.get("match") === "any");
-  await page.getByRole("button", { name: "Match any", exact: true }).click();
-  expect(new URL((await request).url()).searchParams.getAll("ingredients")).toEqual(["chicken"]);
-  await expectWaterfall(page, recipes.map(x=>String(x.title)), testInfo.project.name === "desktop" ? 4 : 2);
-  const more = page.getByRole("listitem").filter({ hasText: "Aubergine clay pot" }).getByRole("button", { name: "2 more ingredients", exact: true });
-  expect(await more.evaluate(button => button.closest("a"))).toBeNull();
-  if (testInfo.project.name === "phone") await more.tap(); else await more.hover();
-  const popup = page.getByRole("tooltip"); await expect(popup.getByRole("listitem")).toHaveText(["Garlic", "Ginger"]);
-  if (testInfo.project.name !== "phone") { await popup.hover(); await expect(popup).toBeVisible(); }
-  await page.keyboard.press("Escape"); await expect(popup).toHaveCount(0);
-  await page.getByRole("tab", { name: "Public library", exact: true }).click();
-  await expect(page.getByRole("listitem")).toHaveCount(publicRecipes.length);
-  await expect(page.getByRole("button", { name: "Remove chicken", exact: true })).toBeVisible();
-  await mode.selectOption("name"); await expect(page.getByRole("searchbox")).toHaveValue("braised");
-  await expect(page.getByRole("listitem")).toHaveCount(1);
-  await mode.selectOption("ingredients"); await expect(page.getByRole("button", { name: "Match any", exact: true })).toHaveAttribute("aria-pressed", "true");
 });

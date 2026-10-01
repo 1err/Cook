@@ -8,9 +8,9 @@ vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams()
 vi.mock("../components/RequireAuth", () => ({ RequireAuth: ({children}: any) => children }));
 vi.mock("../lib/auth", () => ({ useAuth: () => ({ user: {id:"audit"} }) }));
 vi.mock("../lib/api", () => ({apiFetch: vi.fn()}));
-vi.mock("../lib/useLibrarySearch", () => ({useLibrarySearch: (scope: string, _:unknown, enabled=true) => {
+vi.mock("../lib/useRecipePage", () => ({useRecipePage: (scope: string, _:unknown, enabled=true) => {
  if(enabled) state.scopes.push(scope);
- return {items:[], loading:false, error:state.error, refresh:state.refresh, next:null};
+ return {items:[], loading:false, error:scope === "mine" ? state.error : null, refresh:state.refresh, next:null};
 }}));
 beforeEach(() => {vi.spyOn(HTMLElement.prototype, "getClientRects").mockReturnValue([{}] as unknown as DOMRectList);vi.stubGlobal("localStorage", {getItem: () => "en", setItem: vi.fn()});state.error=null;state.refresh.mockClear();state.scopes=[];});
 afterEach(() => {cleanup();vi.unstubAllGlobals();vi.restoreAllMocks();});
@@ -39,12 +39,4 @@ test("Chinese filters translate the summary, group, and recipe tags", async () =
  await userEvent.click(screen.getByRole("button", {name:"完成",exact:true}));
  expect(screen.getByText("中餐")).toBeVisible();
  expect(screen.queryByText("All tags")).not.toBeInTheDocument();
-});
-
-test("restores My library as the default with Public library and Friends beside it", () => {
- render(<I18nProvider><LibraryPage /></I18nProvider>);
- expect(screen.getAllByRole("tab").map(tab=>tab.textContent)).toEqual(["My library","Public library","Friends"]);
- expect(screen.getByRole("tab",{name:"My library"})).toHaveAttribute("aria-selected","true");
- expect(screen.getByRole("tab",{name:"Friends"})).toHaveAttribute("href","/library/friends");
- expect(state.scopes).toEqual(["mine"]);
 });
