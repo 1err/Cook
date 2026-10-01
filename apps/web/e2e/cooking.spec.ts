@@ -11,7 +11,7 @@ const recipes = [
     id: "recipe-tofu",
     title: "Mapo tofu",
     source_url: null,
-    thumbnail_url: null,
+    thumbnail_url: "/cook-fixture-images/tofu.svg",
     ingredients: [],
     raw_extraction_text: null,
     library_tags: [],
@@ -28,7 +28,7 @@ const recipes = [
     id: "recipe-rice",
     title: "Steamed rice",
     source_url: null,
-    thumbnail_url: null,
+    thumbnail_url: "/cook-fixture-images/rice.svg",
     ingredients: [],
     raw_extraction_text: null,
     library_tags: [],
@@ -72,7 +72,7 @@ function freshSession(): CookingSession {
         recipe_id: "recipe-tofu",
         position: 0,
         title: "Mapo tofu",
-        thumbnail_url: null,
+        thumbnail_url: "/cook-fixture-images/tofu.svg",
         ingredients: [],
         equipment: [],
         tips: [],
@@ -91,7 +91,7 @@ function freshSession(): CookingSession {
         recipe_id: "recipe-rice",
         position: 1,
         title: "Steamed rice",
-        thumbnail_url: null,
+        thumbnail_url: "/cook-fixture-images/rice.svg",
         ingredients: [],
         equipment: [],
         tips: [],
@@ -123,6 +123,10 @@ async function fulfillJson(route: Route, body: unknown) {
 
 async function installCookingFixtures(page: Page, actions: unknown[]) {
   let session: ReturnType<typeof freshSession> | null = null;
+  await page.route("**/cook-fixture-images/*", (route) => route.fulfill({
+    contentType: "image/svg+xml",
+    body: '<svg xmlns="http://www.w3.org/2000/svg" width="130" height="130"><rect width="130" height="130" fill="#e6ded6"/><circle cx="65" cy="65" r="45" fill="#a64b34"/></svg>',
+  }));
   await page.route(`${API_BASE}/**`, async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
@@ -173,6 +177,15 @@ async function installCookingFixtures(page: Page, actions: unknown[]) {
                 updated_at: body.occurred_at,
               };
             }
+            if (body.action === "skip" || body.action === "reopen") {
+              return {
+                ...step,
+                state: body.action === "skip" ? "skipped" : "ready",
+                resolved_at: body.action === "skip" ? body.occurred_at : null,
+                revision: step.revision + 1,
+                updated_at: body.occurred_at,
+              };
+            }
             if (body.action === "start_timer") {
               return {
                 ...step,
@@ -182,6 +195,28 @@ async function installCookingFixtures(page: Page, actions: unknown[]) {
                 notification_owner_device_id: body.device_id,
                 revision: step.revision + 1,
                 updated_at: body.occurred_at,
+              };
+            }
+            if (body.action === "pause_timer") {
+              return {
+                ...step, state: "timer_paused", timer_ends_at: null,
+                paused_remaining_seconds: Math.max(0, Math.ceil((Date.parse(step.timer_ends_at!) - Date.now()) / 1000)),
+                revision: step.revision + 1, updated_at: body.occurred_at,
+              };
+            }
+            if (body.action === "resume_timer") {
+              return {
+                ...step, state: "timer_running", paused_remaining_seconds: null,
+                timer_ends_at: new Date(Date.now() + step.paused_remaining_seconds! * 1000).toISOString(),
+                revision: step.revision + 1, updated_at: body.occurred_at,
+              };
+            }
+            if (body.action === "extend_timer") {
+              return {
+                ...step,
+                paused_remaining_seconds: step.state === "timer_paused" ? step.paused_remaining_seconds! + body.extension_seconds : null,
+                timer_ends_at: step.state === "timer_running" ? new Date(Date.parse(step.timer_ends_at!) + body.extension_seconds * 1000).toISOString() : null,
+                revision: step.revision + 1, updated_at: body.occurred_at,
               };
             }
             return step;
@@ -264,8 +299,6 @@ test("starts two dishes, advances hands-on work, and runs a passive timer", asyn
   await expect(page.getByRole("heading", { name: "Your cooking session" })).toBeVisible();
   await expect(page.getByText("Work on Mapo tofu")).toBeVisible();
   await expect(page.getByText("0% complete")).toBeVisible();
-  await expect(page.getByTestId("focused-step").getByRole("heading", { name: "Chop the tofu" })).toBeVisible();
-  await expect(page.getByTestId("focused-step").getByText(/^Step \d+ of \d+$/)).toHaveCount(0);
   await expect(page.getByRole("timer")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Complete step" }).click();
@@ -305,3 +338,82 @@ test("keeps cached progress through an API outage and explains a replay conflict
   await expect(page.getByText(/changed on another device/)).toBeVisible();
   await expect(page.getByText("Chop the tofu")).toBeVisible();
 });
+
+test("switches cooking views while preserving timers and updating only the chosen dish", async ({ page }) => {
+  const actions: Array<Record<string, unknown>> = [];
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await installCookingFixtures(page, actions);
+  await page.goto("/cook");
+  await page.getByRole("tab", { name: "Choose recipes" }).click();
+  await page.getByRole("checkbox", { name: "Mapo tofu" }).check();
+  await page.getByRole("checkbox", { name: "Steamed rice" }).check();
+  await page.getByRole("button", { name: "Start 2 dishes" }).click();
+
+  await page.getByRole("button", { name: "All dishes", exact: true }).click();
+  const tofu = page.getByRole("region", { name: "Mapo tofu", exact: true });
+  const rice = page.getByRole("region", { name: "Steamed rice", exact: true });
+  await expect(tofu.getByText("Chop the tofu")).toBeVisible();
+  await expect(tofu.locator("img")).toBeVisible();
+  await expect.poll(() => tofu.locator("img").evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  await rice.getByRole("button", { name: "Start timer" }).click();
+  await expect(rice.getByRole("timer")).toBeVisible();
+  await rice.getByRole("button", { name: "Pause timer" }).click();
+  const paused = await rice.getByRole("timer").getAttribute("aria-label");
+  await rice.getByRole("button", { name: "+1 minute" }).click();
+  await expect(rice.getByRole("timer")).not.toHaveAttribute("aria-label", paused!);
+  await rice.getByRole("button", { name: "Resume timer" }).click();
+  await expect(rice.getByRole("button", { name: "Pause timer" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Focused", exact: true }).click();
+  await expect(page.getByText("Chop the tofu")).toBeVisible();
+  await expect(page.getByText("Steam the rice")).toHaveCount(0);
+  await page.getByRole("button", { name: "All dishes", exact: true }).click();
+  await expect(rice.getByRole("timer")).toBeVisible();
+  await expect(rice.getByRole("button", { name: "Pause timer" })).toBeVisible();
+  await tofu.getByRole("button", { name: "Complete step" }).click();
+  await expect(tofu.getByText("This dish is complete.")).toBeVisible();
+  await expect(rice.getByRole("timer")).toBeVisible();
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(tofu.getByText("Chop the tofu")).toBeVisible();
+  await tofu.getByRole("button", { name: "Skip step" }).click();
+  await expect(tofu.getByText("This dish is complete.")).toBeVisible();
+  await tofu.getByRole("button", { name: "Undo last step" }).click();
+  await expect(tofu.getByText("Chop the tofu")).toBeVisible();
+
+  await rice.getByRole("button", { name: "Focus Steamed rice" }).click();
+  await expect(page.getByRole("button", { name: "Focused", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("focused-step")).toContainText("Steam the rice");
+  await expect(page.getByRole("timer")).toBeVisible();
+  expect(actions.map((action) => action.action)).toEqual(["start_timer", "pause_timer", "extend_timer", "resume_timer", "complete", "reopen", "skip", "reopen"]);
+  expect(errors).toEqual([]);
+});
+
+for (const language of ["en", "zh"] as const) {
+  test(`keeps stacked instructions and controls readable at 320px in ${language}`, async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 780 });
+    await page.addInitScript((value) => localStorage.setItem("cooking-ui-language", value), language);
+    const actions: unknown[] = [];
+    await installCookingFixtures(page, actions);
+    await page.goto("/cook");
+    await page.getByRole("tab", { name: language === "en" ? "Choose recipes" : "选择菜谱" }).click();
+    await page.getByRole("checkbox", { name: "Mapo tofu" }).check();
+    await page.getByRole("checkbox", { name: "Steamed rice" }).check();
+    await page.getByRole("button", { name: language === "en" ? "Start 2 dishes" : "开始烹饪 2 道菜" }).click();
+    await page.getByRole("button", { name: language === "en" ? "All dishes" : "全部菜品", exact: true }).click();
+    await expect(page.getByTestId("stacked-step")).toHaveCount(2);
+    for (const card of await page.getByTestId("stacked-step").all()) {
+      await expect(card.locator("img")).toBeVisible();
+      await expect.poll(() => card.locator("img").evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+    }
+    const rice = page.getByRole("region", { name: "Steamed rice", exact: true });
+    await rice.getByRole("button", { name: language === "en" ? "Start timer" : "开始计时" }).click();
+    await expect(rice.getByRole("timer")).toBeVisible();
+    const bounds = await page.getByTestId("stacked-step").evaluateAll((cards) => cards.map((card) => {
+      const rect = card.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, scroll: card.scrollWidth, width: card.clientWidth };
+    }));
+    expect(bounds.every((card) => card.left >= 0 && card.right <= 320 && card.scroll <= card.width)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+}

@@ -1020,5 +1020,19 @@
   "recipe.tagGroup.time": "烹饪时间",
   "recipe.tagGroup.diet": "饮食偏好",
   "recipe.tagGroup.dish": "菜品类型",
-  "recipe.tagGroup.flavor": "口味风格"
+  "recipe.tagGroup.flavor": "口味风格",
+  "cook.view.label": "烹饪视图",
+  "cook.view.focused": "专注视图",
+  "cook.view.allDishes": "全部菜品",
+  "cook.view.focusDish": "专注",
+  "cook.view.hint": "查看每道菜当前的烹饪步骤",
+  "cook.session.oneDish": "1 道菜",
+  "cook.session.dishes": "{count} 道菜",
+  "cook.session.oneTimer": "1 个计时器运行中",
+  "cook.session.timers": "{count} 个计时器运行中",
+  "cook.action.pauseCompact": "暂停",
+  "cook.action.resumeCompact": "继续",
+  "cook.action.extendCompact": "+1 分钟",
+  "cook.action.skipCompact": "跳过",
+  "cook.preferences": "烹饪偏好"
 }

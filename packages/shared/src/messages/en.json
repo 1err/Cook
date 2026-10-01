@@ -1020,5 +1020,19 @@
   "recipe.tagGroup.time": "Cooking time",
   "recipe.tagGroup.diet": "Dietary / health",
   "recipe.tagGroup.dish": "Dish type",
-  "recipe.tagGroup.flavor": "Flavor / style"
+  "recipe.tagGroup.flavor": "Flavor / style",
+  "cook.view.label": "Cooking view",
+  "cook.view.focused": "Focused",
+  "cook.view.allDishes": "All dishes",
+  "cook.view.focusDish": "Focus",
+  "cook.view.hint": "Your current step for every dish",
+  "cook.session.oneDish": "1 dish",
+  "cook.session.dishes": "{count} dishes",
+  "cook.session.oneTimer": "1 timer running",
+  "cook.session.timers": "{count} timers running",
+  "cook.action.pauseCompact": "Pause",
+  "cook.action.resumeCompact": "Resume",
+  "cook.action.extendCompact": "+1 min",
+  "cook.action.skipCompact": "Skip",
+  "cook.preferences": "Cooking preferences"
 }

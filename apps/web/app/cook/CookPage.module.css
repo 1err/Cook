@@ -1093,3 +1093,480 @@
 .emptyChoices { padding: 1.25rem; border: 1px solid var(--cw-color-divider); border-radius: var(--cw-radius-card); background: var(--cw-color-surface); }
 .emptyChoices p { margin: 0 0 1rem; }
 @media (max-width: 640px) { .dateField input, .searchField input { font-size: 16px; } .emptyChoices a { min-height: 44px; width: 100%; } }
+
+.viewSwitch {
+  display: inline-flex;
+  justify-self: start;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  background: var(--cw-color-subtle-surface);
+}
+
+.viewSwitch button {
+  min-height: 44px;
+  padding: var(--cw-space-2) var(--cw-space-4);
+  border: 1px solid transparent;
+  border-radius: calc(var(--cw-radius-control) - 3px);
+  background: transparent;
+  color: var(--cw-color-muted-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.viewSwitch button[aria-pressed="true"] {
+  border-color: var(--cw-color-divider);
+  background: var(--cw-color-surface);
+  color: var(--cw-color-action);
+  box-shadow: var(--cw-elevation-raised);
+}
+
+.viewSwitch button:hover {
+  color: var(--cw-color-action);
+}
+
+.stepList {
+  display: grid;
+  gap: var(--cw-space-4);
+  min-width: 0;
+}
+
+.stackedCard {
+  position: relative;
+  grid-template-columns: 130px minmax(0, 1fr) 308px;
+  grid-template-areas:
+    "visual heading status"
+    "visual instruction controls"
+    "visual progress controls";
+  align-items: center;
+  gap: 8px 24px;
+  min-width: 0;
+  min-height: 178px;
+  padding: 20px 24px;
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+.stackedCard:has(.focusHeader) {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.stackedCard h2 {
+  font-family: "Source Serif 4", "Songti SC", Georgia, serif;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.stackedVisual {
+  grid-area: visual;
+  align-self: center;
+}
+
+.stackedCard .focusVisual,
+.stackedCard .focusIllustration {
+  width: 130px;
+  height: 130px;
+  min-height: 0;
+  aspect-ratio: 1;
+  border-radius: 10px;
+}
+
+.stackedHeading {
+  grid-area: heading;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stackedHeading > p {
+  color: var(--cw-color-muted-ink);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.stackedStatus {
+  grid-area: status;
+  align-self: start;
+  justify-self: end;
+  padding-right: 96px;
+  line-height: 1;
+}
+
+.stackedStatus > span {
+  display: inline-block;
+  padding: 6px 12px;
+  font-size: 10px;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.stackedInstruction {
+  grid-area: instruction;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.stackedMobileMetadata {
+  display: none;
+}
+
+.stackedCard .stepText {
+  font-family: var(--cw-type-ui-family), var(--cw-type-ui-fallback);
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.stackedCard .stepMeta {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.stackedControls {
+  grid-area: controls;
+  grid-row: 1 / 4;
+  align-self: center;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding-top: 36px;
+}
+
+.stackedTimerPanel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cw-color-sage) 9%, var(--cw-color-surface));
+}
+
+.stackedTimerPanel .timer {
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+  color: color-mix(in srgb, var(--cw-color-sage) 85%, var(--cw-color-ink));
+  font-size: 10px;
+}
+
+.stackedTimerPanel .timer strong {
+  order: -1;
+  color: inherit;
+  font-size: 24px;
+}
+
+.stackedTimerPanel button {
+  color: color-mix(in srgb, var(--cw-color-sage) 85%, var(--cw-color-ink));
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.stackedCard .stepActions {
+  align-items: center;
+  gap: 8px;
+}
+
+.stackedCard button {
+  min-height: 44px;
+}
+
+.stackedCard .stepActions > button {
+  padding-inline: 16px;
+  font-size: 14px;
+}
+
+.stackedCard .stepActions > button:first-child {
+  flex: 1;
+}
+
+.stackedCard .stepActions > .stackedFocus {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  padding-inline: 8px;
+  font-size: 13px;
+}
+
+.stackedFocus > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stackedProgress {
+  grid-area: progress;
+  display: flex;
+  min-width: 0;
+}
+
+.stackedProgress .progressTrack {
+  width: 100%;
+  height: 4px;
+}
+
+.stackedCard .takeover {
+  grid-column: 1 / -1;
+}
+
+.sessionSummary {
+  margin-top: 12px !important;
+  color: var(--cw-color-muted-ink);
+  font-size: 14px;
+}
+
+.viewToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.viewHint {
+  margin: 0;
+  color: var(--cw-color-muted-ink);
+  font-size: 13px;
+}
+
+.allDishesWorkspace .workspaceHeader {
+  border-bottom: 0;
+  padding-bottom: 8px;
+}
+
+.allDishesWorkspace {
+  width: 100%;
+  max-width: 1184px;
+}
+
+.allDishesWorkspace .sessionActions > button {
+  min-height: 44px;
+}
+
+.allDishesWorkspace h1 {
+  font-size: clamp(2rem, 3.5vw, 3.7rem);
+}
+
+.allDishesWorkspace .sessionActions > button:disabled {
+  background: var(--cw-color-subtle-surface);
+  color: var(--cw-color-muted-ink);
+  opacity: 1;
+}
+
+@media (max-width: 960px) {
+  .stackedCard {
+    grid-template-columns: 72px minmax(0, 1fr);
+    grid-template-areas:
+      "visual heading"
+      "visual status"
+      "instruction instruction"
+      "controls controls"
+      "progress progress";
+    align-items: start;
+    gap: 4px 16px;
+    min-height: 0;
+    padding: 16px;
+  }
+
+  .stackedVisual {
+    align-self: start;
+  }
+
+  .stackedCard .focusVisual,
+  .stackedCard .focusIllustration {
+    width: 72px;
+    height: 72px;
+  }
+
+  .stackedCard h2 {
+    font-size: 21px;
+  }
+
+  .stackedCard .focusHeader {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .stackedStatus {
+    padding: 0;
+    justify-self: start;
+    min-width: 0;
+  }
+
+  .stackedStatus > span {
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .stackedStatus > .stepBadge,
+  .stackedInstruction > .stepMeta {
+    display: none;
+  }
+
+  .stackedMobileMetadata {
+    display: block;
+    color: var(--cw-color-muted-ink);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .stackedInstruction {
+    margin-top: 8px;
+  }
+
+  .stackedControls {
+    grid-area: controls;
+    align-self: start;
+    margin-top: 8px;
+    padding-top: 0;
+    gap: 8px;
+  }
+
+  .stackedProgress {
+    margin-top: 4px;
+  }
+
+  .stackedCard .stepText {
+    font-size: 18px;
+  }
+
+  .stackedCard .stepActions > .stackedFocus {
+    position: static;
+  }
+
+  .stackedCard .takeover {
+    margin-top: 12px;
+  }
+}
+
+@media (max-width: 560px) {
+  .allDishesWorkspace .recommendation {
+    display: none;
+  }
+
+  .allDishesWorkspace .sessionActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .allDishesWorkspace .sessionActions > button:last-child {
+    grid-column: 1 / -1;
+  }
+  .viewToolbar,
+  .viewSwitch {
+    width: 100%;
+  }
+
+  .viewSwitch button {
+    flex: 1;
+  }
+
+  .viewHint {
+    display: none;
+  }
+
+  .stackedCard .stepActions {
+    gap: 4px;
+  }
+
+  .stackedCard .stepActions > button {
+    padding-inline: 8px;
+    font-size: 13px;
+  }
+
+  .stackedTimerPanel .timer > span {
+    display: none;
+  }
+
+  .stackedTimerPanel {
+    padding-block: 0;
+  }
+
+  .stackedTimerPanel button {
+    padding-inline: 6px;
+  }
+
+  .takeover {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+
+/* Compose the compact view with the current production page shell. */
+.stackedCard {
+  border: 1px solid var(--cw-color-divider);
+  background: var(--cw-color-surface);
+}
+.stackedTimerPanel .timer {
+  justify-items: start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.stackedTimerPanel .timer strong {
+  font-family: var(--cw-type-ui-family), var(--cw-type-ui-fallback);
+}
+.allDishesWorkspace {
+  gap: 16px;
+  padding: 0;
+}
+.allDishesWorkspace .workspaceHeader {
+  align-items: flex-start;
+}
+.allDishesWorkspace .recommendation {
+  border: 0;
+  border-left: 1px solid var(--cw-color-sage);
+  border-radius: 0;
+  background: transparent;
+}
+.allDishesWorkspace .sessionControls {
+  align-items: center;
+  padding-top: 14px;
+}
+
+.allDishesWorkspace {
+  width: min(1184px, calc(100vw - 32px));
+  margin-inline: calc((100% - min(1184px, 100vw - 32px)) / 2);
+}
+.allDishesWorkspace h1 {
+  max-width: none;
+}
+.stackedTimerPanel .timer {
+  grid-template-columns: 1fr;
+  color: color-mix(in srgb, var(--cw-color-sage) 70%, var(--cw-color-ink));
+}
+.stackedTimerPanel .timer > span {
+  font-size: 10px;
+  font-weight: 400;
+}
+.stackedStatus > .stepBadge {
+  color: color-mix(in srgb, var(--cw-color-sage) 70%, var(--cw-color-ink));
+}
+.stackedCard .stepText {
+  letter-spacing: normal;
+}
+
+.stackedCard .stepActions > button {
+  flex: 0 0 auto;
+}
+.stackedCard .stepActions > button:first-child {
+  flex: 1;
+}
