@@ -96,6 +96,25 @@ export function ShoppingSmartBar({
           {t("shopping.backToOriginalList")}
         </button>
       </div>
+      <div className={styles.smartGuide}>
+        <h2>{t("shopping.guideTitle")}</h2>
+        <ol className={styles.smartGuideSteps}>
+          <li>
+            <strong>{t("shopping.guideCheckTitle")}</strong>
+            <p>{t("shopping.guideCheckBody")}</p>
+          </li>
+          <li>
+            <strong>{t("shopping.guideChooseTitle")}</strong>
+            <p>{t("shopping.guideChooseBody", {
+              loadAction: t("shopping.loadPicks", { store: WEEE_STORE_LABEL }),
+            })}</p>
+          </li>
+          <li>
+            <strong>{t("shopping.guideMuseTitle")}</strong>
+            <p>{t("shopping.guideMuseBody", { museAction: t("shopping.museEntry") })}</p>
+          </li>
+        </ol>
+      </div>
       {bulkLoading && bulkProgress ? (
         <p className={styles.bulkStatus} role="status">
           {t("shopping.loadingMatches", {
