@@ -1585,3 +1585,5 @@
   .stackedNavigation { grid-row:6; }
   .stackedStatus > .navigationStatus { display:inline-flex; }
 }
+
+.stepContext .stepBadge { color:color-mix(in srgb, var(--cw-color-sage) 70%, var(--cw-color-ink)); }
