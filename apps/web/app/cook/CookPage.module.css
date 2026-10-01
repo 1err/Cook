@@ -1251,8 +1251,9 @@
 
 .stackedTimerPanel {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 4px 8px;
   min-width: 0;
   padding: 4px 8px;
   border-radius: 8px;
@@ -1260,7 +1261,7 @@
 }
 
 .stackedTimerPanel .timer {
-  flex: 1;
+  flex: 1 0 max-content;
   gap: 2px;
   min-width: 0;
   color: color-mix(in srgb, var(--cw-color-sage) 85%, var(--cw-color-ink));
@@ -1273,7 +1274,21 @@
   font-size: 24px;
 }
 
+.stackedTimerActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.stackedTimerPanel .timerStepContext {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .stackedTimerPanel button {
+  flex: 0 0 auto;
+  white-space: nowrap;
   color: color-mix(in srgb, var(--cw-color-sage) 85%, var(--cw-color-ink));
   padding: 4px 8px;
   font-size: 12px;
