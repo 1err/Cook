@@ -1202,7 +1202,10 @@
   grid-area: status;
   align-self: start;
   justify-self: end;
-  padding-right: 96px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0;
   line-height: 1;
 }
 
@@ -1241,12 +1244,12 @@
 
 .stackedControls {
   grid-area: controls;
-  grid-row: 1 / 4;
+  grid-row: 2 / 4;
   align-self: center;
   display: grid;
   gap: 12px;
   min-width: 0;
-  padding-top: 36px;
+  padding-top: 0;
 }
 
 .stackedTimerPanel {
@@ -1418,6 +1421,8 @@
   }
 
   .stackedStatus {
+    flex-wrap: wrap;
+    gap: 4px 8px;
     padding: 0;
     justify-self: start;
     min-width: 0;
@@ -1602,3 +1607,65 @@
 }
 
 .stepContext .stepBadge { color:color-mix(in srgb, var(--cw-color-sage) 70%, var(--cw-color-ink)); }
+
+.mobileFocus { display: none; }
+
+/* Cook workflow polish: aligned status controls and consistent tutorial text. */
+.stepText, .stackedCard .stepText {
+  font-family: var(--cw-font-ui);
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.55;
+}
+.focusCard:not(.stackedCard) .stepText { font-size: clamp(1.2rem, 1.6vw, 1.5rem); }
+.stepContext { gap: 0.75rem; flex-wrap: wrap; }
+.stackedStatus { min-height: 44px; }
+.stackedStatus > .stackedFocus { padding-inline: 8px; font-size: 13px; }
+.stackedFocus > span { display: inline-flex; align-items: center; gap: 4px; }
+.preferenceGrid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 0.35rem 1.25rem; }
+.preferenceControl { display: grid; grid-template-columns: 20px minmax(0,1fr); align-items: center; padding: 0; gap: 0.625rem; line-height: 1.45; }
+.preferenceControl input { margin: 0; flex-shrink: 0; accent-color: var(--cw-color-action); }
+.preferenceGrid .limitation { grid-column: 1 / -1; font-size: 0.75rem; line-height: 1.5; }
+.setup > div:first-child p { font-family: var(--cw-font-ui); font-size: 0.9375rem; }
+.plannedSetup { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0,1.15fr); gap: 1.25rem; align-items: start; }
+.datePicker, .plannedMealPanel { min-width: 0; padding: 1rem; border: 1px solid var(--cw-color-divider); border-radius: 12px; background: var(--cw-color-surface); }
+.datePickerHeader { display: flex; align-items: center; justify-content: space-between; gap: 0.25rem; flex-wrap: wrap; }
+.datePickerHeader h2 { margin: 0; font: 600 1rem/1.4 var(--cw-font-ui); }
+.weekActions { display: flex; align-items: center; gap: 2px; }
+.weekActions > button { padding: 0 0.5rem; min-width: 44px; font-size: 0.8125rem; color: var(--cw-color-ink); }
+.weekActions > button:first-child, .weekActions > button:last-child { font-size: 1.5rem; }
+.weekStrip { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 2px; margin: 0.625rem 0 1rem; overflow-x: auto; padding-bottom: 4px; }
+.weekStrip > button { display: grid; gap: 4px; justify-items: center; align-content: center; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--cw-color-ink); min-height: 68px; padding: 0.375rem 0; font-family: var(--cw-font-ui); cursor: pointer; }
+.weekStrip > button > span { font-size: 0.6875rem; color: var(--cw-color-muted-ink); }
+.weekStrip strong { font-size: 1rem; font-weight: 600; }
+.weekStrip i { width: 4px; height: 4px; border-radius: 50%; }
+.weekStrip > button[aria-current="date"] i { background: currentColor; }
+.weekStrip > button:hover { background: var(--cw-color-subtle-surface); }
+.weekStrip > button[aria-pressed="true"] { background: var(--cw-color-action); color: var(--cw-color-on-action); }
+.weekStrip > button[aria-pressed="true"] > span { color: inherit; }
+.weekStrip > button:focus-visible { outline: 2px solid var(--cw-color-action); outline-offset: -2px; }
+.datePicker .dateField { grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 0.75rem; font-size: 0.75rem; font-weight: 500; }
+.datePicker input { width: 100%; min-width: 0; font-size: 0.875rem; padding-inline: 0.5rem; color: var(--cw-color-ink); }
+.plannedMealPanel { display: grid; gap: 1rem; }
+.plannedMealPanel .mealTabs { flex-wrap: nowrap; }
+.plannedMealPanel .mealTabs button { flex: 1; padding-inline: 0.625rem; font: 500 0.875rem/1.4 var(--cw-font-ui); }
+.plannedMealPanel .selectionList { grid-template-columns: 1fr; }
+.plannedMealPanel .plannedRecipe { padding: 0; border: 0; }
+.plannedMealPanel .plannedRecipe strong { font-family: var(--cw-font-ui); font-weight: 500; line-height: 1.45; }
+.plannedMealPanel .setupAction { padding-top: 0.75rem; border-top: 1px solid var(--cw-color-divider); }
+.plannedEmpty { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem; }
+.plannedEmpty p { width: 100%; margin: 0; color: var(--cw-color-muted-ink); line-height: 1.5; font-size: 0.875rem; }
+.plannedEmpty a, .plannedEmpty button { font-size: 0.8125rem; }
+@media (max-width: 960px) {
+  .stackedStatus { min-height: 0; align-self: start; }
+  .stackedStatus > .stackedFocus { display: none; }
+  .mobileFocus { display: inline-flex; margin-left: auto; }
+  .mobileFocus .stackedFocus { padding-inline: 8px; }
+  .stackedMobileMetadata { flex-basis: 100%; }
+}
+@media (max-width: 720px) {
+  .plannedSetup { grid-template-columns: minmax(0,1fr); gap: 0.875rem; }
+  .datePicker, .plannedMealPanel { padding: 0.75rem; }
+  .preferenceGrid { grid-template-columns: minmax(0,1fr); }
+  .datePicker input { font-size: 16px; }
+}

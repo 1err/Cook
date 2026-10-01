@@ -10,6 +10,7 @@ import { webApiClient } from "../lib/api";
 import { useT } from "../lib/i18n";
 import { useRecipePage } from "../lib/useRecipePage";
 import styles from "./CookPage.module.css";
+import { CookDatePicker } from "./CookDatePicker";
 import { getPlannedSelection } from "./cookSetupModel";
 
 type CookSetupProps = {
@@ -44,6 +45,8 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setPlans([]);
+    setRecipes([]);
     webApiClient.mealPlan.list(date, date)
       .then(async nextPlans => {
         const nextRecipes = await resolveRecipeDetails(webApiClient.recipes.get, nextPlans.flatMap(plan => [...plan.breakfast, ...plan.lunch, ...plan.dinner]));
@@ -107,8 +110,6 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
     await start();
   }
 
-  if (loading) return <p role="status">{t("common.loading")}</p>;
-
   return (
     <section className={styles.setup}>
       <PageHeader title={t("cook.empty.title")} description={t("cook.empty.description")} />
@@ -133,11 +134,9 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
       </div>
 
       {mode === "planned" ? (
-        <div className={styles.setupPanel}>
-          <label className={styles.dateField}>
-            <span>{t("cook.setup.plannedMeal")}</span>
-            <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-          </label>
+        <div className={styles.plannedSetup}>
+          <CookDatePicker value={date} today={todayIso()} onChange={setDate} />
+          <div className={styles.plannedMealPanel}>
           <div className={styles.mealTabs}>
             {MEALS.map((value) => (
               <button
@@ -150,7 +149,7 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
               </button>
             ))}
           </div>
-          {plannedSelection.length ? (
+          {loading ? <p role="status">{t("common.loading")}</p> : plannedSelection.length ? (
             <ul className={styles.selectionList}>
               {plannedSelection.map((recipeId) => {
                 const recipe = recipes.find((item) => item.id === recipeId);
@@ -165,13 +164,20 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
               })}
             </ul>
           ) : (
-            <div>
+            <div className={styles.plannedEmpty}>
               <p>{t("cook.setup.noPlannedRecipes")}</p>
+              <ActionLink href={`/planner?week=${date}`} variant="ghost">{t("cook.setup.openPlanner")}</ActionLink>
               <Button onClick={() => setMode("manual")} variant="secondary">
                 {t("cook.setup.chooseInstead")}
               </Button>
             </div>
           )}
+          <div className={styles.setupAction}>
+            <Button disabled={loading || selected.length === 0 || Boolean(error)} loading={submitting} onClick={() => void start()}>
+              {selected.length === 1 ? t("cook.setup.startOne") : selected.length ? t("cook.setup.startCount", { count: selected.length }) : t("cook.setup.selectToStart")}
+            </Button>
+          </div>
+          </div>
         </div>
       ) : (
         <div className={styles.setupPanel}>
@@ -225,11 +231,11 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
       {page.next && mode === "manual" ? <Button disabled={page.loading} onClick={() => void page.more()}>{t("common.loadMoreRecipes")}</Button> : null}
       {page.error ? <p role="alert">{page.error}</p> : null}
       {error ? <p role="alert" className={styles.error}>{error}</p> : null}
-      <div className={styles.setupAction}>
+      {mode === "manual" ? <div className={styles.setupAction}>
         <Button disabled={selected.length === 0} loading={submitting} onClick={() => void start()}>
-          {selected.length ? t("cook.setup.startCount", { count: selected.length }) : t("cook.setup.selectToStart")}
+          {selected.length === 1 ? t("cook.setup.startOne") : selected.length ? t("cook.setup.startCount", { count: selected.length }) : t("cook.setup.selectToStart")}
         </Button>
-      </div>
+      </div> : null}
 
       {conflict ? (
         <div className={styles.dialogBackdrop}>

@@ -1085,5 +1085,11 @@
   "cook.navigation.returnTimer": "Back to timer",
   "cook.navigation.stopTimer": "Stop timer",
   "cook.navigation.endSession": "End session",
-  "cook.navigation.noSteps": "No steps in this recipe."
+  "cook.navigation.noSteps": "No steps in this recipe.",
+  "cook.setup.dateSelection": "Cooking date",
+  "cook.setup.today": "Today",
+  "cook.setup.previousWeek": "Previous week",
+  "cook.setup.nextWeek": "Next week",
+  "cook.setup.openPlanner": "Open planner",
+  "cook.setup.startOne": "Start 1 dish"
 }

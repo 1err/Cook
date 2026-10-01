@@ -25,7 +25,7 @@ vi.mock("../lib/api", () => ({
     },
   },
 }));
-vi.mock("../lib/i18n", () => ({ useT: mockUseT }));
+vi.mock("../lib/i18n", () => ({ useT: mockUseT, useI18n: () => ({ language: "en" }) }));
 
 const messages: Record<string, string> = {
   "common.loading": "Loading...",
@@ -43,6 +43,10 @@ const messages: Record<string, string> = {
   "cook.setup.lunch": "Lunch",
   "cook.setup.noPlannedRecipes": "No recipes are saved in this meal.",
   "cook.setup.plannedMeal": "Planned meal",
+  "cook.setup.today": "Today",
+  "cook.setup.previousWeek": "Previous week",
+  "cook.setup.nextWeek": "Next week",
+  "cook.setup.startOne": "Start 1 dish",
   "cook.setup.startCount": "Start {count} dishes",
   "cook.setup.selectToStart": "Select recipes to start",
   "cook.setup.emptyLibrary": "Add your first recipe to start cooking.",
@@ -138,7 +142,7 @@ test("switches to searchable manual selection and excludes recipes without tutor
     "/recipe/draft/tutorial/edit",
   );
 
-  await user.click(screen.getByRole("button", { name: "Start 1 dishes" }));
+  await user.click(screen.getByRole("button", { name: "Start 1 dish" }));
 
   await waitFor(() => expect(onSessionCreated).toHaveBeenCalledWith(created));
   expect(mockCreate).toHaveBeenCalledWith(["tofu"]);
@@ -171,4 +175,27 @@ test("an empty cooking library has a next step and never says start zero dishes"
  expect(screen.getByRole("link",{name:"Browse public recipes"})).toHaveAttribute("href","/library?view=public");
  expect(screen.getByRole("button",{name:"Select recipes to start"})).toBeDisabled();
  expect(screen.queryByText("Start 0 dishes")).not.toBeInTheDocument();
+});
+
+
+test("moves between weeks across a year boundary and returns to the local today", async () => {
+  vi.setSystemTime(new Date(2026, 11, 31, 12));
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  render(<CookSetup onSessionCreated={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: "Next week" }));
+  await waitFor(() => expect(screen.getByLabelText("Planned meal")).toHaveValue("2027-01-07"));
+  await waitFor(() => expect(mockMealPlanList).toHaveBeenLastCalledWith("2027-01-07", "2027-01-07"));
+  await user.click(screen.getByRole("button", { name: "Today", exact: true }));
+  await waitFor(() => expect(screen.getByLabelText("Planned meal")).toHaveValue("2026-12-31"));
+});
+
+test("changes days without blanking the calendar or allowing the previous meal to start", async () => {
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  render(<CookSetup onSessionCreated={vi.fn()} />);
+  await screen.findByRole("button", { name: "Start 2 dishes" });
+  mockMealPlanList.mockReturnValue(new Promise(() => {}));
+  await user.click(screen.getByRole("button", { name: "Next week" }));
+  expect(screen.getByRole("heading", { name: "Start cooking" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Previous week" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Select recipes to start" })).toBeDisabled();
 });

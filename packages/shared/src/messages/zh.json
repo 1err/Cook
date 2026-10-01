@@ -1085,5 +1085,11 @@
   "cook.navigation.returnTimer": "回到计时步骤",
   "cook.navigation.stopTimer": "停止计时",
   "cook.navigation.endSession": "结束烹饪",
-  "cook.navigation.noSteps": "这道菜暂无步骤。"
+  "cook.navigation.noSteps": "这道菜暂无步骤。",
+  "cook.setup.dateSelection": "烹饪日期",
+  "cook.setup.today": "今天",
+  "cook.setup.previousWeek": "上一周",
+  "cook.setup.nextWeek": "下一周",
+  "cook.setup.openPlanner": "查看计划",
+  "cook.setup.startOne": "开始烹饪 1 道菜"
 }
