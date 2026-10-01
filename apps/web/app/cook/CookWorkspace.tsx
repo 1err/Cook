@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getCookingRecommendations, getCurrentCookingStep, isCookingSessionComplete, type CookingAction } from "@cooking/shared";
+import { getCookingRecommendations, getCurrentCookingStep, getEffectiveStepState, isCookingSessionComplete, type CookingAction } from "@cooking/shared";
 import { Button } from "../components/ui/Button";
 import { useT } from "../lib/i18n";
 import styles from "./CookPage.module.css";
@@ -11,12 +11,11 @@ import type { CookingSessionController } from "./useCookingSession";
 import { AddDishDialog } from "./AddDishDialog";
 import { useCookingAlerts } from "./useCookingAlerts";
 import { useScreenWake } from "./useScreenWake";
-import { useEditorialCopy } from "../lib/editorialCopy";
 
 export function CookWorkspace({ controller }: { controller: CookingSessionController }) {
   const t = useT();
-  const editorialCopy = useEditorialCopy();
   const [adding, setAdding] = useState(false);
+  const [view, setView] = useState<"focused" | "all">("focused");
   const [undoTarget, setUndoTarget] = useState<{ dishId: string; stepId: string } | null>(null);
   const session = controller.session;
   const alertCopy = useMemo(() => ({
@@ -41,14 +40,8 @@ export function CookWorkspace({ controller }: { controller: CookingSessionContro
   if (!session) return null;
   const focusedDish = session.dishes.find((dish) => dish.id === controller.selectedDishId) ?? session.dishes[0];
   const recommendation = getCookingRecommendations(session)[0];
-  const focusedStep = focusedDish ? getCurrentCookingStep(focusedDish) : null;
-  const canTakeOverAlerts = Boolean(
-    focusedDish &&
-    focusedStep &&
-    focusedStep.notification_owner_device_id &&
-    focusedStep.notification_owner_device_id !== controller.deviceId &&
-    ["timer_running", "timer_paused", "needs_attention"].includes(focusedStep.state),
-  );
+  const visibleDishes = view === "all" ? session.dishes : focusedDish ? [focusedDish] : [];
+  const runningTimers = session.dishes.reduce((count, dish) => count + dish.steps.filter((step) => getEffectiveStepState(step) === "timer_running").length, 0);
 
   function applyStepAction(
     dishId: string,
@@ -63,11 +56,15 @@ export function CookWorkspace({ controller }: { controller: CookingSessionContro
   }
 
   return (
-    <section className={styles.workspace}>
+    <section className={`${styles.workspace}${view === "all" ? ` ${styles.allDishesWorkspace}` : ""}`}>
       <header className={styles.workspaceHeader}>
         <div>
           <p className={styles.eyebrow}>{t("cook.active.eyebrow")}</p>
           <h1>{t("cook.active.title")}</h1>
+          {view === "all" ? <p className={styles.sessionSummary}>
+            {t(session.dishes.length === 1 ? "cook.session.oneDish" : "cook.session.dishes", { count: session.dishes.length })}
+            {runningTimers ? ` · ${t(runningTimers === 1 ? "cook.session.oneTimer" : "cook.session.timers", { count: runningTimers })}` : ""}
+          </p> : null}
         </div>
         {recommendation ? (
           <aside className={styles.recommendation}>
@@ -77,11 +74,25 @@ export function CookWorkspace({ controller }: { controller: CookingSessionContro
         ) : null}
       </header>
 
-      <DishRail
-        dishes={session.dishes}
-        focusedDishId={focusedDish?.id ?? null}
-        onFocus={controller.focusDish}
-      />
+      <div className={styles.viewToolbar}>
+        <div aria-label={t("cook.view.label")} className={styles.viewSwitch} role="group">
+          <button aria-pressed={view === "focused"} onClick={() => setView("focused")} type="button">
+            {t("cook.view.focused")}
+          </button>
+          <button aria-pressed={view === "all"} onClick={() => setView("all")} type="button">
+            {t("cook.view.allDishes")}
+          </button>
+        </div>
+        {view === "all" ? <p className={styles.viewHint}>{t("cook.view.hint")}</p> : null}
+      </div>
+
+      {view === "focused" ? (
+        <DishRail
+          dishes={session.dishes}
+          focusedDishId={focusedDish?.id ?? null}
+          onFocus={controller.focusDish}
+        />
+      ) : null}
 
       {controller.notice ? (
         <p className={styles.notice} role="status">
@@ -98,32 +109,32 @@ export function CookWorkspace({ controller }: { controller: CookingSessionContro
           </Button>
         </aside>
       ) : null}
-      {focusedDish ? (
-        <FocusedCookingStep
-          dish={focusedDish}
-          onAction={(stepId, action, extensionSeconds) => {
-            if (extensionSeconds === undefined) {
-              applyStepAction(focusedDish.id, stepId, action);
-            } else {
-              applyStepAction(focusedDish.id, stepId, action, extensionSeconds);
-            }
-          }}
-        />
-      ) : null}
-      {canTakeOverAlerts && focusedDish && focusedStep ? (
-        <aside className={styles.takeover}>
-          <span>{t("cook.alerts.otherDevice")}</span>
-          <Button
-            onClick={() => void controller.applyAction(focusedDish.id, focusedStep.id, "take_alert_ownership")}
-            variant="secondary"
-          >
-            {t("cook.alerts.takeOver")}
-          </Button>
-        </aside>
-      ) : null}
+      <div className={styles.stepList}>
+        {visibleDishes.map((dish) => {
+          const step = getCurrentCookingStep(dish);
+          const canTakeOverAlerts = Boolean(
+            step?.notification_owner_device_id &&
+            step.notification_owner_device_id !== controller.deviceId &&
+            ["timer_running", "timer_paused", "needs_attention"].includes(step.state),
+          );
+          return (
+            <FocusedCookingStep
+              dish={dish}
+              key={dish.id}
+              layout={view === "all" ? "stacked" : "focused"}
+              onAction={(stepId, action, extensionSeconds) => applyStepAction(dish.id, stepId, action, extensionSeconds)}
+              onFocus={view === "all" ? () => {
+                controller.focusDish(dish.id);
+                setView("focused");
+              } : undefined}
+              showAlertTakeover={canTakeOverAlerts}
+            />
+          );
+        })}
+      </div>
       <footer className={styles.sessionControls}>
         <details className={styles.preferencePanel}>
-          <summary>{editorialCopy["cook.settings"]}</summary>
+          <summary>{t("cook.preferences")}</summary>
           <div className={styles.preferenceGrid}>
             <label className={styles.preferenceControl}>
               <input checked={alerts.enabled} onChange={(event) => void alerts.setAlertsEnabled(event.target.checked)} type="checkbox" />
@@ -162,7 +173,7 @@ export function CookWorkspace({ controller }: { controller: CookingSessionContro
           <Button disabled={controller.sessionBusy} onClick={() => setAdding(true)} variant="secondary">
             {t("cook.control.addDish")}
           </Button>
-          {focusedDish ? (
+          {view === "focused" && focusedDish ? (
             <Button
               disabled={controller.sessionBusy}
               onClick={() => {
@@ -186,7 +197,7 @@ export function CookWorkspace({ controller }: { controller: CookingSessionContro
             onClick={() => {
               if (window.confirm(t("cook.confirm.discard"))) void controller.discardSession();
             }}
-            variant="destructive"
+            variant={view === "all" ? "ghost" : "destructive"}
           >
             {t("cook.control.discard")}
           </Button>

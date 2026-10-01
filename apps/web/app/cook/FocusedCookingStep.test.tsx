@@ -131,11 +131,13 @@ test("presents one compact progress treatment without repeating the step counter
   expect(focus.getAllByText("50% complete")).toHaveLength(1);
 });
 
-test("unknown-duration passive steps keep complete and skip but offer no timer", () => {
-  const onAction = vi.fn();
-  render(<FocusedCookingStep dish={cookingDish([cookingStep({ attention_type: "passive", duration_seconds: null, duration_source: "unknown" })])} onAction={onAction} />);
-  expect(screen.queryByRole("button", { name: "cook.action.startTimer" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "cook.action.complete" }));
-  expect(onAction).toHaveBeenCalledWith("step-1", "complete");
-  expect(screen.getByRole("button", { name: "cook.action.skip" })).toBeEnabled();
-});
+for (const layout of ["focused", "stacked"] as const) {
+  test(`unknown-duration passive steps keep complete and skip but offer no timer in ${layout} view`, () => {
+    const onAction = vi.fn();
+    render(<FocusedCookingStep layout={layout} dish={cookingDish([cookingStep({ attention_type: "passive", duration_seconds: null, duration_source: "unknown" })])} onAction={onAction} />);
+    expect(screen.queryByRole("button", { name: "cook.action.startTimer" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "cook.action.complete" }));
+    expect(onAction).toHaveBeenCalledWith("step-1", "complete");
+    expect(screen.getByRole("button", { name: "cook.action.skip" })).toBeEnabled();
+  });
+}
