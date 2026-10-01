@@ -43,7 +43,7 @@ test("uses a plain category heading and expands vertical store choices", async (
   expect(onToggleProducts).toHaveBeenCalledWith("Potatoes");
 });
 
-test("keeps checked-row retailer links without inactive cart-selection controls", () => {
+test("keeps checked rows compact even when cached product panels are open", () => {
   render(
     <I18nProvider>
       <ShoppingCategorySection
@@ -72,7 +72,10 @@ test("keeps checked-row retailer links without inactive cart-selection controls"
     </I18nProvider>,
   );
 
-  expect(screen.getAllByRole("link", { name: "View on Weee" })).toHaveLength(2);
+  expect(screen.queryByRole("link", { name: "View on Weee" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /products/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("checkbox")).toBeChecked();
+  expect(screen.getByText("1 bag")).toBeVisible();
   expect(screen.queryByRole("radio")).not.toBeInTheDocument();
   expect(screen.queryByText("Top pick")).not.toBeInTheDocument();
   expect(screen.queryByText("Selected for cart")).not.toBeInTheDocument();

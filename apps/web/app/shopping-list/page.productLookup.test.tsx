@@ -1119,6 +1119,56 @@ function stubCartApi() {
   });
 }
 
+test.each(["loaded", "pending"])(
+  "checking an item hides %s Weee picks and unchecking restores cached choices",
+  async (timing) => {
+    const storage = stubSessionStorage();
+    seedCartShoppingList(storage, { hidden: [1, 2] });
+    const batch = deferredResponse();
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/shopping-list?")) return Promise.resolve(jsonResponse([{ name: "Rice", total_quantity: "1 bag" }]));
+      if (path.startsWith("/meal-plan?") || path === "/recipes") return Promise.resolve(jsonResponse([]));
+      if (path === "/store-products/batch") return batch.promise;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const finishLoading = async () => {
+      await act(async () => {
+        batch.resolve(jsonResponse({ entries: [{
+          query: "Rice", status: "fresh", products: cartProducts.Rice, expires_at: nearFutureExpiry(),
+        }] }));
+        await batch.promise;
+      });
+    };
+    const user = userEvent.setup();
+    render(<ShoppingListPage />);
+    await user.click(await screen.findByRole("button", { name: "Load top picks from Weee" }));
+    if (timing === "loaded") {
+      await finishLoading();
+      await user.click(await screen.findByRole("radio", { name: "Choose Brown rice for cart" }));
+    } else {
+      expect(await screen.findByText("Waiting to load from Weee…")).toBeVisible();
+    }
+
+    await user.click(screen.getByRole("checkbox"));
+    expect(screen.getByRole("checkbox")).toBeChecked();
+    expect(screen.getByText("1 bag")).toBeVisible();
+    expect(screen.queryByRole("button", { name: /products/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Waiting to load from Weee…")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("store-product-row")).not.toBeInTheDocument();
+    if (timing === "pending") await finishLoading();
+    expect(screen.queryByText("Brown rice")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox"));
+    expect(await screen.findByText("Brown rice")).toBeVisible();
+    expect(screen.getAllByTestId("store-product-row")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Hide products" })).toBeVisible();
+    if (timing === "loaded") {
+      expect(screen.getByRole("radio", { name: "Brown rice: Selected for cart" })).toBeChecked();
+    }
+    expect(mockApiFetch.mock.calls.filter(([path]) => String(path).startsWith("/store-products"))).toHaveLength(1);
+  },
+);
+
 test("builds a review from successful matches, derives top picks, updates an alternative, and restores trigger focus", async () => {
   const storage = stubSessionStorage();
   seedCartShoppingList(storage);
