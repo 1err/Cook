@@ -1,0 +1,203 @@
+{
+  "releasedAt": 1790884274.797075,
+  "applicationSource": "d9e1cf4ea965c5d73b73ac73aea68aaf7bea9e66",
+  "baselineSource": "8a3e803a6f3fb890b2693385b09e06724519f21c",
+  "baselineFrontend": "dpl_Hpzsnax52jE4YKBEGqJBxEjHVnAb",
+  "frontend": {
+    "deployment": "dpl_6ByJKuKfrctVyhotgrjgZQfCZVEz",
+    "domains": [
+      {
+        "domain": "chef-world.com",
+        "deployment": "dpl_6ByJKuKfrctVyhotgrjgZQfCZVEz",
+        "source": "d9e1cf4ea965c5d73b73ac73aea68aaf7bea9e66",
+        "ready": true
+      },
+      {
+        "domain": "www.chef-world.com",
+        "deployment": "dpl_6ByJKuKfrctVyhotgrjgZQfCZVEz",
+        "source": "d9e1cf4ea965c5d73b73ac73aea68aaf7bea9e66",
+        "ready": true
+      }
+    ],
+    "uploadedFiles": 296,
+    "exactSourceVerified": true
+  },
+  "api": {
+    "checkedAt": 1790884308.2929122,
+    "taskRevision": 45,
+    "digest": "sha256:b94c325aee1e3542907d2e940d600911daa769b8dcbe323c3539263773a4f765",
+    "completedRollout": true,
+    "healthyTarget": true,
+    "migrationExitCode": 0,
+    "cors": [
+      {
+        "origin": "https://chef-world.com",
+        "status": 200
+      },
+      {
+        "origin": "https://www.chef-world.com",
+        "status": 200
+      }
+    ],
+    "logs": {
+      "windowSeconds": 300,
+      "events": 133,
+      "errorsOr5xx": 0,
+      "warnings": 0
+    },
+    "passed": true
+  },
+  "webLogs": {
+    "checkedAt": 1790884362.264641,
+    "deployment": "dpl_6ByJKuKfrctVyhotgrjgZQfCZVEz",
+    "windowSeconds": 300,
+    "counts": {
+      "error": 0,
+      "fatal": 0,
+      "5xx": 0
+    },
+    "passed": true
+  },
+  "publicRequests": 68,
+  "freshImages": {
+    "backend": {
+      "source": "d9e1cf4ea965c5d73b73ac73aea68aaf7bea9e66",
+      "image": "sha256:b94c325aee1e3542907d2e940d600911daa769b8dcbe323c3539263773a4f765",
+      "uid": 1001,
+      "sourceFiles": 163,
+      "migrationRepeated": true,
+      "realPostgresHttpChecks": 18,
+      "checks": [
+        {
+          "path": "/health",
+          "status": 200,
+          "origin": null
+        },
+        {
+          "path": "/ready",
+          "status": 200,
+          "origin": null
+        },
+        {
+          "path": "/recipes/search/page",
+          "status": 401,
+          "origin": null
+        },
+        {
+          "path": "/recipes/ingredient-options",
+          "status": 401,
+          "origin": null
+        },
+        {
+          "path": "/recipes/search/page",
+          "status": 200,
+          "origin": null
+        },
+        {
+          "path": "/recipes/search/page?ingredients=chicken&include_ingredients=true",
+          "status": 200,
+          "origin": null
+        },
+        {
+          "path": "/recipes/search/page?ingredients=chicken&ingredients=potato&match=all",
+          "status": 200,
+          "origin": null
+        },
+        {
+          "path": "/recipes/search/page?ingredients=chicken&ingredients=potato&match=any",
+          "status": 200,
+          "origin": null
+        },
+        {
+          "path": "/recipes/search/page?ingredients=%E9%B8%A1%E8%83%B8%E8%82%89&ingredients=%E5%9C%9F%E8%B1%86",
+          "status": 200,
+          "origin": null
+        },
+        {
+          "path": "/recipes/search/page?scope=mine&ingredients=chicken&ingredients=potato",
+          "status": 200,
+          "origin": null
+        },
+        {
+          "path": "/recipes/search/page?scope=catalog&ingredients=chicken&ingredients=potato",
+          "status": 200,
+          "origin": null
+        },
+        {
+          "path": "/recipes/search/page?ingredients=chicken&limit=1",
+          "status": 200,
+          "origin": null
+        },
+        {
+          "path": "/recipes/search/page?ingredients=chicken&limit=1&cursor=YbXPBxbfZSVfqHE-ELmbrDr2sRDgz2VQWr8T9dAhddBbMSwiZjgwNGFiOWNmNmUxMmQxZDQwZmE4Yjk1Yzk0ZmFkYjE5YzU2ZGFmODA5M2I4ZDkxY2I5YjNhMDE5NWI0Nzc3YiIsIls1LCBcImdpbmdlciBjaGlja2VuIHN0ZXdcIl0iLCJpbmdyZWRpZW50LXFhLXN0ZXciXQ",
+          "status": 200,
+          "origin": null
+        },
+        {
+          "path": "/recipes/search/page?ingredients=potato&limit=1&cursor=YbXPBxbfZSVfqHE-ELmbrDr2sRDgz2VQWr8T9dAhddBbMSwiZjgwNGFiOWNmNmUxMmQxZDQwZmE4Yjk1Yzk0ZmFkYjE5YzU2ZGFmODA5M2I4ZDkxY2I5YjNhMDE5NWI0Nzc3YiIsIls1LCBcImdpbmdlciBjaGlja2VuIHN0ZXdcIl0iLCJpbmdyZWRpZW50LXFhLXN0ZXciXQ",
+          "status": 422,
+          "origin": null
+        },
+        {
+          "path": "/recipes/search/page?ingredients=chicken&ingredients=strawberry",
+          "status": 200,
+          "origin": null
+        },
+        {
+          "path": "/recipes/ingredient-options",
+          "status": 200,
+          "origin": null
+        },
+        {
+          "path": "/recipes/search/page",
+          "status": 401,
+          "origin": "https://chef-world.com"
+        },
+        {
+          "path": "/recipes/search/page",
+          "status": 401,
+          "origin": "https://www.chef-world.com"
+        }
+      ],
+      "passed": true
+    },
+    "web": {
+      "passed": true,
+      "uid": 1001,
+      "routes": 15,
+      "assets": 42,
+      "featureChunks": 1,
+      "productionApi": true,
+      "networkIsolated": true,
+      "sourceCommit": "d9e1cf4ea965c5d73b73ac73aea68aaf7bea9e66",
+      "imageConfig": "sha256:18d5a5082e95c144793954a78f99cb25219ad9b361d838f3939e614582f08512",
+      "imageDigest": "sha256:fd1c00e92a10af9bc4325b0bf7712819b933202a325f5bb556a0bdff6ec68ded"
+    }
+  },
+  "tests": {
+    "backendPassed": 1641,
+    "backendExistingSkips": 6,
+    "webPassed": 882,
+    "sharedPassed": 407,
+    "apiClientPassed": 68,
+    "realPostgresIngredientTestsPassed": 37,
+    "responsiveCasesPerTarget": 6,
+    "targets": [
+      "fresh production image",
+      "protected candidate",
+      "live frontend"
+    ],
+    "viewports": [
+      1440,
+      390,
+      320
+    ],
+    "languages": [
+      "en",
+      "zh"
+    ],
+    "libraryBrowserTestsPassed": 13,
+    "libraryBrowserIntentionalSkips": 2
+  },
+  "browserEvidenceBoundary": "Actual deployed frontend with disposable PostgreSQL API data and routed fixture photos; no production account or recipe mutations. Live API health, readiness, authentication boundary, CORS and logs were checked directly."
+}

@@ -27,7 +27,7 @@ test("an empty library offers public recipes and switches to that catalog", asyn
  await userEvent.click(screen.getByRole("button", {name:"Browse public recipes"}));
  expect(screen.getByRole("tab", {name:"Public library"})).toHaveAttribute("aria-selected","true");
  expect(state.scopes).toContain("catalog");
- expect(screen.getByRole("link", {name:"Friends"})).toHaveAttribute("href","/library/friends");
+ expect(screen.getByRole("tab", {name:"Friends"})).toHaveAttribute("href","/library/friends");
 });
 test("Chinese filters translate the summary, group, and recipe tags", async () => {
  vi.stubGlobal("localStorage", {getItem: () => "zh", setItem: vi.fn()});
@@ -39,4 +39,12 @@ test("Chinese filters translate the summary, group, and recipe tags", async () =
  await userEvent.click(screen.getByRole("button", {name:"完成",exact:true}));
  expect(screen.getByText("中餐")).toBeVisible();
  expect(screen.queryByText("All tags")).not.toBeInTheDocument();
+});
+
+test("restores My library as the default with Public library and Friends beside it", () => {
+ render(<I18nProvider><LibraryPage /></I18nProvider>);
+ expect(screen.getAllByRole("tab").map(tab=>tab.textContent)).toEqual(["My library","Public library","Friends"]);
+ expect(screen.getByRole("tab",{name:"My library"})).toHaveAttribute("aria-selected","true");
+ expect(screen.getByRole("tab",{name:"Friends"})).toHaveAttribute("href","/library/friends");
+ expect(state.scopes).toEqual(["mine"]);
 });

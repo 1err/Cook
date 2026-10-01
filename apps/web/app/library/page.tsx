@@ -10,6 +10,9 @@ import { RequireAuth } from "../components/RequireAuth";
 import { useI18n, useT } from "../lib/i18n";
 import { useEditorialCopy } from "../lib/editorialCopy";
 import { RecipeTiming } from "../components/RecipeTiming";
+import { RecipeCard } from "../components/RecipeCard";
+import { getRecipeTags } from "../lib/recipeTags";
+import { LibraryMasonry } from "./LibraryMasonry";
 import { Button, ActionLink } from "../components/ui/Button";
 import { Icon } from "../components/ui/Icon";
 import { PageHeader, PageShell } from "../components/PageShell";
@@ -21,10 +24,10 @@ import { IngredientSearch, ingredientLabel } from "./IngredientSearch";
 import { RemainingIngredients } from "./RemainingIngredients";
 import styles from "./LibraryPage.module.css";
 const MenuMaker=dynamic(()=>import("./menu/MenuLibraryLoader").then(module=>module.MenuLibraryLoader),{ssr:false});
-type Collection="all"|"mine"|"catalog";
+type Collection="mine"|"catalog";
 
 function LibraryPageContent() {
-  const searchParams=useSearchParams();const initial:Collection=searchParams.get("view")==="public"?"catalog":searchParams.get("view")==="mine" || searchParams.has("highlight")?"mine":"all";
+  const searchParams=useSearchParams();const initial:Collection=searchParams.get("view")==="public"?"catalog":"mine";
   const [view,setView]=useState<Collection>(initial);const [visited,setVisited]=useState(new Set<Collection>([initial]));
   const [mode,setMode]=useState<"name"|"ingredients">("name");const [search,setSearch]=useState("");const [debouncedSearch,setDebouncedSearch]=useState("");
   const [ingredients,setIngredients]=useState<string[]>([]);const [match,setMatch]=useState<"all"|"any">("all");const [tags,setTags]=useState<RecipeTagSlug[]>([]);
@@ -44,15 +47,14 @@ function LibraryPageContent() {
   const filters=mode==="ingredients"?{ingredients,match,includeIngredients:true}:{q:debouncedSearch,tags};
   const minePage=useLibrarySearch("mine",filters,visited.has("mine"));
   const catalogPage=useLibrarySearch("catalog",filters,visited.has("catalog"));
-  const allPage=useLibrarySearch("all",filters,visited.has("all"));
-  const page=view==="mine"?minePage:view==="catalog"?catalogPage:allPage;
+  const page=view==="mine"?minePage:catalogPage;
   const activeList=page.items;const loading=page.loading && !activeList.length;
   const highlightId=searchParams.get("highlight");
   const bookmarkParents=useMemo(()=>{
     const parents=new Map(knownBookmarkParents.current);
-    for(const recipe of [...catalogPage.items,...allPage.items])if(recipe.catalog_source_recipe_id)parents.set(recipe.id,recipe.catalog_source_recipe_id);
+    for(const recipe of catalogPage.items)if(recipe.catalog_source_recipe_id)parents.set(recipe.id,recipe.catalog_source_recipe_id);
     return parents;
-  },[catalogPage.items,allPage.items]);
+  },[catalogPage.items]);
   function relatedBookmarks(first: string, second: string) {
     function ancestors(id: string) {
       const ids = new Set<string>();
@@ -90,7 +92,6 @@ function LibraryPageContent() {
       });
       setCopyStatus(`${t(saved ? "library.removedFromLibrary" : "library.inYourLibrary")}: ${title}`);
       if (visited.has("mine")) void minePage.refresh();
-      if (view !== "all" && visited.has("all")) void allPage.refresh();
       // Keep loaded catalog pages and focus; membership is patched above.
     } catch (caught) {
       if (!mounted.current) return;
@@ -110,24 +111,25 @@ function LibraryPageContent() {
   return <>
     <div className={styles.headingRow}>
       <PageHeader title={t("library.title")} description={copy["library.tagline"]} />
-      <div className={styles.headingActions}>
-        <Link href="/library/friends" className={styles.friendsLink}>{copy["library.friends"]}</Link>
-        <button ref={menuTrigger} type="button" className={styles.menuButton} onClick={()=>setMenuOpen(true)}><Icon name="menuCard" size={18} />{t("menu.make")}</button>
-      </div>
+      {view==="mine"?<button ref={menuTrigger} type="button" className={styles.menuButton} onClick={()=>setMenuOpen(true)}><Icon name="menuCard" size={18} />{t("menu.make")}</button>:null}
     </div>
-    <div className={styles.collectionTabs} role="tablist" aria-label={t("library.views")} onKeyDown={event=>{
-      const buttons=Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button"));const current=buttons.indexOf(document.activeElement as HTMLButtonElement);
+    <div className={styles.tabs} role="tablist" aria-label={t("library.views")} onKeyDown={event=>{
+      const buttons=Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[role=tab]"));const current=buttons.indexOf(document.activeElement as HTMLButtonElement);
       const next=event.key==="ArrowRight"?(current+1)%3:event.key==="ArrowLeft"?(current+2)%3:event.key==="Home"?0:event.key==="End"?2:-1;
-      if(next>=0){event.preventDefault();buttons[next].focus();buttons[next].click();}
+      if(next>=0){event.preventDefault();buttons[next].focus();if(buttons[next].tagName==="BUTTON")buttons[next].click();}
     }}>
-      {(["all","mine","catalog"] as const).map(scope=><button type="button" role="tab" key={scope} id={`collection-${scope}`} aria-controls="library-results" aria-selected={view===scope} tabIndex={view===scope?0:-1} className={styles.tab} onClick={()=>collection(scope)}>{t(scope==="all"?"library.allRecipes":scope==="mine"?"library.myLibrary":"library.publicLibrary")}</button>)}
+      {(["mine","catalog"] as const).map(scope=><button type="button" role="tab" key={scope} id={`collection-${scope}`} aria-controls="library-results" aria-selected={view===scope} tabIndex={view===scope?0:-1} className={styles.tab} onClick={()=>collection(scope)}>{t(scope==="mine"?"library.myLibrary":"library.publicLibrary")}</button>)}
+      <Link href="/library/friends" role="tab" aria-selected={false} className={styles.tab}>{copy["library.friends"]}</Link>
     </div>
+    <div className={styles.toolbar}>
     <div className={styles.searchBar}>
       <label className={styles.modeSelector}><span className={styles.visuallyHidden}>{t("library.searchBy")}</span>
         <select value={mode} onChange={event=>setMode(event.target.value as "name"|"ingredients")}><option value="name">{t("library.recipeName")}</option><option value="ingredients">{t("library.ingredients.label")}</option></select>
       </label>
       <Icon name="search" size={18} />
       {mode==="name"?<input type="search" value={search} maxLength={200} aria-label={t("library.searchAria")} placeholder={t("library.searchPlaceholder")} onChange={event=>setSearch(event.target.value)} />:<IngredientSearch options={options} selected={ingredients} onAdd={name=>setIngredients(current=>current.includes(name) || current.length>=20?current:[...current,name])} />}
+    </div>
+    {mode==="name"?<TagFilterPopover values={tags} onToggleValue={tag=>setTags(current=>current.includes(tag)?current.filter(value=>value!==tag):[...current,tag])} onClear={()=>setTags([])} ariaLabel={t("library.filterAria")} triggerLabel={filterLabel} />:null}
     </div>
     {mode==="ingredients"?<div className={styles.ingredientControls}>
       <div className={styles.selectedIngredients}>
@@ -142,7 +144,6 @@ function LibraryPageContent() {
     <div id="library-results" role="tabpanel" aria-labelledby={`collection-${view}`} tabIndex={0} className={styles.resultsPanel}>
       <div className={styles.resultsToolbar}>
         <p aria-live="polite">{loading?t("common.loading"):page.total===undefined?t("library.resultsCount",{count:activeList.length}):t(page.total===1?"library.resultsCountOne":"library.resultsCount",{count:page.total})}</p>
-        {mode==="name"?<TagFilterPopover values={tags} onToggleValue={tag=>setTags(current=>current.includes(tag)?current.filter(value=>value!==tag):[...current,tag])} onClear={()=>setTags([])} ariaLabel={t("library.filterAria")} triggerLabel={filterLabel} />:null}
       </div>
       <p className={styles.visuallyHidden} role="status">{copyStatus}</p>
       {error?<p className={styles.error} role="alert">{error}</p>:null}
@@ -154,22 +155,26 @@ function LibraryPageContent() {
           {hasFilters?<Button variant="secondary" onClick={()=>{if(mode==="ingredients"){setIngredients([]);}else{setSearch("");setTags([]);}}}>{t("library.ingredients.clearFilters")}</Button>:view!=="catalog"?<><Button onClick={()=>collection("catalog")}>{t("library.browsePublic")}</Button><ActionLink href="/import" variant="secondary">{t("library.addRecipe")}</ActionLink></>:null}
           {mode==="ingredients" && ingredients.length>1 && match==="all"?<Button variant="ghost" onClick={()=>setMatch("any")}>{t("library.ingredients.tryAny")}</Button>:null}
         </div>
-      </div>:<div className={styles.recipeGrid} role="list" aria-label={t("library.title")}>
+      </div>:<LibraryMasonry>
         {activeList.map(recipe=>{
-          const owned=recipe.is_owned;const href=owned?`/recipe/${encodeURIComponent(recipe.id)}`:`/library/public/${encodeURIComponent(recipe.id)}`;
+          const remaining=mode==="ingredients" && recipe.remaining_ingredients?<div className={styles.ingredientDetails}><RemainingIngredients names={recipe.remaining_ingredients} options={options} title={recipe.title} /></div>:null;
+          if(view==="mine")return <RecipeCard key={recipe.id} recipe={recipe} isHighlighted={highlightId===recipe.id}>{remaining}</RecipeCard>;
           const alreadyAdded=savedPublicState.get(recipe.id)??Boolean(recipe.already_saved);
-          return <article role="listitem" key={recipe.id} className={`${styles.resultCard}${highlightId===recipe.id?` ${styles.highlighted}`:""}`}>
-            <Link href={href} className={styles.resultPhoto} tabIndex={-1} aria-hidden="true">{recipe.thumbnail_url?<img src={recipe.thumbnail_url} alt="" loading="lazy" />:<span className="cw-display">CW</span>}</Link>
-            <div className={styles.resultCopy}>
-              <Link href={href} className={styles.resultTitle}><h2 className="cw-display">{recipe.title}</h2></Link>
-              <div className={styles.resultMetadata}><RecipeTiming {...recipe} /><span>{t(owned?"library.myLibrary":"library.publicLibrary")}</span></div>
-              {mode==="ingredients" && recipe.remaining_ingredients?<RemainingIngredients names={recipe.remaining_ingredients} options={options} title={recipe.title} />:null}
-              <Link href={href} className={styles.viewRecipe}>{t("library.viewRecipe")} <span aria-hidden="true">↗</span></Link>
+          const featuredTags=getRecipeTags(recipe).slice(0,2);
+          return <article role="listitem" key={recipe.id} className={styles.publicCard}>
+            <Link href={`/library/public/${encodeURIComponent(recipe.id)}`} className={styles.publicLink}>
+              <div className={`${styles.publicMedia} ${recipe.thumbnail_url?"":styles.publicMediaPlaceholder}`}>{recipe.thumbnail_url?<img src={recipe.thumbnail_url} alt="" />:<span className="cw-display" aria-hidden>CW</span>}</div>
+              <div className={styles.publicBody}><h2 className="cw-display">{recipe.title}</h2></div>
+            </Link>
+            <div className={styles.metadata}>
+              <RecipeTiming {...recipe} />
+              {featuredTags.length?<div className={styles.publicTags}>{featuredTags.map(tag=><span key={tag}>{t(`recipe.tag.${tag}`)}</span>)}</div>:null}
             </div>
-            {!owned || view==="catalog"?<PublicRecipeSaveButton title={recipe.title} saved={alreadyAdded} saving={[...copyingIds].some(id=>relatedBookmarks(recipe.id,id))} onSave={()=>void handleTogglePublicRecipe(recipe.id,recipe.title,alreadyAdded)} />:null}
+            {remaining}
+            <PublicRecipeSaveButton title={recipe.title} saved={alreadyAdded} saving={[...copyingIds].some(id=>relatedBookmarks(recipe.id,id))} onSave={()=>void handleTogglePublicRecipe(recipe.id,recipe.title,alreadyAdded)} />
           </article>;
         })}
-      </div>}
+      </LibraryMasonry>}
       {page.next?<Button variant="secondary" loading={page.loading} onClick={()=>void page.more()} className={styles.loadMore}>{t("common.loadMoreRecipes")}</Button>:null}
     </div>
   </>;
