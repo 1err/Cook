@@ -16,6 +16,19 @@ vi.mock("../lib/api", () => ({ webApiClient: { recipes: {
 vi.mock("../lib/i18n", () => ({ useT: mockUseT, useI18n: () => ({ language: "en" }) }));
 
 const messages: Record<string, string> = {
+  "cook.navigation.previous": "Previous step",
+  "cook.navigation.previousCompact": "Previous",
+  "cook.navigation.next": "Next step",
+  "cook.navigation.finishDish": "Finish dish",
+  "cook.navigation.upNext": "Up next",
+  "cook.navigation.overview": "Overview",
+  "cook.navigation.closeOverview": "Close overview",
+  "cook.navigation.overviewLabel": "Recipe overview for {dish}",
+  "cook.navigation.viewStep": "View step {number}: {text}",
+  "cook.navigation.done": "Done",
+  "cook.navigation.current": "Cooking now",
+  "cook.navigation.upcoming": "Coming up",
+  "cook.navigation.returnCurrent": "Back to current step",
   "cook.view.label": "Cooking view",
   "cook.view.focused": "Focused",
   "cook.view.allDishes": "All dishes",
@@ -177,12 +190,11 @@ test("shows hands-on work without a countdown and advances explicitly", async ()
   expect(screen.getByRole("button", { name: "Focus Mapo tofu" })).toBeVisible();
   expect(screen.queryByRole("timer")).not.toBeInTheDocument();
   expect(screen.getByText("About 2 min · From recipe · Hands-on")).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "Complete step" }));
+  await user.click(screen.getByRole("button", { name: "Finish dish" }));
 
   expect(current.applyAction).toHaveBeenCalledWith("tofu", "step-tofu", "complete");
-  expect(screen.getByText("Step updated. Undo is available for 10 seconds.")).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "Undo" }));
-  expect(current.applyAction).toHaveBeenLastCalledWith("tofu", "step-tofu", "reopen");
+  expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+  expect(current.applyAction).toHaveBeenCalledTimes(1);
 });
 
 test("keeps every dish visible in stable order and switches focus", async () => {
@@ -206,7 +218,7 @@ test("starts a passive timer but still offers explicit completion", async () => 
 
   await user.click(screen.getByRole("button", { name: "Start timer" }));
   expect(current.applyAction).toHaveBeenCalledWith("rice", "step-rice", "start_timer");
-  expect(screen.getByRole("button", { name: "Complete step" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Finish dish" })).toBeVisible();
 });
 
 test("shows an expired passive step as needing attention and can extend it", async () => {
@@ -302,7 +314,7 @@ test("uses the dish photo in compact view and falls back to the step image when 
   fireEvent.error(card.querySelector("img")!);
   expect(card.querySelector("img")).toBeNull();
   expect(within(card).getByText("Chop the tofu")).toBeVisible();
-  expect(within(card).getByRole("button", { name: "Complete step" })).toBeVisible();
+  expect(within(card).getByRole("button", { name: "Finish dish" })).toBeVisible();
 });
 
 
@@ -329,7 +341,7 @@ test("switches between one focused instruction and all dishes without changing p
 });
 
 
-test("routes stacked controls and undo to the dish they belong to", async () => {
+test("routes stacked timer and next controls to the dish they belong to", async () => {
   const current = controller();
   const user = userEvent.setup();
   render(<CookWorkspace controller={current} />);
@@ -338,10 +350,9 @@ test("routes stacked controls and undo to the dish they belong to", async () => 
 
   await user.click(within(rice).getByRole("button", { name: "Start timer" }));
   expect(current.applyAction).toHaveBeenLastCalledWith("rice", "step-rice", "start_timer");
-  await user.click(within(rice).getByRole("button", { name: "Skip step" }));
-  expect(current.applyAction).toHaveBeenLastCalledWith("rice", "step-rice", "skip");
-  await user.click(screen.getByRole("button", { name: "Undo" }));
-  expect(current.applyAction).toHaveBeenLastCalledWith("rice", "step-rice", "reopen");
+  await user.click(within(rice).getByRole("button", { name: "Finish dish" }));
+  expect(current.applyAction).toHaveBeenLastCalledWith("rice", "step-rice", "complete");
+  expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
 });
 
 
@@ -383,8 +394,10 @@ test("keeps completed dishes and other-device timer controls available in all di
   const rice = screen.getByRole("region", { name: "Steamed rice" });
   expect(within(tofu).getByText("This dish is complete.")).toBeVisible();
   expect(within(rice).getByRole("timer")).toHaveTextContent("5:00");
-  await user.click(within(tofu).getByRole("button", { name: "Undo last step" }));
-  expect(current.applyAction).toHaveBeenLastCalledWith("tofu", "step-tofu", "reopen");
+  expect(within(tofu).getByRole("button", { name: "Next step" })).toBeDisabled();
+  await user.click(within(tofu).getByRole("button", { name: "Overview" }));
+  expect(within(tofu).getByRole("region", { name: "Recipe overview for Mapo tofu" })).toBeVisible();
+  expect(current.applyAction).not.toHaveBeenCalled();
   await user.click(screen.getByRole("button", { name: "Take over alerts" }));
   expect(current.applyAction).toHaveBeenLastCalledWith("rice", "step-rice", "take_alert_ownership");
 });

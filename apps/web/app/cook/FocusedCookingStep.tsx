@@ -15,6 +15,7 @@ import { RecipeStepIllustration } from "../components/RecipeStepIllustration";
 import { useT } from "../lib/i18n";
 import styles from "./CookPage.module.css";
 import { CookingTimer } from "./CookingTimer";
+import { CookingStepNavigation } from "./CookingStepNavigation";
 
 function StepVisual({ step, compact, thumbnailUrl }: { step: CookingStep; compact: boolean; thumbnailUrl: string | null }) {
   const [failedImages, setFailedImages] = useState<string[]>([]);
@@ -48,12 +49,16 @@ export function FocusedCookingStep({
 }: {
   dish: CookingDish;
   layout?: "focused" | "stacked";
-  onAction: (stepId: string, action: CookingAction, extensionSeconds?: number) => void;
+  onAction: (stepId: string, action: CookingAction, extensionSeconds?: number) => void | Promise<void>;
   onFocus?: () => void;
   showAlertTakeover?: boolean;
 }) {
   const t = useT();
-  const step = getCurrentCookingStep(dish);
+  const [viewedStepId, setViewedStepId] = useState<string | null>(null);
+  const [advancing, setAdvancing] = useState(false);
+  const [advanceError, setAdvanceError] = useState(false);
+  const currentStep = getCurrentCookingStep(dish);
+  const step = dish.steps.find(item => item.id === viewedStepId) ?? currentStep ?? dish.steps[dish.steps.length - 1];
   const progress = getDishProgress(dish);
   const compact = layout === "stacked";
   const cardClassName = `${styles.focusCard}${compact ? ` ${styles.stackedCard}` : ""}`;
@@ -64,104 +69,104 @@ export function FocusedCookingStep({
     </Button>
   ) : null;
 
-  if (!step) {
-    const lastResolved = [...dish.steps].reverse().find((item) => item.state === "completed" || item.state === "skipped");
-    return (
-      <section aria-label={dish.title} className={cardClassName} data-testid={compact ? "stacked-step" : "focused-step"}>
-        <header className={styles.focusHeader}>
-          <h2>{dish.title}</h2>
-          {focusButton}
-        </header>
-        <p>{t("cook.dish.complete")}</p>
-        <p>{t("cook.progress", { progress })}</p>
-        {lastResolved ? (
-          <Button variant="secondary" onClick={() => onAction(lastResolved.id, "reopen")}>
-            {t("cook.action.reopen")}
-          </Button>
-        ) : null}
-      </section>
-    );
+  if (!step) return (
+    <section aria-label={dish.title} className={cardClassName} data-testid={compact ? "stacked-step" : "focused-step"}>
+      <header className={styles.focusHeader}><h2>{dish.title}</h2>{focusButton}</header>
+      <p>{t("cook.dish.complete")}</p>
+    </section>
+  );
+
+  const index = dish.steps.findIndex(item => item.id === step.id);
+  const isCurrent = step.id === currentStep?.id;
+  const currentState = currentStep ? getEffectiveStepState(currentStep) : null;
+  const liveTimer = currentStep && currentState && ["timer_running", "timer_paused", "needs_attention"].includes(currentState)
+    ? { ...currentStep, state: currentState }
+    : null;
+  const stateLabel = !currentStep
+    ? t("cook.dish.complete")
+    : !isCurrent
+      ? t(index < dish.steps.findIndex(item => item.id === currentStep.id) ? "cook.navigation.reviewing" : "cook.navigation.lookingAhead")
+      : currentState === "needs_attention"
+        ? t("cook.attention.needsAttention")
+        : compact && currentState === "timer_running"
+          ? t("cook.dish.timerRunning")
+          : compact && currentState === "timer_paused"
+            ? t("cook.timer.paused")
+            : step.attention_type === "passive"
+              ? t("cook.attention.passive")
+              : t("cook.attention.handsOn");
+  const badgeClassName = `${currentState === "needs_attention" && isCurrent ? styles.attentionBadge : styles.stepBadge}${!currentStep || !isCurrent ? ` ${styles.navigationStatus}` : ""}`;
+  const canStartTimer = isCurrent && currentState === "ready" && step.attention_type === "passive" && step.duration_seconds != null && step.duration_seconds > 0;
+
+  function viewStep(id: string) {
+    setViewedStepId(id === currentStep?.id ? null : id);
+    setAdvanceError(false);
   }
 
-  const state = getEffectiveStepState(step);
-  const showTimer = ["timer_running", "timer_paused", "needs_attention"].includes(state);
-  const stateLabel = state === "needs_attention"
-    ? t("cook.attention.needsAttention")
-    : compact && state === "timer_running"
-      ? t("cook.dish.timerRunning")
-      : compact && state === "timer_paused"
-        ? t("cook.timer.paused")
-        : step.attention_type === "passive"
-          ? t("cook.attention.passive")
-          : t("cook.attention.handsOn");
+  async function nextStep() {
+    if (advancing) return;
+    if (!isCurrent) {
+      const next = dish.steps[index + 1];
+      if (next) viewStep(next.id);
+      return;
+    }
+    setViewedStepId(null);
+    setAdvanceError(false);
+    setAdvancing(true);
+    try {
+      await onAction(step.id, "complete");
+    } catch {
+      setAdvanceError(true);
+    } finally {
+      setAdvancing(false);
+    }
+  }
 
   const timerActions = <>
-    {state === "timer_running" ? (
-      <Button aria-label={t("cook.action.pause")} variant={compact ? "ghost" : "secondary"} onClick={() => onAction(step.id, "pause_timer")}>
-        {t(compact ? "cook.action.pauseCompact" : "cook.action.pause")}
-      </Button>
-    ) : null}
-    {state === "timer_paused" ? (
-      <Button aria-label={t("cook.action.resume")} variant={compact ? "ghost" : "secondary"} onClick={() => onAction(step.id, "resume_timer")}>
-        {t(compact ? "cook.action.resumeCompact" : "cook.action.resume")}
-      </Button>
-    ) : null}
-    {showTimer ? (
-      <Button aria-label={t("cook.action.extend")} variant={compact ? "ghost" : "secondary"} onClick={() => onAction(step.id, "extend_timer", 60)}>
-        {t(compact ? "cook.action.extendCompact" : "cook.action.extend")}
-      </Button>
-    ) : null}
+    {currentStep && currentState === "timer_running" ? <Button aria-label={t("cook.action.pause")} disabled={advancing} variant={compact ? "ghost" : "secondary"} onClick={() => onAction(currentStep.id, "pause_timer")}>
+      {t(compact ? "cook.action.pauseCompact" : "cook.action.pause")}
+    </Button> : null}
+    {currentStep && currentState === "timer_paused" ? <Button aria-label={t("cook.action.resume")} disabled={advancing} variant={compact ? "ghost" : "secondary"} onClick={() => onAction(currentStep.id, "resume_timer")}>
+      {t(compact ? "cook.action.resumeCompact" : "cook.action.resume")}
+    </Button> : null}
+    {liveTimer ? <Button aria-label={t("cook.action.extend")} disabled={advancing} variant={compact ? "ghost" : "secondary"} onClick={() => onAction(liveTimer.id, "extend_timer", 60)}>
+      {t(compact ? "cook.action.extendCompact" : "cook.action.extend")}
+    </Button> : null}
+    {canStartTimer ? <Button disabled={advancing} onClick={() => onAction(step.id, "start_timer")}>{t("cook.action.startTimer")}</Button> : null}
   </>;
-  const stepActions = <>
-    {step.attention_type === "passive" && step.duration_seconds != null && step.duration_seconds > 0 && state === "ready" ? (
-      <Button onClick={() => onAction(step.id, "start_timer")}>{t("cook.action.startTimer")}</Button>
-    ) : null}
-    <Button onClick={() => onAction(step.id, "complete")}>{t("cook.action.complete")}</Button>
-    <Button aria-label={t("cook.action.skip")} variant="ghost" onClick={() => onAction(step.id, "skip")}>
-      {t(compact ? "cook.action.skipCompact" : "cook.action.skip")}
-    </Button>
-  </>;
-  const progressBar = <span aria-hidden="true" className={styles.progressTrack}>
-    <span style={{ inlineSize: `${progress}%` }} />
-  </span>;
-  const takeover = showAlertTakeover ? <aside className={styles.takeover}>
+  const timer = liveTimer ? <>
+    {!isCurrent ? <p className={styles.timerStepContext}>{t("cook.navigation.timerStep", { number: liveTimer.position + 1 })}</p> : null}
+    <CookingTimer step={liveTimer} />
+  </> : null;
+  const progressBar = <span aria-hidden="true" className={styles.progressTrack}><span style={{ inlineSize: `${progress}%` }} /></span>;
+  const takeover = showAlertTakeover && currentStep ? <aside className={styles.takeover}>
     <span>{t("cook.alerts.otherDevice")}</span>
-    <Button onClick={() => onAction(step.id, "take_alert_ownership")} variant="secondary">
-      {t("cook.alerts.takeOver")}
-    </Button>
+    <Button disabled={advancing} onClick={() => onAction(currentStep.id, "take_alert_ownership")} variant="secondary">{t("cook.alerts.takeOver")}</Button>
   </aside> : null;
+  const navigation = <>
+    {advanceError ? <p className={styles.error} role="alert">{t("cook.navigation.advanceFailed")}</p> : null}
+    <CookingStepNavigation dish={dish} step={step} currentStep={currentStep} compact={compact} advancing={advancing}
+      onPrevious={() => { if (index > 0) viewStep(dish.steps[index - 1].id); }}
+      onNext={() => void nextStep()}
+      onViewStep={viewStep}
+      onReturnToCurrent={() => { setViewedStepId(null); setAdvanceError(false); }} />
+  </>;
 
   if (compact) return (
     <section aria-label={dish.title} className={cardClassName} data-testid="stacked-step">
-      <div className={styles.stackedVisual}>
-        <StepVisual compact key={step.id} step={step} thumbnailUrl={dish.thumbnail_url} />
-      </div>
-      <header className={styles.stackedHeading}>
-        <p>{t("cook.step.number", { current: step.position + 1, total: dish.steps.length })}</p>
-        <h2>{dish.title}</h2>
-      </header>
+      <div className={styles.stackedVisual}><StepVisual compact key={step.id} step={step} thumbnailUrl={dish.thumbnail_url} /></div>
+      <header className={styles.stackedHeading}><p>{t("cook.step.number", { current: step.position + 1, total: dish.steps.length })}</p><h2>{dish.title}</h2></header>
       <div className={styles.stackedStatus}>
-        <span className={state === "needs_attention" ? styles.attentionBadge : styles.stepBadge}>{stateLabel}</span>
+        <span className={badgeClassName}>{stateLabel}</span>
         <p className={styles.stackedMobileMetadata}>{formatRecipeStepMetadata(step, t)}</p>
       </div>
-      <div className={styles.stackedInstruction}>
-        <p className={styles.stepText}>{step.text}</p>
-        <p className={styles.stepMeta}>{formatRecipeStepMetadata(step, t)}</p>
-      </div>
+      <div className={styles.stackedInstruction}><p className={styles.stepText}>{step.text}</p><p className={styles.stepMeta}>{formatRecipeStepMetadata(step, t)}</p></div>
       <div className={styles.stackedControls}>
-        {showTimer ? <div className={styles.stackedTimerPanel}>
-          <CookingTimer step={{ ...step, state }} />
-          {timerActions}
-        </div> : null}
-        <div className={styles.stepActions}>
-          {stepActions}
-          {focusButton}
-        </div>
+        {liveTimer ? <div className={styles.stackedTimerPanel}>{timer}{timerActions}</div> : null}
+        <div className={styles.stepActions}>{!liveTimer ? timerActions : null}{focusButton}</div>
       </div>
-      <div aria-label={t("cook.progress", { progress })} className={styles.stackedProgress}>
-        {progressBar}
-        <span className={styles.liveRegion}>{t("cook.progress", { progress })}</span>
-      </div>
+      <div aria-label={t("cook.progress", { progress })} className={styles.stackedProgress}>{progressBar}<span className={styles.liveRegion}>{t("cook.progress", { progress })}</span></div>
+      <div className={styles.stackedNavigation}>{navigation}</div>
       {takeover}
     </section>
   );
@@ -172,16 +177,15 @@ export function FocusedCookingStep({
         <StepVisual compact={false} key={step.id} step={step} thumbnailUrl={dish.thumbnail_url} />
         <div className={styles.stepBody}>
           <div className={styles.stepContext}>
-            <span className={state === "needs_attention" ? styles.attentionBadge : styles.stepBadge}>{stateLabel}</span>
+            <span className={badgeClassName}>{stateLabel}</span>
+            <span className={styles.stepPosition}>{t("cook.step.number", { current: step.position + 1, total: dish.steps.length })}</span>
           </div>
           <h2 className={styles.stepText}>{step.text}</h2>
           <p className={styles.stepMeta}>{formatRecipeStepMetadata(step, t)}</p>
-          {showTimer ? <CookingTimer step={{ ...step, state }} /> : null}
-          <div className={styles.focusProgress}>
-            {progressBar}
-            <span>{t("cook.progress", { progress })}</span>
-          </div>
-          <div className={styles.stepActions}>{timerActions}{stepActions}</div>
+          {timer}
+          <div className={styles.focusProgress}>{progressBar}<span>{t("cook.progress", { progress })}</span></div>
+          {liveTimer || canStartTimer ? <div className={styles.stepActions}>{timerActions}</div> : null}
+          {navigation}
         </div>
       </div>
       {takeover}

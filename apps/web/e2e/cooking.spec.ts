@@ -1,7 +1,7 @@
 import { recipePageFixture } from "./recipePageFixture";
 import { API_BASE } from "./api";
 import { expect, test, type Page, type Route } from "@playwright/test";
-import type { CookingSession, CookingStep } from "@cooking/shared";
+import { applyOptimisticCookingAction, type CookingSession, type CookingStep } from "../../../packages/shared/src/cookingSession";
 
 const appOrigin = `http://127.0.0.1:${process.env.PORT ?? "3000"}`;
 const now = "2026-08-27T12:00:00.000Z";
@@ -121,7 +121,7 @@ async function fulfillJson(route: Route, body: unknown) {
   });
 }
 
-async function installCookingFixtures(page: Page, actions: unknown[]) {
+async function installCookingFixtures(page: Page, actions: unknown[], multiStep = false) {
   let session: ReturnType<typeof freshSession> | null = null;
   await page.route("**/cook-fixture-images/*", (route) => route.fulfill({
     contentType: "image/svg+xml",
@@ -153,6 +153,10 @@ async function installCookingFixtures(page: Page, actions: unknown[]) {
     if (pathname === "/cooking-session" && request.method() === "POST") {
       expect(request.postDataJSON()).toEqual({ recipe_ids: ["recipe-tofu", "recipe-rice"] });
       session = freshSession();
+      if (multiStep) session.dishes[0].steps.push(...["Simmer the sauce", "Gently add the tofu", "Finish the sauce", "Garnish and serve"].map((text, index) => cookingStep({
+        id: `tofu-next-${index}`, recipe_step_id: `recipe-tofu-next-${index}`, position: index + 1, text,
+        duration_seconds: index === 0 ? 600 : 60, attention_type: index === 0 ? "passive" : "hands_on", action_type: index === 0 ? "simmer" : "mix", state: "locked",
+      })));
       await fulfillJson(route, session);
       return;
     }
@@ -160,69 +164,8 @@ async function installCookingFixtures(page: Page, actions: unknown[]) {
       const body = request.postDataJSON();
       actions.push(body);
       const stepId = pathname.split("/").at(-2);
-      session = {
-        ...session,
-        version: session.version + 1,
-        updated_at: body.occurred_at,
-        dishes: session.dishes.map((dish) => ({
-          ...dish,
-          steps: dish.steps.map((step) => {
-            if (step.id !== stepId) return step;
-            if (body.action === "complete") {
-              return {
-                ...step,
-                state: "completed",
-                resolved_at: body.occurred_at,
-                revision: step.revision + 1,
-                updated_at: body.occurred_at,
-              };
-            }
-            if (body.action === "skip" || body.action === "reopen") {
-              return {
-                ...step,
-                state: body.action === "skip" ? "skipped" : "ready",
-                resolved_at: body.action === "skip" ? body.occurred_at : null,
-                revision: step.revision + 1,
-                updated_at: body.occurred_at,
-              };
-            }
-            if (body.action === "start_timer") {
-              return {
-                ...step,
-                state: "timer_running",
-                timer_started_at: body.occurred_at,
-                timer_ends_at: new Date(Date.now() + (step.duration_seconds ?? 0) * 1000).toISOString(),
-                notification_owner_device_id: body.device_id,
-                revision: step.revision + 1,
-                updated_at: body.occurred_at,
-              };
-            }
-            if (body.action === "pause_timer") {
-              return {
-                ...step, state: "timer_paused", timer_ends_at: null,
-                paused_remaining_seconds: Math.max(0, Math.ceil((Date.parse(step.timer_ends_at!) - Date.now()) / 1000)),
-                revision: step.revision + 1, updated_at: body.occurred_at,
-              };
-            }
-            if (body.action === "resume_timer") {
-              return {
-                ...step, state: "timer_running", paused_remaining_seconds: null,
-                timer_ends_at: new Date(Date.now() + step.paused_remaining_seconds! * 1000).toISOString(),
-                revision: step.revision + 1, updated_at: body.occurred_at,
-              };
-            }
-            if (body.action === "extend_timer") {
-              return {
-                ...step,
-                paused_remaining_seconds: step.state === "timer_paused" ? step.paused_remaining_seconds! + body.extension_seconds : null,
-                timer_ends_at: step.state === "timer_running" ? new Date(Date.parse(step.timer_ends_at!) + body.extension_seconds * 1000).toISOString() : null,
-                revision: step.revision + 1, updated_at: body.occurred_at,
-              };
-            }
-            return step;
-          }),
-        })),
-      };
+      const dish = session.dishes.find(item => item.steps.some(step => step.id === stepId))!;
+      session = applyOptimisticCookingAction(session, dish.id, stepId!, body);
       await fulfillJson(route, session);
       return;
     }
@@ -301,7 +244,7 @@ test("starts two dishes, advances hands-on work, and runs a passive timer", asyn
   await expect(page.getByText("0% complete")).toBeVisible();
   await expect(page.getByRole("timer")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Complete step" }).click();
+  await page.getByRole("button", { name: "Finish dish" }).click();
   await expect(page.getByText("This dish is complete.")).toBeVisible();
   await expect(page.getByText("100% complete")).toBeVisible();
 
@@ -323,7 +266,7 @@ test("keeps cached progress through an API outage and explains a replay conflict
   await expect(page.getByText("Chop the tofu")).toBeVisible();
 
   network.offline = true;
-  await page.getByRole("button", { name: "Complete step" }).click();
+  await page.getByRole("button", { name: "Finish dish" }).click();
   await expect(page.getByText(/Saved offline/)).toBeVisible();
   await expect(page.getByText(/1 change\(s\) waiting to sync/)).toBeVisible();
 
@@ -371,21 +314,21 @@ test("switches cooking views while preserving timers and updating only the chose
   await page.getByRole("button", { name: "All dishes", exact: true }).click();
   await expect(rice.getByRole("timer")).toBeVisible();
   await expect(rice.getByRole("button", { name: "Pause timer" })).toBeVisible();
-  await tofu.getByRole("button", { name: "Complete step" }).click();
+  await tofu.getByRole("button", { name: "Finish dish" }).click();
   await expect(tofu.getByText("This dish is complete.")).toBeVisible();
   await expect(rice.getByRole("timer")).toBeVisible();
-  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await tofu.getByRole("button", { name: "Overview", exact: true }).click();
+  await expect(tofu.getByRole("region", { name: "Recipe overview for Mapo tofu" })).toBeVisible();
+  await tofu.getByRole("button", { name: "View step 1: Chop the tofu" }).click();
   await expect(tofu.getByText("Chop the tofu")).toBeVisible();
-  await tofu.getByRole("button", { name: "Skip step" }).click();
-  await expect(tofu.getByText("This dish is complete.")).toBeVisible();
-  await tofu.getByRole("button", { name: "Undo last step" }).click();
-  await expect(tofu.getByText("Chop the tofu")).toBeVisible();
+  await expect(tofu.getByRole("button", { name: "Next step", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /Undo/ })).toHaveCount(0);
 
   await rice.getByRole("button", { name: "Focus Steamed rice" }).click();
   await expect(page.getByRole("button", { name: "Focused", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("focused-step")).toContainText("Steam the rice");
   await expect(page.getByRole("timer")).toBeVisible();
-  expect(actions.map((action) => action.action)).toEqual(["start_timer", "pause_timer", "extend_timer", "resume_timer", "complete", "reopen", "skip", "reopen"]);
+  expect(actions.map((action) => action.action)).toEqual(["start_timer", "pause_timer", "extend_timer", "resume_timer", "complete"]);
   expect(errors).toEqual([]);
 });
 
@@ -417,3 +360,43 @@ for (const language of ["en", "zh"] as const) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }
+
+test("reviews previous steps and looks ahead without changing cooking progress or a live timer", async ({ page }) => {
+  const actions: Array<Record<string, unknown>> = [];
+  await installCookingFixtures(page, actions, true);
+  await page.goto("/cook");
+  await page.getByRole("tab", { name: "Choose recipes" }).click();
+  await page.getByRole("checkbox", { name: "Mapo tofu" }).check();
+  await page.getByRole("checkbox", { name: "Steamed rice" }).check();
+  await page.getByRole("button", { name: "Start 2 dishes" }).click();
+  const card = page.getByTestId("focused-step");
+  await card.getByRole("button", { name: "Next step", exact: true }).click();
+  await expect(card.getByText("Simmer the sauce", { exact: true })).toBeVisible();
+  await card.getByRole("button", { name: "Start timer", exact: true }).click();
+  await expect(card.getByRole("timer")).toBeVisible();
+  await card.getByRole("button", { name: "Previous step", exact: true }).click();
+  await expect(card.getByText("Chop the tofu", { exact: true })).toBeVisible();
+  await expect(card.getByText("Timer for step 2", { exact: true })).toBeVisible();
+  await card.getByRole("button", { name: "Next step", exact: true }).click();
+  await expect(card.getByText("Simmer the sauce", { exact: true })).toBeVisible();
+  await card.getByRole("button", { name: "Up next", exact: true }).click();
+  const preview = card.getByRole("region", { name: "Next steps for Mapo tofu" });
+  await expect(preview.getByRole("listitem")).toHaveCount(3);
+  await card.getByRole("button", { name: "Overview", exact: true }).click();
+  const overview = card.getByRole("region", { name: "Recipe overview for Mapo tofu" });
+  await expect(overview.getByRole("listitem")).toHaveCount(5);
+  await overview.getByRole("button", { name: "View step 5: Garnish and serve", exact: true }).click();
+  await expect(card.getByText("Looking ahead", { exact: true })).toBeVisible();
+  await expect(card.getByRole("timer")).toBeVisible();
+  await expect(card.locator("img")).toBeVisible();
+  await expect(card.getByRole("button", { name: "Next step", exact: true })).toBeDisabled();
+  expect(actions.map(action => action.action)).toEqual(["complete", "start_timer"]);
+  await page.getByRole("button", { name: "All dishes", exact: true }).click();
+  const tofu = page.getByRole("region", { name: "Mapo tofu", exact: true });
+  await expect(tofu.getByText("Garnish and serve", { exact: true })).toBeVisible();
+  await tofu.getByRole("button", { name: "Back to current step", exact: true }).click();
+  await expect(tofu.getByText("Simmer the sauce", { exact: true })).toBeVisible();
+  await tofu.getByRole("button", { name: "Pause timer", exact: true }).click();
+  expect(actions.map(action => action.action)).toEqual(["complete", "start_timer", "pause_timer"]);
+  await expect(page.getByRole("button", { name: /Undo/ })).toHaveCount(0);
+});

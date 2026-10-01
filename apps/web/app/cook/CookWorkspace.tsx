@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { getCookingRecommendations, getCurrentCookingStep, getEffectiveStepState, isCookingSessionComplete, type CookingAction } from "@cooking/shared";
 import { Button } from "../components/ui/Button";
 import { useT } from "../lib/i18n";
@@ -16,7 +16,6 @@ export function CookWorkspace({ controller }: { controller: CookingSessionContro
   const t = useT();
   const [adding, setAdding] = useState(false);
   const [view, setView] = useState<"focused" | "all">("focused");
-  const [undoTarget, setUndoTarget] = useState<{ dishId: string; stepId: string } | null>(null);
   const session = controller.session;
   const alertCopy = useMemo(() => ({
     unsupported: t("cook.alerts.unsupported"),
@@ -32,11 +31,6 @@ export function CookWorkspace({ controller }: { controller: CookingSessionContro
     alertCopy,
   );
   const wake = useScreenWake(controller.preferences.keep_awake, Boolean(session));
-  useEffect(() => {
-    if (!undoTarget) return;
-    const timeout = window.setTimeout(() => setUndoTarget(null), 10_000);
-    return () => window.clearTimeout(timeout);
-  }, [undoTarget]);
   if (!session) return null;
   const focusedDish = session.dishes.find((dish) => dish.id === controller.selectedDishId) ?? session.dishes[0];
   const recommendation = getCookingRecommendations(session)[0];
@@ -49,10 +43,9 @@ export function CookWorkspace({ controller }: { controller: CookingSessionContro
     action: CookingAction,
     extensionSeconds?: number,
   ) {
-    if (action === "complete" || action === "skip") setUndoTarget({ dishId, stepId });
-    if (action === "reopen") setUndoTarget(null);
-    if (extensionSeconds === undefined) void controller.applyAction(dishId, stepId, action);
-    else void controller.applyAction(dishId, stepId, action, extensionSeconds);
+    return extensionSeconds === undefined
+      ? controller.applyAction(dishId, stepId, action)
+      : controller.applyAction(dishId, stepId, action, extensionSeconds);
   }
 
   return (
@@ -101,14 +94,6 @@ export function CookWorkspace({ controller }: { controller: CookingSessionContro
         </p>
       ) : null}
       {controller.actionError ? <p className={styles.error} role="alert">{controller.actionError}</p> : null}
-      {undoTarget ? (
-        <aside className={styles.undoNotice} role="status">
-          <span>{t("cook.undo.available")}</span>
-          <Button onClick={() => applyStepAction(undoTarget.dishId, undoTarget.stepId, "reopen")} variant="secondary">
-            {t("cook.action.undo")}
-          </Button>
-        </aside>
-      ) : null}
       <div className={styles.stepList}>
         {visibleDishes.map((dish) => {
           const step = getCurrentCookingStep(dish);

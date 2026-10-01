@@ -1576,3 +1576,12 @@
 .stackedCard .stepActions > button:first-child {
   flex: 1;
 }
+
+/* Persistent instruction navigation shares the existing photo/card layout. */
+.stepPosition { color:var(--cw-color-muted-ink); font-size:0.75rem; }
+.timerStepContext { color:var(--cw-color-muted-ink); font-size:0.75rem; }
+.stackedNavigation { grid-column:1 / -1; grid-row:4; min-width:0; padding-top:0.75rem; margin-top:0.25rem; border-top:1px solid var(--cw-color-divider); }
+@media (max-width:960px) {
+  .stackedNavigation { grid-row:6; }
+  .stackedStatus > .navigationStatus { display:inline-flex; }
+}
