@@ -421,6 +421,7 @@
   "library.tryAnotherFilter": "试试其他筛选条件或搜索词。",
   "library.publicShelfEmptyDesc": "当精选菜谱发布后，所有已登录用户都会在这里看到。",
   "library.importRecipe": "导入菜谱",
+  "library.bookmarkHelp": "点击书签收藏菜谱；实心书签表示已在你的菜谱库中。",
   "library.inYourLibrary": "已在你的菜谱库中",
   "library.addToMyLibrary": "添加到我的菜谱库",
   "library.publicRecipe.viewCopy": "查看我的副本",

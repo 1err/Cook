@@ -34,10 +34,10 @@ test('public cards use timing summaries and retain the independent copy action',
   expect(screen.getByText('20 min hands-on')).toBeVisible();
   expect(screen.getByText('8 hr passive')).toBeVisible();
   expect(heading.closest('a')).toHaveAttribute('href', '/library/public/Slow%20public%20recipe');
-  const copy = screen.getByRole('button', { name: 'library.addToMyLibrary' });
+  const copy = screen.getByRole('button', { name: /^library.addToMyLibrary:/ });
   expect(copy.closest('a')).toBeNull();
   fireEvent.click(copy);
-  expect(await screen.findByRole('button', { name: 'library.inYourLibrary' })).toBeDisabled();
+  expect(await screen.findByRole('button', { name: /^library.inYourLibrary:/ })).toHaveAttribute('aria-disabled', 'true');
   expect(apiFetch).toHaveBeenLastCalledWith('/recipes/catalog/Slow public recipe/copy', { method: 'POST' });
 });
 
@@ -56,7 +56,7 @@ test('loads one page on demand, searches server-side, and uses per-row copy stat
   expect(screen.queryByRole('heading',{name:'First'})).not.toBeInTheDocument();
   expect(mine).toHaveBeenLastCalledWith({q:'Needle',tags:[],cursor:null});
   fireEvent.click(screen.getByRole('tab',{name:'library.publicLibrary'}));
-  expect(await screen.findByRole('button',{name:'library.inYourLibrary'})).toBeDisabled();
+  expect(await screen.findByRole('button',{name:/^library.inYourLibrary:/})).toHaveAttribute('aria-disabled', 'true');
   expect(mine).toHaveBeenCalledTimes(3);
 });
 
@@ -95,8 +95,8 @@ test('a catalog copy refreshes the retained private library', async () => {
   render(<LibraryPage />);
   await screen.findByRole('heading', { name: 'Previously saved' });
   fireEvent.click(screen.getByRole('tab', { name: 'library.publicLibrary' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'library.addToMyLibrary' }));
-  await screen.findByRole('button', { name: 'library.inYourLibrary' });
+  fireEvent.click(await screen.findByRole('button', { name: /^library.addToMyLibrary:/ }));
+  await screen.findByRole('button', { name: /^library.inYourLibrary:/ });
   fireEvent.click(screen.getByRole('tab', { name: 'library.myLibrary' }));
   await screen.findByRole('heading', { name: 'Newly copied' });
 });
@@ -110,7 +110,7 @@ test('a catalog copy completing after unmount cannot refresh another account', a
   const rendered = render(<LibraryPage />);
   await screen.findByRole('heading', { name: 'Saved recipe' });
   fireEvent.click(screen.getByRole('tab', { name: 'library.publicLibrary' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'library.addToMyLibrary' }));
+  fireEvent.click(await screen.findByRole('button', { name: /^library.addToMyLibrary:/ }));
   rendered.unmount();
   await act(async () => { finish(new Response('{}')); });
   expect(mine).toHaveBeenCalledTimes(1);
@@ -136,7 +136,54 @@ test('opens public recipe details before copying, including recipes already save
 
   const heading = await screen.findByRole('heading', { name: 'Public recipe' });
   expect(heading.closest('a')).toHaveAttribute('href', '/library/public/Public%20recipe');
-  const copyButton = screen.getByRole('button', { name: 'library.inYourLibrary' });
-  expect(copyButton).toBeDisabled();
+  const copyButton = screen.getByRole('button', { name: /^library.inYourLibrary:/ });
+  expect(copyButton).toHaveAttribute('aria-disabled', 'true');
   expect(copyButton.closest('a')).toBeNull();
+});
+
+test('bookmarks track simultaneous copies independently and prevent duplicate submissions', async () => {
+  query.value = 'view=public';
+  mine.mockResolvedValue(page('Private recipe'));
+  catalog.mockResolvedValue({ items: [...page('First recipe').items, ...page('Second recipe').items], next_cursor: null });
+  const { apiFetch } = await import('../lib/api');
+  const pending = new Map<string, (response: Response) => void>();
+  vi.mocked(apiFetch).mockReset().mockImplementation(url => new Promise<Response>(resolve => { pending.set(String(url), resolve); }));
+  render(<LibraryPage />);
+  const first = await screen.findByRole('button', { name: 'library.addToMyLibrary: First recipe' });
+  const second = screen.getByRole('button', { name: 'library.addToMyLibrary: Second recipe' });
+  first.focus();
+  fireEvent.click(first);
+  fireEvent.click(first);
+  fireEvent.click(second);
+  expect(apiFetch).toHaveBeenCalledTimes(2);
+  expect(first).toHaveAttribute('aria-busy', 'true');
+  expect(second).toHaveAttribute('aria-busy', 'true');
+  await act(async () => { pending.get('/recipes/catalog/Second recipe/copy')!(new Response('{}')); });
+  expect(first).toHaveAttribute('aria-busy', 'true');
+  expect(second).toHaveAttribute('aria-busy', 'false');
+  expect(second).toHaveAttribute('aria-label', 'library.inYourLibrary: Second recipe');
+  await act(async () => { pending.get('/recipes/catalog/First recipe/copy')!(new Response('{}')); });
+  expect(first).toHaveFocus();
+  expect(first).toHaveAttribute('aria-label', 'library.inYourLibrary: First recipe');
+  fireEvent.click(first);
+  expect(apiFetch).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole('status')).toHaveTextContent('library.inYourLibrary: First recipe');
+});
+
+test('a failed bookmark keeps the recipe browsable and lets the same control retry', async () => {
+  query.value = 'view=public';
+  mine.mockResolvedValue(page('Private recipe'));
+  catalog.mockResolvedValue(page('Public recipe'));
+  const { apiFetch } = await import('../lib/api');
+  vi.mocked(apiFetch).mockReset().mockResolvedValueOnce(new Response('{}', { status: 500 })).mockResolvedValueOnce(new Response('{}'));
+  render(<LibraryPage />);
+  const bookmark = await screen.findByRole('button', { name: 'library.addToMyLibrary: Public recipe' });
+  fireEvent.click(bookmark);
+  expect(await screen.findByRole('alert')).toHaveTextContent('library.copyError');
+  expect(bookmark).toHaveAttribute('aria-disabled', 'false');
+  expect(screen.getByRole('heading', { name: 'Public recipe' }).closest('a')).toHaveAttribute('href', '/library/public/Public%20recipe');
+  fireEvent.click(bookmark);
+  await waitFor(() => expect(bookmark).toHaveAttribute('aria-label', 'library.inYourLibrary: Public recipe'));
+  expect(apiFetch).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });

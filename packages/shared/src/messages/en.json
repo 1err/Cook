@@ -421,6 +421,7 @@
   "library.tryAnotherFilter": "Try another filter or search term.",
   "library.publicShelfEmptyDesc": "Once curated recipes are published, they will appear here for every signed-in user.",
   "library.importRecipe": "Import recipe",
+  "library.bookmarkHelp": "Save recipes with the bookmark. A filled bookmark means it’s in your library.",
   "library.inYourLibrary": "In your library",
   "library.addToMyLibrary": "Add to my library",
   "library.publicRecipe.viewCopy": "View my copy",

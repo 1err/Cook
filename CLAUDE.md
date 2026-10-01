@@ -27,6 +27,8 @@ Visible Instacart controls are removed from web and mobile for the beta release 
 - `backend/` — FastAPI + async SQLAlchemy + Alembic. **Postgres only** (asyncpg).
 - `scripts/` — manual cache warming and cleanup utilities, plus `docker-up.sh`.
 
+Public Library web cards place a 44px bookmark on the photo instead of repeating a text button under every recipe. An outline adds a personal copy; a filled sage bookmark indicates an existing copy. One translated hint explains these states above the grid. Hover/focus labels and recipe-specific accessible names describe the action; saved and pending controls remain focusable with guarded clicks. Each recipe tracks its own in-flight copy, announces progress/success, and becomes retryable after an error. Photo aspect ratios, masonry placement, public detail links, and personal-library refresh are preserved.
+
 ## Library menu creation
 
 My Library offers **Make a menu** on web and native. Opening the compact menu picker loads the complete owned library so Select all includes recipes beyond visible browsing pages. Users choose up to 24 dishes, optionally supply a title and visual description, and click **Generate menu**. AI composes one complete portrait PNG with food illustrations and dish labels. Web downloads the PNG; native previews and shares it. There are no layout controls or editable text overlays in this flow. Recipe data is unchanged. Draft selections and results are session-only and reset on account changes. Selecting more than 24 dishes never silently truncates the library; the Generate button remains disabled until the selection fits.

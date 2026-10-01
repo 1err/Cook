@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 export type IconName =
   | "home"
   | "book"
+  | "bookmark"
   | "calendar"
   | "shopping"
   | "chef"
@@ -28,6 +29,7 @@ export type IconProps = {
 const SYMBOLS: Record<IconName, ReactNode> = {
   home: <><path d="m3 10 9-7 9 7M5 8.5V21h14V8.5" /><path d="M9 21v-7h6v7" /></>,
   book: <><path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1Z" /><path d="M12 5v15" /></>,
+  bookmark: <path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16l-6-4-6 4Z" />,
   calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 3v4M17 3v4M3 11h18M7 15h2M15 15h2" /></>,
   shopping: <><path d="M3 7h18l-2 12H5L3 7ZM8 8l4-5 4 5M9 11v4M15 11v4" /></>,
   chef: <><path d="M7 14a5 5 0 0 1-1-10 6 6 0 0 1 12 0 5 5 0 0 1-1 10v6H7v-6ZM7 17h10" /></>,

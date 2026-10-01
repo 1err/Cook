@@ -19,6 +19,7 @@ import { getRecipeTags } from "../lib/recipeTags";
 import { TagFilterPopover } from "../components/TagFilterPopover";
 import { useRecipePage } from "../lib/useRecipePage";
 import { LibraryMasonry } from "./LibraryMasonry";
+import { PublicRecipeSaveButton } from "./PublicRecipeSaveButton";
 import styles from "./LibraryPage.module.css";
 
 const MenuMaker = dynamic(() => import("./menu/MenuLibraryLoader").then(module => module.MenuLibraryLoader), { ssr: false });
@@ -36,7 +37,9 @@ function LibraryPageContent() {
   const [search, setSearch] = useState("");
   const [catalogVisited, setCatalogVisited] = useState(searchParams.get("view") === "public");
   const [view, setView] = useState<"mine" | "public">(searchParams.get("view") === "public" ? "public" : "mine");
-  const [copyingId, setCopyingId] = useState<string | null>(null);
+  const copying = useRef(new Set<string>());
+  const [copyingIds, setCopyingIds] = useState(new Set<string>());
+  const [copyStatus, setCopyStatus] = useState("");
   const t = useT();
   const copy = useEditorialCopy();
 
@@ -62,20 +65,26 @@ function LibraryPageContent() {
     );
   }
 
-  async function handleCopyPublicRecipe(recipeId: string) {
-    setCopyingId(recipeId);
+  async function handleCopyPublicRecipe(recipeId: string, title: string) {
+    if (copying.current.has(recipeId)) return;
+    copying.current.add(recipeId);
+    setCopyingIds(new Set(copying.current));
+    setCopyStatus(`${t("library.adding")}: ${title}`);
     setError(null);
     try {
       const response = await apiFetch(`/recipes/catalog/${recipeId}/copy`, { method: "POST" });
       if (!response.ok) throw new Error((await response.text()) || "Could not add recipe");
       if (!mounted.current) return;
       setSavedPublicIds(current => new Set(current).add(recipeId));
+      setCopyStatus(`${t("library.inYourLibrary")}: ${title}`);
       void minePage.refresh();
     } catch (caught) {
       if (!mounted.current) return;
+      setCopyStatus("");
       setError(t("library.copyError"));
     } finally {
-      if (mounted.current) setCopyingId(null);
+      copying.current.delete(recipeId);
+      if (mounted.current) setCopyingIds(new Set(copying.current));
     }
   }
 
@@ -147,6 +156,10 @@ function LibraryPageContent() {
         )}
       </div>
 
+      <p className={styles.visuallyHidden} role="status">{copyStatus}</p>
+      {view === "public" && activeList.length ? <p className={styles.bookmarkHelp}>
+        <Icon name="bookmark" size={16} />{t("library.bookmarkHelp")}
+      </p> : null}
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
       {page.error ? <div className={styles.recovery}>
         <div role="alert"><strong>{t("library.loadErrorTitle")}</strong><p>{t("library.loadErrorHelp")}</p></div>
@@ -196,7 +209,7 @@ function LibraryPageContent() {
             const alreadyAdded = recipe.already_saved || savedPublicIds.has(recipe.id);
             const tags = getRecipeTags(recipe).slice(0, 2);
             return (
-              <article key={recipe.id} role="listitem" className={styles.publicCard}>
+              <div key={recipe.id} role="listitem" className={styles.publicCard}>
                 <Link href={`/library/public/${encodeURIComponent(recipe.id)}`} className={styles.publicLink}>
                   <div className={`${styles.publicMedia} ${recipe.thumbnail_url ? "" : styles.publicMediaPlaceholder}`}>
                     {recipe.thumbnail_url ? (
@@ -219,19 +232,13 @@ function LibraryPageContent() {
                     </div>
                   ) : null}
                 </div>
-                <button
-                  type="button"
-                  className={styles.addButton}
-                  onClick={() => handleCopyPublicRecipe(recipe.id)}
-                  disabled={alreadyAdded || copyingId === recipe.id}
-                >
-                  {alreadyAdded
-                    ? t("library.inYourLibrary")
-                    : copyingId === recipe.id
-                      ? t("library.adding")
-                      : t("library.addToMyLibrary")}
-                </button>
-              </article>
+                <PublicRecipeSaveButton
+                  title={recipe.title}
+                  saved={Boolean(alreadyAdded)}
+                  saving={copyingIds.has(recipe.id)}
+                  onSave={() => void handleCopyPublicRecipe(recipe.id, recipe.title)}
+                />
+              </div>
             );
           })}
         </LibraryMasonry>
