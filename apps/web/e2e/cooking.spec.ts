@@ -121,7 +121,7 @@ async function fulfillJson(route: Route, body: unknown) {
   });
 }
 
-async function installCookingFixtures(page: Page, actions: unknown[], multiStep = false) {
+async function installCookingFixtures(page: Page, actions: unknown[], multiStep = false, longTimers = false) {
   let session: ReturnType<typeof freshSession> | null = null;
   await page.route("**/cook-fixture-images/*", (route) => route.fulfill({
     contentType: "image/svg+xml",
@@ -157,6 +157,9 @@ async function installCookingFixtures(page: Page, actions: unknown[], multiStep 
         id: `tofu-next-${index}`, recipe_step_id: `recipe-tofu-next-${index}`, position: index + 1, text,
         duration_seconds: index === 0 ? 600 : 60, attention_type: index === 0 ? "passive" : "hands_on", action_type: index === 0 ? "simmer" : "mix", state: "locked",
       })));
+      if (longTimers) for (const dish of session.dishes) for (const step of dish.steps) {
+        if (step.attention_type === "passive") step.duration_seconds = 28_800;
+      }
       await fulfillJson(route, session);
       return;
     }
@@ -408,3 +411,59 @@ test("reviews previous steps and looks ahead without changing cooking progress o
   expect(actions.map(action => action.action)).toEqual(["start_timer", "pause_timer", "stop_timer"]);
   await expect(page.getByRole("button", { name: /Undo/ })).toHaveCount(0);
 });
+
+
+for (const language of ["en", "zh"] as const) {
+  test(`long timers and controls never overlap in all dishes in ${language}`, async ({page})=>{
+    await page.addInitScript(value=>localStorage.setItem("cooking-ui-language",value),language);
+    const actions: Array<Record<string,unknown>>=[];
+    await installCookingFixtures(page,actions,true,true);
+    const copy=language==="en"?{choose:"Choose recipes",start:"Start 2 dishes",all:"All dishes",timer:"Start timer",pause:"Pause timer",resume:"Resume timer",next:"Next step",previous:"Previous step",stop:"Stop timer"}:{choose:"选择菜谱",start:"开始烹饪 2 道菜",all:"全部菜品",timer:"开始计时",pause:"暂停计时",resume:"继续计时",next:"下一步",previous:"上一步",stop:"停止计时"};
+    await page.goto("/cook");
+    await page.getByRole("tab",{name:copy.choose}).click();
+    await page.getByRole("checkbox",{name:"Mapo tofu"}).check();
+    await page.getByRole("checkbox",{name:"Steamed rice"}).check();
+    await page.getByRole("button",{name:copy.start}).click();
+    await page.getByRole("button",{name:copy.all,exact:true}).click();
+    const rice=page.getByRole("region",{name:"Steamed rice",exact:true});
+    const tofu=page.getByRole("region",{name:"Mapo tofu",exact:true});
+    await rice.getByRole("button",{name:copy.timer,exact:true}).click();
+    await tofu.getByRole("button",{name:copy.next,exact:true}).click();
+    await tofu.getByRole("button",{name:copy.timer,exact:true}).click();
+    await tofu.getByRole("button",{name:copy.previous,exact:true}).click();
+    async function verifyTimers() {
+      for (const card of [rice,tofu]) {
+        const timer=card.getByRole("timer");
+        await expect(timer).toBeVisible();
+        const layout=await timer.evaluate(el=>{
+          const strong=el.querySelector("strong")!;
+          const range=document.createRange();range.selectNodeContents(strong);
+          const digits=range.getBoundingClientRect();
+          const panel=el.parentElement!;
+          const buttons=[...panel.querySelectorAll("button")].map(button=>{
+            const rect=button.getBoundingClientRect();
+            const label=document.createRange();label.selectNodeContents(button.querySelector("span:last-child") ?? button);
+            return {overlap:Math.min(digits.right,rect.right)-Math.max(digits.left,rect.left)>0 && Math.min(digits.bottom,rect.bottom)-Math.max(digits.top,rect.top)>0,height:rect.height,left:rect.left,right:rect.right,labelLines:new Set([...label.getClientRects()].map(r=>Math.round(r.top))).size};
+          });
+          const cardRect=el.closest("section")!.getBoundingClientRect();
+          return {text:strong.textContent,digitsFit:digits.left>=cardRect.left && digits.right<=cardRect.right,buttons};
+        });
+        expect(layout.text).toMatch(/^\d{1,2}:\d{2}:\d{2}$/);
+        expect(layout.digitsFit).toBe(true);
+        expect(layout.buttons.every(button=>!button.overlap && button.labelLines===1)).toBe(true);
+        expect(layout.buttons.every(button=>button.height>=44 && button.left>=0 && button.right<=(page.viewportSize()?.width??1440))).toBe(true);
+        await expect(card.locator("img")).toBeVisible();
+      }
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    }
+    await verifyTimers();
+    await rice.getByRole("button",{name:copy.pause,exact:true}).click();
+    await expect(rice.getByRole("button",{name:copy.resume,exact:true})).toBeVisible();
+    await verifyTimers();
+    await page.setViewportSize({width:320,height:900});
+    await verifyTimers();
+    await rice.getByRole("button",{name:copy.stop,exact:true}).click();
+    await expect(rice.getByRole("timer")).toHaveCount(0);
+    expect(actions.map(action=>action.action)).toEqual(["start_timer","start_timer","pause_timer","stop_timer"]);
+  });
+}
