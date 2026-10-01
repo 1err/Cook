@@ -12,7 +12,7 @@ const YOUTUBE_NOCOOKIE_HOSTS = new Set([
   "www.youtube-nocookie.com",
 ]);
 const REDNOTE_HOSTS = new Set(["xiaohongshu.com", "www.xiaohongshu.com", "m.xiaohongshu.com"]);
-const REDNOTE_SHORT_HOSTS = new Set(["xhslink.com", "www.xhslink.com"]);
+const REDNOTE_SHORT_HOSTS = new Set(["xhslink.com", "www.xhslink.com", "xhslink.cn", "www.xhslink.cn"]);
 const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
 
 function isSupportedVideoUrl(parsed: URL): boolean {

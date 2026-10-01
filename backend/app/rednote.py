@@ -24,7 +24,7 @@ from app.services.public_video import compress_public_video
 from app.video_import import VideoSource, VideoTextResult
 
 NOTE_HOSTS = {"www.xiaohongshu.com", "xiaohongshu.com", "m.xiaohongshu.com"}
-SHORT_HOSTS = {"xhslink.com", "www.xhslink.com"}
+SHORT_HOSTS = {"xhslink.com", "www.xhslink.com", "xhslink.cn", "www.xhslink.cn"}
 MEDIA_HOSTS = {"sns-video-bd.xhscdn.com", "sns-video-qc.xhscdn.com", "sns-video-hw.xhscdn.com", "sns-video-al.xhscdn.com"}
 MEDIA_HOSTS |= {f'sns-{kind}-v{number}.xhscdn.com' for kind in ('video', 'bak') for number in range(1, 100)}
 MAX_PUBLIC_VIDEO_BYTES = 150 * 1024 * 1024

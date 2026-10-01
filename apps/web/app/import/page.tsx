@@ -26,7 +26,7 @@ function linkWaitKey(source: string | null | undefined): LinkWaitKey | null {
   const url = extractSharedVideoUrl(source, undefined);
   if (!url) return null;
   const host = new URL(url).hostname.toLowerCase().replace(/\.+$/, "");
-  if (/(^|\.)(xiaohongshu|xhslink)\.com$/.test(host)) return "import.waitRedNote";
+  if (/(^|\.)(?:xiaohongshu\.com|xhslink\.(?:com|cn))$/.test(host)) return "import.waitRedNote";
   if (host === "youtu.be" || /(^|\.)youtube(?:-nocookie)?\.com$/.test(host)) return "import.waitYouTube";
   return null;
 }
