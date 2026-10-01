@@ -1052,5 +1052,11 @@
   "cook.action.resumeCompact": "继续",
   "cook.action.extendCompact": "+1 分钟",
   "cook.action.skipCompact": "跳过",
-  "cook.preferences": "烹饪偏好"
+  "cook.preferences": "烹饪偏好",
+  "cook.navigation.positionProgress": "步骤进度 {progress}%",
+  "cook.navigation.viewing": "正在查看",
+  "cook.navigation.returnTimer": "回到计时步骤",
+  "cook.navigation.stopTimer": "停止计时",
+  "cook.navigation.endSession": "结束烹饪",
+  "cook.navigation.noSteps": "这道菜暂无步骤。"
 }

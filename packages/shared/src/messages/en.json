@@ -1052,5 +1052,11 @@
   "cook.action.resumeCompact": "Resume",
   "cook.action.extendCompact": "+1 min",
   "cook.action.skipCompact": "Skip",
-  "cook.preferences": "Cooking preferences"
+  "cook.preferences": "Cooking preferences",
+  "cook.navigation.positionProgress": "{progress}% of steps",
+  "cook.navigation.viewing": "Viewing",
+  "cook.navigation.returnTimer": "Back to timer",
+  "cook.navigation.stopTimer": "Stop timer",
+  "cook.navigation.endSession": "End session",
+  "cook.navigation.noSteps": "No steps in this recipe."
 }

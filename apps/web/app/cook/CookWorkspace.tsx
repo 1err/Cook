@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { getCookingRecommendations, getCurrentCookingStep, getEffectiveStepState, isCookingSessionComplete, type CookingAction } from "@cooking/shared";
+import { getCookingRecommendations, getEffectiveStepState, type CookingAction } from "@cooking/shared";
 import { Button } from "../components/ui/Button";
 import { useT } from "../lib/i18n";
 import styles from "./CookPage.module.css";
+import { getActiveCookingTimer } from "./cookingStepPosition";
 import { DishRail } from "./DishRail";
 import { FocusedCookingStep } from "./FocusedCookingStep";
 import type { CookingSessionController } from "./useCookingSession";
@@ -14,6 +15,7 @@ import { useScreenWake } from "./useScreenWake";
 
 export function CookWorkspace({ controller }: { controller: CookingSessionController }) {
   const t = useT();
+  const [viewedSteps, setViewedSteps] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
   const [view, setView] = useState<"focused" | "all">("focused");
   const session = controller.session;
@@ -82,6 +84,7 @@ export function CookWorkspace({ controller }: { controller: CookingSessionContro
       {view === "focused" ? (
         <DishRail
           dishes={session.dishes}
+          viewedSteps={viewedSteps}
           focusedDishId={focusedDish?.id ?? null}
           onFocus={controller.focusDish}
         />
@@ -96,7 +99,7 @@ export function CookWorkspace({ controller }: { controller: CookingSessionContro
       {controller.actionError ? <p className={styles.error} role="alert">{controller.actionError}</p> : null}
       <div className={styles.stepList}>
         {visibleDishes.map((dish) => {
-          const step = getCurrentCookingStep(dish);
+          const step = getActiveCookingTimer(dish);
           const canTakeOverAlerts = Boolean(
             step?.notification_owner_device_id &&
             step.notification_owner_device_id !== controller.deviceId &&
@@ -105,6 +108,8 @@ export function CookWorkspace({ controller }: { controller: CookingSessionContro
           return (
             <FocusedCookingStep
               dish={dish}
+              viewedStepId={viewedSteps[dish.id]}
+              onViewStep={id => setViewedSteps(current => ({ ...current, [dish.id]: id }))}
               key={dish.id}
               layout={view === "all" ? "stacked" : "focused"}
               onAction={(stepId, action, extensionSeconds) => applyStepAction(dish.id, stepId, action, extensionSeconds)}
@@ -172,19 +177,13 @@ export function CookWorkspace({ controller }: { controller: CookingSessionContro
             </Button>
           ) : null}
           <Button
-            disabled={controller.sessionBusy || !isCookingSessionComplete(session)}
-            onClick={() => void controller.finishSession()}
-          >
-            {t("cook.control.finish")}
-          </Button>
-          <Button
             disabled={controller.sessionBusy}
             onClick={() => {
               if (window.confirm(t("cook.confirm.discard"))) void controller.discardSession();
             }}
             variant={view === "all" ? "ghost" : "destructive"}
           >
-            {t("cook.control.discard")}
+            {t("cook.navigation.endSession")}
           </Button>
         </div>
       </footer>

@@ -15,6 +15,7 @@ export type CookingStepState =
   | "skipped";
 
 export type CookingAction =
+  | "stop_timer"
   | "start_timer"
   | "pause_timer"
   | "resume_timer"
@@ -258,7 +259,10 @@ export function applyOptimisticCookingAction(
 
   switch (payload.action) {
     case "start_timer": {
-      requireState(next, ["ready"]);
+      requireState(next, ["ready", "locked", "completed", "skipped"]);
+      if (steps.some((other) => other.id !== next.id && ["timer_running", "timer_paused", "needs_attention"].includes(other.state))) {
+        throw new CookingTransitionError("active_timer_blocks_start", "Stop the active timer before starting another timer for this dish.");
+      }
       if (next.attention_type !== "passive") {
         throw new CookingTransitionError("timer_requires_passive_step", "Only passive steps use timers.");
       }
@@ -268,11 +272,17 @@ export function applyOptimisticCookingAction(
       next = {
         ...next,
         state: "timer_running",
+        resolved_at: null,
         timer_started_at: occurredAt,
         timer_ends_at: new Date(occurredMs + next.duration_seconds * 1_000).toISOString(),
         paused_remaining_seconds: null,
         notification_owner_device_id: payload.device_id,
       };
+      break;
+    }
+    case "stop_timer": {
+      requireState(next, ["timer_running", "timer_paused", "needs_attention"]);
+      next = { ...clearedTimer(next), state: "ready", resolved_at: null };
       break;
     }
     case "pause_timer": {

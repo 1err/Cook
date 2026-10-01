@@ -215,8 +215,8 @@ async function installOfflineFixtures(page: Page) {
         version: session.version + 1,
         dishes: session.dishes.map((dish) => ({
           ...dish,
-          steps: dish.steps.map((step) => step.id === "step-tofu"
-            ? { ...step, state: "completed", resolved_at: body.occurred_at, revision: step.revision + 1 }
+          steps: dish.steps.map((step) => step.id === "step-rice"
+            ? { ...step, state: "timer_running", timer_started_at: body.occurred_at, timer_ends_at: new Date(Date.now()+900000).toISOString(), revision: step.revision + 1 }
             : step),
         })),
       };
@@ -228,7 +228,7 @@ async function installOfflineFixtures(page: Page) {
   return network;
 }
 
-test("starts two dishes, advances hands-on work, and runs a passive timer", async ({ page }) => {
+test("starts two dishes, browses without completion, and runs a passive timer", async ({ page }) => {
   const actions: Array<Record<string, unknown>> = [];
   await installCookingFixtures(page, actions);
   await page.goto("/cook");
@@ -241,12 +241,11 @@ test("starts two dishes, advances hands-on work, and runs a passive timer", asyn
 
   await expect(page.getByRole("heading", { name: "Your cooking session" })).toBeVisible();
   await expect(page.getByText("Work on Mapo tofu")).toBeVisible();
-  await expect(page.getByText("0% complete")).toBeVisible();
+  await expect(page.getByText("100% of steps")).toBeVisible();
   await expect(page.getByRole("timer")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Finish dish" }).click();
-  await expect(page.getByText("This dish is complete.")).toBeVisible();
-  await expect(page.getByText("100% complete")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next step", exact: true })).toBeDisabled();
+  await expect(page.getByText("This dish is complete.")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Focus Steamed rice" }).click();
   await expect(page.getByText("Steam the rice")).toBeVisible();
@@ -254,24 +253,25 @@ test("starts two dishes, advances hands-on work, and runs a passive timer", asyn
   await expect(page.getByRole("timer")).toBeVisible();
   await expect(page.getByRole("button", { name: "Pause timer" })).toBeVisible();
 
-  expect(actions).toHaveLength(2);
-  expect(actions[0]).toMatchObject({ action: "complete", expected_revision: 1 });
-  expect(actions[1]).toMatchObject({ action: "start_timer", expected_revision: 1 });
+  expect(actions).toHaveLength(1);
+  expect(actions[0]).toMatchObject({ action: "start_timer", expected_revision: 1 });
   expect(actions.every((action) => typeof action.mutation_id === "string" && typeof action.device_id === "string")).toBe(true);
 });
 
-test("keeps cached progress through an API outage and explains a replay conflict", async ({ page }) => {
+test("keeps cached timer state through an API outage and explains a replay conflict", async ({ page }) => {
   const network = await installOfflineFixtures(page);
   await page.goto("/cook");
   await expect(page.getByText("Chop the tofu")).toBeVisible();
 
+  await page.getByRole("button", { name: "Focus Steamed rice", exact: true }).click();
   network.offline = true;
-  await page.getByRole("button", { name: "Finish dish" }).click();
+  await page.getByRole("button", { name: "Start timer", exact: true }).click();
   await expect(page.getByText(/Saved offline/)).toBeVisible();
   await expect(page.getByText(/1 change\(s\) waiting to sync/)).toBeVisible();
 
   await page.reload();
-  await expect(page.getByText("This dish is complete.")).toBeVisible();
+  await page.getByRole("button", { name: "Focus Steamed rice", exact: true }).click();
+  await expect(page.getByRole("timer")).toBeVisible();
   await expect(page.getByText(/Showing saved cooking progress/)).toBeVisible();
 
   network.offline = false;
@@ -279,7 +279,9 @@ test("keeps cached progress through an API outage and explains a replay conflict
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
 
   await expect(page.getByText(/changed on another device/)).toBeVisible();
-  await expect(page.getByText("Chop the tofu")).toBeVisible();
+  await expect(page.getByTestId("focused-step")).toContainText("Steam the rice");
+  await expect(page.getByRole("button", { name: "Start timer", exact: true })).toBeVisible();
+  await expect(page.getByRole("timer")).toHaveCount(0);
 });
 
 test("switches cooking views while preserving timers and updating only the chosen dish", async ({ page }) => {
@@ -314,8 +316,8 @@ test("switches cooking views while preserving timers and updating only the chose
   await page.getByRole("button", { name: "All dishes", exact: true }).click();
   await expect(rice.getByRole("timer")).toBeVisible();
   await expect(rice.getByRole("button", { name: "Pause timer" })).toBeVisible();
-  await tofu.getByRole("button", { name: "Finish dish" }).click();
-  await expect(tofu.getByText("This dish is complete.")).toBeVisible();
+  await expect(tofu.getByRole("button", { name: "Next step", exact: true })).toBeDisabled();
+  await expect(tofu.getByText("This dish is complete.")).toHaveCount(0);
   await expect(rice.getByRole("timer")).toBeVisible();
   await tofu.getByRole("button", { name: "Overview", exact: true }).click();
   await expect(tofu.getByRole("region", { name: "Recipe overview for Mapo tofu" })).toBeVisible();
@@ -328,7 +330,7 @@ test("switches cooking views while preserving timers and updating only the chose
   await expect(page.getByRole("button", { name: "Focused", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("focused-step")).toContainText("Steam the rice");
   await expect(page.getByRole("timer")).toBeVisible();
-  expect(actions.map((action) => action.action)).toEqual(["start_timer", "pause_timer", "extend_timer", "resume_timer", "complete"]);
+  expect(actions.map((action) => action.action)).toEqual(["start_timer", "pause_timer", "extend_timer", "resume_timer"]);
   expect(errors).toEqual([]);
 });
 
@@ -382,21 +384,27 @@ test("reviews previous steps and looks ahead without changing cooking progress o
   await card.getByRole("button", { name: "Up next", exact: true }).click();
   const preview = card.getByRole("region", { name: "Next steps for Mapo tofu" });
   await expect(preview.getByRole("listitem")).toHaveCount(3);
+  await card.getByRole("button", { name: "Up next", exact: true }).click();
+  await expect(preview).toHaveCount(0);
   await card.getByRole("button", { name: "Overview", exact: true }).click();
   const overview = card.getByRole("region", { name: "Recipe overview for Mapo tofu" });
   await expect(overview.getByRole("listitem")).toHaveCount(5);
   await overview.getByRole("button", { name: "View step 5: Garnish and serve", exact: true }).click();
-  await expect(card.getByText("Looking ahead", { exact: true })).toBeVisible();
+  await expect(card.getByText("100% of steps", { exact: true })).toBeVisible();
+  await expect(card.getByText("This dish is complete.")).toHaveCount(0);
   await expect(card.getByRole("timer")).toBeVisible();
   await expect(card.locator("img")).toBeVisible();
   await expect(card.getByRole("button", { name: "Next step", exact: true })).toBeDisabled();
-  expect(actions.map(action => action.action)).toEqual(["complete", "start_timer"]);
+  expect(actions.map(action => action.action)).toEqual(["start_timer"]);
   await page.getByRole("button", { name: "All dishes", exact: true }).click();
   const tofu = page.getByRole("region", { name: "Mapo tofu", exact: true });
   await expect(tofu.getByText("Garnish and serve", { exact: true })).toBeVisible();
-  await tofu.getByRole("button", { name: "Back to current step", exact: true }).click();
+  await tofu.getByRole("button", { name: "Back to timer", exact: true }).click();
   await expect(tofu.getByText("Simmer the sauce", { exact: true })).toBeVisible();
   await tofu.getByRole("button", { name: "Pause timer", exact: true }).click();
-  expect(actions.map(action => action.action)).toEqual(["complete", "start_timer", "pause_timer"]);
+  await tofu.getByRole("button", { name: "Stop timer", exact: true }).click();
+  await expect(tofu.getByRole("timer")).toHaveCount(0);
+  await expect(tofu.getByRole("button", { name: "Start timer", exact: true })).toBeVisible();
+  expect(actions.map(action => action.action)).toEqual(["start_timer", "pause_timer", "stop_timer"]);
   await expect(page.getByRole("button", { name: /Undo/ })).toHaveCount(0);
 });
