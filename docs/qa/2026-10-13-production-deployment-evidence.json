@@ -1,0 +1,102 @@
+{
+  "completedAtUTC": "2026-10-14T00:28:53.417257+00:00",
+  "status": "web-and-backend-deployed-native-source-prepared-not-signed-not-submitted",
+  "sourceCommit": "3a3826d0a2f6027bc057b6472dcc35826c4fa23a",
+  "productionBaseline": "cf0b2bd3b93afb4b30bfdb9727936599e7fbf08c",
+  "backend": {
+    "taskRevision": "cooking-backend:47",
+    "imageDigest": "sha256:d6b17463c1724c9952947b64379697ea738935573121ee8567b2c5e2f515cf49",
+    "migrationHead": "20261013_media_review",
+    "migrationTask": "94de71fdbe7f4fdc9d5e0d94683ee60f",
+    "migrationExit": 0,
+    "health": 200,
+    "ready": 200,
+    "rollbackRevision": "cooking-backend:46"
+  },
+  "web": {
+    "deployment": "dpl_D3TsC35QEPuZyG13NjvFfJDTHJ8T",
+    "buildUrl": "https://cook-j5kxlubcn-jerrys-projects-08f739a2.vercel.app",
+    "publicUrl": "https://chef-world.com",
+    "apexAndWwwExactDeploymentVerified": true,
+    "wwwRedirect": 308,
+    "stagedProtectionPreserved": true
+  },
+  "checks": {
+    "backendMacPassed": 1701,
+    "backendLinuxImagePassed": 6,
+    "webPassed": 908,
+    "sharedProductionPassed": 420,
+    "apiProductionPassed": 81,
+    "deliveryPassed": 71,
+    "phoneDesktopBrowserPassed": 30,
+    "webTypeCheck": "passed",
+    "webBuild": "passed",
+    "nativePassed": 452,
+    "nativeSuites": 55,
+    "nativeTypeCheck": "passed",
+    "nativeSharedPassed": 253,
+    "nativeApiPassed": 28,
+    "nativeJavaScriptExport": "passed"
+  },
+  "liveSmoke": {
+    "checks": [
+      "verified-login",
+      "actor-409",
+      "owned-upload",
+      "pending-shared-photos-hidden",
+      "text-only-copy",
+      "report-pending",
+      "nonadmin-403",
+      "reciprocal-block",
+      "wrong-password-403"
+    ],
+    "disposableAccountsDeleted": [
+      "owner",
+      "viewer"
+    ],
+    "sessionsRevoked": true,
+    "databaseAndS3WorkerErasureVerified": true,
+    "verificationTask": "arn:aws:ecs:us-east-1:930067562682:task/cooking-cluster/1ccfc08a358d44f5bc72ae851640eab5",
+    "verificationExit": 0,
+    "signupEmailSent": false,
+    "adminPrivilegeGranted": false,
+    "paidAIRequestMade": false,
+    "actualAdminResolutionOrPhotoDecisionTested": false
+  },
+  "native": {
+    "consentVersion": "2026-10-13-openai-gemini-v2",
+    "sourceFileCount": 120,
+    "sourceAggregateSha256": "20c7f5855e9cc788643e8d567067ffa57e9dc1a4194f0cedc75dfc8d7d2d39a1",
+    "bundle": "/private/tmp/chefworld-ios-deploy-readiness-export-20261013/_expo/static/js/ios/index-2d3c03fd1249f7f3625ecd14a9bf79ba.hbc",
+    "bundleSha256": "842438da09fe17ac962845e1ef77614006f4a5d6ad0260120b8f24e4ac624181",
+    "bundleBytes": 5158544,
+    "productionApiPresent": true,
+    "fixtureApiAbsent": true,
+    "legacyVideoEndpointAbsent": true,
+    "localEnvUnchanged": true,
+    "signedOrStoreUploaded": false
+  },
+  "livePhone": {
+    "url": "https://chef-world.com/privacy",
+    "viewport": [
+      390,
+      844
+    ],
+    "overflow": false,
+    "relevantConsoleErrors": 0,
+    "screenshot": "/private/tmp/chefworld-live-phone-privacy-20261013.png"
+  },
+  "remaining": [
+    "Apple enrollment, app record, signing, signed-device/Share Extension TestFlight verification and final store screenshots/submission",
+    "Actual operator report/photo review and final provider/content-rights/App Privacy declarations",
+    "Legacy unowned-media ownership and infrastructure/provider backup/log retention audit"
+  ],
+  "cleanup": {
+    "temporaryPostgres": "stopped",
+    "disposableProductionAccounts": "deleted and sessions rejected",
+    "ownedQaS3Media": "erased by real worker; read-only task verified",
+    "credentialAndTaskPayloadSnapshots": "removed",
+    "browserViewport": "restored",
+    "releaseWorktree": "retained for review and future signed-release integration"
+  }
+}
