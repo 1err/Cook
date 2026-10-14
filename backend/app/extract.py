@@ -8,7 +8,7 @@ import logging
 import re
 import uuid
 
-from app.core.llm import get_openai_client
+from app.core.llm import LLM_MODEL, LLM_REASONING_EFFORT, get_openai_client
 from app.models import IngredientItem, Recipe, RecipeStep
 from app.video_import import (
     UnsupportedVideoUrl,
@@ -304,7 +304,8 @@ async def estimate_tutorial_step_metadata(steps: list[RecipeStep]) -> list[Recip
     if client is not None:
         try:
             response = await client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=LLM_MODEL,
+                reasoning_effort=LLM_REASONING_EFFORT,
                 messages=[
                     {
                         "role": "user",
@@ -347,7 +348,8 @@ async def extract_recipe_from_text(transcript: str) -> Recipe:
         data = _stub_extraction(transcript or "(no input)")
     else:
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=LLM_MODEL,
+            reasoning_effort=LLM_REASONING_EFFORT,
             messages=[{"role": "user", "content": _build_extraction_prompt(transcript)}],
         )
         raw = response.choices[0].message.content or "{}"
@@ -434,3 +436,4 @@ def _stub_extraction(input_text: str) -> dict:
         "steps": [],
         "tips": [],
     }
+

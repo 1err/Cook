@@ -262,7 +262,7 @@ Web (`apps/web/app/cook/`) and mobile (`apps/mobile/src/features/cook/`) refresh
 
 ### Where LLM logic lives
 
-OpenAI prompts + calls live in `backend/app/extract.py` (recipe extraction) and `backend/app/refine.py` (smart shopping list). Both go through `app/core/llm.py::get_openai_client()`, which returns `None` when `OPENAI_API_KEY` is unset so callers fall back to deterministic stubs (extract → demo Mapo Tofu / generic placeholder; refine → passthrough categorized as `Other`). Model is `gpt-4o-mini`. The `app/services/{extract,refine}_service.py` shims that used to live above these modules have been removed — routers import from `app.extract` / `app.refine` directly. The empty-`remove`/`likely_pantry` legacy contract for `/shopping-list/refine` is now hardcoded in `routes_shopping.py` instead of a wrapper service.
+OpenAI prompts + calls live in `backend/app/extract.py` (recipe extraction) and `backend/app/refine.py` (smart shopping list). Both go through `app/core/llm.py::get_openai_client()`, which returns `None` when `OPENAI_API_KEY` is unset so callers fall back to deterministic stubs (extract → demo Mapo Tofu / generic placeholder; refine → passthrough categorized as `Other`). Recipe extraction, tutorial metadata estimation, and smart shopping use `gpt-6-luna` with `reasoning_effort="low"` via Chat Completions. Model and effort are centralized as `LLM_MODEL` / `LLM_REASONING_EFFORT` in `app/core/llm.py`. These calls do not use tools or sampling parameters; keep `temperature`, `top_p`, and log-probability parameters absent while reasoning is enabled. Existing JSON prompts, parsers, and fallback behavior are preserved. The OpenAI SDK is pinned to 1.59.9, which supports the `reasoning_effort` argument. The `app/services/{extract,refine}_service.py` shims that used to live above these modules have been removed — routers import from `app.extract` / `app.refine` directly. The empty-`remove`/`likely_pantry` legacy contract for `/shopping-list/refine` is now hardcoded in `routes_shopping.py` instead of a wrapper service.
 
 ### Refine is on-demand and per-week-cached
 
@@ -486,3 +486,4 @@ Update the affected sections **in the same change** when you:
 - Add a recipe tag slug (three places noted above)
 - Touch admin gating, catalog gating, or any other auth/authorization rule
 - Resolve or add to the "Known cleanup targets" list
+

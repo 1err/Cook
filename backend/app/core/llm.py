@@ -6,11 +6,16 @@ to non-LLM stubs without re-implementing the env-key check + client construction
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Final, Literal, Optional
 
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+
+
+# These tool-free Chat Completions calls share the same model and effort.
+LLM_MODEL: Final[str] = "gpt-6-luna"
+LLM_REASONING_EFFORT: Final[Literal["low"]] = "low"
 
 
 def get_openai_client() -> Optional[AsyncOpenAI]:
@@ -22,3 +27,4 @@ def get_openai_client() -> Optional[AsyncOpenAI]:
 
 def is_llm_enabled() -> bool:
     return bool((settings.OPENAI_API_KEY or "").strip())
+
