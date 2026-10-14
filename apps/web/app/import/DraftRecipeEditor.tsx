@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { apiFetch } from "../lib/api";
 import { useT } from "../lib/i18n";
+import { stepTotalMinutes } from "../lib/recipeTotalTime";
 import { RECIPE_TAG_GROUPS, type RecipeTagSlug } from "../lib/recipeCategories";
 import type { IngredientItem, Recipe } from "../types";
 import { StepListEditor } from "./StepListEditor";
@@ -40,6 +41,12 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
   const [error, setError] = useState<string | null>(null);
   const [tutorialValid, setTutorialValid] = useState(true);
   const draftTags = draft.library_tags ?? [];
+  const [fixedTotalForId, setFixedTotalForId] = useState<string | null>(null);
+  const stepTotal = stepTotalMinutes(draft.steps);
+  // Preserve separate source totals and totals explicitly entered in this editor.
+  const automaticTotal = fixedTotalForId !== draft.id
+    && (draft.total_time_minutes == null || draft.total_time_minutes === stepTotal);
+  const displayedTotal = automaticTotal ? stepTotal : draft.total_time_minutes;
 
   function toggleDraftTag(tag: RecipeTagSlug) {
     onChange({
@@ -75,6 +82,7 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
         method: "POST",
         body: JSON.stringify({
           ...draft,
+          total_time_minutes: displayedTotal ?? null,
           ingredients: draft.ingredients.filter((item) => item.name.trim()),
         }),
       });
@@ -144,9 +152,10 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
                 id="draft-total-time"
                 type="number"
                 min={0}
-                value={draft.total_time_minutes ?? ""}
+                value={displayedTotal ?? ""}
                 onChange={(event) => {
                   const raw = event.target.value;
+                  setFixedTotalForId(draft.id);
                   onChange({
                     ...draft,
                     total_time_minutes: raw === "" ? null : Math.max(0, Math.floor(Number(raw) || 0)),
@@ -221,7 +230,12 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess }: Dr
 
           <StepListEditor
             steps={draft.steps ?? []}
-            onChange={(steps) => onChange({ ...draft, steps })}
+            onChange={(steps) => {
+              if (!automaticTotal) setFixedTotalForId(draft.id);
+              onChange({ ...draft, steps,
+                ...(automaticTotal ? { total_time_minutes: stepTotalMinutes(steps) } : {}),
+              });
+            }}
             onValidityChange={setTutorialValid}
             disabled={saving}
           />

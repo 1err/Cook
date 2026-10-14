@@ -400,7 +400,11 @@ and hidden `image_url` values. Changing duration sets `duration_source="user"`. 
 precedence in detail; missing/broken images use the shared vector pictogram. "Estimate missing
 tutorial details" only updates local editor state through the preview endpoint; Cancel performs no
 PATCH, and Save PATCHes the steps. Reading a recipe or opening a future cooking flow must never
-silently rewrite tutorial metadata.
+silently rewrite tutorial metadata. Web import review, full recipe editing, and focused tutorial
+editing share the rounded-up sum of nonblank, fully timed steps for automatic totals. A saved total
+is automatic only when initially absent or equal to that step sum; a distinct source total stays
+separate, and explicitly editing the total in the full editor keeps it fixed. Automatic totals
+update as steps change, and Save persists the synchronized total alongside the edited steps.
 
 ### Recipe view skin (sub-project E)
 

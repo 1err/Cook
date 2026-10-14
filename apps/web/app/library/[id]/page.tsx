@@ -8,6 +8,7 @@ import { uploadRecipeImage } from "../../lib/uploadRecipeImage";
 import { RequireAuth } from "../../components/RequireAuth";
 import { PageShell } from "../../components/PageShell";
 import { useT } from "../../lib/i18n";
+import { stepTotalMinutes } from "../../lib/recipeTotalTime";
 import {
   CATEGORY_LABELS,
   RECIPE_TAG_GROUPS,
@@ -30,7 +31,9 @@ function RecipeEditContent() {
   const [ingredients, setIngredients] = useState<IngredientItem[]>([]);
   const [description, setDescription] = useState("");
   const [totalTimeMinutes, setTotalTimeMinutes] = useState<number | null>(null);
+  const [automaticTotal, setAutomaticTotal] = useState(false);
   const [steps, setSteps] = useState<RecipeStep[]>([]);
+  const displayedTotal = automaticTotal ? stepTotalMinutes(steps) : totalTimeMinutes;
   const [stepsValid, setStepsValid] = useState(true);
   const [tips, setTips] = useState<string[]>([]);
   const [equipment, setEquipment] = useState<string[]>([]);
@@ -60,7 +63,10 @@ function RecipeEditContent() {
           setLibraryTags(nextTags);
           setIngredients(data.ingredients?.length ? [...data.ingredients] : []);
           setDescription(data.description ?? "");
-          setTotalTimeMinutes(typeof data.total_time_minutes === "number" ? data.total_time_minutes : null);
+          const loadedTotal = typeof data.total_time_minutes === "number" ? data.total_time_minutes : null;
+          setTotalTimeMinutes(loadedTotal);
+          // Separate source totals can include unlisted prep or overlapping work.
+          setAutomaticTotal(loadedTotal == null || loadedTotal === stepTotalMinutes(data.steps));
           setSteps(Array.isArray(data.steps) ? data.steps.map((s) => ({ ...s })) : []);
           setTips(Array.isArray(data.tips) ? [...data.tips] : []);
           setEquipment(Array.isArray(data.equipment) ? [...data.equipment] : []);
@@ -143,7 +149,7 @@ function RecipeEditContent() {
         ingredients: ingredients.filter((i) => i.name.trim() !== ""),
         library_tags: libraryTags,
         description: description.trim() || null,
-        total_time_minutes: totalTimeMinutes,
+        total_time_minutes: displayedTotal,
         steps,
         tips,
         equipment,
@@ -262,9 +268,10 @@ function RecipeEditContent() {
                     type="number"
                     min={0}
                     placeholder={t("recipe.totalTime.placeholder")}
-                    value={totalTimeMinutes ?? ""}
+                    value={displayedTotal ?? ""}
                     onChange={(event) => {
                       const raw = event.target.value;
+                      setAutomaticTotal(false);
                       setTotalTimeMinutes(raw === "" ? null : Math.max(0, Math.floor(Number(raw) || 0)));
                     }}
                   />

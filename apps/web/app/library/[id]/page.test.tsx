@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -111,6 +111,82 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+describe("saved recipe total time", () => {
+  function loadRecipe(total_time_minutes: number | null) {
+    mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => {
+      if (path === "/recipes/catalog/editor-status") {
+        return new Response(JSON.stringify({ can_manage: false }));
+      }
+      return new Response(JSON.stringify({ ...recipe, total_time_minutes }));
+    });
+  }
+
+  it("updates the total immediately and saves the rounded sum after duration edits", async () => {
+    loadRecipe(8);
+    const user = userEvent.setup();
+    render(<RecipeEditPage />);
+    const minutes = await screen.findByLabelText("Step 1 minutes");
+    const total = screen.getByRole("spinbutton", { name: /Total time/ });
+    fireEvent.change(minutes, { target: { value: "3" } });
+    expect(total).toHaveValue(3);
+    fireEvent.change(screen.getByLabelText("Step 1 seconds"), { target: { value: "15" } });
+    expect(total).toHaveValue(4);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    const [, options] = mockApiFetch.mock.calls.find(([, request]) => request?.method === "PATCH")!;
+    expect(JSON.parse(options.body)).toMatchObject({
+      total_time_minutes: 4,
+      steps: [{ duration_seconds: 195, duration_source: "user" }],
+    });
+  });
+
+  it("derives a missing total before any edits and saves it", async () => {
+    loadRecipe(null);
+    const user = userEvent.setup();
+    render(<RecipeEditPage />);
+    await screen.findByLabelText("Step 1 minutes");
+    expect(screen.getByRole("spinbutton", { name: /Total time/ })).toHaveValue(8);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    const [, options] = mockApiFetch.mock.calls.find(([, request]) => request?.method === "PATCH")!;
+    expect(JSON.parse(options.body).total_time_minutes).toBe(8);
+  });
+
+  it("updates automatic totals when timed steps are added or removed", async () => {
+    loadRecipe(8);
+    const user = userEvent.setup();
+    render(<RecipeEditPage />);
+    await screen.findByLabelText("Step 1 minutes");
+    await user.click(screen.getByRole("button", { name: "Add step" }));
+    const total = screen.getByRole("spinbutton", { name: /Total time/ });
+    expect(total).toHaveValue(8);
+    fireEvent.change(screen.getByLabelText("Step 2"), { target: { value: "Serve the tofu." } });
+    expect(total).toHaveValue(13);
+    fireEvent.change(screen.getByLabelText("Step 2 minutes"), { target: { value: "2" } });
+    expect(total).toHaveValue(10);
+    await user.click(screen.getByRole("button", { name: "Remove step 1" }));
+    expect(total).toHaveValue(2);
+  });
+
+  it("preserves a separate source total even if intermediate steps match it", async () => {
+    loadRecipe(40);
+    render(<RecipeEditPage />);
+    const minutes = await screen.findByLabelText("Step 1 minutes");
+    fireEvent.change(minutes, { target: { value: "40" } });
+    fireEvent.change(minutes, { target: { value: "3" } });
+    expect(screen.getByRole("spinbutton", { name: /Total time/ })).toHaveValue(40);
+  });
+
+  it("preserves an explicitly edited total even when it matches the step sum", async () => {
+    loadRecipe(8);
+    render(<RecipeEditPage />);
+    const minutes = await screen.findByLabelText("Step 1 minutes");
+    const total = screen.getByRole("spinbutton", { name: /Total time/ });
+    fireEvent.change(total, { target: { value: "12" } });
+    fireEvent.change(total, { target: { value: "8" } });
+    fireEvent.change(minutes, { target: { value: "3" } });
+    expect(total).toHaveValue(8);
+  });
+});
 
 describe("full recipe editor tutorial validity", () => {
   it("keeps a cleared duration visible and blocks PATCH until corrected", async () => {

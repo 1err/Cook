@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Recipe } from "../types";
@@ -210,5 +210,47 @@ describe("DraftRecipeEditor", () => {
     expect(observedDraft.ingredients[0].name).toBe("Captured tofu");
     expect(observedDraft.steps?.[0].text).toBe("Captured tutorial step.");
     expect(onSaveSuccess).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("import review total synchronization", () => {
+  it("updates a step-derived total and saves the rounded value", async () => {
+    const user = userEvent.setup();
+    function ControlledDraft() {
+      const [value, setValue] = useState<Recipe>({ ...draft, total_time_minutes: 8 });
+      return <DraftRecipeEditor draft={value} onChange={setValue} onBack={vi.fn()} onSaveSuccess={vi.fn()} />;
+    }
+    render(<ControlledDraft />);
+    fireEvent.change(screen.getByLabelText("Step 1 minutes"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Step 1 seconds"), { target: { value: "15" } });
+    expect(screen.getByLabelText("Total time")).toHaveValue(4);
+    mockApiFetch.mockResolvedValueOnce(new Response(JSON.stringify({ ...draft, id: "saved-1" })));
+    await user.click(screen.getByRole("button", { name: "Save recipe" }));
+    const [, options] = mockApiFetch.mock.calls[0];
+    expect(JSON.parse(options.body).total_time_minutes).toBe(4);
+  });
+
+  it("preserves a distinct source total through intermediate matching durations", () => {
+    function ControlledDraft() {
+      const [value, setValue] = useState<Recipe>(draft);
+      return <DraftRecipeEditor draft={value} onChange={setValue} onBack={vi.fn()} onSaveSuccess={vi.fn()} />;
+    }
+    render(<ControlledDraft />);
+    fireEvent.change(screen.getByLabelText("Step 1 minutes"), { target: { value: "40" } });
+    fireEvent.change(screen.getByLabelText("Step 1 minutes"), { target: { value: "3" } });
+    expect(screen.getByLabelText("Total time")).toHaveValue(40);
+  });
+
+  it("keeps an explicitly entered total fixed even if it matches the step sum", () => {
+    function ControlledDraft() {
+      const [value, setValue] = useState<Recipe>({ ...draft, total_time_minutes: 8 });
+      return <DraftRecipeEditor draft={value} onChange={setValue} onBack={vi.fn()} onSaveSuccess={vi.fn()} />;
+    }
+    render(<ControlledDraft />);
+    fireEvent.change(screen.getByLabelText("Total time"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Total time"), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText("Step 1 minutes"), { target: { value: "3" } });
+    expect(screen.getByLabelText("Total time")).toHaveValue(8);
   });
 });
