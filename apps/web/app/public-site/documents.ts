@@ -144,7 +144,6 @@ export const PUBLIC_DOCUMENTS: Record<PublicDocumentKind, PublicDocumentContent>
           "The service processes and stores the content you provide to perform the features you request. When you enable library sharing, other users can browse and save separate copies of your recipes. Turning sharing off or deleting your original does not recall those copies.",
           "To report a content-rights concern, email jerryxiang24@gmail.com with the relevant recipe or page, a description of the material, and how we can contact you.",
           "Do not share harassment, threats, sexual or exploitative material, hate, or other unlawful or abusive content. Shared recipes must be suitable for a cooking service. Reports can be reviewed by Chef World, and catalog entries or library sharing may be removed or disabled when they violate these rules. For concerns about shared content, contact jerryxiang24@gmail.com.",
-          "Eligible photos uploaded to Chef World must be reviewed before they appear in another user's view of a shared library or catalog. External source images are hidden from shared views; upload only content you have permission to share. Review applies to the particular photo set submitted; changing it requires another review. Your private access to your saved photos does not establish that they have been approved for sharing.",
         ],
       },
       {

@@ -292,7 +292,8 @@ def smoke(fixture, api_factory=Api):
     except Exception:
         result['failed_stage'] = stage
     finally:
-        for label, client in clients.items():
+        for label in LABELS:
+            client = clients[label]
             try:
                 # Every identity was seeded even if the initial login loop failed.
                 # One bounded retry obtains a cleanup session for each known QA email.
@@ -303,14 +304,16 @@ def smoke(fixture, api_factory=Api):
                 client.request('GET', '/auth/me', expected=401)
                 result['deleted'].append(label)
                 if label == 'owner' and result.get('copied_recipe_id'):
-                    preserved = clients['viewer'].request('GET', '/recipes/' + result['copied_recipe_id'])
-                    if preserved.get('thumbnail_url') or any(step.get('image_url') for step in preserved.get('steps', [])) or preserved.get('title') != 'Disposable Chef World QA recipe':
-                        result['failed_stage'] = 'deleted_owner_media_detachment'
-                    else:
+                    try:
+                        preserved = clients['viewer'].request('GET', '/recipes/' + result['copied_recipe_id'])
+                        if preserved.get('thumbnail_url') or any(step.get('image_url') for step in preserved.get('steps', [])) or preserved.get('title') != 'Disposable Chef World QA recipe':
+                            raise ValueError('Copied recipe retains deleted owner media or lost its text')
                         result['checks'].append('copied-media-detached-after-owner-deletion')
+                    except Exception:
+                        result['failed_stage'] = 'deleted_owner_media_detachment'
             except Exception:
                 result.setdefault('cleanup_failed', []).append(label)
-    result['passed'] = 'failed_stage' not in result and set(result['deleted']) == set(LABELS)
+    result['passed'] = 'failed_stage' not in result and not result.get('cleanup_failed') and set(result['deleted']) == set(LABELS)
     return result
 
 

@@ -230,6 +230,40 @@ print('Disposable QA identity and no-email repository integration verified')
         for account in fixture['accounts']:
             self.assertNotIn(account['password'], seed.stdout + seed.stderr + verified.stdout + verified.stderr)
 
+    def test_restored_photo_smoke_verifies_detachment_and_cleans_owner_before_viewer(self):
+        module = self.module()
+        owner_id, viewer_id = '2b453d81-9926-4413-8735-c45677f537a1', '22884926-39d2-437c-8389-5b31361d9554'
+        for unavailable in (False, True):
+            fixture = module.new_fixture(); fixture['accounts'].reverse()
+            state = {'deleted': [], 'recipe': None}
+            image = f'https://qa.example/recipes/{owner_id}/qa.png'
+            class FakeApi:
+                def __init__(self, credentials):
+                    self.credentials = credentials; self.actor = None
+                    self.label = 'owner' if '-owner@' in credentials['email'] else 'viewer'
+                def login(self):
+                    self.actor = owner_id if self.label == 'owner' else viewer_id
+                    return self.actor
+                def request(self, method, path, body=None, **kwargs):
+                    if path == '/recipes/upload-image': return {'file_url': image}
+                    if path == '/recipes' and method == 'POST':
+                        state['recipe'] = body; return body
+                    if path.endswith('/copy'): return {**state['recipe'], 'id': 'qa-copy'}
+                    if path == f'/users/{owner_id}/recipes/page?limit=20': return {'items': [state['recipe']]}
+                    if path.startswith(f'/users/{owner_id}/recipes/'): return state['recipe']
+                    if path == '/auth/me' and method == 'DELETE' and kwargs.get('expected', 200) == 200:
+                        state['deleted'].append(self.label)
+                    if path == '/recipes/qa-copy':
+                        if unavailable or 'viewer' in state['deleted']: raise ValueError('Detachment read unavailable')
+                        return {'id':'qa-copy', 'title':'Disposable Chef World QA recipe', 'steps':[{'text':'Pour water.'}]}
+                    return {'ok': True}
+            with self.subTest(detachment_read_unavailable=unavailable):
+                result = module.smoke(fixture, api_factory=FakeApi)
+                self.assertEqual(state['deleted'], ['owner', 'viewer'])
+                self.assertEqual(set(result['deleted']), {'owner', 'viewer'})
+                self.assertEqual(result['passed'], not unavailable)
+                if unavailable: self.assertEqual(result['failed_stage'], 'deleted_owner_media_detachment')
+
     def test_verification_payload_is_read_only_and_scoped_to_smoke_account_ids(self):
         module = self.module(); fixture = module.new_fixture(); service, task = resources()
         fixture['account_ids'] = {'owner': '2b453d81-9926-4413-8735-c45677f537a1', 'viewer': '22884926-39d2-437c-8389-5b31361d9554'}

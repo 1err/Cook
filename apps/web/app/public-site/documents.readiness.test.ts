@@ -11,5 +11,5 @@ test("restored sharing notice keeps deletion and does not promise removed safegu
  const text=JSON.stringify(PUBLIC_DOCUMENTS);
  expect(text).toContain("confirm using your account password");
  expect(text).toContain("OpenAI and Google Gemini");
- for(const removed of ["await review", "approved for display", "review decisions", "block another account", "report shared recipes"]) expect(text).not.toContain(removed);
+ for(const removed of ["await review", "approved for display", "review decisions", "block another account", "report shared recipes", "must be reviewed before", "External source images are hidden", "changing it requires another review"]) expect(text).not.toContain(removed);
 });
