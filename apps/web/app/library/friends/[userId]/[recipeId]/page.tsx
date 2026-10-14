@@ -10,8 +10,7 @@ import { CATEGORY_LABELS } from "../../../../lib/recipeCategories";
 import { getRecipeTags } from "../../../../lib/recipeTags";
 import type { Recipe } from "../../../../types";
 import { useAuth } from "../../../../lib/auth";
-import { BlockUserButton, ReportRecipeControl, SharedPhotoStatus } from "../../../../components/safety/SharingSafety";
-import { useAccountScope } from "../../../../components/safety/useAccountScope";
+import { useAccountScope } from "../../../../lib/useAccountScope";
 import { RecipeTimingDetails } from "../../../../components/RecipeTimingDetails";
 
 function splitTitleAccent(title: string): { lead: string; accent: string } {
@@ -173,10 +172,6 @@ function FriendRecipeContent({ userId, recipeId }: { userId: string; recipeId: s
           {addError}
         </p>
       ) : null}
-
-      <SharedPhotoStatus status={recipe.shared_media_status} />
-      <ReportRecipeControl recipeId={recipe.id} recipeTitle={recipe.title} />
-      <BlockUserButton userId={userId} onBlocked={(actor) => { if (scope.active(actor)) { setRecipe(null); setUnavailable(true); } }} />
       <div className="recipe-editorial__hero-img">
         {recipe.thumbnail_url ? (
           <img src={recipe.thumbnail_url} alt="" />

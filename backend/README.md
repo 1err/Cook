@@ -162,7 +162,7 @@ Menu artwork shares existing image attempts, membership policy, monthly budgets,
 Creating a template session works without an AI provider. Editing/exporting an admitted session does not count again. Both clients preserve request IDs through ambiguous retries, including when the access response now shows zero remaining. See [menu release evidence](../docs/qa/2026-09-26-menu-release.md).
 
 
-## Account and shared-content readiness (October 13)
+## Account deletion and original recipe sharing (October 13)
 
 `DELETE /auth/account` keeps the deployed account-deletion contract; `DELETE /auth/me` is an alias. Both accept only a nonempty `password`, recheck the current local identity under the account lock, commit database erasure and a durable cleanup intent before returning success, and revoke access through account removal. A captured `X-Chef-World-Account-ID` must match the signed-in account. Header-bound deletion/logout responses do not clear a newer browser account's cookie. Existing verification, recovery, session revocation, and import/menu job cascades remain active.
 
@@ -170,8 +170,6 @@ Erasure detaches the deleting account's owned image links from retained recipe c
 
 Per-account request/storage/monthly-budget counters are erased. Provider ledger and active lease account links are replaced by unrelated identifiers while global money reservations, global spend, call IDs and active concurrency slots remain available for correct reconciliation. A deleted-account tombstone and shared PostgreSQL erasure barrier prevent new paid admissions after deletion; image/menu admission takes that barrier before foreign-key writes.
 
-Shared content supports bilateral blocks (`GET /users/blocks`, `PUT|DELETE /users/{id}/block`, and `PUT /users/recipe-authors/{recipe id}/block`) and private reports (`POST /users/reports`). Administrator review uses `/admin/content-reports` and `/admin/content-reports/{id}/resolve`; publishing holds survive the author's sharing toggle. The narrow explicit-text check applies to edits/publication and existing shared records before paged filtering/counting. Private import guidance remains excluded from shared responses.
+Shared catalog and public-library recipes retain their original behavior: cover and step photos are immediately visible and copied with the recipe. Private import guidance remains excluded from shared responses. Content-report, account-block, and photo-review routes and discovery jobs are removed; historical report/review/block rows and suspension/digest columns are retained without affecting visibility.
 
-Customer photos stay private until an administrator approves the exact immutable photo-set digest through `/admin/media-reviews` and `/admin/media-reviews/{id}/review`. Detail, catalog, friend, paged and ingredient-search surfaces apply the same block/hold/text rules and return `shared_media_status`; shared copies retain only approved immutable app images. The configured S3 host establishes production media eligibility. Set the optional `PUBLIC_API_ORIGIN` to the canonical API origin when reviewing local-upload URLs.
-
-The three additive readiness migrations follow the existing production head `20261001_library_visibility` and end at `20261013_media_review`. API containers retain their migration-free startup command. Run one controlled `python -m app.migrate` task before rollout; its PostgreSQL advisory lock and bounded DDL handling now verify the committed schema against the packaged head and emit only `MIGRATION_HEAD_VERIFIED revisions=...` after successful verification. `/ready` checks all required safety tables/columns while allowing later additive migrations.
+The deployed additive migrations remain unchanged through `20261013_media_review`. No schema downgrade or historical-data deletion is required. Account erasure continues to scrub retained historical report/review snapshots and cascade the deleting account's rows.

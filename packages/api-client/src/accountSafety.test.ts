@@ -20,39 +20,6 @@ test("wrong delete password does not trigger auth expiry", async () => {
   await expect(api.auth.deleteAccount("wrong")).rejects.toMatchObject({status:403,message:"Incorrect password"} satisfies Partial<ApiError>);
   expect(unauthorized).not.toHaveBeenCalled();
 });
-test("report, block, unblock and author block use encoded server-authorized endpoints", async () => {
-  const fetcher = vi.fn().mockImplementation(() => Promise.resolve(new Response('{"ok":true}')));
-  vi.stubGlobal("fetch", fetcher);
-  const api=client();
-  await api.users.reportRecipe("recipe/id","privacy","Personal data");
-  await api.users.blockUser("friend/id");
-  await api.users.unblockUser("friend/id");
-  await api.users.blockRecipeAuthor("recipe/id");
-  expect(fetcher.mock.calls.map(([url,init])=>[url,init.method])).toEqual([
-    ["https://api.example/users/reports","POST"],
-    ["https://api.example/users/friend%2Fid/block","PUT"],
-    ["https://api.example/users/friend%2Fid/block","DELETE"],
-    ["https://api.example/users/recipe-authors/recipe%2Fid/block","PUT"]
-  ]);
-  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({recipe_id:"recipe/id",reason:"privacy",notes:"Personal data"});
-});
-
-test("cookie safety actions bind to the account shown by the UI",async()=>{
- const fetcher=vi.fn().mockImplementation(()=>Promise.resolve(new Response('{"ok":true}')));vi.stubGlobal("fetch",fetcher);
- const api=createApiClient({baseUrl:"https://api.example",auth:{kind:"cookie"}});
- await api.users.reportRecipe("recipe","privacy",undefined,"alice");await api.users.blockUser("friend","alice");await api.users.unblockUser("friend","alice");await api.users.blockRecipeAuthor("recipe","alice");await api.users.blockedUsers("alice");await api.moderation.list({expectedAccountId:"alice"});await api.moderation.resolve("report","dismiss",undefined,"alice");
- expect(fetcher.mock.calls.every(([,init])=>init.headers.get("X-Chef-World-Account-ID")==="alice")).toBe(true);
- expect(fetcher.mock.calls.every(([,init])=>init.credentials==="include")).toBe(true);
-});
-
-test("photo approval binds exact media digest and reviewing account",async()=>{
- const fetcher=vi.fn().mockResolvedValue(new Response('{}'));vi.stubGlobal("fetch",fetcher);
- const api=createApiClient({baseUrl:"https://api.example",auth:{kind:"cookie"}}), digest="a".repeat(64);
- await api.mediaReview.review("review/id","approve",digest,"Checked the photos","moderator");
- const [url,init]=fetcher.mock.calls[0];expect(url).toBe("https://api.example/admin/media-reviews/review%2Fid/review");expect(JSON.parse(init.body)).toEqual({decision:"approve",media_digest:digest,notes:"Checked the photos"});expect(init.headers.get("X-Chef-World-Account-ID")).toBe("moderator");
-});
-
-
 test("deletion and paged sharing reads bind to the account while keeping live query filters", async () => {
  const fetcher=vi.fn().mockImplementation(()=>Promise.resolve(new Response('{}')));vi.stubGlobal("fetch",fetcher);
  const api=createApiClient({baseUrl:"https://api.example",auth:{kind:"cookie"}});

@@ -6,3 +6,10 @@ test("readiness notice preserves live analytics lifecycles and actual provider d
  expect(text).not.toContain("not currently available as a self-service");
  expect(JSON.stringify(PUBLIC_DOCUMENTS.terms)).toContain("report");
 });
+
+test("restored sharing notice keeps deletion and does not promise removed safeguards", () => {
+ const text=JSON.stringify(PUBLIC_DOCUMENTS);
+ expect(text).toContain("confirm using your account password");
+ expect(text).toContain("OpenAI and Google Gemini");
+ for(const removed of ["await review", "approved for display", "review decisions", "block another account", "report shared recipes"]) expect(text).not.toContain(removed);
+});

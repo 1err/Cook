@@ -15,61 +15,39 @@ from test_ai_cost_postgres import accounting
 
 
 @pytest.mark.asyncio
-async def test_paged_discovery_applies_bilateral_blocks(pg_sessions):
-    from app.db import repo_content_safety, repo_recipes
+async def test_paged_discovery_ignores_historical_blocks_holds_and_text_checks(pg_sessions):
+    from app.db import repo_recipes
+    from app.db.models import UserBlockModel
     from app.db.repo_library_search import search_library
     owner, viewer = await add_user(pg_sessions), await add_user(pg_sessions)
     async with pg_sessions.begin() as session:
-        session.add(RecipeModel(id=str(owner), user_id=owner, title="Private shared soup", ingredients="[]", is_public_catalog=True))
-        await session.execute(update(UserModel).where(UserModel.id == owner).values(is_library_public=True))
+        session.add(RecipeModel(id=str(owner), user_id=owner, title="Ｋｉｌｌ\nyourself", ingredients="[]", is_public_catalog=True, catalog_suspended=True))
+        session.add(UserBlockModel(user_id=viewer, blocked_user_id=owner))
+        await session.execute(update(UserModel).where(UserModel.id == owner).values(is_library_public=True, library_sharing_suspended=True))
     async with pg_sessions() as session:
         assert str(owner) in {r.id for r in (await repo_recipes.recipe_page(session, viewer, catalog=True)).items}
-    async with pg_sessions.begin() as session:
-        await repo_content_safety.block_user(session, viewer, owner)
-    async with pg_sessions() as session:
-        assert str(owner) not in {r.id for r in (await repo_recipes.recipe_page(session, viewer, catalog=True)).items}
-        assert str(owner) not in {r.id for r in (await search_library(session, viewer, scope="catalog")).items}
-        assert (await repo_recipes.recipe_page(session, viewer, owner_id=owner)).items == []
+        assert str(owner) in {r.id for r in (await search_library(session, viewer, scope="catalog")).items}
+        assert str(owner) in {r.id for r in (await repo_recipes.recipe_page(session, viewer, owner_id=owner)).items}
 
 
 @pytest.mark.asyncio
-async def test_paged_shared_photos_wait_for_digest_approval(pg_sessions, monkeypatch):
-    from app.core.config import settings
-    from app.db import repo_recipes
-    from app.db.repo_library_search import search_library
-    from app.services.media_review_service import recipe_media_digest
-    owner, viewer = await add_user(pg_sessions), await add_user(pg_sessions)
-    monkeypatch.setattr(settings, "PUBLIC_API_ORIGIN", "http://api")
-    url = f"http://api/uploads/recipes/{owner}/" + "a" * 32 + ".png"
-    async with pg_sessions.begin() as session:
-        session.add(RecipeModel(id=str(owner), user_id=owner, title="Reviewed soup", ingredients="[]", thumbnail_url=url, is_public_catalog=True))
-    async with pg_sessions() as session:
-        private = next(r for r in (await repo_recipes.recipe_page(session, owner)).items if r.id == str(owner))
-        shared = next(r for r in (await repo_recipes.recipe_page(session, viewer, catalog=True)).items if r.id == str(owner))
-        searched = next(r for r in (await search_library(session, viewer, scope="catalog")).items if r.id == str(owner))
-        assert private.thumbnail_url == url
-        assert shared.thumbnail_url is None and searched.thumbnail_url is None
-        assert shared.shared_media_status == "pending"
-    async with pg_sessions.begin() as session:
-        row = await session.get(RecipeModel, str(owner))
-        row.approved_media_digest = recipe_media_digest(row)
-    async with pg_sessions() as session:
-        shared = next(r for r in (await repo_recipes.recipe_page(session, viewer, catalog=True)).items if r.id == str(owner))
-        assert shared.thumbnail_url == url and shared.shared_media_status == "approved"
-
-
-@pytest.mark.asyncio
-async def test_paged_shared_text_filter_excludes_legacy_unsafe_rows(pg_sessions):
+async def test_paged_and_ingredient_search_photos_are_shared_immediately(pg_sessions):
     from app.db import repo_recipes
     from app.db.repo_library_search import search_library
     owner, viewer = await add_user(pg_sessions), await add_user(pg_sessions)
+    url = f"https://photos.example.com/{owner}.png"
     async with pg_sessions.begin() as session:
-        session.add(RecipeModel(id=str(owner), user_id=owner, title="Ｋｉｌｌ\nyourself", ingredients="[]", is_public_catalog=True))
+        session.add(RecipeModel(id=str(owner), user_id=owner, title="Shared soup", ingredients='[{"name":"rice","quantity":"1 cup"}]', thumbnail_url=url, is_public_catalog=True, rejected_media_digest='a' * 64))
+        await session.execute(update(UserModel).where(UserModel.id == owner).values(is_library_public=True))
     async with pg_sessions() as session:
-        assert str(owner) not in {r.id for r in (await repo_recipes.recipe_page(session, viewer, catalog=True)).items}
-        assert str(owner) not in {r.id for r in (await search_library(session, viewer, scope="catalog")).items}
-        assert str(owner) in {r.id for r in (await repo_recipes.recipe_page(session, owner)).items}
-
+        pages = [await repo_recipes.recipe_page(session, owner),
+            await repo_recipes.recipe_page(session, viewer, catalog=True),
+            await repo_recipes.recipe_page(session, viewer, owner_id=owner),
+            await search_library(session, viewer, scope="catalog", ingredients=["rice"])]
+        for page in pages:
+            shared = next(r for r in page.items if r.id == str(owner))
+            assert shared.thumbnail_url == url
+            assert 'shared_media_status' not in shared.model_dump()
 
 
 def test_migration_runner_checks_committed_heads_before_success():

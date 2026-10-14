@@ -8,8 +8,7 @@ import { apiFetch } from "../../lib/api";
 import { useEditorialCopy } from "../../lib/editorialCopy";
 import { useT } from "../../lib/i18n";
 import { useAuth } from "../../lib/auth";
-import { BlockedAccounts } from "../../components/safety/BlockedAccounts";
-import { useAccountScope } from "../../components/safety/useAccountScope";
+import { useAccountScope } from "../../lib/useAccountScope";
 import styles from "./Friends.module.css";
 import libraryStyles from "../LibraryPage.module.css";
 
@@ -70,8 +69,6 @@ function FriendsSearchPageContent() {
         <Link href="/library?view=public" role="tab" aria-selected={false} className={libraryStyles.tab}>{t("library.publicLibrary")}</Link>
         <Link href="/library/friends" role="tab" aria-selected={true} className={libraryStyles.tab}>{editorialCopy["library.friends"]}</Link>
       </div>
-
-      <BlockedAccounts />
       <section className={styles.searchPanel} aria-label="Friend library search">
         <div className={styles.searchHeading}>
           <h2>Find a friend</h2>

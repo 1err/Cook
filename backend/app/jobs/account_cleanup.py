@@ -13,7 +13,6 @@ from app.db.repo_account_cleanup import claim_cleanup, finish_cleanup, sweep_del
 from app.db.repo_accounts import prune_expired_auth
 from app.services.storage_service import get_local_upload_root
 from app.services.account_deletion_service import run_account_media_cleanup
-from app.db.repo_media_reviews import discover_shared_media_reviews
 
 logger = logging.getLogger(__name__)
 _task = None

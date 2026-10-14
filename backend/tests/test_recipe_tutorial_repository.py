@@ -138,11 +138,11 @@ class _CopySession:
 
 @pytest.mark.asyncio
 async def test_copy_public_recipe_keeps_the_source_step_metadata(sql_session) -> None:
-    """Shared copying retains tutorial metadata while unapproved media stays private."""
+    """Shared copying retains the original tutorial metadata and photos."""
     source = RecipeModel(id="recipe-1", user_id=OWNER_ID, title="Baked onions", ingredients="[]",
         is_public_catalog=True, steps=json.dumps([CANONICAL_STEP]))
     sql_session.add(source)
     await sql_session.flush()
     copied = await copy_public_recipe_to_user(sql_session, source.id, CALLER_ID)
     assert copied is not None
-    assert [step.model_dump() for step in copied.steps] == [{**CANONICAL_STEP, "image_url": None}]
+    assert [step.model_dump() for step in copied.steps] == [CANONICAL_STEP]

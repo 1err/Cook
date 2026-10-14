@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { RecipePage } from '@cooking/shared';
 import LibraryPage from './page';
-const { mine, catalog, blockAuthor, query } = vi.hoisted(() => ({mine:vi.fn(),catalog:vi.fn(),blockAuthor:vi.fn(),query:{value:""}}));
+const { mine, catalog, query } = vi.hoisted(() => ({mine:vi.fn(),catalog:vi.fn(),query:{value:""}}));
 vi.mock('../lib/auth', () => ({ useAuth: () => ({ user: { id: 'account-a' } }) }));
 vi.mock('next/navigation', () => ({useSearchParams: () => new URLSearchParams(query.value)}));
 vi.mock('../components/RequireAuth', () => ({RequireAuth: ({children}: {children:ReactNode}) => <>{children}</>}));
@@ -13,9 +13,9 @@ vi.mock('../lib/i18n', async () => {
     ? (MESSAGE_MAP.en[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => String(vars?.[name] ?? ''))
     : key, useI18n: () => ({language:'en'})};
 });
-vi.mock('../lib/api', () => ({apiFetch:vi.fn(),webApiClient:{recipes:{page:mine,catalogPage:catalog},users:{blockRecipeAuthor:blockAuthor}}}));
+vi.mock('../lib/api', () => ({apiFetch:vi.fn(),webApiClient:{recipes:{page:mine,catalogPage:catalog}}}));
 const page = (id:string, next_cursor:string|null=null, already_saved=false):RecipePage => ({items:[{id,title:id,ingredient_count:0,step_count:0,already_saved}],next_cursor});
-beforeEach(() => {query.value="";mine.mockReset();catalog.mockReset();blockAuthor.mockReset().mockResolvedValue({ok:true});vi.stubGlobal('ResizeObserver',class {observe(){}disconnect(){}});});
+beforeEach(() => {query.value="";mine.mockReset();catalog.mockReset();vi.stubGlobal('ResizeObserver',class {observe(){}disconnect(){}});});
 afterEach(() => {cleanup();vi.unstubAllGlobals();});
 
 test('public cards use timing summaries and retain the independent copy action', async () => {
@@ -287,46 +287,12 @@ test('linked public cards reconcile together and wait for the related pending mu
 });
 
 
-test('blocking hides obsolete catalog rows and retains a retry after refresh failure', async () => {
- query.value='view=public';
- mine.mockResolvedValue(page('Private recipe'));
- catalog.mockResolvedValueOnce({...page('Shared recipe'),items:[{...page('Shared recipe').items[0],shared_media_status:'pending'}]})
-   .mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(page('Safe recipe'));
- vi.spyOn(window,'confirm').mockReturnValue(true);
- render(<LibraryPage />);
- await screen.findByRole('heading',{name:'Shared recipe'});
- expect(screen.getByText('safety.photosPending')).toBeVisible();
- expect(screen.getByRole('button',{name:'safety.report: Shared recipe'})).toBeEnabled();
- fireEvent.click(screen.getByRole('button',{name:'safety.blockAuthor'}));
- await waitFor(()=>expect(blockAuthor).toHaveBeenCalledWith('Shared recipe','account-a'));
- expect(await screen.findByRole('alert')).toHaveTextContent('library.loadErrorTitle');
- expect(screen.queryByRole('heading',{name:'Shared recipe'})).not.toBeInTheDocument();
- fireEvent.click(screen.getByRole('button',{name:'library.retry'}));
- expect(await screen.findByRole('heading',{name:'Safe recipe'})).toBeVisible();
-});
-
-
-test('a fresh filter load recovers after a failed post-block refresh', async () => {
+test('regular catalog browsing shows the original photo and bookmark without moderation controls', async () => {
  query.value='view=public';mine.mockResolvedValue(page('Private recipe'));
- catalog.mockResolvedValueOnce(page('Shared recipe')).mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(page('Filtered recipe'));
- vi.spyOn(window,'confirm').mockReturnValue(true);render(<LibraryPage />);
- await screen.findByRole('heading',{name:'Shared recipe'});
- fireEvent.click(screen.getByRole('button',{name:'safety.blockAuthor'}));
- await screen.findByRole('alert');
- fireEvent.change(screen.getByRole('searchbox'),{target:{value:'Filtered'}});
- expect(await screen.findByRole('heading',{name:'Filtered recipe'})).toBeVisible();
-});
-
-test('a completed block reloads the current filter even when its old row was unmounted', async () => {
- query.value='view=public';mine.mockResolvedValue(page('Private recipe'));
- catalog.mockResolvedValueOnce(page('First shared recipe')).mockResolvedValueOnce(page('Current shared recipe')).mockResolvedValueOnce(page('Safe current recipe'));
- let finish!:(value:{ok:boolean})=>void;blockAuthor.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
- vi.spyOn(window,'confirm').mockReturnValue(true);render(<LibraryPage />);
- await screen.findByRole('heading',{name:'First shared recipe'});
- fireEvent.click(screen.getByRole('button',{name:'safety.blockAuthor'}));
- fireEvent.change(screen.getByRole('searchbox'),{target:{value:'Current'}});
- await screen.findByRole('heading',{name:'Current shared recipe'});
- await act(async()=>{finish({ok:true});});
- expect(await screen.findByRole('heading',{name:'Safe current recipe'})).toBeVisible();
- expect(catalog).toHaveBeenLastCalledWith(expect.objectContaining({q:'Current'}));
+ catalog.mockResolvedValue({items:[{...page('Shared noodles').items[0],thumbnail_url:'https://example.com/noodles.jpg',shared_media_status:'pending'}],next_cursor:null});
+ render(<LibraryPage/>);const title=await screen.findByRole('heading',{name:'Shared noodles'});
+ expect(title.closest('a')?.querySelector('img')).toHaveAttribute('src','https://example.com/noodles.jpg');
+ expect(screen.getByRole('button',{name:/^library.addToMyLibrary:/})).toBeEnabled();
+ expect(screen.queryByRole('button',{name:/safety\.(report|block)/})).not.toBeInTheDocument();
+ expect(screen.queryByText('safety.photosPending')).not.toBeInTheDocument();
 });

@@ -255,7 +255,7 @@ def smoke(fixture, api_factory=Api):
         fixture['account_ids'] = result['account_ids']; validate_fixture(fixture)
         owner, viewer = clients['owner'], clients['viewer']
         stage = 'actor_guard'
-        viewer.request('GET', '/users/blocks', expected=409, actor=owner.actor)
+        viewer.request('GET', '/recipes/page', expected=409, actor=owner.actor)
         for client in clients.values(): client.request('POST', '/auth/library-visibility', {'is_public': True})
         stage = 'owned_upload'
         boundary = 'ChefWorldQA' + uuid.uuid4().hex
@@ -268,30 +268,27 @@ def smoke(fixture, api_factory=Api):
         recipe_id = 'qa_' + fixture['namespace']
         recipe = {'id': recipe_id, 'title': 'Disposable Chef World QA recipe', 'description': 'Synthetic deployment verification; safe to remove.',
             'ingredients': [{'name': 'Water', 'quantity': '1 cup'}], 'steps': [{'text': 'Pour water into a cup.', 'image_url': image_url}], 'thumbnail_url': image_url}
-        stage = 'pending_photos'
+        stage = 'shared_photos'
         owner.request('POST', '/recipes', recipe)
         shared = viewer.request('GET', f'/users/{owner.actor}/recipes/{recipe_id}')
-        if shared.get('shared_media_status') != 'pending' or shared.get('thumbnail_url') or any(step.get('image_url') for step in shared.get('steps', [])):
-            raise ValueError('Unreviewed QA photos were not withheld from sharing')
+        if shared.get('thumbnail_url') != image_url or shared.get('steps', [{}])[0].get('image_url') != image_url:
+            raise ValueError('Original shared photo visibility was not restored')
+        page = viewer.request('GET', f'/users/{owner.actor}/recipes/page?limit=20')
+        matched = [row for row in page.get('items', []) if row.get('id') == recipe_id]
+        if len(matched) != 1 or matched[0].get('thumbnail_url') != image_url:
+            raise ValueError('Original shared paged photos were not restored')
+        stage = 'photo_copy'
         copied = viewer.request('POST', f'/users/{owner.actor}/recipes/{recipe_id}/copy')
-        if copied.get('thumbnail_url') or any(step.get('image_url') for step in copied.get('steps', [])):
-            raise ValueError('Pending-photo QA copy included media')
-        stage = 'report'
-        report = viewer.request('POST', '/users/reports', {'recipe_id': recipe_id, 'reason': 'other', 'notes': 'Disposable synthetic deployment QA report.'}, expected=201)
-        if report.get('status') != 'pending': raise ValueError('QA report was not queued')
-        viewer.request('GET', '/admin/content-reports', expected=403)
-        stage = 'reciprocal_block'
-        for blocker, target in ((viewer, owner), (owner, viewer)):
-            blocker.request('PUT', f'/users/{target.actor}/block')
-            blocker.request('GET', f'/users/{target.actor}/recipes', expected=404)
-            target.request('GET', f'/users/{blocker.actor}/recipes', expected=404)
-            owner.request('GET', f'/recipes/{recipe_id}')
-            blocker.request('DELETE', f'/users/{target.actor}/block')
-            blocker.request('GET', f'/users/{target.actor}/recipes')
+        if copied.get('thumbnail_url') != image_url or copied.get('steps', [{}])[0].get('image_url') != image_url:
+            raise ValueError('Shared QA copy lost its photos')
+        result['copied_recipe_id'] = copied['id']
+        stage = 'retired_safeguards'
+        for path in ['/users/blocks', '/admin/content-reports', '/admin/media-reviews']:
+            viewer.request('GET', path, expected=404)
         stage = 'password_deletion'
         owner.request('DELETE', '/auth/me', {'password': 'known-incorrect-qa-password'}, expected=403)
-        result['checks'] = ['verified-login', 'actor-409', 'owned-upload', 'pending-shared-photos-hidden', 'text-only-copy', 'report-pending', 'nonadmin-403', 'reciprocal-block', 'wrong-password-403']
-        result['media_url'] = image_url; result['report_id'] = report['id']
+        result['checks'] = ['verified-login', 'actor-409', 'owned-upload', 'shared-photos-visible', 'paged-shared-photos-visible', 'copies-include-photos', 'report-block-review-routes-retired', 'wrong-password-403']
+        result['media_url'] = image_url
     except Exception:
         result['failed_stage'] = stage
     finally:
@@ -305,6 +302,12 @@ def smoke(fixture, api_factory=Api):
                 client.request('DELETE', '/auth/me', {'password': client.credentials['password']})
                 client.request('GET', '/auth/me', expected=401)
                 result['deleted'].append(label)
+                if label == 'owner' and result.get('copied_recipe_id'):
+                    preserved = clients['viewer'].request('GET', '/recipes/' + result['copied_recipe_id'])
+                    if preserved.get('thumbnail_url') or any(step.get('image_url') for step in preserved.get('steps', [])) or preserved.get('title') != 'Disposable Chef World QA recipe':
+                        result['failed_stage'] = 'deleted_owner_media_detachment'
+                    else:
+                        result['checks'].append('copied-media-detached-after-owner-deletion')
             except Exception:
                 result.setdefault('cleanup_failed', []).append(label)
     result['passed'] = 'failed_stage' not in result and set(result['deleted']) == set(LABELS)

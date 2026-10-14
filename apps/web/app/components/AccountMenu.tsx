@@ -97,7 +97,6 @@ export function AccountMenu({ email, isAdmin, onLogout }: AccountMenuProps) {
             <section className={styles.adminSection} aria-label={t("nav.adminTools")}>
               <p className={styles.sectionLabel}>{t("nav.adminTools")}</p>
               <ul className={styles.list}>
-                <li><Link className={styles.action} href="/moderation" onClick={closeMenu}><Icon name="admin" /><span>{t("safety.moderation")}</span></Link></li>
                 <li>
                   <Link className={styles.action} href="/preview" onClick={closeMenu}>
                     <Icon name="admin" />

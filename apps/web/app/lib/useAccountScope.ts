@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useAuth } from "../../lib/auth";
-import { getAuthGeneration } from "../../lib/userStorage";
+import { useAuth } from "./auth";
+import { getAuthGeneration } from "./userStorage";
 
 export type AccountActor = { id: string; generation: number };
 

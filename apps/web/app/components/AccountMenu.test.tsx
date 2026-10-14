@@ -104,3 +104,11 @@ test("the keyboard-accessible delete entry opens settings confirmation without s
   expect(screen.queryByRole("link", { name: /^Delete account$/ })).not.toBeInTheDocument();
   expect(onLogout).not.toHaveBeenCalled();
 });
+
+
+test.each([false,true])("the restored account menu keeps deletion and has no moderation link (admin=%s)", async (isAdmin) => {
+ render(<AccountMenu email="cook@example.com" isAdmin={isAdmin} onLogout={vi.fn()}/>);
+ await userEvent.click(screen.getByRole("button",{name:"Account for cook@example.com"}));
+ expect(screen.getByRole("link",{name:"Delete account"})).toHaveAttribute("href","/settings?delete=1#delete-account");
+ expect(document.querySelector('a[href="/moderation"]')).toBeNull();
+});

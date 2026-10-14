@@ -7,7 +7,7 @@ import { useAuth } from "../lib/auth";
 import { webApiClient } from "../lib/api";
 import { Button } from "../components/ui/Button";
 import { useT } from "../lib/i18n";
-import { useAccountScope } from "../components/safety/useAccountScope";
+import { useAccountScope } from "../lib/useAccountScope";
 import styles from "./Settings.module.css";
 
 function AccountSecurityContent() {

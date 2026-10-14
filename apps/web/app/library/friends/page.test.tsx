@@ -1,4 +1,3 @@
-vi.mock("../../components/safety/BlockedAccounts", () => ({ BlockedAccounts: () => null }));
 vi.mock("../../lib/auth", () => ({ useAuth: () => ({ user: { id: "alice" } }) }));
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -34,6 +33,7 @@ describe("FriendsSearchPage", () => {
   it("keeps the library page heading and tabs above the friend search section", () => {
     render(<FriendsSearchPage />);
 
+    expect(screen.queryByRole("heading", {name:"Blocked accounts"})).not.toBeInTheDocument();
     const heading = screen.getByRole("heading", { level: 1, name: "Recipe library" });
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     const subtitle = screen.getByText("A little inspiration for your next meal.", { exact: true });

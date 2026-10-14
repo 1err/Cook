@@ -10,8 +10,7 @@ import { FriendLibraryCard } from "../FriendLibraryCard";
 import { useT } from "../../../lib/i18n";
 import { useRecipePage } from "../../../lib/useRecipePage";
 import { useAuth } from "../../../lib/auth";
-import { BlockUserButton } from "../../../components/safety/SharingSafety";
-import { useAccountScope } from "../../../components/safety/useAccountScope";
+import { useAccountScope } from "../../../lib/useAccountScope";
 import styles from "../Friends.module.css";
 
 function FriendLibraryPageContent({ userId }: { userId: string }) {
@@ -79,8 +78,6 @@ function FriendLibraryPageContent({ userId }: { userId: string }) {
         <Link href="/library/friends" className={styles.backLink}>← Find a friend</Link>
         <PageHeader title={heading} />
       </div>
-
-      <BlockUserButton userId={userId} onBlocked={(actor) => { if (scope.active(actor)) setUnavailable(true); }} />
       <input aria-label="Search recipes" type="search" value={search} onChange={event => setSearch(event.target.value)} />
       {page.error ? <p role="alert">{page.error}</p> : null}
       {copyError ? <p className={styles.error} role="alert">{copyError}</p> : null}

@@ -4,18 +4,14 @@ Authorization (e.g., is_library_public gating, self-search exclusion) lives
 in the route layer; these helpers just do the SQL.
 """
 import uuid
-import json
 from typing import Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import RecipeModel, UserModel
-from app.db.repo_recipes import _lock_copy_owner, _row_to_shared_recipe
-from app.db.repo_content_safety import relationship_blocked
+from app.db.repo_recipes import _lock_copy_owner
 from app.db.repo_auth import lock_account_erasure_barrier
-from app.services.content_safety_service import is_shareable_recipe
-from app.services.media_review_service import recipe_media_digest
 
 
 async def search_public_library_user(
@@ -39,7 +35,7 @@ async def search_public_library_user(
         return None
     if user.id == exclude_user_id:
         return None
-    if not bool(user.is_library_public) or user.library_sharing_suspended or await relationship_blocked(session, exclude_user_id, user.id):
+    if not bool(user.is_library_public):
         return None
     return user
 
@@ -98,11 +94,11 @@ async def copy_friend_recipe_to_user(
 
     await lock_account_erasure_barrier(session)
     owner = await get_user_by_id(session, source_user_id)
-    if owner is None or not bool(owner.is_library_public) or owner.library_sharing_suspended or await relationship_blocked(session, source_user_id, caller_user_id):
+    if owner is None or not bool(owner.is_library_public):
         return None
 
     source = await get_friend_library_recipe(session, source_user_id, recipe_id)
-    if source is None or not is_shareable_recipe(source):
+    if source is None:
         return None
 
     if not await _lock_copy_owner(session, caller_user_id):
@@ -119,13 +115,12 @@ async def copy_friend_recipe_to_user(
         await session.flush()
         return existing
 
-    shared = _row_to_shared_recipe(source)
     clone = RecipeModel(
         id=uuid.uuid4().hex,
         user_id=caller_user_id,
         title=source.title,
         source_url=source.source_url,
-        thumbnail_url=shared.thumbnail_url,
+        thumbnail_url=source.thumbnail_url,
         ingredients=source.ingredients,
         raw_extraction_text=None,
         library_tags=source.library_tags,
@@ -134,8 +129,7 @@ async def copy_friend_recipe_to_user(
         catalog_source_recipe_id=source.id,
         description=source.description,
         total_time_minutes=source.total_time_minutes,
-        steps=json.dumps([step.model_dump() for step in shared.steps]),
-        approved_media_digest=recipe_media_digest(shared) if shared.shared_media_status == "approved" else None,
+        steps=source.steps,
         tips=source.tips,
         equipment=source.equipment,
     )

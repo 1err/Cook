@@ -150,21 +150,6 @@ export type RecipeImageGeneration = {
 
 type RequestOptions = RequestInit & { skipJsonContentType?: boolean };
 
-export type ContentReportReason = "objectionable" | "harassment" | "privacy" | "spam" | "other";
-export type ModerationAction = "dismiss" | "remove_catalog" | "disable_library" | "remove_shared_content";
-export type ContentReport = {
-  id: string; reporter_id: string; owner_id: string; recipe_id: string;
-  reason: ContentReportReason; notes: string | null; status: "pending" | "resolved";
-  created_at: string; resolution: ModerationAction | null; resolution_notes: string | null;
-  reviewer_id: string | null; resolved_at: string | null; recipe: Recipe | null;
-};
-
-export type MediaReview = {
-  id: string; owner_id: string; recipe_id: string; media_digest: string; eligible_media_urls: string[];
-  status: "pending" | "approved" | "rejected"; created_at: string;
-  reviewer_id: string | null; reviewed_at: string | null; review_notes: string | null; recipe: Recipe;
-};
-
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -386,15 +371,6 @@ export function createApiClient(options: ApiClientOptions) {
         }),
     },
     users: {
-      blockedUsers: (expectedAccountId?: string) => json<{ users: Array<{ id: string; email: string }> }>("/users/blocks", { headers: actorHeaders(expectedAccountId) }),
-      blockUser: (userId: string, expectedAccountId?: string) => json<{ ok: boolean }>(`/users/${encodeURIComponent(userId)}/block`, { method: "PUT", headers: actorHeaders(expectedAccountId) }),
-      unblockUser: (userId: string, expectedAccountId?: string) => json<{ ok: boolean }>(`/users/${encodeURIComponent(userId)}/block`, { method: "DELETE", headers: actorHeaders(expectedAccountId) }),
-      blockRecipeAuthor: (recipeId: string, expectedAccountId?: string) => json<{ ok: boolean }>(`/users/recipe-authors/${encodeURIComponent(recipeId)}/block`, { method: "PUT", headers: actorHeaders(expectedAccountId) }),
-      reportRecipe: (recipeId: string, reason: ContentReportReason, notes?: string, expectedAccountId?: string) =>
-        json<{ id: string; status: "pending" }>("/users/reports", {
-          method: "POST", headers: actorHeaders(expectedAccountId), body: JSON.stringify({ recipe_id: recipeId, reason, notes }),
-        }),
-
       searchByEmail: (email: string) =>
         json<User>(`/users/search?email=${encodeURIComponent(email)}`),
       libraryPage: (userId: string, options: RecipePageOptions = {}) =>
@@ -409,26 +385,6 @@ export function createApiClient(options: ApiClientOptions) {
           `/users/${encodeURIComponent(userId)}/recipes/${encodeURIComponent(recipeId)}/copy`,
           { method: "POST" },
         ),
-    },
-    moderation: {
-      list: (options: { status?: "pending" | "resolved"; limit?: number; offset?: number; expectedAccountId?: string } = {}) => {
-        const query = new URLSearchParams({ status: options.status ?? "pending", limit: String(options.limit ?? 50), offset: String(options.offset ?? 0) });
-        return json<{ reports: ContentReport[]; total: number }>(`/admin/content-reports?${query}`, { headers: actorHeaders(options.expectedAccountId) });
-      },
-      resolve: (reportId: string, action: ModerationAction, notes?: string, expectedAccountId?: string) =>
-        json<ContentReport>(`/admin/content-reports/${encodeURIComponent(reportId)}/resolve`, {
-          method: "POST", headers: actorHeaders(expectedAccountId), body: JSON.stringify({ action, notes }),
-        }),
-    },
-    mediaReview: {
-      list: (options: { status?: "pending" | "approved" | "rejected"; limit?: number; offset?: number; expectedAccountId?: string } = {}) => {
-        const query = new URLSearchParams({ status: options.status ?? "pending", limit: String(options.limit ?? 50), offset: String(options.offset ?? 0) });
-        return json<{ reviews: MediaReview[]; total: number }>(`/admin/media-reviews?${query}`, { headers: actorHeaders(options.expectedAccountId) });
-      },
-      review: (id: string, decision: "approve" | "reject", mediaDigest: string, notes?: string, expectedAccountId?: string) =>
-        json<MediaReview>(`/admin/media-reviews/${encodeURIComponent(id)}/review`, {
-          method: "POST", headers: actorHeaders(expectedAccountId), body: JSON.stringify({ decision, media_digest: mediaDigest, notes }),
-        }),
     },
     mealPlan: {
       list: (start: string, end: string) =>

@@ -14,8 +14,7 @@ import { CATEGORY_LABELS } from "../../../lib/recipeCategories";
 import { getRecipeTags } from "../../../lib/recipeTags";
 import { RecipeTutorial } from "../../../recipe/[id]/RecipeTutorial";
 import { RecipeTimingDetails } from "../../../components/RecipeTimingDetails";
-import { BlockUserButton, ReportRecipeControl, SharedPhotoStatus } from "../../../components/safety/SharingSafety";
-import { useAccountScope } from "../../../components/safety/useAccountScope";
+import { useAccountScope } from "../../../lib/useAccountScope";
 import styles from "../../../recipe/[id]/RecipeDetail.module.css";
 import type { Recipe } from "../../../types";
 
@@ -151,9 +150,6 @@ function PublicRecipeContent({ id }: { id: string }) {
                 </button>
               )}
             </div>
-            <SharedPhotoStatus status={recipe.shared_media_status} />
-            <ReportRecipeControl recipeId={recipe.id} recipeTitle={recipe.title} />
-            <BlockUserButton recipeId={recipe.id} onBlocked={(actor) => { if (scope.active(actor)) setRecipe(null); }} />
             {copyFailed ? <p className={styles.error} role="alert">{t("library.publicRecipe.copyFailed")}</p> : null}
             {isSafeExternalUrl(recipe.source_url) ? (
               <div className={styles.utilityActions}>

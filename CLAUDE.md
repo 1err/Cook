@@ -16,6 +16,8 @@ Smart shopping quantities are consolidated deterministically before the model or
 
 The web beta polish keeps Library, Planner, Shopping, Cook setup, Import, and Settings on the shared page-header spacing. On narrow screens the shopping preparation action comes before planned meals in both reading and visual order; desktop retains its two-column layout. Library load failures use a translated recovery message and retry action. Empty personal Library and manual Cook selection link to public recipes. Settings sharing controls, recipe tags, and shopping meal/week summaries follow the selected English/Chinese language. Primary mobile actions have at least 44px touch height, and Library/Cook text inputs use 16px to avoid automatic mobile zoom.
 
+Sharing rollback (October 13): friend libraries and the public catalog retain the original photo display and copying behavior. The experimental report/block controls, blocked-account panels, photo-preapproval notices and moderation queues are removed at the owner's request. Password-confirmed account deletion, owned-media cleanup and public Privacy/Terms remain. The prepared native source retains AI consent. Apple submission is on hold; this rollback is not App Store approval.
+
 ## Repo shape (npm workspaces + Python)
 
 Visible Instacart controls are removed from web and mobile for the beta release at the owner’s request. The unused panel components, shared helpers, and backend export endpoint remain for possible future integration; they do not alter Weee lookup, cart selections, or progress.

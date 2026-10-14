@@ -4,12 +4,9 @@ Admin-only cache preview and refresh endpoints.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Literal
-from uuid import UUID
-from app.db import repo_content_safety
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
@@ -232,111 +229,3 @@ async def cache_refresh_one(
         is_warm_query=cleaned_query in ALL_QUERIES,
         data=data,
     )
-
-
-class ContentReportResponse(BaseModel):
-    id: str
-    reporter_id: str
-    owner_id: str
-    recipe_id: str
-    reason: str
-    notes: str | None
-    status: str
-    created_at: datetime
-    resolution: str | None
-    resolution_notes: str | None
-    reviewer_id: str | None
-    resolved_at: datetime | None
-    recipe: dict | None
-
-
-def _content_report_response(row) -> ContentReportResponse:
-    return ContentReportResponse(id=str(row.id), reporter_id=str(row.reporter_id), owner_id=str(row.owner_id),
-        recipe_id=row.recipe_id, reason=row.reason, notes=row.notes, status=row.status, created_at=row.created_at,
-        resolution=row.resolution, resolution_notes=row.resolution_notes,
-        reviewer_id=str(row.reviewer_id) if row.reviewer_id else None, resolved_at=row.resolved_at,
-        recipe=row.content_snapshot)
-
-
-class ContentReportListResponse(BaseModel):
-    reports: list[ContentReportResponse]
-    total: int
-
-
-class ResolveContentReportBody(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    action: Literal['dismiss', 'remove_catalog', 'disable_library', 'remove_shared_content']
-    notes: str | None = Field(default=None, max_length=2000)
-
-
-@router.get('/content-reports', response_model=ContentReportListResponse)
-async def content_reports(status: Literal['pending', 'resolved'] = Query(default='pending'),
-                          limit: int = Query(default=50, ge=1, le=100), offset: int = Query(default=0, ge=0),
-                          session: AsyncSession = Depends(get_session),
-                          current_user: UserModel = Depends(require_admin)):
-    rows, total = await repo_content_safety.list_reports(session, status, limit, offset)
-    return ContentReportListResponse(reports=[_content_report_response(row) for row in rows], total=total)
-
-
-@router.post('/content-reports/{report_id}/resolve', response_model=ContentReportResponse)
-async def resolve_content_report(report_id: UUID, body: ResolveContentReportBody,
-                                 session: AsyncSession = Depends(get_session),
-                                 current_user: UserModel = Depends(require_admin)):
-    row = await repo_content_safety.resolve_report(session, report_id, current_user.id, body.action,
-                                                   (body.notes or '').strip() or None)
-    return _content_report_response(row)
-
-
-class MediaReviewResponse(BaseModel):
-    id: str
-    owner_id: str
-    recipe_id: str
-    media_digest: str
-    status: str
-    created_at: datetime
-    reviewer_id: str | None
-    reviewed_at: datetime | None
-    review_notes: str | None
-    recipe: dict
-    eligible_media_urls: list[str]
-
-
-def _media_review_response(row) -> MediaReviewResponse:
-    from app.services.media_review_service import is_immutable_app_media_url
-    snapshot = row.content_snapshot
-    urls = [snapshot.get("thumbnail_url")] + [step.get("image_url") for step in snapshot.get("steps", []) if isinstance(step, dict)]
-    return MediaReviewResponse(id=str(row.id), owner_id=str(row.owner_id), recipe_id=row.recipe_id,
-        media_digest=row.media_digest, status=row.status, created_at=row.created_at,
-        reviewer_id=str(row.reviewer_id) if row.reviewer_id else None,
-        reviewed_at=row.reviewed_at, review_notes=row.review_notes, recipe=row.content_snapshot,
-        eligible_media_urls=list(dict.fromkeys(url for url in urls if is_immutable_app_media_url(url))))
-
-
-class MediaReviewListResponse(BaseModel):
-    reviews: list[MediaReviewResponse]
-    total: int
-
-
-class ReviewMediaBody(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    decision: Literal['approve', 'reject']
-    media_digest: str = Field(pattern=r'^[a-f0-9]{64}$')
-    notes: str | None = Field(default=None, max_length=2000)
-
-
-@router.get('/media-reviews', response_model=MediaReviewListResponse)
-async def media_reviews(status: Literal['pending', 'approved', 'rejected'] = Query(default='pending'),
-                        limit: int = Query(default=50, ge=1, le=100), offset: int = Query(default=0, ge=0),
-                        session: AsyncSession = Depends(get_session), current_user: UserModel = Depends(require_admin)):
-    from app.db import repo_media_reviews
-    rows, total = await repo_media_reviews.list_media_reviews(session, status, limit, offset)
-    return MediaReviewListResponse(reviews=[_media_review_response(row) for row in rows], total=total)
-
-
-@router.post('/media-reviews/{review_id}/review', response_model=MediaReviewResponse)
-async def review_media(review_id: UUID, body: ReviewMediaBody,
-                       session: AsyncSession = Depends(get_session), current_user: UserModel = Depends(require_admin)):
-    from app.db import repo_media_reviews
-    row = await repo_media_reviews.review_media(session, review_id, current_user.id, body.decision,
-                                                body.media_digest, (body.notes or '').strip() or None)
-    return _media_review_response(row)

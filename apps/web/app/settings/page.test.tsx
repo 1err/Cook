@@ -21,7 +21,7 @@ vi.mock("../components/RequireAuth", () => ({
   RequireAuth: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock("../lib/auth", () => ({ useAuth: mockUseAuth }));
-vi.mock("../lib/api", () => ({ webApiClient: { users: { blockedUsers: async () => ({users:[]}) }, auth: { capabilities: async () => ({ email_verification: false }) } } }));
+vi.mock("../lib/api", () => ({ webApiClient: { auth: { capabilities: async () => ({ email_verification: false }) } } }));
 vi.mock("../lib/editorialCopy", () => ({
   useEditorialCopy: () => ({ "settings.tagline": "Settings" }),
 }));
@@ -54,4 +54,13 @@ it("translates library visibility and its consequences in Chinese", async () => 
   expect(screen.getByRole("checkbox", {name: "分享我的菜谱库"})).toBeEnabled();
   expect(screen.getByText("知道你邮箱地址的人可以浏览并复制你的菜谱。")).toBeVisible();
   expect(screen.getByText("关闭", {exact:true})).toBeVisible();
+});
+
+
+it("keeps sharing, email verification and account deletion without a blocked accounts box", () => {
+ render(<I18nProvider><SettingsPage/></I18nProvider>);
+ expect(screen.getByRole("checkbox",{name:/Share my library/})).toBeEnabled();
+ expect(screen.getByRole("button",{name:"Delete account"})).toBeVisible();
+ expect(screen.getByRole("heading",{name:"Email verification"})).toBeVisible();
+ expect(screen.queryByRole("heading",{name:"Blocked accounts"})).not.toBeInTheDocument();
 });

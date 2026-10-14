@@ -23,10 +23,8 @@ from app.core.security import (
 )
 from app.db.session import get_session
 from app.db import repo_auth, repo_accounts
-from app.db.models import RecipeModel, UserModel
+from app.db.models import UserModel
 from app.db.repo_account_deletion import delete_account
-from app.services.content_safety_service import ensure_shareable_recipe
-from app.db.repo_media_reviews import queue_media_review
 from app.services.account_email import deliver_account_email, email_available
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -265,26 +263,14 @@ async def set_library_visibility(
     current_user: UserModel = Depends(get_current_user),
 ):
     """Flip the current user's library-public flag."""
-    # Lock the actual current row so a concurrent moderation hold or deletion
-    # cannot be bypassed by the dependency's earlier authentication snapshot.
+    # Use the current locked row so a concurrent account erasure cannot be
+    # bypassed by the authentication dependency's earlier snapshot.
     user = (await session.execute(select(UserModel).where(UserModel.id == current_user.id)
                                   .with_for_update().execution_options(populate_existing=True))).scalars().one_or_none()
     if user is None:
         raise HTTPException(401, "User not found")
-    if body.is_public:
-        if user.library_sharing_suspended:
-            raise HTTPException(403, "Library sharing is disabled after moderation review")
-        rows = (await session.execute(select(RecipeModel).where(RecipeModel.user_id == user.id))).scalars().all()
-        for row in rows:
-            ensure_shareable_recipe(row)
     user.is_library_public = bool(body.is_public)
     await session.flush()
-    if not body.is_public:
-        rows = (await session.execute(select(RecipeModel).where(RecipeModel.user_id == user.id))).scalars().all()
-    from app.db.repo_recipes import _row_to_recipe
-    for row in rows:
-        await queue_media_review(session, row, library_public=user.is_library_public,
-                                 snapshot=_row_to_recipe(row).model_dump(mode="json"))
     return LibraryVisibilityResponse(is_library_public=user.is_library_public)
 
 

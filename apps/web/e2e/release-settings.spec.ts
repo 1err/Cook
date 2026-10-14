@@ -16,7 +16,6 @@ test("phone Settings deletion supports cancel, wrong-password retry and successf
    if(password!=="fixture-password") return route.fulfill({status:403,headers,json:{detail:"Incorrect password"}});
    deleted=true;return route.fulfill({headers,json:{ok:true}});
   }
-  if(path==="/users/blocks") return route.fulfill({headers,json:{users:[]}});
   if(path==="/auth/capabilities") return route.fulfill({headers,json:{email_verification:false}});
   if(path==="/auth/me") return route.fulfill({status:deleted?401:200,headers,json:deleted?{detail:"Sign in"}:{id:"release-fixture",email:"release@example.com",is_library_public:false}});
   return route.fulfill({headers,json:[]});

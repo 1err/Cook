@@ -107,10 +107,8 @@ def test_scheduler_runs_daily_force_refresh_without_a_startup_warming_sweep(
     scheduler = cache_warmer.start_scheduler()
 
     assert scheduler.started
-    cache_jobs = [job for job in jobs if job[1].get("id") == "cache-warmer"]
-    assert len(cache_jobs) == 1
-    assert any(job[1].get("id") == "recipe-photo-review-discovery" for job in jobs)
-    callback, options = cache_jobs[0]
+    assert len(jobs) == 1
+    callback, options = jobs[0]
     assert callback is cache_warmer._run_scheduled_cache_warmer
     assert options["trigger"] == "interval"
     assert options["hours"] == 24

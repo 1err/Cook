@@ -274,7 +274,7 @@ async def recipes_catalog_list(
     session: AsyncSession = Depends(get_session),
     _user: UserModel = Depends(get_current_user),
 ):
-    return await repo_recipes.list_public_recipes(session, _user.id)
+    return await repo_recipes.list_public_recipes(session)
 
 
 class CatalogBookmarkResponse(BaseModel):
