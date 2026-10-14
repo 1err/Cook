@@ -9,10 +9,14 @@ import { apiFetch } from "../../../lib/api";
 import { FriendLibraryCard } from "../FriendLibraryCard";
 import { useT } from "../../../lib/i18n";
 import { useRecipePage } from "../../../lib/useRecipePage";
+import { useAuth } from "../../../lib/auth";
+import { BlockUserButton } from "../../../components/safety/SharingSafety";
+import { useAccountScope } from "../../../components/safety/useAccountScope";
 import styles from "../Friends.module.css";
 
 function FriendLibraryPageContent({ userId }: { userId: string }) {
   const t = useT();
+  const scope = useAccountScope();
   const [search, setSearch] = useState("");
   const page = useRecipePage(userId, {q: search});
   const theirs = page.items;
@@ -29,13 +33,16 @@ function FriendLibraryPageContent({ userId }: { userId: string }) {
   }, []);
 
   async function copy(recipeId: string) {
+    const actor = scope.capture();
+    if (!actor || copyingId) return;
     setCopyingId(recipeId);
     setCopyError(null);
     try {
       const response = await apiFetch(
         `/users/${encodeURIComponent(userId)}/recipes/${encodeURIComponent(recipeId)}/copy`,
-        { method: "POST" },
+        { method: "POST", headers: { "X-Chef-World-Account-ID": actor.id } },
       );
+      if (!scope.active(actor)) return;
       if (response.status === 404) {
         setUnavailable(true);
         return;
@@ -43,9 +50,10 @@ function FriendLibraryPageContent({ userId }: { userId: string }) {
       if (!response.ok) throw new Error(await response.text());
       setSavedSourceIds(current => new Set(current).add(recipeId));
     } catch (caught) {
+      if (!scope.active(actor)) return;
       setCopyError(caught instanceof Error ? caught.message : "Couldn't add — try again.");
     } finally {
-      setCopyingId(null);
+      if (scope.active(actor)) setCopyingId(null);
     }
   }
 
@@ -72,6 +80,7 @@ function FriendLibraryPageContent({ userId }: { userId: string }) {
         <PageHeader title={heading} />
       </div>
 
+      <BlockUserButton userId={userId} onBlocked={(actor) => { if (scope.active(actor)) setUnavailable(true); }} />
       <input aria-label="Search recipes" type="search" value={search} onChange={event => setSearch(event.target.value)} />
       {page.error ? <p role="alert">{page.error}</p> : null}
       {copyError ? <p className={styles.error} role="alert">{copyError}</p> : null}
@@ -102,9 +111,10 @@ function FriendLibraryPageContent({ userId }: { userId: string }) {
 
 export default function FriendLibraryPage() {
   const params = useParams<{ userId: string }>();
+  const { user } = useAuth();
   return (
     <RequireAuth>
-      <FriendLibraryPageContent userId={params.userId} />
+      <FriendLibraryPageContent key={`${user?.id}:${params.userId}`} userId={params.userId} />
     </RequireAuth>
   );
 }

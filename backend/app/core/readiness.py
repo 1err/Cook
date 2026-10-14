@@ -23,11 +23,16 @@ async def database_ready() -> bool:
                            store_request_leases.expires_at, users.auth_version, users.email_verified,
                            users.email_verification_required,
                            account_action_tokens.token_hash, revoked_sessions.token_hash,
-                           owned_images.state, deleted_accounts.next_attempt_at
+                           owned_images.state, deleted_accounts.next_attempt_at,
+                           users.library_sharing_suspended, recipes.catalog_suspended,
+                           recipes.approved_media_digest, recipes.rejected_media_digest,
+                           account_media_cleanup.account_id, user_blocks.user_id,
+                           content_reports.id, recipe_media_reviews.id
                     FROM users, recipes, ai_call_ledger, store_jobs,
                          request_limit_counters, meal_plan, upload_budgets,
                          store_request_leases, account_action_tokens, revoked_sessions,
-                         owned_images, deleted_accounts
+                         owned_images, deleted_accounts, account_media_cleanup,
+                         user_blocks, content_reports, recipe_media_reviews
                     LIMIT 0
                 """))
             return True

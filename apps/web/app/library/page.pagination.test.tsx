@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { RecipePage } from '@cooking/shared';
 import LibraryPage from './page';
-const { mine, catalog, query } = vi.hoisted(() => ({mine:vi.fn(),catalog:vi.fn(),query:{value:""}}));
+const { mine, catalog, blockAuthor, query } = vi.hoisted(() => ({mine:vi.fn(),catalog:vi.fn(),blockAuthor:vi.fn(),query:{value:""}}));
 vi.mock('../lib/auth', () => ({ useAuth: () => ({ user: { id: 'account-a' } }) }));
 vi.mock('next/navigation', () => ({useSearchParams: () => new URLSearchParams(query.value)}));
 vi.mock('../components/RequireAuth', () => ({RequireAuth: ({children}: {children:ReactNode}) => <>{children}</>}));
@@ -13,9 +13,9 @@ vi.mock('../lib/i18n', async () => {
     ? (MESSAGE_MAP.en[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => String(vars?.[name] ?? ''))
     : key, useI18n: () => ({language:'en'})};
 });
-vi.mock('../lib/api', () => ({apiFetch:vi.fn(),webApiClient:{recipes:{page:mine,catalogPage:catalog}}}));
+vi.mock('../lib/api', () => ({apiFetch:vi.fn(),webApiClient:{recipes:{page:mine,catalogPage:catalog},users:{blockRecipeAuthor:blockAuthor}}}));
 const page = (id:string, next_cursor:string|null=null, already_saved=false):RecipePage => ({items:[{id,title:id,ingredient_count:0,step_count:0,already_saved}],next_cursor});
-beforeEach(() => {query.value="";mine.mockReset();catalog.mockReset();vi.stubGlobal('ResizeObserver',class {observe(){}disconnect(){}});});
+beforeEach(() => {query.value="";mine.mockReset();catalog.mockReset();blockAuthor.mockReset().mockResolvedValue({ok:true});vi.stubGlobal('ResizeObserver',class {observe(){}disconnect(){}});});
 afterEach(() => {cleanup();vi.unstubAllGlobals();});
 
 test('public cards use timing summaries and retain the independent copy action', async () => {
@@ -38,7 +38,7 @@ test('public cards use timing summaries and retain the independent copy action',
   expect(copy.closest('a')).toBeNull();
   fireEvent.click(copy);
   expect(await screen.findByRole('button', { name: /^library.removeFromLibrary:/ })).toHaveAttribute('aria-pressed', 'true');
-  expect(apiFetch).toHaveBeenLastCalledWith('/recipes/catalog/Slow%20public%20recipe/copy', { method: 'POST' });
+  expect(apiFetch).toHaveBeenLastCalledWith('/recipes/catalog/Slow%20public%20recipe/copy', { method: 'POST', headers: { 'X-Chef-World-Account-ID': 'account-a' } });
 });
 
 test('loads one page on demand, searches server-side, and uses per-row copy state without private-library scans', async () => {
@@ -50,11 +50,11 @@ test('loads one page on demand, searches server-side, and uses per-row copy stat
   expect(catalog).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button',{name:'common.loadMoreRecipes'}));
   expect(await screen.findByRole('heading',{name:'Later'})).toBeVisible();
-  expect(mine).toHaveBeenLastCalledWith({q:'',tags:[],cursor:'next'});
+  expect(mine).toHaveBeenLastCalledWith({q:'',tags:[],cursor:'next',expectedAccountId:'account-a'});
   fireEvent.change(screen.getByRole('searchbox'),{target:{value:'Needle'}});
   expect(await screen.findByRole('heading',{name:'Needle'})).toBeVisible();
   expect(screen.queryByRole('heading',{name:'First'})).not.toBeInTheDocument();
-  expect(mine).toHaveBeenLastCalledWith({q:'Needle',tags:[],cursor:null});
+  expect(mine).toHaveBeenLastCalledWith({q:'Needle',tags:[],cursor:null,expectedAccountId:'account-a'});
   fireEvent.click(screen.getByRole('tab',{name:'library.publicLibrary'}));
   expect(await screen.findByRole('button',{name:/^library.removeFromLibrary:/})).toHaveAttribute('aria-pressed', 'true');
   expect(mine).toHaveBeenCalledTimes(3);
@@ -201,7 +201,7 @@ test('a saved bookmark removes and restores the same card despite a stale catalo
   fireEvent.click(bookmark);
   fireEvent.click(bookmark);
   expect(apiFetch).toHaveBeenCalledTimes(1);
-  expect(apiFetch).toHaveBeenLastCalledWith('/recipes/catalog/Saved%20recipe/saved', { method: 'DELETE' });
+  expect(apiFetch).toHaveBeenLastCalledWith('/recipes/catalog/Saved%20recipe/saved', { method: 'DELETE', headers: { 'X-Chef-World-Account-ID': 'account-a' } });
   expect(bookmark).toHaveAttribute('aria-busy', 'true');
   expect(bookmark).toHaveAttribute('aria-label', 'library.removing: Saved recipe');
   await act(async () => { finish(new Response(null, { status: 204 })); });
@@ -212,7 +212,7 @@ test('a saved bookmark removes and restores the same card despite a stale catalo
   expect(catalog).toHaveBeenCalledTimes(1);
   fireEvent.click(bookmark);
   await waitFor(() => expect(bookmark).toHaveAttribute('aria-pressed', 'true'));
-  expect(apiFetch).toHaveBeenLastCalledWith('/recipes/catalog/Saved%20recipe/copy', { method: 'POST' });
+  expect(apiFetch).toHaveBeenLastCalledWith('/recipes/catalog/Saved%20recipe/copy', { method: 'POST', headers: { 'X-Chef-World-Account-ID': 'account-a' } });
   expect(screen.getByRole('heading', { name: 'Saved recipe' })).toBeVisible();
 });
 
@@ -284,4 +284,49 @@ test('linked public cards reconcile together and wait for the related pending mu
   expect(copy).toHaveAttribute('aria-pressed','true');
   expect(apiFetch).toHaveBeenCalledTimes(2);
   expect(catalog).toHaveBeenCalledTimes(1);
+});
+
+
+test('blocking hides obsolete catalog rows and retains a retry after refresh failure', async () => {
+ query.value='view=public';
+ mine.mockResolvedValue(page('Private recipe'));
+ catalog.mockResolvedValueOnce({...page('Shared recipe'),items:[{...page('Shared recipe').items[0],shared_media_status:'pending'}]})
+   .mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(page('Safe recipe'));
+ vi.spyOn(window,'confirm').mockReturnValue(true);
+ render(<LibraryPage />);
+ await screen.findByRole('heading',{name:'Shared recipe'});
+ expect(screen.getByText('safety.photosPending')).toBeVisible();
+ expect(screen.getByRole('button',{name:'safety.report: Shared recipe'})).toBeEnabled();
+ fireEvent.click(screen.getByRole('button',{name:'safety.blockAuthor'}));
+ await waitFor(()=>expect(blockAuthor).toHaveBeenCalledWith('Shared recipe','account-a'));
+ expect(await screen.findByRole('alert')).toHaveTextContent('library.loadErrorTitle');
+ expect(screen.queryByRole('heading',{name:'Shared recipe'})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'library.retry'}));
+ expect(await screen.findByRole('heading',{name:'Safe recipe'})).toBeVisible();
+});
+
+
+test('a fresh filter load recovers after a failed post-block refresh', async () => {
+ query.value='view=public';mine.mockResolvedValue(page('Private recipe'));
+ catalog.mockResolvedValueOnce(page('Shared recipe')).mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(page('Filtered recipe'));
+ vi.spyOn(window,'confirm').mockReturnValue(true);render(<LibraryPage />);
+ await screen.findByRole('heading',{name:'Shared recipe'});
+ fireEvent.click(screen.getByRole('button',{name:'safety.blockAuthor'}));
+ await screen.findByRole('alert');
+ fireEvent.change(screen.getByRole('searchbox'),{target:{value:'Filtered'}});
+ expect(await screen.findByRole('heading',{name:'Filtered recipe'})).toBeVisible();
+});
+
+test('a completed block reloads the current filter even when its old row was unmounted', async () => {
+ query.value='view=public';mine.mockResolvedValue(page('Private recipe'));
+ catalog.mockResolvedValueOnce(page('First shared recipe')).mockResolvedValueOnce(page('Current shared recipe')).mockResolvedValueOnce(page('Safe current recipe'));
+ let finish!:(value:{ok:boolean})=>void;blockAuthor.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+ vi.spyOn(window,'confirm').mockReturnValue(true);render(<LibraryPage />);
+ await screen.findByRole('heading',{name:'First shared recipe'});
+ fireEvent.click(screen.getByRole('button',{name:'safety.blockAuthor'}));
+ fireEvent.change(screen.getByRole('searchbox'),{target:{value:'Current'}});
+ await screen.findByRole('heading',{name:'Current shared recipe'});
+ await act(async()=>{finish({ok:true});});
+ expect(await screen.findByRole('heading',{name:'Safe current recipe'})).toBeVisible();
+ expect(catalog).toHaveBeenLastCalledWith(expect.objectContaining({q:'Current'}));
 });

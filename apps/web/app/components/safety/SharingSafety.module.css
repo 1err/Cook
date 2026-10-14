@@ -1,0 +1,14 @@
+.control { margin-top: .5rem; }
+.quietButton { min-height: 44px; padding: .5rem .7rem; border: 1px solid var(--cw-color-divider); border-radius: var(--cw-radius-control); background: var(--cw-color-surface); color: var(--cw-color-muted-ink); font: inherit; font-size: .85rem; cursor: pointer; }
+.quietButton:disabled { opacity: .6; cursor: default; }
+.form { display: grid; gap: .65rem; padding: 1rem; margin: .65rem 0; border: 1px solid var(--cw-color-divider); border-radius: var(--cw-radius-field); background: var(--cw-color-canvas); }
+.form p, .notice { margin: .3rem 0; font-size: .85rem; line-height: 1.5; }
+.form label { font-size: .85rem; font-weight: 700; }
+.form select, .form textarea { box-sizing: border-box; max-width: 100%; width: 100%; min-height: 44px; padding: .6rem; border: 1px solid var(--cw-color-divider); border-radius: var(--cw-radius-field); background: var(--cw-color-surface); color: var(--cw-color-ink); font: inherit; }
+.form a { font-size: .85rem; }
+.buttons { display: flex; gap: .5rem; flex-wrap: wrap; }
+.buttons button { min-height: 44px; }
+.error { color: var(--cw-color-error); }
+.blockedList { list-style: none; padding: 0; display: grid; gap: .7rem; }
+.blockedList li { display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.section { margin-top: 1.75rem; padding: 1rem; border: 1px solid var(--cw-color-divider); border-radius: var(--cw-radius-field); }

@@ -70,7 +70,7 @@ test("failed account deletion preserves identity and private data, successful de
   await act(async () => result.current.deleteAccount("correct"));
   expect(result.current.user).toBeNull();
   expect(userSessionStorage.getItem("smartShoppingList:week")).toBeNull();
-  expect(apiFetch).toHaveBeenLastCalledWith("/auth/account", { method: "DELETE", body: JSON.stringify({ password: "correct" }) });
+  expect(apiFetch).toHaveBeenLastCalledWith("/auth/account", { method: "DELETE", headers: { "X-Chef-World-Account-ID": "alice" }, body: JSON.stringify({ password: "correct" }) });
 });
 
 test("failed sign-out everywhere retains identity and can be retried", async () => {
@@ -221,4 +221,17 @@ test("auth preserves the server verification requirement without marking legacy 
   apiFetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: "old", email: "old@example.com", is_library_public: false })));
   await act(async () => result.current.refreshUser());
   expect(result.current.user).toMatchObject({ email_verification_required: false, email_verified: false });
+});
+
+
+test("a captured old-account delete callback cannot send a request for the new account", async () => {
+  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  const staleDelete = result.current.deleteAccount;
+  apiFetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: "bob", email: "bob@example.com" })));
+  await act(async () => result.current.refreshUser());
+  const previous = apiFetch.mock.calls.length;
+  await act(async () => { await expect(staleDelete("alice-password")).rejects.toMatchObject({ status: 409 }); });
+  expect(apiFetch.mock.calls.length).toBe(previous);
+  expect(result.current.user?.id).toBe("bob");
 });

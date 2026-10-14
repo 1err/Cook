@@ -11,6 +11,8 @@ from app.core.config import settings
 from app.db.account_models import OwnedImageModel, DeletedAccountModel
 from app.db.models import AIUsageCounterModel, UserModel, RecipeModel, CookingSessionDishModel
 from app.db.request_limit_models import RequestLimitModel
+from app.db.ai_cost_models import AICallLedgerModel, AIMonthlyBudgetModel, AIInflightLeaseModel
+from app.db.job_models import StoreRequestLeaseModel
 from app.db.upload_budget_models import UploadBudgetModel
 
 
@@ -27,6 +29,25 @@ def owned_s3_coordinates(url: str | None, owner_id) -> tuple[str, str, str] | No
         return None
     return settings.S3_BUCKET_NAME, settings.AWS_REGION, key
 
+async def scrub_deleted_financial_identity(session, account: str) -> None:
+    """Remove account linkage without refunding app spend or concurrent slots.
+
+    Ledger call IDs and global money reservations remain available to reconcile
+    already-admitted provider work. An unrelated per-call identifier replaces
+    the erased account ID; no private account budget survives that erasure.
+    Lock ledgers before budgets, matching reconciliation's lock ordering.
+    """
+    ledgers = (await session.execute(select(AICallLedgerModel).where(
+        AICallLedgerModel.account_id == account).with_for_update())).scalars().all()
+    for row in ledgers:
+        row.account_id = str(uuid.uuid4())
+        row.provider_request_id = None
+    await session.flush()
+    await session.execute(delete(AIMonthlyBudgetModel).where(AIMonthlyBudgetModel.scope == f"user:{account}"))
+    for model in (AIInflightLeaseModel, StoreRequestLeaseModel):
+        # Retain live leases until normal completion/expiry so another account
+        # cannot oversubscribe a provider or retailer while deletion is pending.
+        await session.execute(update(model).where(model.account_id == account).values(account_id=str(uuid.uuid4())))
 
 async def delete_user_and_queue_cleanup(session, user) -> None:
     # Adopt old S3 uploads only where ownership is provable. Old local uploads
@@ -46,8 +67,8 @@ async def delete_user_and_queue_cleanup(session, user) -> None:
     await session.execute(delete(AIUsageCounterModel).where(AIUsageCounterModel.scope.in_(
         [f"user:{account}", f"image:user:{account}", f"menu:create:user:{account}"])))
     await session.execute(delete(UploadBudgetModel).where(UploadBudgetModel.scope == f"user:{account}"))
-    # Monetary ledgers and account/global money reservations remain untouched so
-    # already-admitted calls can reconcile and deletion cannot refund app spend.
+    await scrub_deleted_financial_identity(session, account)
+    # Global spend and reservations survive; erased account linkage is removed.
     from app.api.abuse import private_scope
     scopes = [private_scope(kind, value) for kind, value in (
         ("login-account", user.email), ("register-account", user.email),
@@ -71,7 +92,6 @@ def image_reference_condition(column, row):
         # Local image links may be relative or use another approved API hostname.
         return canonical.endswith(f"/uploads/{row.object_key}", autoescape=True)
     return canonical == row.file_url
-
 
 async def claim_cleanup(session):
     now = (await session.execute(select(func.clock_timestamp()))).scalar_one()
@@ -98,13 +118,11 @@ async def claim_cleanup(session):
     return {name: getattr(row, name) for name in (
         "id", "owner_id", "storage_kind", "bucket", "region", "object_key", "lease_id", "attempts")}
 
-
 async def finish_cleanup(session, item, success: bool):
     values = ({"state": "deleted", "lease_id": None} if success else {
         "next_attempt_at": func.clock_timestamp() + timedelta(seconds=min(86400, 30 * 2 ** min(item["attempts"], 11)))})
     await session.execute(update(OwnedImageModel).where(OwnedImageModel.id == item["id"],
         OwnedImageModel.lease_id == item["lease_id"], OwnedImageModel.state == "deleting").values(**values))
-
 
 async def sweep_deleted_counters(session):
     row = (await session.execute(select(DeletedAccountModel).where(
@@ -113,6 +131,7 @@ async def sweep_deleted_counters(session):
     if row is None:
         return
     account = str(row.user_id)
+    await scrub_deleted_financial_identity(session, account)
     await session.execute(delete(AIUsageCounterModel).where(AIUsageCounterModel.scope.in_(
         [f"user:{account}", f"image:user:{account}", f"menu:create:user:{account}"])))
     await session.execute(delete(UploadBudgetModel).where(UploadBudgetModel.scope == f"user:{account}"))

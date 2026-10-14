@@ -39,12 +39,17 @@ def image_app(monkeypatch, tmp_path):
     for model in (UserModel, AIUsageCounterModel, FeatureEntitlementModel, RecipeImageGenerationModel,
                   AICallLedgerModel, AIMonthlyBudgetModel, AIInflightLeaseModel, UploadBudgetModel):
         model.__table__.create(engine)
+    from readiness_schema import create_readiness_schema
+    create_readiness_schema(engine, tombstones_only=True)
     database = Session(engine, expire_on_commit=False)
     user_id = uuid4()
     database.add(UserModel(id=user_id, email="image-test@example.com"))
     database.commit()
 
     class AsyncSessionAdapter:
+        def get_bind(self):
+            return database.get_bind()
+
         def add(self, value):
             database.add(value)
 

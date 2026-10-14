@@ -23,6 +23,7 @@ from app.db import repo_ai_cost, repo_import_jobs as jobs
 from app.db.ai_cost_models import AICallLedgerModel, AIInflightLeaseModel, AIMonthlyBudgetModel
 from app.db.import_job_models import ImportJobModel as Job
 from app.db.models import UserModel, AIUsageCounterModel
+from app.db.account_models import DeletedAccountModel
 from app.db.repo_ai_usage import AIUsageLimitExceeded
 from app.db.session import get_session
 from app.jobs import recipe_imports as worker
@@ -42,7 +43,7 @@ async def lifecycle(monkeypatch):
     try:
         async with engine.begin() as connection:
             await connection.execute(CreateSchema(schema))
-            for model in [UserModel, AIUsageCounterModel, AIInflightLeaseModel, AIMonthlyBudgetModel, AICallLedgerModel, Job]:
+            for model in [UserModel, DeletedAccountModel, AIUsageCounterModel, AIInflightLeaseModel, AIMonthlyBudgetModel, AICallLedgerModel, Job]:
                 await connection.run_sync(model.__table__.create)
         maker = async_sessionmaker(engine, expire_on_commit=False)
         monkeypatch.setattr(worker.database, 'async_session_maker', maker)

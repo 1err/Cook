@@ -43,6 +43,7 @@ def design_app(image_app, monkeypatch):
     image_app.database.add(MenuCreationModel(user_id=image_app.user_id, request_id=creation_id, created_at=image_app.now[0]))
     image_app.database.commit()
     class Session:
+        def get_bind(self): return image_app.session.get_bind()
         def add(self, row): image_app.session.add(row)
         async def execute(self, statement):
             if str(statement).startswith('SELECT clock_timestamp()'):

@@ -8,9 +8,10 @@ import hmac
 import json
 import uuid
 from typing import Optional
+from fastapi import HTTPException
 
 from sqlalchemy import and_, case, cast, column, func, literal, or_, select, tuple_, update
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, JSONPATH
 from sqlalchemy.orm import aliased
 from app.core.config import settings
 from sqlalchemy.dialects.postgresql import insert
@@ -26,6 +27,11 @@ from app.models import (
 )
 from app.db.models import RecipeModel, UserModel
 from app.services.recipe_timing import summarize_recipe_timing
+from app.db.repo_content_safety import blocked_owner_ids, relationship_blocked
+from app.db.repo_auth import lock_account_erasure_barrier
+from app.db.repo_media_reviews import queue_media_review
+from app.services.media_review_service import is_immutable_app_media_url, recipe_media_digest, shared_media_status, immutable_media_predicate
+from app.services.content_safety_service import ensure_shareable_recipe, is_shareable_recipe, shareable_recipe_predicate
 
 
 class RecipeOwnershipConflict(ValueError):
@@ -66,15 +72,30 @@ def _row_to_recipe(row: RecipeModel) -> Recipe:
         steps=coerce_steps(steps_raw, row.total_time_minutes),
         tips=coerce_string_list(tips_raw),
         equipment=coerce_string_list(equipment_raw),
+        shared_media_status=shared_media_status(row),
     )
 
 
 def _row_to_shared_recipe(row: RecipeModel) -> Recipe:
     """Share recipe fields without exposing the owner's private import guidance."""
-    return _row_to_recipe(row).model_copy(update={"raw_extraction_text": None})
+    recipe = _row_to_recipe(row).model_copy(update={"raw_extraction_text": None})
+    approved = shared_media_status(row) == "approved"
+    recipe = recipe.model_copy(update={"thumbnail_url": recipe.thumbnail_url if approved and is_immutable_app_media_url(recipe.thumbnail_url) else None,
+        "steps": [step.model_copy(update={"image_url": step.image_url if approved and is_immutable_app_media_url(step.image_url) else None}) for step in recipe.steps]})
+    return recipe
+
 
 
 async def save_recipe(session: AsyncSession, recipe: Recipe, user_id: uuid.UUID) -> Recipe:
+    owner = (await session.execute(select(UserModel).where(UserModel.id == user_id)
+                                  .with_for_update().execution_options(populate_existing=True))).scalars().one_or_none()
+    if owner is None:
+        raise RecipeOwnershipConflict("Account is unavailable")
+    existing = (await session.execute(select(RecipeModel.is_public_catalog).where(
+        RecipeModel.id == recipe.id, RecipeModel.user_id == user_id,
+    ))).scalar_one_or_none()
+    if bool(owner.is_library_public) or existing:
+        ensure_shareable_recipe(recipe)
     ingredients_json = json.dumps(
         [i.model_dump() if hasattr(i, "model_dump") else i for i in recipe.ingredients]
     )
@@ -115,7 +136,10 @@ async def save_recipe(session: AsyncSession, recipe: Recipe, user_id: uuid.UUID)
     row = result.scalars().one_or_none()
     if row is None:
         raise RecipeOwnershipConflict("Recipe ID is unavailable for this account")
+    await queue_media_review(session, row, library_public=bool(owner.is_library_public),
+                             snapshot=_row_to_recipe(row).model_dump(mode="json"))
     return _row_to_recipe(row)
+
 
 
 async def get_recipe(session: AsyncSession, recipe_id: str, user_id: uuid.UUID) -> Optional[Recipe]:
@@ -154,14 +178,18 @@ async def list_recipes(session: AsyncSession, user_id: uuid.UUID) -> list[Recipe
     return [_row_to_recipe(r) for r in rows]
 
 
-async def list_public_recipes(session: AsyncSession) -> list[Recipe]:
+async def list_public_recipes(session: AsyncSession, viewer_id: uuid.UUID | None = None) -> list[Recipe]:
+    filters = [RecipeModel.is_public_catalog.is_(True), RecipeModel.catalog_suspended.is_(False)]
+    if viewer_id is not None:
+        filters.append(~RecipeModel.user_id.in_(blocked_owner_ids(viewer_id)))
     result = await session.execute(
         select(RecipeModel)
-        .where(RecipeModel.is_public_catalog.is_(True))
+        .where(*filters)
         .order_by(func.lower(RecipeModel.title), RecipeModel.id)
     )
     rows = list(result.scalars().all())
-    return [_row_to_shared_recipe(r) for r in rows]
+    return [_row_to_shared_recipe(r) for r in rows if is_shareable_recipe(r)]
+
 
 
 async def get_public_recipe(session: AsyncSession, recipe_id: str) -> Optional[Recipe]:
@@ -169,32 +197,45 @@ async def get_public_recipe(session: AsyncSession, recipe_id: str) -> Optional[R
         select(RecipeModel).where(
             RecipeModel.id == recipe_id,
             RecipeModel.is_public_catalog.is_(True),
+            RecipeModel.catalog_suspended.is_(False),
         )
     )
     row = result.scalars().one_or_none()
-    if not row:
+    if not row or not is_shareable_recipe(row):
         return None
     return _row_to_shared_recipe(row)
+
 
 
 async def set_recipe_public_catalog(
     session: AsyncSession, recipe_id: str, user_id: uuid.UUID, is_public: bool
 ) -> Optional[Recipe]:
+    owner = (await session.execute(select(UserModel).where(UserModel.id == user_id)
+                                   .with_for_update().execution_options(populate_existing=True))).scalars().one_or_none()
     result = await session.execute(
         select(RecipeModel).where(RecipeModel.id == recipe_id, RecipeModel.user_id == user_id)
+        .with_for_update().execution_options(populate_existing=True)
     )
     row = result.scalars().one_or_none()
     if not row:
         return None
+    if is_public:
+        if row.catalog_suspended:
+            raise HTTPException(403, "Catalog publishing is disabled after moderation review")
+        ensure_shareable_recipe(row)
     row.is_public_catalog = bool(is_public)
     await session.flush()
+    await queue_media_review(session, row, library_public=bool(owner and owner.is_library_public),
+                             snapshot=_row_to_recipe(row).model_dump(mode="json"))
     return _row_to_recipe(row)
+
 
 
 async def copy_public_recipe_to_user(
     session: AsyncSession, recipe_id: str, user_id: uuid.UUID,
     created_outcome: list[bool] | None = None,
 ) -> Optional[Recipe]:
+    await lock_account_erasure_barrier(session)
     if not await _lock_copy_owner(session, user_id):
         return None
     result = await session.execute(
@@ -204,7 +245,9 @@ async def copy_public_recipe_to_user(
         ).execution_options(populate_existing=True)
     )
     source = result.scalars().one_or_none()
-    if not source:
+    if not source or source.catalog_suspended or not is_shareable_recipe(source):
+        return None
+    if await relationship_blocked(session, source.user_id, user_id):
         return None
 
     if source.user_id == user_id:
@@ -223,12 +266,13 @@ async def copy_public_recipe_to_user(
         await session.flush()
         return _row_to_recipe(existing)
 
+    shared = _row_to_shared_recipe(source)
     clone = RecipeModel(
         id=str(uuid.uuid4()),
         user_id=user_id,
         title=source.title,
         source_url=source.source_url,
-        thumbnail_url=source.thumbnail_url,
+        thumbnail_url=shared.thumbnail_url,
         ingredients=source.ingredients,
         raw_extraction_text=None,
         library_tags=source.library_tags,
@@ -237,7 +281,8 @@ async def copy_public_recipe_to_user(
         catalog_source_recipe_id=source.id,
         description=source.description,
         total_time_minutes=source.total_time_minutes,
-        steps=source.steps,
+        steps=json.dumps([step.model_dump() for step in shared.steps]),
+        approved_media_digest=recipe_media_digest(shared) if shared.shared_media_status == "approved" else None,
         tips=source.tips,
         equipment=source.equipment,
     )
@@ -345,7 +390,15 @@ def recipe_summary_statement(caller_id):
         'attention_type', timing_step.c.value['attention_type'],
     ))).select_from(timing_step).correlate(r).scalar_subquery()
     return select(
-        r.id, r.title, func.lower(r.title).label("sort_title"), r.source_url, r.thumbnail_url,
+        r.id, r.title, func.lower(r.title).label("sort_title"), r.source_url,
+        case((r.user_id == caller_id, r.thumbnail_url),
+             (and_(r.approved_media_digest.is_not(None), immutable_media_predicate(r.thumbnail_url)), r.thumbnail_url),
+             else_=None).label("thumbnail_url"),
+        case((r.approved_media_digest.is_not(None), 'approved'),
+             (r.rejected_media_digest.is_not(None), 'rejected'),
+             (or_(r.thumbnail_url.is_not(None), func.jsonb_path_exists(steps_array,
+                 cast(literal('$[*] ? (@.image_url != null && @.image_url != "")'), JSONPATH))), 'pending'),
+             else_='none').label('shared_media_status'),
         r.library_tags, r.library_category, r.is_public_catalog, r.catalog_source_recipe_id,
         r.total_time_minutes, func.jsonb_array_length(cast(r.ingredients, JSONB)).label("ingredient_count"),
         func.jsonb_array_length(steps_array).label("step_count"), already_saved.label("already_saved"),
@@ -375,11 +428,13 @@ async def recipe_page(
     r = RecipeModel
     statement = recipe_summary_statement(caller_id)
     if catalog:
-        statement = statement.where(r.is_public_catalog.is_(True))
+        statement = statement.where(r.is_public_catalog.is_(True), r.catalog_suspended.is_(False),
+            ~r.user_id.in_(blocked_owner_ids(caller_id)), shareable_recipe_predicate())
     elif owner_id is not None:
         statement = statement.where(r.user_id == owner_id, r.is_library_hidden.is_(False), select(UserModel.id).where(
             UserModel.id == owner_id, UserModel.is_library_public.is_(True), UserModel.id != caller_id,
-        ).exists())
+            UserModel.library_sharing_suspended.is_(False), ~UserModel.id.in_(blocked_owner_ids(caller_id)),
+        ).exists(), shareable_recipe_predicate())
     else:
         statement = statement.where(r.user_id == caller_id, r.is_library_hidden.is_(False))
     if q:

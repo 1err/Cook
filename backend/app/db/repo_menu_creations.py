@@ -52,6 +52,8 @@ async def find_creation(session: AsyncSession, user_id: UUID, request_id: UUID):
 
 async def create_menu(session: AsyncSession, user_id: UUID, request_id: UUID) -> MenuCreationModel:
     """Caller commits once; any rejection rolls back both row and counter."""
+    from app.db.repo_auth import ensure_account_not_erased
+    await ensure_account_not_erased(session, str(user_id))
     existing = await find_creation(session, user_id, request_id)
     if existing is not None:
         return existing

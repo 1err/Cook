@@ -4,7 +4,8 @@ OAuth-ready: local provider now; add Google etc. by new provider identities.
 """
 import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -22,7 +23,10 @@ from app.core.security import (
 )
 from app.db.session import get_session
 from app.db import repo_auth, repo_accounts
-from app.db.models import UserModel
+from app.db.models import RecipeModel, UserModel
+from app.db.repo_account_deletion import delete_account
+from app.services.content_safety_service import ensure_shareable_recipe
+from app.db.repo_media_reviews import queue_media_review
 from app.services.account_email import deliver_account_email, email_available
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -125,6 +129,9 @@ async def get_authenticated_user(
     user = await repo_auth.get_user_by_id(session, user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    expected_account_id = request.headers.get("X-Chef-World-Account-ID")
+    if expected_account_id is not None and expected_account_id != str(user.id):
+        raise HTTPException(409, "The signed-in account changed. Review the current account before continuing.")
     version = payload.get("auth_version", 0)
     if (not isinstance(version, int) or isinstance(version, bool)
             or version != user.auth_version or await repo_accounts.is_token_revoked(session, token)):
@@ -222,6 +229,9 @@ async def logout(response: Response, request: Request, session: AsyncSession = D
     """Revoke the presented session as well as clearing its browser cookie."""
     token = presented_token(request)
     payload = decode_access_token(token) if token else None
+    expected_account_id = request.headers.get("X-Chef-World-Account-ID")
+    if expected_account_id is not None and payload and "sub" in payload and expected_account_id != str(payload["sub"]):
+        raise HTTPException(409, "The signed-in account changed. Review the current account before continuing.")
     if payload and "sub" in payload and isinstance(payload.get("exp"), (int, float)):
         try:
             user_id = uuid.UUID(payload["sub"])
@@ -229,7 +239,8 @@ async def logout(response: Response, request: Request, session: AsyncSession = D
             user_id = None
         if user_id is not None and await repo_accounts.lock_user(session, user_id) is not None:
             await repo_accounts.revoke_token(session, user_id, token, payload["exp"])
-    _clear_cookie(response)
+    if request.headers.get("X-Chef-World-Account-ID") is None:
+        _clear_cookie(response)
     return {"ok": True}
 
 
@@ -254,6 +265,65 @@ async def set_library_visibility(
     current_user: UserModel = Depends(get_current_user),
 ):
     """Flip the current user's library-public flag."""
-    current_user.is_library_public = bool(body.is_public)
+    # Lock the actual current row so a concurrent moderation hold or deletion
+    # cannot be bypassed by the dependency's earlier authentication snapshot.
+    user = (await session.execute(select(UserModel).where(UserModel.id == current_user.id)
+                                  .with_for_update().execution_options(populate_existing=True))).scalars().one_or_none()
+    if user is None:
+        raise HTTPException(401, "User not found")
+    if body.is_public:
+        if user.library_sharing_suspended:
+            raise HTTPException(403, "Library sharing is disabled after moderation review")
+        rows = (await session.execute(select(RecipeModel).where(RecipeModel.user_id == user.id))).scalars().all()
+        for row in rows:
+            ensure_shareable_recipe(row)
+    user.is_library_public = bool(body.is_public)
     await session.flush()
-    return LibraryVisibilityResponse(is_library_public=current_user.is_library_public)
+    if not body.is_public:
+        rows = (await session.execute(select(RecipeModel).where(RecipeModel.user_id == user.id))).scalars().all()
+    from app.db.repo_recipes import _row_to_recipe
+    for row in rows:
+        await queue_media_review(session, row, library_public=user.is_library_public,
+                                 snapshot=_row_to_recipe(row).model_dump(mode="json"))
+    return LibraryVisibilityResponse(is_library_public=user.is_library_public)
+
+
+
+class DeleteAccountBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    password: str = Field(min_length=1, max_length=MAX_LOGIN_PASSWORD_CHARACTERS)
+
+
+@router.delete("/me")
+async def delete_me(
+    body: DeleteAccountBody,
+    response: Response,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserModel = Depends(get_authenticated_user),
+):
+    """Reauthenticate the current account, commit erasure, then clear its cookie."""
+    await repo_auth.lock_account_erasure_barrier(session)
+    user = await repo_accounts.lock_user(session, current_user.id)
+    payload = decode_access_token(presented_token(request) or "")
+    if user is None or not payload or payload.get("auth_version", 0) != user.auth_version:
+        raise HTTPException(401, "Session expired. Please sign in again.")
+    if await repo_accounts.is_token_revoked(session, presented_token(request) or ""):
+        raise HTTPException(401, "Session expired. Please sign in again.")
+    identity = await repo_auth.get_local_identity_for_user(session, user.id)
+    if not identity or not identity.password_hash:
+        raise HTTPException(403, "Password verification is unavailable for this account")
+    if not await run_in_threadpool(verify_password, body.password, identity.password_hash):
+        raise HTTPException(403, "Incorrect password")
+    if not await delete_account(session, current_user.id):
+        raise HTTPException(401, "User not found")
+    # The response cannot report success while the account or cleanup intent is
+    # uncommitted. Storage failures later never restore the deleted account.
+    await session.commit()
+    # A header-bound browser may have logged another account in while deletion
+    # ran. Its newer cookie must not be overwritten by this older response.
+    # The deleted account's existing cookie is unusable through user lookup.
+    if request.headers.get("X-Chef-World-Account-ID") is None:
+        _clear_cookie(response)
+    response.headers["Cache-Control"] = "no-store"
+    return {"ok": True}

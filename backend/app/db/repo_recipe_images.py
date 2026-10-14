@@ -190,6 +190,8 @@ async def begin_generation(session: AsyncSession, user_id: UUID, request_id: UUI
                            recipe: dict, *, purpose: ImagePurpose = "recipe_cover",
                            ) -> tuple[RecipeImageGenerationModel, bool]:
     """Caller commits before provider work; every rejection rolls back all caps."""
+    from app.db.repo_auth import ensure_account_not_erased
+    await ensure_account_not_erased(session, str(user_id))
     now = await database_now(session)
     digest = request_hash(recipe)
     existing = await _find_existing_request(session, user_id, request_id)

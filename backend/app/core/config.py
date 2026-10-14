@@ -92,6 +92,20 @@ class Settings(BaseSettings):
     # Do not use "*" when allow_credentials=True.
     CORS_ALLOW_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
 
+    PUBLIC_API_ORIGIN: str = ""
+
+    @field_validator("PUBLIC_API_ORIGIN")
+    @classmethod
+    def validate_public_api_origin(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        if not value:
+            return ""
+        parsed = urlsplit(value)
+        if (parsed.scheme not in {"http", "https"} or not parsed.hostname
+                or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment):
+            raise ValueError("PUBLIC_API_ORIGIN must be an explicit HTTP(S) origin")
+        return value
+
     # Auth: JWT signing. Required for auth endpoints. Use a long random string (e.g. openssl rand -hex 32).
     AUTH_SECRET: str = Field("", repr=False)
 

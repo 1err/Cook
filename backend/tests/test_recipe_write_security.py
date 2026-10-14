@@ -28,6 +28,9 @@ class SqlSession:
         self.sync = session
         self.statements = []
 
+    def get_bind(self):
+        return self.sync.get_bind()
+
     async def execute(self, statement):
         self.statements.append(statement)
         return self.sync.execute(statement)
@@ -47,6 +50,8 @@ def sql_session():
     engine = create_engine("sqlite:///:memory:")
     UserModel.__table__.create(engine)
     RecipeModel.__table__.create(engine)
+    from readiness_schema import create_readiness_schema
+    create_readiness_schema(engine)
     with Session(engine) as session:
         session.add_all([
             UserModel(id=OWNER_ID, email="owner@example.com"),

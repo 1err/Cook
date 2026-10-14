@@ -1,3 +1,5 @@
+vi.mock("../../components/safety/BlockedAccounts", () => ({ BlockedAccounts: () => null }));
+vi.mock("../../lib/auth", () => ({ useAuth: () => ({ user: { id: "alice" } }) }));
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";

@@ -12,6 +12,8 @@ import time
 
 from alembic import command
 from alembic.config import Config
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -19,6 +21,16 @@ from sqlalchemy.pool import NullPool
 
 # Stable application-specific signed bigint; never derive from Python hash().
 MIGRATION_LOCK_ID = 484820260918
+
+
+
+def verify_committed_heads(connection, config):
+    """Confirm the committed database schema matches this immutable image."""
+    expected = tuple(sorted(ScriptDirectory.from_config(config).get_heads()))
+    actual = tuple(sorted(MigrationContext.configure(connection).get_current_heads()))
+    if not expected or actual != expected:
+        raise RuntimeError("Committed database migration head does not match packaged migration head")
+    return actual
 
 
 def migrate_connection(connection, config, *, lock_wait_seconds=60,
@@ -56,6 +68,8 @@ def migrate_connection(connection, config, *, lock_wait_seconds=60,
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
         connection.commit()
+        heads = verify_committed_heads(connection, config)
+        print("MIGRATION_HEAD_VERIFIED revisions=" + ",".join(heads), flush=True)
     except BaseException:
         connection.rollback()
         raise

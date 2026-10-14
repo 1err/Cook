@@ -33,7 +33,7 @@ function dishFixture(timer = true): CookingDish {
   };
 }
 
-function SessionHarness({ layout = "focused", initial = dishFixture(), actions = vi.fn() }: { layout?: "focused" | "stacked"; initial?: CookingDish; actions?: ReturnType<typeof vi.fn> }) {
+function SessionHarness({ layout = "focused", initial = dishFixture(), actions = vi.fn() }: { layout?: "focused" | "stacked"; initial?: CookingDish; actions?: (stepId: string, action: Parameters<typeof applyOptimisticCookingAction>[3]["action"], extensionSeconds?: number) => void }) {
   const [dish, setDish] = useState(initial);
   return <I18nProvider><FocusedCookingStep dish={dish} layout={layout} showAlertTakeover onAction={async (stepId, action, extensionSeconds) => {
     actions(stepId, action, extensionSeconds);
@@ -54,15 +54,15 @@ for (const layout of ["focused", "stacked"] as const) {
     render(<SessionHarness layout={layout} initial={dishFixture(false)} actions={actions} />);
     const card = screen.getByTestId(layout === "focused" ? "focused-step" : "stacked-step");
     expect(within(card).getByText("17% of steps")).toBeInTheDocument();
-    await user.click(within(card).getByRole("button", { name: "Next step", exact: true }));
+    await user.click(within(card).getByRole("button", { name: "Next step" }));
     expect(within(card).getByText("Simmer the sauce", { exact: true })).toBeVisible();
     expect(within(card).getByText("33% of steps")).toBeInTheDocument();
-    await user.click(within(card).getByRole("button", { name: "Previous step", exact: true }));
+    await user.click(within(card).getByRole("button", { name: "Previous step" }));
     expect(within(card).getByText("17% of steps")).toBeInTheDocument();
-    await user.click(within(card).getByRole("button", { name: "Overview", exact: true }));
-    await user.click(within(card).getByRole("button", { name: "View step 4: Finish the sauce", exact: true }));
+    await user.click(within(card).getByRole("button", { name: "Overview" }));
+    await user.click(within(card).getByRole("button", { name: "View step 4: Finish the sauce" }));
     expect(within(card).getByText("67% of steps")).toBeInTheDocument();
-    await user.click(within(card).getByRole("button", { name: "Next step", exact: true }));
+    await user.click(within(card).getByRole("button", { name: "Next step" }));
     expect(within(card).getByText("83% of steps")).toBeInTheDocument();
     expect(card.querySelector("img")).toHaveAttribute("src", "/tofu.jpg");
     expect(actions).not.toHaveBeenCalled();
@@ -73,15 +73,15 @@ for (const layout of ["focused", "stacked"] as const) {
     const actions = vi.fn();
     render(<SessionHarness layout={layout} actions={actions} />);
     const card = screen.getByTestId(layout === "focused" ? "focused-step" : "stacked-step");
-    await user.click(within(card).getByRole("button", { name: "Overview", exact: true }));
-    await user.click(within(card).getByRole("button", { name: "View step 5: Garnish", exact: true }));
+    await user.click(within(card).getByRole("button", { name: "Overview" }));
+    await user.click(within(card).getByRole("button", { name: "View step 5: Garnish" }));
     expect(within(card).getByRole("timer")).toHaveTextContent("10:00");
     expect(within(card).getByText("Timer for step 2", { exact: true })).toBeVisible();
     expect(actions).not.toHaveBeenCalled();
-    await user.click(within(card).getByRole("button", { name: "Pause timer", exact: true }));
+    await user.click(within(card).getByRole("button", { name: "Pause timer" }));
     expect(actions).toHaveBeenLastCalledWith("step-1", "pause_timer", undefined);
     expect(within(card).getByRole("timer")).toHaveTextContent("10:00");
-    await user.click(within(card).getByRole("button", { name: "Back to timer", exact: true }));
+    await user.click(within(card).getByRole("button", { name: "Back to timer" }));
     expect(within(card).getByText("Simmer the sauce", { exact: true })).toBeVisible();
   });
 }
@@ -89,7 +89,7 @@ for (const layout of ["focused", "stacked"] as const) {
 test("up next opens on hover, pins on click, and a second click closes it without moving the pointer", async () => {
   const user = userEvent.setup();
   render(<SessionHarness initial={dishFixture(false)} />);
-  const trigger = screen.getByRole("button", { name: "Up next", exact: true });
+  const trigger = screen.getByRole("button", { name: "Up next" });
   await user.hover(trigger);
   expect(screen.getByRole("region", { name: "Next steps for Mapo tofu" })).toBeVisible();
   await user.click(trigger);
@@ -109,15 +109,15 @@ test("legacy completed steps have position progress and no completion labels", a
   dish.steps = dish.steps.map(step => ({ ...step, state: "completed", resolved_at: new Date(now).toISOString() }));
   const actions = vi.fn();
   render(<SessionHarness initial={dish} actions={actions} />);
-  await user.click(screen.getByRole("button", { name: "Overview", exact: true }));
+  await user.click(screen.getByRole("button", { name: "Overview" }));
   expect(screen.queryByText(/Done|This dish is complete|Coming up|Cooking now/)).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "View step 4: Finish the sauce", exact: true }));
+  await user.click(screen.getByRole("button", { name: "View step 4: Finish the sauce" }));
   expect(screen.getByText("67% of steps")).toBeVisible();
   expect(screen.queryByText("This dish is complete.")).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Next step", exact: true }));
-  await user.click(screen.getByRole("button", { name: "Next step", exact: true }));
+  await user.click(screen.getByRole("button", { name: "Next step" }));
+  await user.click(screen.getByRole("button", { name: "Next step" }));
   expect(screen.getByText("100% of steps")).toBeVisible();
-  expect(screen.getByRole("button", { name: "Next step", exact: true })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Next step" })).toBeDisabled();
   expect(screen.queryByRole("button", { name: "Finish dish" })).not.toBeInTheDocument();
   expect(actions).not.toHaveBeenCalled();
 });
@@ -126,13 +126,13 @@ test("can explicitly start and stop a later step timer without completing earlie
   const user = userEvent.setup();
   const actions = vi.fn();
   render(<SessionHarness initial={dishFixture(false)} actions={actions} />);
-  await user.click(screen.getByRole("button", { name: "Next step", exact: true }));
+  await user.click(screen.getByRole("button", { name: "Next step" }));
   expect(actions).not.toHaveBeenCalled();
-  await user.click(screen.getByRole("button", { name: "Start timer", exact: true }));
+  await user.click(screen.getByRole("button", { name: "Start timer" }));
   expect(screen.getByRole("timer")).toHaveTextContent("10:00");
-  await user.click(screen.getByRole("button", { name: "Previous step", exact: true }));
+  await user.click(screen.getByRole("button", { name: "Previous step" }));
   expect(screen.getByRole("timer")).toHaveTextContent("10:00");
-  await user.click(screen.getByRole("button", { name: "Stop timer", exact: true }));
+  await user.click(screen.getByRole("button", { name: "Stop timer" }));
   expect(screen.queryByRole("timer")).not.toBeInTheDocument();
   expect(actions.mock.calls).toEqual([["step-1", "start_timer", undefined], ["step-1", "stop_timer", undefined]]);
   expect(screen.getByText("17% of steps")).toBeVisible();
@@ -141,13 +141,13 @@ test("can explicitly start and stop a later step timer without completing earlie
 test("keyboard preview can be closed and overview restores focus to an enabled control", async () => {
   const user = userEvent.setup();
   render(<SessionHarness initial={dishFixture(false)} />);
-  const upcoming = screen.getByRole("button", { name: "Up next", exact: true });
+  const upcoming = screen.getByRole("button", { name: "Up next" });
   act(() => upcoming.focus());
   expect(screen.getByRole("region", { name: "Next steps for Mapo tofu" })).toBeVisible();
   await user.keyboard("{Escape}");
   expect(screen.queryByRole("region", { name: "Next steps for Mapo tofu" })).not.toBeInTheDocument();
-  const overview = screen.getByRole("button", { name: "Overview", exact: true });
+  const overview = screen.getByRole("button", { name: "Overview" });
   await user.click(overview);
-  await user.click(screen.getByRole("button", { name: "View step 6: Serve", exact: true }));
+  await user.click(screen.getByRole("button", { name: "View step 6: Serve" }));
   expect(overview).toHaveFocus();
 });

@@ -1,3 +1,4 @@
+vi.mock("../lib/auth", () => ({ useAuth: () => ({ user: { id: "test-cook" } }) }));
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -185,7 +186,7 @@ test("moves between weeks across a year boundary and returns to the local today"
   await user.click(await screen.findByRole("button", { name: "Next week" }));
   await waitFor(() => expect(screen.getByLabelText("Planned meal")).toHaveValue("2027-01-07"));
   await waitFor(() => expect(mockMealPlanList).toHaveBeenLastCalledWith("2027-01-07", "2027-01-07"));
-  await user.click(screen.getByRole("button", { name: "Today", exact: true }));
+  await user.click(screen.getByRole("button", { name: "Today" }));
   await waitFor(() => expect(screen.getByLabelText("Planned meal")).toHaveValue("2026-12-31"));
 });
 

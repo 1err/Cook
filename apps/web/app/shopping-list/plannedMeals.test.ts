@@ -29,12 +29,12 @@ describe("planned meal presentation", () => {
     );
 
     expect(rows.map(({ recipeId }) => recipeId)).toEqual(["rice", "tofu"]);
-    expect(rows[0].occurrences.map(formatMealOccurrence)).toEqual([
+    expect(rows[0].occurrences.map(occurrence => formatMealOccurrence(occurrence))).toEqual([
       "Mon breakfast",
       "Wed dinner",
       "Sun dinner",
     ]);
-    expect(rows[1].occurrences.map(formatMealOccurrence)).toEqual([
+    expect(rows[1].occurrences.map(occurrence => formatMealOccurrence(occurrence))).toEqual([
       "Mon dinner",
       "Wed lunch",
     ]);
@@ -53,7 +53,7 @@ describe("planned meal presentation", () => {
     );
 
     expect(formatPlannedMealSchedule(rows[0])).toBe("3 meals · Mon breakfast · +2 more");
-    expect(rows[0].occurrences.map(formatMealOccurrence).join(", ")).toBe(
+    expect(rows[0].occurrences.map(occurrence => formatMealOccurrence(occurrence)).join(", ")).toBe(
       "Mon breakfast, Wed dinner, Sun dinner",
     );
   });

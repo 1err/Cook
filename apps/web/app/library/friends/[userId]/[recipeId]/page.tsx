@@ -9,6 +9,9 @@ import { apiFetch } from "../../../../lib/api";
 import { CATEGORY_LABELS } from "../../../../lib/recipeCategories";
 import { getRecipeTags } from "../../../../lib/recipeTags";
 import type { Recipe } from "../../../../types";
+import { useAuth } from "../../../../lib/auth";
+import { BlockUserButton, ReportRecipeControl, SharedPhotoStatus } from "../../../../components/safety/SharingSafety";
+import { useAccountScope } from "../../../../components/safety/useAccountScope";
 import { RecipeTimingDetails } from "../../../../components/RecipeTimingDetails";
 
 function splitTitleAccent(title: string): { lead: string; accent: string } {
@@ -19,6 +22,7 @@ function splitTitleAccent(title: string): { lead: string; accent: string } {
 }
 
 function FriendRecipeContent({ userId, recipeId }: { userId: string; recipeId: string }) {
+  const scope = useAccountScope();
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [owned, setOwned] = useState(false);
   const [ownerEmail, setOwnerEmail] = useState<string | null>(null);
@@ -37,43 +41,48 @@ function FriendRecipeContent({ userId, recipeId }: { userId: string; recipeId: s
 
   useEffect(() => {
     let cancelled = false;
+    const captured = scope.capture();
+    if (!captured) return;
+    const actor = captured;
     setLoading(true);
     setRecipe(null);
     setOwned(false);
     setUnavailable(false);
     async function load() {
       try {
-        const response = await apiFetch(`/users/${encodeURIComponent(userId)}/recipes/${encodeURIComponent(recipeId)}`);
+        const response = await apiFetch(`/users/${encodeURIComponent(userId)}/recipes/${encodeURIComponent(recipeId)}`, { headers: { "X-Chef-World-Account-ID": actor.id } });
         if (!response.ok) throw new Error("LIBRARY_GONE");
         const found = await response.json();
-        if (cancelled) return;
+        if (cancelled || !scope.active(actor)) return;
         setRecipe(found);
         setOwned(found.already_saved);
       } catch (e) {
-        if (cancelled) return;
+        if (cancelled || !scope.active(actor)) return;
         setUnavailable(true);
         if (!(e instanceof Error && e.message === "LIBRARY_GONE")) {
           console.error("Failed to load friend recipe", e);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && scope.active(actor)) setLoading(false);
       }
     }
     void load();
     return () => {
       cancelled = true;
     };
-  }, [userId, recipeId]);
+  }, [userId, recipeId, scope.accountId]);
 
   async function add() {
-    if (!recipe || owned || adding) return;
+    const actor = scope.capture();
+    if (!actor || !recipe || owned || adding) return;
     setAdding(true);
     setAddError(null);
     try {
       const res = await apiFetch(
         `/users/${encodeURIComponent(userId)}/recipes/${encodeURIComponent(recipe.id)}/copy`,
-        { method: "POST" },
+        { method: "POST", headers: { "X-Chef-World-Account-ID": actor.id } },
       );
+      if (!scope.active(actor)) return;
       if (res.status === 404) {
         setUnavailable(true);
         return;
@@ -81,9 +90,10 @@ function FriendRecipeContent({ userId, recipeId }: { userId: string; recipeId: s
       if (!res.ok) throw new Error(await res.text());
       setOwned(true);
     } catch (e) {
+      if (!scope.active(actor)) return;
       setAddError(e instanceof Error ? e.message : "Couldn't add — try again.");
     } finally {
-      setAdding(false);
+      if (scope.active(actor)) setAdding(false);
     }
   }
 
@@ -164,6 +174,9 @@ function FriendRecipeContent({ userId, recipeId }: { userId: string; recipeId: s
         </p>
       ) : null}
 
+      <SharedPhotoStatus status={recipe.shared_media_status} />
+      <ReportRecipeControl recipeId={recipe.id} recipeTitle={recipe.title} />
+      <BlockUserButton userId={userId} onBlocked={(actor) => { if (scope.active(actor)) { setRecipe(null); setUnavailable(true); } }} />
       <div className="recipe-editorial__hero-img">
         {recipe.thumbnail_url ? (
           <img src={recipe.thumbnail_url} alt="" />
@@ -281,9 +294,10 @@ function FriendRecipeContent({ userId, recipeId }: { userId: string; recipeId: s
 
 export default function FriendRecipeDetailPage() {
   const params = useParams<{ userId: string; recipeId: string }>();
+  const { user } = useAuth();
   return (
     <RequireAuth>
-      <FriendRecipeContent userId={params.userId} recipeId={params.recipeId} />
+      <FriendRecipeContent key={`${user?.id}:${params.userId}:${params.recipeId}`} userId={params.userId} recipeId={params.recipeId} />
     </RequireAuth>
   );
 }

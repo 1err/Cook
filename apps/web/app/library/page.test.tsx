@@ -35,8 +35,8 @@ test("Chinese filters translate the summary, group, and recipe tags", async () =
  expect(await screen.findByText("全部标签")).toBeVisible();
  await userEvent.click(screen.getByRole("button", {name:"按标签筛选菜谱"}));
  expect(screen.getByText("菜系")).toBeVisible();
- await userEvent.click(screen.getByRole("button", {name:"中餐",exact:true}));
- await userEvent.click(screen.getByRole("button", {name:"完成",exact:true}));
+ await userEvent.click(screen.getByRole("button", {name:"中餐"}));
+ await userEvent.click(screen.getByRole("button", {name:"完成"}));
  expect(screen.getByText("中餐")).toBeVisible();
  expect(screen.queryByText("All tags")).not.toBeInTheDocument();
 });

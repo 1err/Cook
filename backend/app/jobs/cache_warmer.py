@@ -7,6 +7,8 @@ import asyncio
 import inspect
 import logging
 import time
+from datetime import datetime, timezone
+from app.db.repo_media_reviews import discover_shared_media_reviews
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
@@ -277,6 +279,9 @@ def start_scheduler() -> AsyncIOScheduler:
         max_instances=1,
         coalesce=True,
     )
+    scheduler.add_job(discover_shared_media_reviews, trigger="interval", minutes=5,
+        id="recipe-photo-review-discovery", replace_existing=True, max_instances=1,
+        coalesce=True, next_run_time=datetime.now(timezone.utc))
     scheduler.start()
     _scheduler = scheduler
     return scheduler

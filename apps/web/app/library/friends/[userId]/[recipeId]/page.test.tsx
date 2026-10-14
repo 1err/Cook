@@ -1,3 +1,4 @@
+vi.mock("../../../../lib/auth", () => ({ useAuth: () => ({ user: { id: "alice" } }) }));
 import { cleanup, render, screen } from "@testing-library/react";
 import type React from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -59,6 +60,6 @@ test.each(["A public description of these tomato noodles.", null])(
     expect(screen.getByRole("link", { name: "Original source →" })).toHaveAttribute(
       "href", "https://example.com/noodles",
     );
-    expect(mockApiFetch).toHaveBeenCalledWith("/users/friend-1/recipes/recipe-1");
+    expect(mockApiFetch).toHaveBeenCalledWith("/users/friend-1/recipes/recipe-1", {headers:{"X-Chef-World-Account-ID":"alice"}});
   },
 );

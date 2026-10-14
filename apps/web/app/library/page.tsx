@@ -20,11 +20,15 @@ import { TagFilterPopover } from "../components/TagFilterPopover";
 import { useRecipePage } from "../lib/useRecipePage";
 import { LibraryMasonry } from "./LibraryMasonry";
 import { PublicRecipeSaveButton } from "./PublicRecipeSaveButton";
+import { BlockUserButton, ReportRecipeControl, SharedPhotoStatus } from "../components/safety/SharingSafety";
+import { useAccountScope, type AccountActor } from "../components/safety/useAccountScope";
 import styles from "./LibraryPage.module.css";
 
 const MenuMaker = dynamic(() => import("./menu/MenuLibraryLoader").then(module => module.MenuLibraryLoader), { ssr: false });
 
 function LibraryPageContent() {
+  const scope = useAccountScope();
+  const [publicCleared, setPublicCleared] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const searchParams = useSearchParams();
@@ -46,9 +50,14 @@ function LibraryPageContent() {
 
   const minePage = useRecipePage("mine", { q: search, tags: mineFilters });
   const catalogPage = useRecipePage("catalog", { q: search, tags: publicFilter === "all" ? [] : [publicFilter] }, catalogVisited);
+  const currentCatalogRefresh = useRef(catalogPage.refresh);
+  currentCatalogRefresh.current = catalogPage.refresh;
+  useEffect(() => {
+    if (!catalogPage.loading && !catalogPage.error) setPublicCleared(false);
+  }, [catalogPage.loading, catalogPage.error, catalogPage.items]);
   const page = view === "mine" ? minePage : catalogPage;
   const recipes = view === "mine" ? page.items : [];
-  const publicRecipes = view === "public" ? page.items : [];
+  const publicRecipes = view === "public" && !publicCleared ? page.items : [];
   const loading = page.loading && !page.items.length;
   const filteredMine = recipes;
   const filteredPublic = publicRecipes;
@@ -88,6 +97,8 @@ function LibraryPageContent() {
   }
 
   async function handleTogglePublicRecipe(recipeId: string, title: string, saved: boolean) {
+    const actor = scope.capture();
+    if (!actor) return;
     if ([...copying.current].some(id => relatedBookmarks(recipeId, id))) return;
     knownBookmarkParents.current = bookmarkParents;
     copying.current.add(recipeId);
@@ -96,10 +107,10 @@ function LibraryPageContent() {
     setError(null);
     try {
       const id = encodeURIComponent(recipeId);
-      const response = await apiFetch(`/recipes/catalog/${id}/${saved ? "saved" : "copy"}`, { method: saved ? "DELETE" : "POST" });
+      const response = await apiFetch(`/recipes/catalog/${id}/${saved ? "saved" : "copy"}`, { method: saved ? "DELETE" : "POST", headers: { "X-Chef-World-Account-ID": actor.id } });
       if (!response.ok) throw new Error((await response.text()) || "Could not add recipe");
       const result = response.status === 204 ? {} : await response.json();
-      if (!mounted.current) return;
+      if (!scope.active(actor)) return;
       setSavedPublicState(current => {
         const next = new Map(current).set(recipeId, !saved);
         for (const [id, value] of Object.entries(result.bookmark_states ?? {})) {
@@ -111,13 +122,27 @@ function LibraryPageContent() {
       void minePage.refresh();
       // Keep loaded catalog pages and focus; membership is patched above.
     } catch (caught) {
-      if (!mounted.current) return;
+      if (!scope.active(actor)) return;
       setCopyStatus("");
       setError(t(saved ? "library.removeError" : "library.copyError"));
     } finally {
       copying.current.delete(recipeId);
-      if (mounted.current) setCopyingIds(new Set(copying.current));
+      if (scope.active(actor)) setCopyingIds(new Set(copying.current));
     }
+  }
+
+  async function reloadCatalogAfterBlock(actor: AccountActor) {
+    if (!scope.active(actor)) return;
+    setPublicCleared(true);
+    const loaded = await currentCatalogRefresh.current();
+    if (loaded && scope.active(actor)) setPublicCleared(false);
+  }
+
+  async function retryPage() {
+    const actor = scope.capture();
+    if (!actor) return;
+    const loaded = await page.refresh();
+    if (loaded && scope.active(actor) && view === "public") setPublicCleared(false);
   }
 
   const hasFilters = Boolean(search.trim()) || (view === "mine" ? mineFilters.length > 0 : publicFilter !== "all");
@@ -195,7 +220,7 @@ function LibraryPageContent() {
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
       {page.error ? <div className={styles.recovery}>
         <div role="alert"><strong>{t("library.loadErrorTitle")}</strong><p>{t("library.loadErrorHelp")}</p></div>
-        <Button variant="secondary" loading={page.loading} onClick={() => void page.refresh()}>{t("library.retry")}</Button>
+        <Button variant="secondary" loading={page.loading} onClick={() => void retryPage()}>{t("library.retry")}</Button>
       </div> : null}
 
       {loading ? (
@@ -264,12 +289,15 @@ function LibraryPageContent() {
                     </div>
                   ) : null}
                 </div>
+                <SharedPhotoStatus status={recipe.shared_media_status} />
                 <PublicRecipeSaveButton
                   title={recipe.title}
                   saved={Boolean(alreadyAdded)}
                   saving={[...copyingIds].some(id => relatedBookmarks(recipe.id, id))}
                   onSave={() => void handleTogglePublicRecipe(recipe.id, recipe.title, alreadyAdded)}
                 />
+                <ReportRecipeControl recipeId={recipe.id} recipeTitle={recipe.title} />
+                <BlockUserButton recipeId={recipe.id} onBlocked={reloadCatalogAfterBlock} />
               </div>
             );
           })}

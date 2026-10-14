@@ -1,3 +1,4 @@
+vi.mock("../lib/auth", () => ({ useAuth: () => ({ user: { id: "test-cook" } }) }));
 import { normalizeMealPlanSlots } from "@cooking/shared";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

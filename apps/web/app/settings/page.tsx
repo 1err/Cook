@@ -7,6 +7,7 @@ import { useAuth } from "../lib/auth";
 import { useEditorialCopy } from "../lib/editorialCopy";
 import { useT } from "../lib/i18n";
 import styles from "./Settings.module.css";
+import { BlockedAccounts } from "../components/safety/BlockedAccounts";
 import { AccountSecurity } from "./AccountSecurity";
 
 function SettingsPageContent() {
@@ -53,15 +54,17 @@ function SettingsPageContent() {
         </label>
       </section> : null}
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
+      <BlockedAccounts />
       <AccountSecurity />
     </PageShell>
   );
 }
 
 export default function SettingsPage() {
+  const { user } = useAuth();
   return (
     <RequireAuth allowUnverified>
-      <SettingsPageContent />
+      <SettingsPageContent key={user?.id ?? "signed-out"} />
     </RequireAuth>
   );
 }

@@ -1,12 +1,12 @@
 """Recovery, verification and account lifecycle endpoints."""
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.api.abuse import account_limits
-from app.api.auth import _clear_cookie, get_authenticated_user, presented_token
+from app.api.auth import _clear_cookie, get_authenticated_user, presented_token, DeleteAccountBody
 from app.core.config import settings
 from app.core.security import BCRYPT_MAX_PASSWORD_BYTES, MAX_LOGIN_PASSWORD_CHARACTERS, decode_access_token, hash_password, verify_password
 from app.db import repo_accounts
@@ -115,22 +115,19 @@ async def logout_all(request: Request, response: Response, session: AsyncSession
     user = await current_locked_user(request, session, current_user)
     user.auth_version += 1
     await session.flush()
-    _clear_cookie(response)
+    if request.headers.get("X-Chef-World-Account-ID") is None:
+        _clear_cookie(response)
     return {"ok": True}
 
 
 @router.delete("/account")
-async def delete_account(body: PasswordBody, request: Request, response: Response,
+async def delete_account(body: DeleteAccountBody, request: Request, response: Response,
                          session: AsyncSession = Depends(get_session),
                          current_user: UserModel = Depends(get_authenticated_user)):
     await account_limits(request, "confirm")
+    from app.api.auth import DeleteAccountBody, delete_me
+    # Reauthentication is repeated under the current account lock in the shared path.
+    from app.db.repo_auth import lock_account_erasure_barrier
+    await lock_account_erasure_barrier(session)
     user = await current_locked_user(request, session, current_user)
-    identity = (await session.execute(select(AuthIdentityModel).where(
-        AuthIdentityModel.user_id == user.id, AuthIdentityModel.provider == "local"))).scalar_one_or_none()
-    if (identity is None or not identity.password_hash
-            or not await run_in_threadpool(verify_password, body.password, identity.password_hash)):
-        raise HTTPException(403, "The password is incorrect.")
-    from app.db.repo_account_cleanup import delete_user_and_queue_cleanup
-    await delete_user_and_queue_cleanup(session, user)
-    _clear_cookie(response)
-    return {"ok": True}
+    return await delete_me(body, response, request, session, user)

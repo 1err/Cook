@@ -284,6 +284,7 @@ class Recipe(RecipeCreate):
     import_review: ImportReview | None = None
     timing_summary: RecipeTimingSummary | None = None
     id: str
+    shared_media_status: Literal["none", "pending", "approved", "rejected"] = "none"
 
 
 def _coerce_recipe_id_list(raw: object) -> list[str]:
@@ -357,6 +358,7 @@ class RecipeSummary(BaseModel):
     ingredient_count: int = 0
     step_count: int = 0
     already_saved: bool = False
+    shared_media_status: Literal["none", "pending", "approved", "rejected"] = "none"
 
 
 class RecipePage(BaseModel):

@@ -35,6 +35,8 @@ async def reserve_ai_budget(session: AsyncSession, account_id: str) -> None:
     loops. The independent per-call ledger reserves currency before each provider
     call; these four counters remain operation-level abuse limits.
     """
+    from app.db.repo_auth import ensure_account_not_erased
+    await ensure_account_not_erased(session, account_id)
     now = (await session.execute(select(func.clock_timestamp()))).scalar_one()
     timestamp = int(now.timestamp())
     # Identical lock order across workers avoids deadlocks between global/user caps.

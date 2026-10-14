@@ -12,6 +12,8 @@ from app.db import session as db
 from app.db.repo_account_cleanup import claim_cleanup, finish_cleanup, sweep_deleted_counters
 from app.db.repo_accounts import prune_expired_auth
 from app.services.storage_service import get_local_upload_root
+from app.services.account_deletion_service import run_account_media_cleanup
+from app.db.repo_media_reviews import discover_shared_media_reviews
 
 logger = logging.getLogger(__name__)
 _task = None
@@ -39,7 +41,18 @@ def delete_owned_object(item):
         client = boto3.client("s3", region_name=item["region"],
             config=Config(connect_timeout=5, read_timeout=15, retries={"total_max_attempts": 1}))
         try:
-            client.delete_object(Bucket=item["bucket"], Key=item["object_key"])
+            # Uploads settle outside the account lock. A late writer requeues
+            # this owned object; purge its versions as well as delete markers.
+            for page in client.get_paginator("list_object_versions").paginate(
+                    Bucket=item["bucket"], Prefix=item["object_key"]):
+                objects = [{"Key": entry["Key"], "VersionId": entry["VersionId"]}
+                    for group in ("Versions", "DeleteMarkers") for entry in page.get(group, [])
+                    if entry["Key"] == item["object_key"]]
+                for offset in range(0, len(objects), 1000):
+                    result = client.delete_objects(Bucket=item["bucket"],
+                        Delete={"Objects": objects[offset:offset+1000], "Quiet": True})
+                    if result.get("Errors"):
+                        raise OSError("Owned media deletion was incomplete")
         finally:
             client.close()
     else:
@@ -72,6 +85,7 @@ async def _run():
                 async with db.async_session_maker.begin() as session:
                     await prune_expired_auth(session)
                     await sweep_deleted_counters(session)
+                await run_account_media_cleanup()
                 # Bounded work per cycle keeps cleanup from dominating the pool.
                 for _ in range(10):
                     if _stop.is_set() or not await process_one():

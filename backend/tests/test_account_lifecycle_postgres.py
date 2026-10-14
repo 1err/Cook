@@ -368,6 +368,14 @@ async def test_cleanup_failure_is_durable_and_retries(account_client, account_db
     attempts = []
 
     class S3:
+        def get_paginator(self, operation):
+            assert operation == "list_object_versions"
+            return self
+        def paginate(self, *, Bucket, Prefix):
+            yield {"Versions": [{"Key": Prefix, "VersionId": "null"}]}
+        def delete_objects(self, *, Bucket, Delete):
+            for item in Delete["Objects"]: self.delete_object(Bucket=Bucket, Key=item["Key"])
+            return {}
         def delete_object(self, **kwargs):
             attempts.append(kwargs)
             if len(attempts) == 1:
@@ -423,6 +431,14 @@ async def test_pending_upload_and_account_delete_leave_durable_cleanup(account_c
     deleted_keys = []
 
     class S3:
+        def get_paginator(self, operation):
+            assert operation == "list_object_versions"
+            return self
+        def paginate(self, *, Bucket, Prefix):
+            yield {"Versions": [{"Key": Prefix, "VersionId": "null"}]}
+        def delete_objects(self, *, Bucket, Delete):
+            for item in Delete["Objects"]: self.delete_object(Bucket=Bucket, Key=item["Key"])
+            return {}
         def put_object(self, **kwargs):
             started.set()
             assert release.wait(10), "test upload release timed out"

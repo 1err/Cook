@@ -14,11 +14,14 @@ import { CATEGORY_LABELS } from "../../../lib/recipeCategories";
 import { getRecipeTags } from "../../../lib/recipeTags";
 import { RecipeTutorial } from "../../../recipe/[id]/RecipeTutorial";
 import { RecipeTimingDetails } from "../../../components/RecipeTimingDetails";
+import { BlockUserButton, ReportRecipeControl, SharedPhotoStatus } from "../../../components/safety/SharingSafety";
+import { useAccountScope } from "../../../components/safety/useAccountScope";
 import styles from "../../../recipe/[id]/RecipeDetail.module.css";
 import type { Recipe } from "../../../types";
 
 function PublicRecipeContent({ id }: { id: string }) {
   const t = useT();
+  const scope = useAccountScope();
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [ownedId, setOwnedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,29 +38,32 @@ function PublicRecipeContent({ id }: { id: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    const captured = scope.capture();
+    if (!captured) return;
+    const actor = captured;
     setLoading(true);
     setLoadFailed(false);
 
     async function loadCatalog() {
       try {
-        const response = await apiFetch("/recipes/catalog");
+        const response = await apiFetch("/recipes/catalog", { headers: { "X-Chef-World-Account-ID": actor.id } });
         if (!response.ok) throw new Error("Catalog unavailable");
         const catalog: Recipe[] = await response.json();
         if (!Array.isArray(catalog)) throw new Error("Invalid catalog response");
-        if (!cancelled) setRecipe(catalog.find(item => item.id === id && item.is_public_catalog) ?? null);
+        if (!cancelled && scope.active(actor)) setRecipe(catalog.find(item => item.id === id && item.is_public_catalog) ?? null);
       } catch {
-        if (!cancelled) setLoadFailed(true);
+        if (!cancelled && scope.active(actor)) setLoadFailed(true);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && scope.active(actor)) setLoading(false);
       }
     }
 
     async function loadOwnedCopy() {
       try {
-        const response = await apiFetch("/recipes");
+        const response = await apiFetch("/recipes", { headers: { "X-Chef-World-Account-ID": actor.id } });
         if (!response.ok) return;
         const mine: Recipe[] = await response.json();
-        if (!Array.isArray(mine) || cancelled) return;
+        if (!Array.isArray(mine) || cancelled || !scope.active(actor)) return;
         const owned = mine.find(item => item.id === id || item.catalog_source_recipe_id === id);
         // A pending library read must not erase a copy just created on this page.
         if (owned) setOwnedId(owned.id);
@@ -69,26 +75,27 @@ function PublicRecipeContent({ id }: { id: string }) {
     void loadCatalog();
     void loadOwnedCopy();
     return () => { cancelled = true; };
-  }, [id, attempt]);
+  }, [id, attempt, scope.accountId]);
 
   async function addToLibrary() {
-    if (!recipe || ownedId || adding) return;
+    const actor = scope.capture();
+    if (!actor || !recipe || ownedId || adding) return;
     setAdding(true);
     setCopyFailed(false);
     try {
-      const response = await apiFetch(`/recipes/catalog/${encodeURIComponent(id)}/copy`, { method: "POST" });
-      if (!mounted.current) return;
+      const response = await apiFetch(`/recipes/catalog/${encodeURIComponent(id)}/copy`, { method: "POST", headers: { "X-Chef-World-Account-ID": actor.id } });
+      if (!scope.active(actor)) return;
       if (response.status === 404) {
         setRecipe(null);
         return;
       }
       if (!response.ok) throw new Error("Copy failed");
       const copied: Recipe = await response.json();
-      if (mounted.current) setOwnedId(copied.id);
+      if (scope.active(actor)) setOwnedId(copied.id);
     } catch {
-      if (mounted.current) setCopyFailed(true);
+      if (scope.active(actor)) setCopyFailed(true);
     } finally {
-      if (mounted.current) setAdding(false);
+      if (scope.active(actor)) setAdding(false);
     }
   }
 
@@ -144,6 +151,9 @@ function PublicRecipeContent({ id }: { id: string }) {
                 </button>
               )}
             </div>
+            <SharedPhotoStatus status={recipe.shared_media_status} />
+            <ReportRecipeControl recipeId={recipe.id} recipeTitle={recipe.title} />
+            <BlockUserButton recipeId={recipe.id} onBlocked={(actor) => { if (scope.active(actor)) setRecipe(null); }} />
             {copyFailed ? <p className={styles.error} role="alert">{t("library.publicRecipe.copyFailed")}</p> : null}
             {isSafeExternalUrl(recipe.source_url) ? (
               <div className={styles.utilityActions}>

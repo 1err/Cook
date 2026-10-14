@@ -51,3 +51,4 @@ audit-results/
 
 # Local isolated feature worktrees
 .worktrees/
+.vercel/

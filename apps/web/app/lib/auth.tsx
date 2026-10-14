@@ -82,8 +82,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const finishAccountAction = useCallback(async (path: string, options: RequestInit) => {
+  const finishAccountAction = useCallback(async (path: string, options: RequestInit, expectedId: string | null, expectedGeneration: number) => {
+    if (!expectedId || activeUserId.current !== expectedId || accountGeneration.current !== expectedGeneration) {
+      throw Object.assign(new Error("Account changed. Try again."), { status: 409 });
+    }
     const requestGeneration = accountGeneration.current;
+    options = { ...options, headers: { ...options.headers, "X-Chef-World-Account-ID": expectedId } };
     const response = await apiFetch(path, options);
     if (!response.ok) {
       throw Object.assign(new Error("Account action failed"), { status: response.status });
@@ -97,15 +101,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(false);
     router.push("/login");
   }, [router]);
-  const logout = useCallback(() => finishAccountAction("/auth/logout", { method: "POST" }), [finishAccountAction]);
-  const logoutAll = useCallback(() => finishAccountAction("/auth/logout-all", { method: "POST" }), [finishAccountAction]);
+  const visibleId = user?.id ?? null;
+  const visibleGeneration = accountGeneration.current;
+  const logout = useCallback(() => finishAccountAction("/auth/logout", { method: "POST" }, visibleId, visibleGeneration), [finishAccountAction, visibleId, visibleGeneration]);
+  const logoutAll = useCallback(() => finishAccountAction("/auth/logout-all", { method: "POST" }, visibleId, visibleGeneration), [finishAccountAction, visibleId, visibleGeneration]);
   const deleteAccount = useCallback((password: string) => finishAccountAction("/auth/account", {
     method: "DELETE", body: JSON.stringify({ password }),
-  }), [finishAccountAction]);
+  }, visibleId, visibleGeneration), [finishAccountAction, visibleId, visibleGeneration]);
 
   const setLibraryVisibility = useCallback(async (isPublic: boolean) => {
-    const requestGeneration = generation.current;
+    if (!visibleId || activeUserId.current !== visibleId || accountGeneration.current !== visibleGeneration) {
+      throw Object.assign(new Error("Account changed. Try again."), { status: 409 });
+    }
+    const requestGeneration = accountGeneration.current;
     const res = await apiFetch("/auth/library-visibility", {
+      headers: { "X-Chef-World-Account-ID": visibleId },
       method: "POST",
       body: JSON.stringify({ is_public: isPublic }),
     });
@@ -114,11 +124,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error(text || `${res.status} ${res.statusText}`);
     }
     const data = await res.json();
-    if (requestGeneration !== generation.current) return;
+    if (requestGeneration !== accountGeneration.current || activeUserId.current !== visibleId) return;
     setUser((prev) =>
       prev ? { ...prev, is_library_public: Boolean(data.is_library_public) } : prev,
     );
-  }, []);
+  }, [visibleId, visibleGeneration]);
 
   useEffect(() => {
     void refreshUser().catch(() => {});

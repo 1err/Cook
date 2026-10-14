@@ -61,7 +61,8 @@ export function clearUserStorage({ broadcast = true } = {}): void {
 
 /** Legacy week-only caches are reusable only after this tab verified their account owner. */
 export function bindUserStorage(userId: string): void {
-  authGeneration += 1;
+  // A status refresh keeps the current session; login/logout/switch invalidates it.
+  if (activeUserId !== userId) authGeneration += 1;
   const previous = readSessionOwner();
   if (previous !== userId) clearCacheRows(previous, previous === null);
   activeUserId = userId;

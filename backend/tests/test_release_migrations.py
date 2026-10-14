@@ -26,6 +26,13 @@ class Connection:
 
 
 class MigrationTests(unittest.TestCase):
+    def setUp(self):
+        # These connection fakes exercise lock/transaction ordering; committed
+        # revision verification has separate real-Postgres and mismatch checks.
+        checker = patch("app.migrate.verify_committed_heads", return_value=("20261013_media_review",))
+        checker.start()
+        self.addCleanup(checker.stop)
+
     def runner(self):
         self.assertIsNotNone(find_spec("app.migrate"), "dedicated migration entrypoint is required")
         from app.migrate import migrate_connection
@@ -114,8 +121,9 @@ class PostgresMigrationTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(connection.execute(text("SHOW lock_timeout")).scalar(), "10s")
                 # Simulate an Alembic revision's transaction boundary: lock lives on.
                 connection.commit()
+            from app.migrate import migration_config
             with patch("app.migrate.command.upgrade", side_effect=upgrade):
-                await contender.run_sync(migrate_connection, SimpleNamespace(attributes={}))
+                await contender.run_sync(migrate_connection, migration_config())
             acquired = await owner.scalar(text("SELECT pg_try_advisory_lock(:key)"), {"key":MIGRATION_LOCK_ID})
             self.assertTrue(acquired)
             await owner.execute(text("SELECT pg_advisory_unlock(:key)"), {"key":MIGRATION_LOCK_ID})

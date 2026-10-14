@@ -29,6 +29,9 @@ class SqlSession:
     def __init__(self, session):
         self.sync = session
 
+    def get_bind(self):
+        return self.sync.get_bind()
+
     async def execute(self, statement):
         return self.sync.execute(statement)
 
@@ -53,6 +56,8 @@ def boundary_app(monkeypatch, tmp_path):
     )
     for model in (UserModel, RecipeModel, AIUsageCounterModel, AIInflightLeaseModel, RevokedSessionModel, OwnedImageModel):
         model.__table__.create(engine)
+    from readiness_schema import create_readiness_schema
+    create_readiness_schema(engine)
     with Session(engine) as setup:
         setup.add(UserModel(id=USER_ID, email="boundary@example.com"))
         setup.add(RecipeModel(

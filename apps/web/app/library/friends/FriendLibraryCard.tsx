@@ -5,10 +5,11 @@ import { RecipeTiming } from "../../components/RecipeTiming";
 import { CATEGORY_LABELS } from "../../lib/recipeCategories";
 import { getRecipeTags } from "../../lib/recipeTags";
 import type { Recipe } from "../../types";
+import { ReportRecipeControl, SharedPhotoStatus } from "../../components/safety/SharingSafety";
 import styles from "./Friends.module.css";
 
 type FriendLibraryCardProps = {
-  recipe: Pick<Recipe, "id" | "title" | "thumbnail_url" | "library_tags" | "library_category" | "total_time_minutes" | "timing_summary">;
+  recipe: Pick<Recipe, "shared_media_status" | "id" | "title" | "thumbnail_url" | "library_tags" | "library_category" | "total_time_minutes" | "timing_summary">;
   href: string;
   state: "idle" | "copying" | "added";
   onCopy: () => void;
@@ -45,6 +46,8 @@ export function FriendLibraryCard({ recipe, href, state, onCopy }: FriendLibrary
           </div>
         ) : null}
       </div>
+      <SharedPhotoStatus status={recipe.shared_media_status} />
+      <ReportRecipeControl recipeId={recipe.id} recipeTitle={recipe.title} />
       <div className={styles.recipeAction}>
         <button type="button" onClick={onCopy} disabled={state !== "idle"}>
           {buttonLabel}

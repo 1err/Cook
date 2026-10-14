@@ -65,6 +65,7 @@ export interface RecipeTimingSummary {
 }
 
 export interface Recipe {
+  shared_media_status?: "none" | "pending" | "approved" | "rejected";
   id: string;
   title: string;
   source_url?: string | null;
@@ -134,7 +135,7 @@ export interface User {
 }
 
 
-export type RecipeSummary = Pick<Recipe, "id" | "title" | "source_url" | "thumbnail_url" | "library_tags" | "library_category" | "is_public_catalog" | "catalog_source_recipe_id" | "total_time_minutes" | "timing_summary"> & {
+export type RecipeSummary = Pick<Recipe, "shared_media_status" | "id" | "title" | "source_url" | "thumbnail_url" | "library_tags" | "library_category" | "is_public_catalog" | "catalog_source_recipe_id" | "total_time_minutes" | "timing_summary"> & {
   ingredient_count: number;
   step_count: number;
   already_saved: boolean;

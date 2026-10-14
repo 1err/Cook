@@ -155,7 +155,7 @@ it("copies only on request and links to the returned personal recipe", async () 
 
   expect(await screen.findByRole("link", { name: "View my copy" })).toHaveAttribute("href", "/recipe/my-copy");
   expect(apiFetch.mock.calls.filter(([, options]) => options?.method)).toEqual([
-    ["/recipes/catalog/public-recipe/copy", { method: "POST" }],
+    ["/recipes/catalog/public-recipe/copy", { method: "POST", headers: { "X-Chef-World-Account-ID": "regular-user" } }],
   ]);
   expect(screen.queryByRole("link", { name: /Edit/ })).not.toBeInTheDocument();
 });
@@ -204,4 +204,11 @@ it.each(["javascript:alert(1)", "https://user:password@example.com/noodles"])("d
   render(<PublicRecipePage />);
   await screen.findByRole("heading", { name: "Public tomato noodles" });
   expect(screen.queryByRole("link", { name: /Original video/ })).not.toBeInTheDocument();
+});
+
+
+it("binds the owned-copy read to the same visible actor as public details", async () => {
+  render(<PublicRecipePage />);
+  await screen.findByText("Public tomato noodles");
+  expect(apiFetch).toHaveBeenCalledWith("/recipes", {headers: {"X-Chef-World-Account-ID": "regular-user"}});
 });

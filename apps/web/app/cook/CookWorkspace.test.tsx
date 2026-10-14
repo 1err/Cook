@@ -1,3 +1,4 @@
+vi.mock("../lib/auth", () => ({ useAuth: () => ({ user: { id: "test-cook" } }) }));
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -405,14 +406,14 @@ test("shares the reading position with the dish rail and both views without muta
   current.session!.dishes[0].steps.push(step({id:"step-two",recipe_step_id:"recipe-step-two",position:1,text:"Mix the sauce",state:"locked"}));
   const user=userEvent.setup();
   render(<CookWorkspace controller={current} />);
-  await user.click(screen.getByRole("button",{name:"Next step",exact:true}));
+  await user.click(screen.getByRole("button",{name:"Next step"}));
   expect(screen.getByText("Mix the sauce",{exact:true})).toBeVisible();
   expect(within(screen.getAllByTestId("dish-rail-item")[0]).getByText("100%")).toBeInTheDocument();
-  await user.click(screen.getByRole("button",{name:"All dishes",exact:true}));
-  const tofu=screen.getByRole("region",{name:"Mapo tofu",exact:true});
+  await user.click(screen.getByRole("button",{name:"All dishes"}));
+  const tofu=screen.getByRole("region",{name:"Mapo tofu"});
   expect(within(tofu).getByText("Mix the sauce",{exact:true})).toBeVisible();
-  await user.click(within(tofu).getByRole("button",{name:"Previous step",exact:true}));
-  await user.click(screen.getByRole("button",{name:"Focused",exact:true}));
+  await user.click(within(tofu).getByRole("button",{name:"Previous step"}));
+  await user.click(screen.getByRole("button",{name:"Focused"}));
   expect(screen.getByText("Chop the tofu",{exact:true})).toBeVisible();
   expect(within(screen.getAllByTestId("dish-rail-item")[0]).getByText("50%")).toBeInTheDocument();
   expect(current.applyAction).not.toHaveBeenCalled();

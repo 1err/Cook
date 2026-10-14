@@ -1,5 +1,6 @@
 export { RecipePager } from "./recipePager";
 export { runRecipeImport } from "./recipeImport";
+import { runRecipeImport } from "./recipeImport";
 export { loadStoreProductBatches } from "./storeProductBatches";
 import type {
   IngredientOption,
@@ -21,7 +22,7 @@ import type {
 import { normalizeStoreProductResponse } from "./storeProductExpiry";
 export { normalizeStoreProductResponse } from "./storeProductExpiry";
 
-export type RecipePageOptions = { limit?: number; cursor?: string | null; q?: string; tags?: RecipeTagSlug[] };
+export type RecipePageOptions = { expectedAccountId?: string; limit?: number; cursor?: string | null; q?: string; tags?: RecipeTagSlug[] };
 export type LibrarySearchOptions = RecipePageOptions & { scope?: "all" | "mine" | "catalog"; ingredients?: string[]; match?: "all" | "any"; includeIngredients?: boolean };
 export function librarySearchQuery(options: LibrarySearchOptions = {}): string {
   const params = new URLSearchParams(recipePageQuery(options));
@@ -149,6 +150,21 @@ export type RecipeImageGeneration = {
 
 type RequestOptions = RequestInit & { skipJsonContentType?: boolean };
 
+export type ContentReportReason = "objectionable" | "harassment" | "privacy" | "spam" | "other";
+export type ModerationAction = "dismiss" | "remove_catalog" | "disable_library" | "remove_shared_content";
+export type ContentReport = {
+  id: string; reporter_id: string; owner_id: string; recipe_id: string;
+  reason: ContentReportReason; notes: string | null; status: "pending" | "resolved";
+  created_at: string; resolution: ModerationAction | null; resolution_notes: string | null;
+  reviewer_id: string | null; resolved_at: string | null; recipe: Recipe | null;
+};
+
+export type MediaReview = {
+  id: string; owner_id: string; recipe_id: string; media_digest: string; eligible_media_urls: string[];
+  status: "pending" | "approved" | "rejected"; created_at: string;
+  reviewer_id: string | null; reviewed_at: string | null; review_notes: string | null; recipe: Recipe;
+};
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -194,6 +210,10 @@ function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
 }
 
+function actorHeaders(expectedAccountId?: string): HeadersInit | undefined {
+  return expectedAccountId ? { "X-Chef-World-Account-ID": expectedAccountId } : undefined;
+}
+
 export function createApiClient(options: ApiClientOptions) {
   const baseUrl = normalizeBaseUrl(options.baseUrl);
 
@@ -212,6 +232,7 @@ export function createApiClient(options: ApiClientOptions) {
       const custom = new Headers(headers);
       custom.forEach((value: string, key: string) => nextHeaders.set(key, value));
     }
+    if (isFormData) nextHeaders.delete("Content-Type");
     const init: RequestInit = {
       body,
       ...rest,
@@ -252,13 +273,13 @@ export function createApiClient(options: ApiClientOptions) {
       confirmPasswordReset: (token: string, password: string) => json<{ ok: boolean }>("/auth/password-reset/confirm", {
         method: "POST", body: JSON.stringify({ token, password }),
       }),
-      requestEmailVerification: () => json<{ ok: boolean }>("/auth/email-verification/request", { method: "POST" }),
+      requestEmailVerification: (expectedAccountId?: string) => json<{ ok: boolean }>("/auth/email-verification/request", { method: "POST", headers: actorHeaders(expectedAccountId) }),
       confirmEmailVerification: (token: string) => json<{ ok: boolean }>("/auth/email-verification/confirm", {
         method: "POST", body: JSON.stringify({ token }),
       }),
       logoutAll: () => json<{ ok: boolean }>("/auth/logout-all", { method: "POST" }),
-      deleteAccount: (password: string) => json<{ ok: boolean }>("/auth/account", {
-        method: "DELETE", body: JSON.stringify({ password }),
+      deleteAccount: (password: string, expectedAccountId?: string) => json<{ ok: boolean }>("/auth/account", {
+        method: "DELETE", headers: actorHeaders(expectedAccountId), body: JSON.stringify({ password }),
       }),
       login: (email: string, password: string) =>
         json<User & { access_token?: string }>(`/auth/login`, {
@@ -282,14 +303,23 @@ export function createApiClient(options: ApiClientOptions) {
       importCapabilities: () => json<RecipeImportCapabilities>("/recipes/import-capabilities"),
       createImportJob: (payload: RecipeImportPayload) => json<RecipeImportJob>("/recipes/import-jobs", { method: "POST", body: JSON.stringify(payload) }),
       createMediaImportJob: (form: FormData) => json<RecipeImportJob>("/recipes/import-jobs/media", { method: "POST", body: form }),
+      /** Native compatibility: the production media endpoint creates an asynchronous job. */
+      parseVideo: (form: FormData, options: { signal?: AbortSignal } = {}) => runRecipeImport(
+        () => json<RecipeImportJob>("/recipes/import-jobs/media", { method: "POST", body: form }),
+        {
+          getImportJob: (id, signal) => json<RecipeImportJob>(`/recipes/import-jobs/${encodeURIComponent(id)}`, { signal }),
+          cancelImportJob: (id) => json<RecipeImportJob>(`/recipes/import-jobs/${encodeURIComponent(id)}`, { method: "DELETE" }),
+        },
+        options.signal ?? new AbortController().signal,
+      ),
       getImportJob: (id: string, signal?: AbortSignal) => json<RecipeImportJob>(`/recipes/import-jobs/${encodeURIComponent(id)}`, { signal }),
       cancelImportJob: (id: string) => json<RecipeImportJob>(`/recipes/import-jobs/${encodeURIComponent(id)}`, { method: "DELETE" }),
       /** @deprecated Compatibility for older releases; use page for lists. */
       list: () => json<Recipe[]>("/recipes"),
       ingredientOptions: () => json<IngredientOption[]>("/recipes/ingredient-options"),
-      searchPage: (options: LibrarySearchOptions = {}) => json<LibrarySearchPage>(`/recipes/search/page?${librarySearchQuery(options)}`),
-      page: (options: RecipePageOptions = {}) => json<RecipePage>(`/recipes/page?${recipePageQuery(options)}`),
-      catalogPage: (options: RecipePageOptions = {}) => json<RecipePage>(`/recipes/catalog/page?${recipePageQuery(options)}`),
+      searchPage: (options: LibrarySearchOptions = {}) => json<LibrarySearchPage>(`/recipes/search/page?${librarySearchQuery(options)}`, { headers: actorHeaders(options.expectedAccountId) }),
+      page: (options: RecipePageOptions = {}) => json<RecipePage>(`/recipes/page?${recipePageQuery(options)}`, { headers: actorHeaders(options.expectedAccountId) }),
+      catalogPage: (options: RecipePageOptions = {}) => json<RecipePage>(`/recipes/catalog/page?${recipePageQuery(options)}`, { headers: actorHeaders(options.expectedAccountId) }),
       get: (id: string) => json<Recipe>(`/recipes/${encodeURIComponent(id)}`),
       create: (payload: Partial<Recipe>) =>
         json<Recipe>("/recipes", { method: "POST", body: JSON.stringify(payload) }),
@@ -356,10 +386,19 @@ export function createApiClient(options: ApiClientOptions) {
         }),
     },
     users: {
+      blockedUsers: (expectedAccountId?: string) => json<{ users: Array<{ id: string; email: string }> }>("/users/blocks", { headers: actorHeaders(expectedAccountId) }),
+      blockUser: (userId: string, expectedAccountId?: string) => json<{ ok: boolean }>(`/users/${encodeURIComponent(userId)}/block`, { method: "PUT", headers: actorHeaders(expectedAccountId) }),
+      unblockUser: (userId: string, expectedAccountId?: string) => json<{ ok: boolean }>(`/users/${encodeURIComponent(userId)}/block`, { method: "DELETE", headers: actorHeaders(expectedAccountId) }),
+      blockRecipeAuthor: (recipeId: string, expectedAccountId?: string) => json<{ ok: boolean }>(`/users/recipe-authors/${encodeURIComponent(recipeId)}/block`, { method: "PUT", headers: actorHeaders(expectedAccountId) }),
+      reportRecipe: (recipeId: string, reason: ContentReportReason, notes?: string, expectedAccountId?: string) =>
+        json<{ id: string; status: "pending" }>("/users/reports", {
+          method: "POST", headers: actorHeaders(expectedAccountId), body: JSON.stringify({ recipe_id: recipeId, reason, notes }),
+        }),
+
       searchByEmail: (email: string) =>
         json<User>(`/users/search?email=${encodeURIComponent(email)}`),
       libraryPage: (userId: string, options: RecipePageOptions = {}) =>
-        json<RecipePage>(`/users/${encodeURIComponent(userId)}/recipes/page?${recipePageQuery(options)}`),
+        json<RecipePage>(`/users/${encodeURIComponent(userId)}/recipes/page?${recipePageQuery(options)}`, { headers: actorHeaders(options.expectedAccountId) }),
       libraryRecipe: (userId: string, recipeId: string) =>
         json<Recipe & { already_saved: boolean }>(`/users/${encodeURIComponent(userId)}/recipes/${encodeURIComponent(recipeId)}`),
       /** @deprecated Use libraryPage or libraryRecipe. */
@@ -370,6 +409,26 @@ export function createApiClient(options: ApiClientOptions) {
           `/users/${encodeURIComponent(userId)}/recipes/${encodeURIComponent(recipeId)}/copy`,
           { method: "POST" },
         ),
+    },
+    moderation: {
+      list: (options: { status?: "pending" | "resolved"; limit?: number; offset?: number; expectedAccountId?: string } = {}) => {
+        const query = new URLSearchParams({ status: options.status ?? "pending", limit: String(options.limit ?? 50), offset: String(options.offset ?? 0) });
+        return json<{ reports: ContentReport[]; total: number }>(`/admin/content-reports?${query}`, { headers: actorHeaders(options.expectedAccountId) });
+      },
+      resolve: (reportId: string, action: ModerationAction, notes?: string, expectedAccountId?: string) =>
+        json<ContentReport>(`/admin/content-reports/${encodeURIComponent(reportId)}/resolve`, {
+          method: "POST", headers: actorHeaders(expectedAccountId), body: JSON.stringify({ action, notes }),
+        }),
+    },
+    mediaReview: {
+      list: (options: { status?: "pending" | "approved" | "rejected"; limit?: number; offset?: number; expectedAccountId?: string } = {}) => {
+        const query = new URLSearchParams({ status: options.status ?? "pending", limit: String(options.limit ?? 50), offset: String(options.offset ?? 0) });
+        return json<{ reviews: MediaReview[]; total: number }>(`/admin/media-reviews?${query}`, { headers: actorHeaders(options.expectedAccountId) });
+      },
+      review: (id: string, decision: "approve" | "reject", mediaDigest: string, notes?: string, expectedAccountId?: string) =>
+        json<MediaReview>(`/admin/media-reviews/${encodeURIComponent(id)}/review`, {
+          method: "POST", headers: actorHeaders(expectedAccountId), body: JSON.stringify({ decision, media_digest: mediaDigest, notes }),
+        }),
     },
     mealPlan: {
       list: (start: string, end: string) =>

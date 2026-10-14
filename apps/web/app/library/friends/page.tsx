@@ -7,6 +7,9 @@ import { RequireAuth } from "../../components/RequireAuth";
 import { apiFetch } from "../../lib/api";
 import { useEditorialCopy } from "../../lib/editorialCopy";
 import { useT } from "../../lib/i18n";
+import { useAuth } from "../../lib/auth";
+import { BlockedAccounts } from "../../components/safety/BlockedAccounts";
+import { useAccountScope } from "../../components/safety/useAccountScope";
 import styles from "./Friends.module.css";
 import libraryStyles from "../LibraryPage.module.css";
 
@@ -18,6 +21,7 @@ type Result =
   | { kind: "error"; message: string };
 
 function FriendsSearchPageContent() {
+  const scope = useAccountScope();
   const editorialCopy = useEditorialCopy();
   const t = useT();
   const [email, setEmail] = useState("");
@@ -25,6 +29,8 @@ function FriendsSearchPageContent() {
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
+    const actor = scope.capture();
+    if (!actor) return;
     const trimmed = email.trim();
     if (!trimmed) {
       setResult({ kind: "error", message: "Enter an email." });
@@ -32,7 +38,8 @@ function FriendsSearchPageContent() {
     }
     setResult({ kind: "loading" });
     try {
-      const response = await apiFetch(`/users/search?email=${encodeURIComponent(trimmed)}`);
+      const response = await apiFetch(`/users/search?email=${encodeURIComponent(trimmed)}`, { headers: { "X-Chef-World-Account-ID": actor.id } });
+      if (!scope.active(actor)) return;
       if (response.status === 404) {
         setResult({ kind: "not-found" });
         return;
@@ -44,8 +51,10 @@ function FriendsSearchPageContent() {
         });
         return;
       }
-      setResult({ kind: "found", user: await response.json() });
+      const found = await response.json();
+      if (scope.active(actor)) setResult({ kind: "found", user: found });
     } catch (caught) {
+      if (!scope.active(actor)) return;
       setResult({
         kind: "error",
         message: caught instanceof Error ? caught.message : "Search failed",
@@ -62,6 +71,7 @@ function FriendsSearchPageContent() {
         <Link href="/library/friends" role="tab" aria-selected={true} className={libraryStyles.tab}>{editorialCopy["library.friends"]}</Link>
       </div>
 
+      <BlockedAccounts />
       <section className={styles.searchPanel} aria-label="Friend library search">
         <div className={styles.searchHeading}>
           <h2>Find a friend</h2>
@@ -125,9 +135,10 @@ function FriendsSearchPageContent() {
 }
 
 export default function FriendsSearchPage() {
+  const { user } = useAuth();
   return (
     <RequireAuth>
-      <FriendsSearchPageContent />
+      <FriendsSearchPageContent key={user?.id ?? "signed-out"} />
     </RequireAuth>
   );
 }

@@ -32,6 +32,8 @@ def money_reservation_statement(scope, month, amount, cap):
 async def reserve_call(session, *, call_id: UUID, request_id: UUID, account_id: str,
                        operation: str, price: Price, input_bound: int, output_bound: int,
                        global_cap: int, account_cap: int):
+    from app.db.repo_auth import ensure_account_not_erased
+    await ensure_account_not_erased(session, account_id)
     month = (await db_now(session)).date().replace(day=1)
     amount = estimate_cost_nano(price, input_bound, output_bound)
     for scope, cap in [('global', global_cap), (f'user:{account_id}', account_cap)]:

@@ -61,7 +61,13 @@ elif name == "aws":
         current_task = task if completed else task.replace(":2", ":1")
         if ((os.environ.get("CONCURRENT_RELEASE") and call_count > 1) or (os.environ.get("CONCURRENT_MIGRATION") and call_count > 3)) and not completed:
             current_task = task.replace(":2", ":3")
-        print(json.dumps({"services":[{"taskDefinition":current_task, "desiredCount":1, "runningCount":1, "pendingCount":0, "deployments":[deployment], "launchType":"FARGATE", "platformVersion":"LATEST", "networkConfiguration":{"awsvpcConfiguration":{"subnets":["subnet-private"], "securityGroups":["sg-private"], "assignPublicIp":"DISABLED"}}}], "failures":[]}))
+        service = {"taskDefinition":current_task, "desiredCount":1, "runningCount":1, "pendingCount":0, "deployments":[deployment], "launchType":"FARGATE", "platformVersion":"1.4.0", "networkConfiguration":{"awsvpcConfiguration":{"subnets":["subnet-private", "subnet-private-2"], "securityGroups":["sg-private"], "assignPublicIp":"DISABLED"}}}
+        if os.environ.get("CAPACITY_PROVIDER"):
+            service.pop("launchType")
+            service["capacityProviderStrategy"] = [{"capacityProvider":"FARGATE", "weight":1, "base":1}]
+        if os.environ.get("MISSING_MIGRATION_NETWORK"):
+            service["networkConfiguration"]["awsvpcConfiguration"]["securityGroups"] = []
+        print(json.dumps({"services":[service], "failures":[]}))
     elif op == ["ecs", "describe-task-definition"]:
         fixture = root / "task-fixture.json"
         if fixture.exists():
@@ -86,7 +92,11 @@ elif name == "aws":
     elif op == ["ecs", "list-tasks"]:
         print(json.dumps({"taskArns":["arn:task:one"]}))
     elif op == ["ecs", "describe-tasks"] and "arn:task:migration" in args:
-        print(json.dumps({"tasks":[{"taskArn":"arn:task:migration", "taskDefinitionArn":task, "lastStatus":"RUNNING" if os.environ.get("MIGRATION_NOT_STOPPED") else "STOPPED", "stopCode":"TaskFailedToStart" if os.environ.get("MIGRATION_START_FAILURE") else "EssentialContainerExited", "containers":[{"name":"cooking-backend", "lastStatus":"STOPPED", "exitCode":1 if os.environ.get("MIGRATION_NONZERO") else 0, "imageDigest":"sha256:" + "b" * 64 if os.environ.get("MIGRATION_WRONG_DIGEST") else digest}]}], "failures":[{"reason":"missing"}] if os.environ.get("MIGRATION_DESCRIBE_FAILURE") else []}))
+        result = {"tasks":[{"taskArn":"arn:task:migration", "taskDefinitionArn":task, "lastStatus":"RUNNING" if os.environ.get("MIGRATION_NOT_STOPPED") else "STOPPED", "stopCode":"TaskFailedToStart" if os.environ.get("MIGRATION_START_FAILURE") else "EssentialContainerExited", "containers":[{"name":"cooking-backend", "lastStatus":"STOPPED", "exitCode":1 if os.environ.get("MIGRATION_NONZERO") else 0, "imageDigest":"sha256:" + "b" * 64 if os.environ.get("MIGRATION_WRONG_DIGEST") else digest}]}], "failures":[{"reason":"missing"}] if os.environ.get("MIGRATION_DESCRIBE_FAILURE") else []}
+        replacement = root / "migration-result.json"
+        if replacement.exists():
+            result = json.loads(replacement.read_text())
+        print(json.dumps(result))
     elif op == ["ecs", "describe-tasks"]:
         print(json.dumps({"tasks":[{"taskDefinitionArn":task, "containers":[{"name":"cooking-backend", "imageDigest": "sha256:" + "b" * 64 if os.environ.get("WRONG_DIGEST") else digest}]}], "failures":[]}))
     elif op == ["ecs", "wait"]:
@@ -138,7 +148,10 @@ class DeploySafetyTests(unittest.TestCase):
                    "environment":[{"name":"KEEP_ENV", "value":"existing-private-value"}, {"name":"APP_ENV", "value":"development"}],
                    "secrets":[{"name":"PROVIDER_SECRET", "valueFrom":"arn:aws:ssm:us-east-1:123456789012:parameter/provider"}]}
         sidecar = {"name":"sidecar", "image":"sidecar:unchanged", "environment":[{"name":"APP_ENV", "value":"sidecar-setting"}]}
-        fixture = {"taskDefinition":{"family":"cooking", "taskDefinitionArn":TASK.replace(":2", ":1"), "revision":1, "containerDefinitions":[backend, sidecar]},
+        fixture = {"taskDefinition":{"family":"cooking", "taskDefinitionArn":TASK.replace(":2", ":1"), "revision":1,
+                   "networkMode":"awsvpc", "requiresCompatibilities":["FARGATE"], "cpu":"512", "memory":"1024",
+                   "taskRoleArn":"arn:aws:iam::123456789012:role/reviewed-task-role", "executionRoleArn":"arn:aws:iam::123456789012:role/reviewed-execution-role",
+                   "containerDefinitions":[backend, sidecar]},
                    "tags":[{"key":"team", "value":"cooking"}]}
         (self.root / "task-fixture.json").write_text(json.dumps(fixture))
         return backend, sidecar, fixture["tags"]
@@ -167,6 +180,74 @@ class DeploySafetyTests(unittest.TestCase):
         self.assertEqual(payload["overrides"]["containerOverrides"], [{"name":"cooking-backend", "command":["python", "-m", "app.migrate"]}])
         calls = self.calls()
         self.assertLess(next(i for i,c in enumerate(calls) if c[1:3] == ["ecs", "run-task"]), next(i for i,c in enumerate(calls) if c[1:3] == ["ecs", "update-service"]))
+
+    def test_migration_reuses_capacity_provider_platform_and_entire_network(self):
+        result = self.deploy(CAPACITY_PROVIDER="1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = json.loads((self.root / "migration-run.json").read_text())
+        self.assertNotIn("launchType", payload)
+        self.assertEqual(payload["capacityProviderStrategy"], [{"capacityProvider":"FARGATE", "weight":1, "base":1}])
+        self.assertEqual(payload["platformVersion"], "1.4.0")
+        self.assertEqual(payload["networkConfiguration"], {"awsvpcConfiguration":{"subnets":["subnet-private", "subnet-private-2"], "securityGroups":["sg-private"], "assignPublicIp":"DISABLED"}})
+
+    def test_migration_revision_keeps_roles_secrets_and_reviewed_sidecar(self):
+        backend, sidecar, _ = self.task_with_environment()
+        result = self.deploy(PREBUILT_IMAGE_DIGEST=DIGEST)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        registered = json.loads((self.root / "registered.json").read_text())
+        self.assertEqual(registered["taskRoleArn"], "arn:aws:iam::123456789012:role/reviewed-task-role")
+        self.assertEqual(registered["executionRoleArn"], "arn:aws:iam::123456789012:role/reviewed-execution-role")
+        self.assertEqual(registered["networkMode"], "awsvpc")
+        self.assertEqual(registered["containerDefinitions"][0]["secrets"], backend["secrets"])
+        self.assertEqual(registered["containerDefinitions"][1], sidecar)
+        payload = json.loads((self.root / "migration-run.json").read_text())
+        self.assertEqual(payload["taskDefinition"], TASK)
+        self.assertEqual(payload["overrides"]["containerOverrides"], [{"name":"cooking-backend", "command":["python", "-m", "app.migrate"]}])
+        self.assertNotIn("environment", payload["overrides"]["containerOverrides"][0])
+        self.assertNotIn("existing-private-value", result.stdout + result.stderr + json.dumps(self.calls()))
+
+    def test_missing_private_migration_network_fails_before_registration(self):
+        result = self.deploy(MISSING_MIGRATION_NETWORK="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assert_no_build_or_registration()
+        self.assertFalse(any(c[1:3] == ["ecs", "run-task"] for c in self.calls()))
+
+    def test_custom_entrypoint_or_nonessential_backend_cannot_run_migration(self):
+        for patch in ({"entryPoint":["sh", "-c"]}, {"essential":False}):
+            with self.subTest(patch=patch):
+                (self.root / "calls.jsonl").unlink(missing_ok=True)
+                self.task_with_environment()
+                path = self.root / "task-fixture.json"
+                fixture = json.loads(path.read_text())
+                fixture["taskDefinition"]["containerDefinitions"][0].update(patch)
+                path.write_text(json.dumps(fixture))
+                result = self.deploy()
+                self.assertNotEqual(result.returncode, 0)
+                self.assert_no_build_or_registration()
+                self.assertFalse(any(c[1:3] == ["ecs", "run-task"] for c in self.calls()))
+
+    def test_unverifiable_stopped_migration_never_rolls_out(self):
+        import copy
+        stopped = {"taskArn":"arn:task:migration", "taskDefinitionArn":TASK, "lastStatus":"STOPPED",
+                   "stopCode":"EssentialContainerExited", "containers":[{"name":"cooking-backend", "lastStatus":"STOPPED", "exitCode":0, "imageDigest":DIGEST}]}
+        for failure in ("wrong-task", "wrong-revision", "missing-exit", "missing-container", "duplicate-container", "multiple-tasks"):
+            with self.subTest(failure=failure):
+                (self.root / "calls.jsonl").unlink(missing_ok=True)
+                item = copy.deepcopy(stopped)
+                if failure == "wrong-task": item["taskArn"] = "arn:task:another-release"
+                elif failure == "wrong-revision": item["taskDefinitionArn"] = TASK.replace(":2", ":3")
+                elif failure == "missing-exit": item["containers"][0].pop("exitCode")
+                elif failure == "missing-container": item["containers"] = []
+                elif failure == "duplicate-container": item["containers"] *= 2
+                tasks = [item, copy.deepcopy(item)] if failure == "multiple-tasks" else [item]
+                (self.root / "migration-result.json").write_text(json.dumps({"tasks":tasks, "failures":[]}))
+                result = self.deploy()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn("Deploy complete", result.stdout)
+                self.assertFalse(any(c[1:3] == ["ecs", "update-service"] for c in self.calls()))
+                stops = [c for c in self.calls() if c[1:3] == ["ecs", "stop-task"]]
+                self.assertEqual(len(stops), 1)
+                self.assertEqual(stops[0][stops[0].index("--task") + 1], "arn:task:migration")
 
     def test_failed_or_unverifiable_migration_never_updates_service(self):
         for failure in ("MIGRATION_RUN_FAILURE", "MIGRATION_TIMEOUT", "MIGRATION_NOT_STOPPED", "MIGRATION_START_FAILURE", "MIGRATION_NONZERO", "MIGRATION_WRONG_DIGEST", "MIGRATION_DESCRIBE_FAILURE", "CONCURRENT_MIGRATION"):

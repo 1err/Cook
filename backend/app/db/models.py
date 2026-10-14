@@ -36,6 +36,7 @@ class UserModel(Base):
     is_library_public: Mapped[bool] = mapped_column(
         sa.Boolean(), nullable=False, server_default=sa.false()
     )
+    library_sharing_suspended: Mapped[bool] = mapped_column(sa.Boolean(), nullable=False, server_default=sa.false())
     email_verified: Mapped[bool] = mapped_column(sa.Boolean(), nullable=False, default=False, server_default=sa.false())
     email_verification_required: Mapped[bool] = mapped_column(sa.Boolean(), nullable=False, default=False, server_default=sa.false())
     auth_version: Mapped[int] = mapped_column(sa.Integer(), nullable=False, default=0, server_default="0")
@@ -125,6 +126,9 @@ class RecipeModel(Base):
     # Optional slug for library filter chips: quick_dinner, vegetarian, etc.
     library_category: Mapped[str | None] = mapped_column(String(32), nullable=True)
     is_public_catalog: Mapped[bool] = mapped_column(sa.Boolean(), nullable=False, server_default=sa.false())
+    catalog_suspended: Mapped[bool] = mapped_column(sa.Boolean(), nullable=False, server_default=sa.false())
+    approved_media_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rejected_media_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
     catalog_source_recipe_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_library_hidden: Mapped[bool] = mapped_column(sa.Boolean(), nullable=False, server_default=sa.false())
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -292,3 +296,66 @@ class CookingSessionMutationModel(Base):
         sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     )
     session: Mapped["CookingSessionModel"] = relationship(back_populates="mutations")
+
+
+class AccountMediaCleanupModel(Base):
+    """Retryable erasure intent survives the account it belongs to."""
+    __tablename__ = "account_media_cleanup"
+
+    account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    local_upload_root: Mapped[str] = mapped_column(Text, nullable=False)
+    s3_bucket: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    s3_region: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    attempts: Mapped[int] = mapped_column(sa.Integer(), nullable=False, default=0, server_default="0")
+    available_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now(), index=True)
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now())
+
+
+class UserBlockModel(Base):
+    __tablename__ = "user_blocks"
+    __table_args__ = (sa.CheckConstraint("user_id <> blocked_user_id", name="ck_user_blocks_not_self"),)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    blocked_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now())
+
+
+class ContentReportModel(Base):
+    __tablename__ = "content_reports"
+    __table_args__ = (
+        sa.CheckConstraint("reason IN ('objectionable','harassment','privacy','spam','other')", name="ck_content_reports_reason"),
+        sa.CheckConstraint("status IN ('pending','resolved')", name="ck_content_reports_status"),
+        sa.CheckConstraint("resolution IS NULL OR resolution IN ('dismiss','remove_catalog','disable_library','remove_shared_content')", name="ck_content_reports_resolution"),
+        sa.Index("uq_content_reports_pending", "reporter_id", "recipe_id", unique=True,
+                 postgresql_where=sa.text("status = 'pending'"), sqlite_where=sa.text("status = 'pending'")),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    reporter_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    recipe_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str] = mapped_column(String(32), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending")
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now())
+    resolution: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+
+
+class RecipeMediaReviewModel(Base):
+    __tablename__ = "recipe_media_reviews"
+    __table_args__ = (
+        UniqueConstraint("recipe_id", "media_digest", name="uq_recipe_media_review_digest"),
+        sa.CheckConstraint("status IN ('pending','approved','rejected')", name="ck_recipe_media_review_status"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    recipe_id: Mapped[str] = mapped_column(String(255), sa.ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+    media_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    content_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending")
+    created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now(), index=True)
+    reviewer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    review_notes: Mapped[str | None] = mapped_column(Text, nullable=True)

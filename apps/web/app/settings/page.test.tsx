@@ -21,7 +21,7 @@ vi.mock("../components/RequireAuth", () => ({
   RequireAuth: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock("../lib/auth", () => ({ useAuth: mockUseAuth }));
-vi.mock("../lib/api", () => ({ webApiClient: { auth: { capabilities: async () => ({ email_verification: false }) } } }));
+vi.mock("../lib/api", () => ({ webApiClient: { users: { blockedUsers: async () => ({users:[]}) }, auth: { capabilities: async () => ({ email_verification: false }) } } }));
 vi.mock("../lib/editorialCopy", () => ({
   useEditorialCopy: () => ({ "settings.tagline": "Settings" }),
 }));
@@ -50,7 +50,7 @@ it("keeps the sharing consequence beside a clearly labeled control", async () =>
 it("translates library visibility and its consequences in Chinese", async () => {
   vi.stubGlobal("localStorage", {getItem: () => "zh", setItem: vi.fn()});
   render(<I18nProvider><SettingsPage /></I18nProvider>);
-  expect(await screen.findByRole("heading", {name: "设置", exact:true})).toBeVisible();
+  expect(await screen.findByRole("heading", {name: "设置"})).toBeVisible();
   expect(screen.getByRole("checkbox", {name: "分享我的菜谱库"})).toBeEnabled();
   expect(screen.getByText("知道你邮箱地址的人可以浏览并复制你的菜谱。")).toBeVisible();
   expect(screen.getByText("关闭", {exact:true})).toBeVisible();

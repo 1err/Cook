@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Recipe } from "../../types";
 import { FriendLibraryCard } from "./FriendLibraryCard";
 
+vi.mock("../../lib/auth", () => ({ useAuth: () => ({ user: { id: "alice" } }) }));
+
 vi.mock("../../lib/i18n", async () => {
   const { MESSAGE_MAP } = await import("@cooking/shared");
   return { useT: () => (key: string, vars?: Record<string, string | number>) =>
@@ -62,4 +64,14 @@ describe("FriendLibraryCard", () => {
     rerender(<FriendLibraryCard recipe={recipe} href="#" state="added" onCopy={vi.fn()} />);
     expect(screen.getByRole("button", { name: "In your library" })).toBeDisabled();
   });
+});
+
+
+it("explains pending/rejected shared photos without changing copy availability", () => {
+  const { rerender } = render(<FriendLibraryCard recipe={{...recipe,shared_media_status:"pending"}} href="#" state="idle" onCopy={vi.fn()} />);
+  expect(screen.getByText("Photos awaiting review. Copies include text only.")).toBeVisible();
+  expect(screen.getByRole("button", {name:"Report recipe: Scallion noodles"})).toBeEnabled();
+  expect(screen.getByRole("button", {name:"Add to library"})).toBeEnabled();
+  rerender(<FriendLibraryCard recipe={{...recipe,shared_media_status:"rejected"}} href="#" state="idle" onCopy={vi.fn()} />);
+  expect(screen.getByText("Photos unavailable for sharing. Copies include text only.")).toBeVisible();
 });

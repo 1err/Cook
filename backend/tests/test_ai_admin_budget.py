@@ -30,6 +30,8 @@ def money_store(monkeypatch):
     engine = create_engine('sqlite://')
     AIMonthlyBudgetModel.__table__.create(engine)
     AICallLedgerModel.__table__.create(engine)
+    from readiness_schema import create_readiness_schema
+    create_readiness_schema(engine, tombstones_only=True)
 
     async def now(_session):
         return NOW
@@ -43,7 +45,7 @@ def money_store(monkeypatch):
             async def commit():
                 session.commit()
 
-            yield SimpleNamespace(execute=execute, add=session.add, commit=commit)
+            yield SimpleNamespace(execute=execute, add=session.add, commit=commit, get_bind=session.get_bind)
 
     monkeypatch.setattr(repo_ai_cost, 'db_now', now)
     monkeypatch.setattr(ai_context, 'session_factory', lambda: factory)

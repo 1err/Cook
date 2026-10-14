@@ -9,6 +9,8 @@ from uuid import UUID
 import pytest
 
 from app.db.repo_recipes import _row_to_recipe, copy_public_recipe_to_user, save_recipe
+from app.db.models import UserModel, RecipeModel
+from test_recipe_write_security import sql_session, OWNER_ID, CALLER_ID
 
 
 STEP_ID = "20000000-0000-0000-0000-000000000001"
@@ -91,31 +93,15 @@ class _RecordingSession:
 
 
 @pytest.mark.asyncio
-async def test_save_recipe_serializes_all_canonical_fields_and_preserves_ids() -> None:
-    """Breaks if save drops step metadata or regenerates an ID after a repository read."""
+async def test_save_recipe_serializes_all_canonical_fields_and_preserves_ids(sql_session) -> None:
+    """Real saves retain canonical tutorial values and stable IDs."""
     recipe = _row_to_recipe(_recipe_row())
-    session = _RecordingSession()
-    user_id = uuid.UUID("30000000-0000-0000-0000-000000000002")
-
-    await save_recipe(session, recipe, user_id)
-    first_payload = json.loads(session.saved[0].steps)
-    await save_recipe(session, recipe, user_id)
-    second_payload = json.loads(session.saved[1].steps)
-
+    await save_recipe(sql_session, recipe, CALLER_ID)
+    first_payload = json.loads(sql_session.sync.get(RecipeModel, recipe.id).steps)
+    await save_recipe(sql_session, recipe, CALLER_ID)
+    second_payload = json.loads(sql_session.sync.get(RecipeModel, recipe.id).steps)
     assert first_payload == second_payload
-    assert set(first_payload[0]) == {
-        "id",
-        "text",
-        "duration_seconds",
-        "duration_source",
-        "attention_type",
-        "action_type",
-        "image_url",
-        "instruction_source",
-        "source_start_seconds",
-        "source_end_seconds",
-        "source_excerpt",
-    }
+    assert set(first_payload[0]) == set(CANONICAL_STEP)
     assert first_payload[1]["image_url"] == "/uploads/bake.jpg"
     assert [step["id"] for step in first_payload] == [step.id for step in recipe.steps]
 
@@ -151,16 +137,12 @@ class _CopySession:
 
 
 @pytest.mark.asyncio
-async def test_copy_public_recipe_keeps_the_source_step_metadata() -> None:
-    """Breaks if public-library copies alter stable tutorial IDs or image metadata."""
-    source = _recipe_row(
-        user_id=uuid.UUID("30000000-0000-0000-0000-000000000003"),
-        is_public_catalog=True,
-        steps=json.dumps([CANONICAL_STEP]),
-    )
-    copied = await copy_public_recipe_to_user(
-        _CopySession(source), source.id, uuid.UUID("30000000-0000-0000-0000-000000000004")
-    )
-
+async def test_copy_public_recipe_keeps_the_source_step_metadata(sql_session) -> None:
+    """Shared copying retains tutorial metadata while unapproved media stays private."""
+    source = RecipeModel(id="recipe-1", user_id=OWNER_ID, title="Baked onions", ingredients="[]",
+        is_public_catalog=True, steps=json.dumps([CANONICAL_STEP]))
+    sql_session.add(source)
+    await sql_session.flush()
+    copied = await copy_public_recipe_to_user(sql_session, source.id, CALLER_ID)
     assert copied is not None
-    assert [step.model_dump() for step in copied.steps] == [CANONICAL_STEP]
+    assert [step.model_dump() for step in copied.steps] == [{**CANONICAL_STEP, "image_url": None}]

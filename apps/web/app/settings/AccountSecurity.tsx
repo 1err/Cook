@@ -7,6 +7,7 @@ import { useAuth } from "../lib/auth";
 import { webApiClient } from "../lib/api";
 import { Button } from "../components/ui/Button";
 import { useT } from "../lib/i18n";
+import { useAccountScope } from "../components/safety/useAccountScope";
 import styles from "./Settings.module.css";
 
 function AccountSecurityContent() {
@@ -14,6 +15,7 @@ function AccountSecurityContent() {
   const router = useRouter();
   const query = useSearchParams().toString();
   const t = useT();
+  const scope = useAccountScope();
   const [emailAvailable, setEmailAvailable] = useState<boolean | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [password, setPassword] = useState("");
@@ -64,37 +66,39 @@ function AccountSecurityContent() {
   }, [deleting]);
 
   async function run(action: () => Promise<unknown>) {
-    if (pending) return;
+    const actor = scope.capture();
+    if (pending || !actor) return;
     setPending(true); setError(null);
     try {
       await action();
     } catch (caught) {
-      if (!active.current) return;
+      if (!scope.active(actor)) return;
       const status = (caught as { status?: number } | null)?.status;
       setError(t(status === 403 ? "account.passwordIncorrect" : status === 429 ? "account.tooManyRequests"
         : status === 503 ? "account.emailUnavailable" : "account.tryAgain"));
-    } finally { if (active.current) setPending(false); }
+    } finally { if (scope.active(actor)) setPending(false); }
   }
 
   async function runVerification(action: "send" | "check") {
-    if (pending) return;
+    const actor = scope.capture();
+    if (pending || !actor) return;
     setPending(true); setVerificationAction(action); setVerificationError(null); setVerificationNotice(null);
     try {
       if (action === "send") {
-        await webApiClient.auth.requestEmailVerification();
-        if (active.current) { setLinkRequested(true); setVerificationNotice("sent"); }
+        await webApiClient.auth.requestEmailVerification(actor.id);
+        if (scope.active(actor)) { setLinkRequested(true); setVerificationNotice("sent"); }
       } else {
         // Email delivery availability must not delay or block refreshing account status.
         void refreshEmailAvailability();
         await refreshUser();
-        if (active.current) setVerificationNotice("checked");
+        if (scope.active(actor)) setVerificationNotice("checked");
       }
     } catch (caught) {
-      if (!active.current) return;
+      if (!scope.active(actor)) return;
       const status = (caught as { status?: number } | null)?.status;
       setVerificationError(t(status === 429 ? "account.tooManyRequests" : status === 503 ? "account.emailUnavailable" : "account.tryAgain"));
     } finally {
-      if (active.current) { setPending(false); setVerificationAction(null); }
+      if (scope.active(actor)) { setPending(false); setVerificationAction(null); }
     }
   }
 
@@ -153,5 +157,6 @@ function AccountSecurityContent() {
 }
 
 export function AccountSecurity() {
-  return <Suspense fallback={null}><AccountSecurityContent /></Suspense>;
+  const { user } = useAuth();
+  return <Suspense fallback={null}><AccountSecurityContent key={user?.id ?? "signed-out"} /></Suspense>;
 }

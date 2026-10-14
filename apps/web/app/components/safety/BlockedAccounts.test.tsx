@@ -1,0 +1,22 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, expect, test, vi } from "vitest";
+import { MESSAGE_MAP } from "@cooking/shared";
+import { BlockedAccounts } from "./BlockedAccounts";
+const { blockedUsers, unblockUser } = vi.hoisted(() => ({ blockedUsers: vi.fn(), unblockUser: vi.fn() }));
+vi.mock("../../lib/api", () => ({ webApiClient: { users: { blockedUsers, unblockUser } } }));
+vi.mock("../../lib/auth", () => ({ useAuth: () => ({ user: { id: "viewer-1" } }) }));
+vi.mock("../../lib/i18n", () => ({ useT: () => (key: string) => MESSAGE_MAP.en[key] ?? key }));
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); });
+test("keeps a block when confirmation is cancelled, then unblocks only after API success", async () => {
+  blockedUsers.mockResolvedValue({ users: [{ id: "friend-1", email: "friend@example.com" }] });
+  unblockUser.mockResolvedValue({ ok: true });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  render(<BlockedAccounts />);
+  await screen.findByText("friend@example.com");
+  fireEvent.click(screen.getByRole("button", { name: /Unblock/ }));
+  expect(unblockUser).not.toHaveBeenCalled();
+  confirm.mockReturnValue(true);
+  fireEvent.click(screen.getByRole("button", { name: /Unblock/ }));
+  await waitFor(() => expect(unblockUser).toHaveBeenCalledWith("friend-1", "viewer-1"));
+  expect(await screen.findByText("You have no blocked accounts.")).toBeVisible();
+});

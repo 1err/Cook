@@ -9,6 +9,8 @@ from app.db.repo_recipes import recipe_summary_statement, _encode_page_cursor, _
 from app.models import LibrarySearchPage, LibraryRecipeSummary, coerce_library_tags, LEGACY_LIBRARY_CATEGORY_TO_TAG
 from app.services.ingredient_search import canonical_sql, selected_ingredients
 from app.services.recipe_timing import summarize_recipe_timing
+from app.db.repo_content_safety import blocked_owner_ids
+from app.services.content_safety_service import shareable_recipe_predicate
 
 async def search_library(session,caller_id: uuid.UUID,*,scope="all",limit=40,cursor=None,q="",tags=None,ingredients=None,match="all",include_ingredients=False):
     if scope not in {"all","mine","catalog"}:raise ValueError("Invalid library scope")
@@ -22,7 +24,8 @@ async def search_library(session,caller_id: uuid.UUID,*,scope="all",limit=40,cur
     r=RecipeModel;copy=aliased(r)
     owned=and_(r.user_id==caller_id,r.is_library_hidden.is_(False))
     visible_copy=select(copy.id).where(copy.user_id==caller_id,copy.is_library_hidden.is_(False),copy.catalog_source_recipe_id==r.id).exists()
-    public=r.is_public_catalog.is_(True)
+    public=and_(r.is_public_catalog.is_(True), r.catalog_suspended.is_(False),
+        ~r.user_id.in_(blocked_owner_ids(caller_id)), shareable_recipe_predicate())
     visibility=owned if scope=="mine" else public if scope=="catalog" else or_(owned,and_(public,~visible_copy))
     predicates=[visibility]
     if q:predicates.append(func.lower(r.title).contains(q,autoescape=True))
