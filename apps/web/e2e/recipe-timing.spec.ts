@@ -92,7 +92,7 @@ for (const editor of ["recipe", "tutorial"] as const) {
     await expect(page.getByText("11 min", { exact: true })).toBeVisible();
     await page.reload();
     await expect(page.getByText("11 min", { exact: true })).toBeVisible();
-    await page.screenshot({ path: `/private/tmp/chefworld-${editor}-timing-${testInfo.project.name}.png`, fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath(`${editor}-timing.png`), fullPage: true });
     expect(errors).toEqual([]);
     await expect(page.locator("[data-nextjs-dialog-overlay]")).toHaveCount(0);
   });
