@@ -152,8 +152,6 @@ def recipe_id(namespace, index, recipe):
 
 
 async def seed(args):
-    import asyncpg
-    import bcrypt
     dsn = guard_database(args.database_url)
     fixture_path(args.fixture)
     if Path(args.fixture).exists():
@@ -163,6 +161,9 @@ async def seed(args):
     sizes = [int(v) for v in args.library_sizes.split(',')]
     if not sizes or any(s not in (10, 100, 1000, 10000) for s in sizes):
         raise HarnessRefusal('Library sizes must be chosen from 10,100,1000,10000')
+    # Refuse unsafe inputs even when optional local seed dependencies are absent.
+    import asyncpg
+    import bcrypt
     namespace = uuid.uuid4()
     password = secrets.token_urlsafe(24)
     password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()

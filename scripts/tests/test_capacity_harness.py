@@ -17,7 +17,7 @@ if SOURCE.exists():
 
 class CapacityHarnessTests(unittest.TestCase):
     def test_cli_refusal_explains_guard_without_echoing_input(self):
-        result = subprocess.run([sys.executable, str(SOURCE), 'seed', '--database-url',
+        result = subprocess.run([sys.executable, '-S', str(SOURCE), 'seed', '--database-url',
             'postgresql://secret-user:secret-password@production.example/production',
             '--fixture', '/private/tmp/unused-capacity-fixture.json'], capture_output=True, text=True)
         self.assertEqual(result.returncode, 2)
