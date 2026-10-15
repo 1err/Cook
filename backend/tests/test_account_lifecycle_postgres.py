@@ -2,6 +2,7 @@
 import asyncio
 import os
 import re
+from base64 import urlsafe_b64decode
 from datetime import timedelta
 from uuid import uuid4
 
@@ -185,6 +186,29 @@ async def test_verification_replay_and_logout_scopes(account_client):
     assert (await client.get("/auth/me", headers=headers(second))).status_code == 200
     assert (await client.post("/auth/logout-all", headers=headers(second))).status_code == 200
     assert (await client.get("/auth/me", headers=headers(second))).status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("signature_alias", ["ignored-characters", "padding", "nonzero-pad-bits"])
+async def test_logout_rejects_signature_aliases_of_revoked_session(account_client, signature_alias):
+    client, _ = account_client
+    _, user = await register(client)
+    assert (await client.get("/auth/me", headers=headers(user))).status_code == 200
+    assert (await client.post("/auth/logout", headers=headers(user))).status_code == 200
+    assert (await client.get("/auth/me", headers=headers(user))).status_code == 401
+
+    # Noncanonical signature text must not authenticate under a different token
+    # digest after logout (CVE-2026-102269), including nonzero unused pad bits.
+    token = user["access_token"]
+    if signature_alias == "nonzero-pad-bits":
+        alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+        alias = token[:-1] + alphabet[alphabet.index(token[-1]) ^ 1]
+        assert urlsafe_b64decode(alias.rsplit(".", 1)[1] + "=") == urlsafe_b64decode(
+            token.rsplit(".", 1)[1] + "=")
+    else:
+        alias = token + ("!!!!" if signature_alias == "ignored-characters" else "=")
+    alias_headers = {"Authorization": f"Bearer {alias}"}
+    assert (await client.get("/auth/me", headers=alias_headers)).status_code == 401
 
 
 @pytest.mark.asyncio
