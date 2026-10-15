@@ -7,6 +7,7 @@ import { RecipeCoverEditor } from "../components/RecipeCoverEditor";
 import { RecipeImageGenerator } from "../components/RecipeImageGenerator";
 import { apiFetch } from "../lib/api";
 import { useT } from "../lib/i18n";
+import { stepTotalMinutes } from "../lib/recipeTotalTime";
 import { RECIPE_TAG_GROUPS, type RecipeTagSlug } from "../lib/recipeCategories";
 import type { IngredientItem, Recipe } from "../types";
 import { StepListEditor } from "./StepListEditor";
@@ -39,14 +40,6 @@ export interface DraftRecipeEditorProps {
   onChange: (next: Recipe) => void;
   onBack: () => void;
   onSaveSuccess: (savedId: string) => void;
-}
-
-function stepTotalMinutes(steps: Recipe["steps"]): number | null {
-  const instructions = steps?.filter(step => step.text.trim()) ?? [];
-  if (!instructions.length || instructions.some(step =>
-    typeof step.duration_seconds !== "number" || !Number.isFinite(step.duration_seconds) || step.duration_seconds <= 0,
-  )) return null;
-  return Math.ceil(instructions.reduce((total, step) => total + step.duration_seconds!, 0) / 60);
 }
 
 export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requireCompleteRecipe = false, disabled = false, reviewNotice }: DraftRecipeEditorProps) {

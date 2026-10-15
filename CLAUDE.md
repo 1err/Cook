@@ -633,8 +633,14 @@ Editing instruction text marks it `user` and clears source excerpts/times. The w
 new recipe column; `import_review` describes the draft response. Existing images take precedence
 in detail; missing/broken images use the shared vector pictogram. "Estimate missing tutorial
 details" explicitly estimates fallback/unknown timing in local editor state through the preview
-endpoint; Cancel performs no PATCH, and Save PATCHes the steps. Reading a recipe or opening a
-cooking flow must never silently rewrite tutorial metadata.
+endpoint; Cancel performs no PATCH, and Save PATCHes the steps. Web import review, full recipe
+editing, and focused tutorial editing share the rounded-up sum of nonblank, fully timed steps
+for automatic totals. A saved total is automatic only when initially absent or equal to that
+step sum; a distinct source total stays separate, and explicitly editing the total in the full
+editor keeps it fixed. Automatic totals update as steps change, and Save persists the
+synchronized total alongside the edited steps. Modern instruction edits can invalidate a
+step's duration; the automatic total then remains unspecified until every step is timed again.
+Reading a recipe or opening a cooking flow must never silently rewrite tutorial metadata.
 
 The September 25 recipe-editor refinements are included in the production release recorded
 above. The web tutorial editor uses consistent scoped step cards with aligned duration, attention,

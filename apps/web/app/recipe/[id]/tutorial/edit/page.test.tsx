@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -202,6 +202,7 @@ describe("TutorialEditPage", () => {
     pendingSave.resolve(jsonResponse(recipe));
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/recipe/recipe-1"));
     expect(JSON.parse(String(requestOptionsAt("PATCH")?.body))).toEqual({
+      total_time_minutes: null,
       steps: [{ ...fallbackStep, text: "Draft sent for saving.", duration_seconds: null, duration_source: "unknown", instruction_source: "user", source_start_seconds: null, source_end_seconds: null, source_excerpt: null }],
     });
   });
@@ -243,7 +244,7 @@ describe("TutorialEditPage", () => {
     expect(requestOptionsAt("PATCH")).toBeUndefined();
   });
 
-  it("saves only the edited steps and returns to recipe detail", async () => {
+  it("saves edited steps and an unspecified automatic total after instruction edits", async () => {
     const user = userEvent.setup();
     render(<TutorialEditPage />);
 
@@ -259,7 +260,39 @@ describe("TutorialEditPage", () => {
       headers: { "Content-Type": "application/json" },
     });
     expect(JSON.parse(String(patch?.body))).toEqual({
+      total_time_minutes: null,
       steps: [{ ...fallbackStep, text: "Simmer gently.", duration_seconds: null, duration_source: "unknown", instruction_source: "user", source_start_seconds: null, source_end_seconds: null, source_excerpt: null }],
+    });
+  });
+
+  it.each([5, null])("persists a rounded automatic total after editing a duration (initial total %s)", async (initialTotal) => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValueOnce(jsonResponse({ ...recipe, total_time_minutes: initialTotal }));
+    render(<TutorialEditPage />);
+
+    fireEvent.change(await screen.findByLabelText("Step 1 minutes"), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText("Step 1 seconds"), { target: { value: "15" } });
+    await user.click(screen.getByRole("button", { name: "Save tutorial" }));
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/recipe/recipe-1"));
+    expect(JSON.parse(String(requestOptionsAt("PATCH")?.body))).toEqual({
+      total_time_minutes: 9,
+      steps: [{ ...fallbackStep, duration_seconds: 495, duration_source: "user" }],
+    });
+  });
+
+  it("preserves a separate source total even when an intermediate duration matches it", async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValueOnce(jsonResponse({ ...recipe, total_time_minutes: 40 }));
+    render(<TutorialEditPage />);
+
+    fireEvent.change(await screen.findByLabelText("Step 1 minutes"), { target: { value: "40" } });
+    fireEvent.change(screen.getByLabelText("Step 1 minutes"), { target: { value: "8" } });
+    await user.click(screen.getByRole("button", { name: "Save tutorial" }));
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/recipe/recipe-1"));
+    expect(JSON.parse(String(requestOptionsAt("PATCH")?.body))).toEqual({
+      steps: [{ ...fallbackStep, duration_seconds: 480, duration_source: "user" }],
     });
   });
 

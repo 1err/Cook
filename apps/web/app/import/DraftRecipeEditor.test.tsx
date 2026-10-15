@@ -136,7 +136,9 @@ describe("DraftRecipeEditor", () => {
     expect(JSON.parse(mockApiFetch.mock.calls[0][1].body).total_time_minutes).toBe(2);
   });
 
-  it("recalculates an automatic total after a step duration changes", () => {
+  it("recalculates an automatic total after a step duration changes and saves it", async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValueOnce(new Response(JSON.stringify({ ...draft, id: "saved-timed" })));
     function ControlledDraft() {
       const [value, setValue] = useState<Recipe>({ ...draft, total_time_minutes: 8 });
       return <DraftRecipeEditor draft={value} onChange={setValue} onBack={vi.fn()} onSaveSuccess={vi.fn()} />;
@@ -146,6 +148,11 @@ describe("DraftRecipeEditor", () => {
     expect(screen.getByLabelText("Total time")).toHaveValue(3);
     fireEvent.change(screen.getByLabelText("Step 1 seconds"), { target: { value: "15" } });
     expect(screen.getByLabelText("Total time")).toHaveValue(4);
+    await user.click(screen.getByRole("button", { name: "Save recipe" }));
+    expect(JSON.parse(mockApiFetch.mock.calls[0][1].body)).toMatchObject({
+      total_time_minutes: 4,
+      steps: [{ duration_seconds: 195, duration_source: "user" }],
+    });
   });
 
   it("never replaces a user-entered total even when it initially matches the step sum", () => {

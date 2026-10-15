@@ -10,6 +10,7 @@ import { Button } from "../../../../components/ui/Button";
 import { StepListEditor } from "../../../../import/StepListEditor";
 import { apiFetch } from "../../../../lib/api";
 import { useT } from "../../../../lib/i18n";
+import { stepTotalMinutes } from "../../../../lib/recipeTotalTime";
 import type { Recipe } from "../../../../types";
 import styles from "./TutorialEdit.module.css";
 
@@ -26,6 +27,7 @@ function TutorialEditContent() {
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [draftSteps, setDraftSteps] = useState<RecipeStep[]>([]);
+  const [automaticTotal, setAutomaticTotal] = useState(false);
   const [stepsValid, setStepsValid] = useState(true);
   const [loading, setLoading] = useState(true);
   const [estimating, setEstimating] = useState(false);
@@ -50,6 +52,9 @@ function TutorialEditContent() {
           setCoverUrl(recipe.thumbnail_url ?? null);
           setSourceUrl(recipe.source_url ?? null);
           setDraftSteps(copySteps(recipe.steps));
+          // Keep a separate source total even if a temporary step sum matches it.
+          setAutomaticTotal(recipe.total_time_minutes == null
+            || recipe.total_time_minutes === stepTotalMinutes(recipe.steps));
         }
       } catch {
         if (!cancelled) setLoadFailed(true);
@@ -93,7 +98,10 @@ function TutorialEditContent() {
       const response = await apiFetch(`/recipes/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ steps: draftSteps }),
+        body: JSON.stringify({
+          steps: draftSteps,
+          ...(automaticTotal ? { total_time_minutes: stepTotalMinutes(draftSteps) } : {}),
+        }),
       });
       if (!response.ok) throw new Error(await response.text());
       router.push(detailHref);
