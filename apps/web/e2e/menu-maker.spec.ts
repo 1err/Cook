@@ -1,9 +1,7 @@
 import { expect,test } from '@playwright/test';
-import { readFile,mkdir } from 'node:fs/promises';
-import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { menuArtworkFixturePath,menuFixtures,openSimpleMenu } from './menu-fixtures';
 test.use({ actionTimeout:15_000 });
-const evidence=process.env.MENU_SIMPLE_QA_DIR ?? '/private/tmp/menu-simple-web-qa';
 
 test('compact recipe selection and one prompt generate a whole downloadable menu image',async ({ page },testInfo) => {
  const errors:string[]=[]; page.on('pageerror',error => errors.push(error.message));
@@ -22,10 +20,9 @@ test('compact recipe selection and one prompt generate a whole downloadable menu
  const list=page.getByRole('checkbox').first().locator('../..'); const listBounds=await list.boundingBox(); expect(listBounds!.height).toBeLessThanOrEqual(290);
  await page.getByLabel('Menu title (optional)',{ exact:true }).fill('Our Little Kitchen');
  await page.getByLabel('Describe your menu (optional)',{ exact:true }).fill('Cute watercolor dishes, warm cream paper, tomatoes and green gingham. Local UI fixture.');
- await mkdir(evidence,{ recursive:true });
- await page.screenshot({ path:path.join(evidence,`${testInfo.project.name}-compact-form.png`),fullPage:true });
+ await page.screenshot({ path:testInfo.outputPath('compact-form.png'),fullPage:true });
  await page.getByRole('searchbox').blur(); await page.evaluate(() => window.scrollTo(0,0));
- await page.screenshot({ path:path.join(evidence,`${testInfo.project.name}-first-viewport.png`),fullPage:false });
+ await page.screenshot({ path:testInfo.outputPath('first-viewport.png'),fullPage:false });
  await page.getByRole('button',{ name:'Generate menu',exact:true }).click();
  const generated=page.getByRole('img',{ name:'AI-generated menu with your selected dishes' }); await expect(generated).toBeVisible();
  expect(state.posts).toHaveLength(1); expect(state.posts[0]).toEqual({ request_id:expect.any(String),mode:'full-menu-v1',title:'Our Little Kitchen',brief:expect.stringContaining('Local UI fixture'),recipes:recipes.map(recipe => ({ recipe_id:recipe.id,name:recipe.title })) });
@@ -35,9 +32,9 @@ test('compact recipe selection and one prompt generate a whole downloadable menu
  const downloaded=await downloading; const destination=testInfo.outputPath('full-menu-fixture.png'); await downloaded.saveAs(destination);
  expect(await readFile(destination)).toEqual(await readFile(menuArtworkFixturePath));
  expect(downloaded.suggestedFilename()).toBe('Our-Little-Kitchen.png');
- await generated.scrollIntoViewIfNeeded(); await page.screenshot({ path:path.join(evidence,`${testInfo.project.name}-generated-fixture.png`),fullPage:true });
+ await generated.scrollIntoViewIfNeeded(); await page.screenshot({ path:testInfo.outputPath('generated-fixture.png'),fullPage:true });
  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth+1)).toBe(true);
- await generated.screenshot({ path:path.join(evidence,`${testInfo.project.name}-result-image.png`) });
+ await generated.screenshot({ path:testInfo.outputPath('result-image.png') });
  await expect(page.locator('[data-nextjs-dialog], .vite-error-overlay')).toHaveCount(0);
  expect(errors).toEqual([]);
 });

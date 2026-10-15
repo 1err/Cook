@@ -1,12 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
-import { mkdir } from "node:fs/promises";
 import { expect, test, type Locator, type Page, type Route, type TestInfo } from "@playwright/test";
 import { API_BASE } from "./api";
 
 type Product = { name: string; price: string; image: string; url: string };
 type ShoppingItem = { name: string; suggested_purchase: string; category: string };
 const appOrigin = `http://127.0.0.1:${process.env.PORT ?? "3000"}`;
-const screenshotDirectory = "/private/tmp/chef-muse-review-ui-20260926/screenshots";
 const products: Record<string, Product[]> = {
   Tofu: [{ name: "Firm tofu 350 g", price: "$2.50", image: "", url: "https://www.sayweee.com/product/tofu" }],
   Rice: [
@@ -101,8 +99,7 @@ async function expectNoHorizontalOverflow(page: Page, dialog: Locator) {
 }
 
 async function screenshot(page: Page, info: TestInfo, state: string) {
-  await mkdir(screenshotDirectory, { recursive: true });
-  await page.screenshot({ path: `${screenshotDirectory}/${state}-${info.project.name}.png`, animations: "disabled" });
+  await page.screenshot({ path: info.outputPath(`${state}.png`), animations: "disabled" });
 }
 
 async function copiedRequest(page: Page, dialog: Locator) {

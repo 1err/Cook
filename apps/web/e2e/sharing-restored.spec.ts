@@ -47,7 +47,7 @@ for(const surface of ["catalog","public detail","friend library","friend detail"
   await expect.poll(()=>evidence.calls.some(call=>call.startsWith('POST ')&&call.endsWith('/copy'))).toBe(true);
   await clean(page);expect(evidence.errors).toEqual([]);
   expect(evidence.calls.filter(call=>/\/users\/(blocks|reports)|\/admin\/(media-reviews|content-reports)|\/block$/.test(call))).toEqual([]);
-  await page.screenshot({path:`/private/tmp/chefworld-sharing-restored-${surface.replaceAll(' ','-')}-${info.project.name}.png`,fullPage:true});
+  await page.screenshot({path:info.outputPath(`sharing-restored-${surface.replaceAll(' ','-')}.png`),fullPage:true});
  });
 }
 test("Settings and Friends retain sharing/account controls without a blocked-accounts box",async({page},info)=>{

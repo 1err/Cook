@@ -35,7 +35,7 @@ test("phone Settings deletion supports cancel, wrong-password retry and successf
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
  const results=await new AxeBuilder({page}).withTags(["wcag2a","wcag2aa","wcag21aa"]).analyze();
  expect(results.violations,JSON.stringify(results.violations)).toEqual([]);
- await page.screenshot({path:`/private/tmp/chefworld-release-settings-${info.project.name}.png`,fullPage:true});
+ await page.screenshot({path:info.outputPath('release-settings.png'),fullPage:true});
  await page.getByLabel("Current password").fill("fixture-password");
  await page.getByRole("button",{name:"Delete account permanently",exact:true}).click();
  await expect(page).toHaveURL(/\/login(?:\?|$)/);expect(attempts).toEqual(["wrong","fixture-password"]);expect(errors).toEqual([]);
