@@ -49,9 +49,12 @@ function AccountSecurityContent() {
 
   useEffect(() => {
     const parameters = new URLSearchParams(query);
-    if (parameters.get("delete") !== "1" || !user?.id) return;
+    const returningFromGoogle = parameters.get("google_resume") === "1";
+    if ((!returningFromGoogle && parameters.get("delete") !== "1") || !user?.id) return;
     setDeleting(true); setPassword(""); setConfirmed(false); setError(null);
     deletionRef.current?.focus();
+    // The Google component must read the staged proof before removing its marker.
+    if (returningFromGoogle) return;
     // Consume the opening request so Cancel/revisiting Settings cannot reopen it.
     parameters.delete("delete");
     const remaining = parameters.toString();
