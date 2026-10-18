@@ -66,6 +66,9 @@ async function installOnboardingFixtures(page: Page) {
       state.signedIn = true;
       return fulfillJson(route, account());
     }
+    if (pathname === "/auth/google/config" && method === "GET") {
+      return fulfillJson(route, { client_id: null });
+    }
     if (pathname === "/auth/capabilities" && method === "GET") {
       return fulfillJson(route, { password_recovery: true, email_verification: true });
     }
