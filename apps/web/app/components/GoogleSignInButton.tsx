@@ -8,58 +8,7 @@ import { useAuth } from "../lib/auth";
 import { useI18n } from "../lib/i18n";
 import styles from "./GoogleSignInButton.module.css";
 
-type CredentialResponse = { credential: string };
-type GoogleIdentity = {
-  initialize: (options: {
-    client_id: string;
-    nonce: string;
-    callback: (response: CredentialResponse) => void;
-    ux_mode: "popup";
-    auto_select: false;
-    use_fedcm_for_button: true;
-    button_auto_select: false;
-  }) => void;
-  renderButton: (parent: HTMLElement, options: {
-    type: "standard";
-    theme: "outline";
-    size: "large";
-    text: "continue_with";
-    shape: "pill";
-    locale: string;
-    width: number;
-  }) => void;
-};
-type GoogleWindow = Window & { google?: { accounts?: { id?: GoogleIdentity } } };
-const GOOGLE_SCRIPT_URL = "https://accounts.google.com/gsi/client";
-let sdkLoading: Promise<GoogleIdentity> | null = null;
-
-function loadGoogleIdentity(): Promise<GoogleIdentity> {
-  const identity = (window as GoogleWindow).google?.accounts?.id;
-  if (identity) return Promise.resolve(identity);
-  if (sdkLoading) return sdkLoading;
-  sdkLoading = new Promise<GoogleIdentity>((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = GOOGLE_SCRIPT_URL;
-    script.async = true;
-    script.defer = true;
-    const timeout = window.setTimeout(() => fail(), 15000);
-    function fail() {
-      window.clearTimeout(timeout);
-      script.remove();
-      sdkLoading = null;
-      reject(new Error("Google Identity Services could not load"));
-    }
-    script.onerror = fail;
-    script.onload = () => {
-      window.clearTimeout(timeout);
-      const loaded = (window as GoogleWindow).google?.accounts?.id;
-      if (!loaded) { fail(); return; }
-      resolve(loaded);
-    };
-    document.head.appendChild(script);
-  });
-  return sdkLoading;
-}
+import { loadGoogleIdentity } from "./googleIdentitySdk";
 
 export type GoogleSignInButtonProps = {
   /** Overrides the login action, for example when Google must verify account deletion. */

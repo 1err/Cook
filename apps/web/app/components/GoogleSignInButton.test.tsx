@@ -175,10 +175,18 @@ test("a configuration outage offers recovery without preventing the email form",
   expect(await googleButton()).toBeVisible();
 });
 
-test("a failed Google script load can be retried with a fresh script", async () => {
+test("two failed Google script loads can be retried manually with a fresh script", async () => {
   delete googleWindow.google;
   renderButton();
   await waitFor(() => expect(document.querySelector('script[src="https://accounts.google.com/gsi/client"]')).not.toBeNull());
+  const firstScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]')!;
+  fireEvent.error(firstScript);
+  await waitFor(() => {
+    const retryScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+    expect(retryScript).not.toBeNull();
+    expect(retryScript).not.toBe(firstScript);
+  });
+  expect(screen.queryByRole("button", { name: "Retry Google sign in" })).not.toBeInTheDocument();
   fireEvent.error(document.querySelector('script[src="https://accounts.google.com/gsi/client"]')!);
   fireEvent.click(await screen.findByRole("button", { name: "Retry Google sign in" }));
   await waitFor(() => expect(document.querySelector('script[src="https://accounts.google.com/gsi/client"]')).not.toBeNull());
@@ -288,4 +296,24 @@ test("a Google-linked account that still requires email verification keeps its d
   renderButton();
   fireEvent.click(await googleButton());
   await waitFor(() => expect(push).toHaveBeenCalledWith("/check-email?redirect=%2Fplanner"));
+});
+
+
+test("unmounting while the SDK retries cannot create a challenge or sign in after it loads", async () => {
+  delete googleWindow.google;
+  const view = renderButton();
+  await waitFor(() => expect(document.querySelector('script[src="https://accounts.google.com/gsi/client"]')).not.toBeNull());
+  const initial = document.querySelector('script[src="https://accounts.google.com/gsi/client"]')!;
+  fireEvent.error(initial);
+  view.unmount();
+  await waitFor(() => {
+    const retryScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+    expect(retryScript).not.toBeNull();
+    expect(retryScript).not.toBe(initial);
+  });
+  installGoogle();
+  await act(async () => { fireEvent.load(document.querySelector('script[src="https://accounts.google.com/gsi/client"]')!); });
+  expect(apiFetch.mock.calls.some(([path]) => path === "/auth/google/nonce" || path === "/auth/google")).toBe(false);
+  expect(refreshUser).not.toHaveBeenCalled();
+  expect(push).not.toHaveBeenCalled();
 });
