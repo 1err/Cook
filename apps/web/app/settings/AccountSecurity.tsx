@@ -6,6 +6,7 @@ import { BETA_FEEDBACK_URL, PRIVACY_URL } from "@cooking/shared";
 import { useAuth } from "../lib/auth";
 import { webApiClient } from "../lib/api";
 import { Button } from "../components/ui/Button";
+import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import { useT } from "../lib/i18n";
 import { useAccountScope } from "../lib/useAccountScope";
 import styles from "./Settings.module.css";
@@ -27,7 +28,7 @@ function AccountSecurityContent() {
   const [verificationNotice, setVerificationNotice] = useState<"sent" | "checked" | null>(null);
   const [linkRequested, setLinkRequested] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
-  const deletionFormRef = useRef<HTMLFormElement>(null);
+  const deletionRef = useRef<HTMLElement>(null);
   const restoreDeletionFocus = useRef(false);
   const active = useRef(true);
   const capabilityGeneration = useRef(0);
@@ -48,9 +49,12 @@ function AccountSecurityContent() {
 
   useEffect(() => {
     const parameters = new URLSearchParams(query);
-    if (parameters.get("delete") !== "1" || !user?.id) return;
+    const returningFromGoogle = parameters.get("google_resume") === "1";
+    if ((!returningFromGoogle && parameters.get("delete") !== "1") || !user?.id) return;
     setDeleting(true); setPassword(""); setConfirmed(false); setError(null);
-    deletionFormRef.current?.focus();
+    deletionRef.current?.focus();
+    // The Google component must read the staged proof before removing its marker.
+    if (returningFromGoogle) return;
     // Consume the opening request so Cancel/revisiting Settings cannot reopen it.
     parameters.delete("delete");
     const remaining = parameters.toString();
@@ -58,14 +62,14 @@ function AccountSecurityContent() {
   }, [query, router, user?.id]);
 
   useEffect(() => {
-    if (deleting) deletionFormRef.current?.focus();
+    if (deleting) deletionRef.current?.focus();
     else if (restoreDeletionFocus.current) {
       restoreDeletionFocus.current = false;
       sectionRef.current?.querySelector<HTMLButtonElement>("#delete-account-trigger")?.focus();
     }
   }, [deleting]);
 
-  async function run(action: () => Promise<unknown>) {
+  async function run(action: () => Promise<unknown>, googleDeletion = false) {
     const actor = scope.capture();
     if (pending || !actor) return;
     setPending(true); setError(null);
@@ -74,7 +78,7 @@ function AccountSecurityContent() {
     } catch (caught) {
       if (!scope.active(actor)) return;
       const status = (caught as { status?: number } | null)?.status;
-      setError(t(status === 403 ? "account.passwordIncorrect" : status === 429 ? "account.tooManyRequests"
+      setError(t(status === 403 ? (googleDeletion ? "account.deleteGoogleFailed" : "account.passwordIncorrect") : status === 429 ? "account.tooManyRequests"
         : status === 503 ? "account.emailUnavailable" : "account.tryAgain"));
     } finally { if (scope.active(actor)) setPending(false); }
   }
@@ -108,6 +112,16 @@ function AccountSecurityContent() {
     void run(() => deleteAccount(password));
   }
 
+  async function submitGoogleDeletion(credential: string) {
+    if (!confirmed || user?.has_password !== false) return;
+    await run(() => deleteAccount({ google_credential: credential }), true);
+  }
+
+  function cancelDeletion() {
+    restoreDeletionFocus.current = true;
+    setDeleting(false); setPassword(""); setConfirmed(false); setError(null);
+  }
+
   if (!user) return null;
   return <section ref={sectionRef} className={`${styles.section} ${styles.account}`} aria-labelledby="account-security-title">
     <div className={styles.copy}>
@@ -138,14 +152,21 @@ function AccountSecurityContent() {
     </section>
     <p>{t("account.logoutAllHelp")}</p>
     <Button variant="secondary" disabled={pending} onClick={() => void run(logoutAll)}>{t("account.logoutAll")}</Button>
-    {deleting ? <form ref={deletionFormRef} id="delete-account" tabIndex={-1} aria-labelledby="delete-account-title" aria-describedby="delete-account-help" onSubmit={submitDeletion} className={styles.deletion} style={{ scrollMarginTop: "6rem" }}>
+    {deleting && user.has_password === false ? <div ref={(node) => { deletionRef.current = node; }} id="delete-account" role="group" tabIndex={-1} aria-labelledby="delete-account-title" aria-describedby="delete-account-help" className={styles.deletion} style={{ scrollMarginTop: "6rem" }}>
+      <h3 id="delete-account-title">{t("account.deleteTitle")}</h3>
+      <p id="delete-account-help">{t("account.deleteHelp")}</p>
+      <p>{t("account.deleteGoogleConfirmBody")}</p>
+      <label className={styles.confirm}><input type="checkbox" checked={confirmed} disabled={pending} onChange={(event) => setConfirmed(event.target.checked)} />{t("account.deleteConfirm")}</label>
+      <GoogleSignInButton onCredential={submitGoogleDeletion} disabled={pending || !confirmed} label={t("account.deleteGoogleLabel")} />
+      <Button variant="secondary" type="button" disabled={pending} onClick={cancelDeletion}>{t("common.cancel")}</Button>
+    </div> : deleting ? <form ref={(node) => { deletionRef.current = node; }} id="delete-account" tabIndex={-1} aria-labelledby="delete-account-title" aria-describedby="delete-account-help" onSubmit={submitDeletion} className={styles.deletion} style={{ scrollMarginTop: "6rem" }}>
       <h3 id="delete-account-title">{t("account.deleteTitle")}</h3>
       <p id="delete-account-help">{t("account.deleteHelp")}</p>
       <label>{t("account.currentPassword")}<input className="input-editorial" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
       <label className={styles.confirm}><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />{t("account.deleteConfirm")}</label>
       <div className={styles.actions}>
         <Button variant="secondary" type="submit" disabled={pending || !confirmed || !password}>{t("account.deletePermanently")}</Button>
-        <Button variant="secondary" type="button" disabled={pending} onClick={() => { restoreDeletionFocus.current = true; setDeleting(false); setPassword(""); setConfirmed(false); setError(null); }}>{t("common.cancel")}</Button>
+        <Button variant="secondary" type="button" disabled={pending} onClick={cancelDeletion}>{t("common.cancel")}</Button>
       </div>
     </form> : <Button id="delete-account-trigger" variant="secondary" disabled={pending} onClick={() => setDeleting(true)}>{t("account.deleteTitle")}</Button>}
     {error ? <p className={styles.error} role="alert">{error}</p> : null}

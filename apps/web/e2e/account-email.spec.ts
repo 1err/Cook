@@ -45,6 +45,8 @@ async function installAccountFixtures(page: Page, signedIn = true) {
         is_library_public: false,
         email_verified: state.verified,
       } : { detail: "Not authenticated" }, signedIn ? 200 : 401);
+    } else if (pathname === "/auth/google/config" && request.method() === "GET") {
+      await fulfillJson(route, { client_id: null });
     } else if (pathname === "/auth/capabilities" && request.method() === "GET") {
       await fulfillJson(route, { password_recovery: true, email_verification: true });
     } else if ((pathname === "/recipes/page" || pathname === "/recipes/catalog/page") && request.method() === "GET") {

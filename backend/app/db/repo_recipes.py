@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import uuid
 from typing import Optional
 
@@ -27,6 +28,35 @@ from app.models import (
 from app.db.models import RecipeModel, UserModel
 from app.services.recipe_timing import summarize_recipe_timing
 from app.db.repo_auth import lock_account_erasure_barrier
+
+
+logger = logging.getLogger(__name__)
+
+
+async def list_public_ingredient_names(session: AsyncSession) -> list[str]:
+    """Read catalog ingredient names without loading unrelated recipe metadata."""
+    result = await session.execute(
+        select(RecipeModel.id, RecipeModel.ingredients)
+        .where(RecipeModel.is_public_catalog.is_(True))
+        .order_by(RecipeModel.id)
+    )
+    names: list[str] = []
+    for recipe_id, raw_ingredients in result:
+        try:
+            ingredients = json.loads(raw_ingredients)
+        except (TypeError, json.JSONDecodeError):
+            ingredients = None
+        if not isinstance(ingredients, list):
+            logger.warning(
+                "skipping malformed catalog ingredients",
+                extra={"recipe_id": recipe_id},
+            )
+            continue
+        for ingredient in ingredients:
+            name = ingredient.get("name") if isinstance(ingredient, dict) else None
+            if isinstance(name, str) and name.strip():
+                names.append(name)
+    return names
 
 
 class RecipeOwnershipConflict(ValueError):

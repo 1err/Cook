@@ -235,3 +235,58 @@ test("a captured old-account delete callback cannot send a request for the new a
   expect(apiFetch.mock.calls.length).toBe(previous);
   expect(result.current.user?.id).toBe("bob");
 });
+
+
+test("auth preserves Google-only account metadata for secure account deletion", async () => {
+  apiFetch.mockResolvedValueOnce(new Response(JSON.stringify({
+    id: "google-user", email: "google@example.com", is_library_public: false,
+    has_password: false, auth_providers: ["google"], email_verified: true,
+  })));
+  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("google-user"));
+  expect(result.current.user).toMatchObject({ has_password: false, auth_providers: ["google"] });
+});
+
+test("Google deletion sends the credential with the current account guard and clears the session only on success", async () => {
+  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  userSessionStorage.setItem("smartShoppingList:week", "Alice groceries");
+  apiFetch.mockResolvedValueOnce(new Response("{}", { status: 403 }));
+  await act(async () => {
+    await expect(result.current.deleteAccount({ google_credential: "wrong-google-token" })).rejects.toMatchObject({ status: 403 });
+  });
+  expect(apiFetch).toHaveBeenLastCalledWith("/auth/account", expect.objectContaining({
+    method: "DELETE", body: '{"google_credential":"wrong-google-token"}',
+    headers: { "X-Chef-World-Account-ID": "alice" },
+  }));
+  expect(result.current.user?.id).toBe("alice");
+  expect(userSessionStorage.getItem("smartShoppingList:week")).toBe("Alice groceries");
+  apiFetch.mockResolvedValueOnce(new Response("{}"));
+  await act(async () => result.current.deleteAccount({ google_credential: "correct-google-token" }));
+  expect(result.current.user).toBeNull();
+  expect(userSessionStorage.getItem("smartShoppingList:week")).toBeNull();
+});
+
+test("password deletion retains the existing request body", async () => {
+  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  await act(async () => result.current.deleteAccount("existing-password"));
+  expect(apiFetch).toHaveBeenLastCalledWith("/auth/account", expect.objectContaining({
+    method: "DELETE", body: '{"password":"existing-password"}',
+    headers: { "X-Chef-World-Account-ID": "alice" },
+  }));
+});
+
+test("a captured Google deletion callback cannot delete a switched account", async () => {
+  const { result } = renderHook(useAuth, { wrapper: AuthProvider });
+  await waitFor(() => expect(result.current.user?.id).toBe("alice"));
+  const staleDelete = result.current.deleteAccount;
+  apiFetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: "bob", email: "bob@example.com" })));
+  await act(async () => result.current.refreshUser());
+  const previousCalls = apiFetch.mock.calls.length;
+  await act(async () => {
+    await expect(staleDelete({ google_credential: "alice-token" })).rejects.toMatchObject({ status: 409 });
+  });
+  expect(apiFetch.mock.calls.length).toBe(previousCalls);
+  expect(result.current.user?.id).toBe("bob");
+});

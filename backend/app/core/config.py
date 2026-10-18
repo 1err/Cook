@@ -137,6 +137,15 @@ class Settings(BaseSettings):
                 raise ValueError("Production account links require HTTPS")
         return self
 
+    # Google Identity Services Web OAuth client ID. Empty disables Google sign-in.
+    # This public identifier is served to the web client by /auth/google/config.
+    GOOGLE_CLIENT_ID: str = Field("", max_length=255)
+
+    @field_validator("GOOGLE_CLIENT_ID")
+    @classmethod
+    def normalize_google_client_id(cls, value: str) -> str:
+        return value.strip()
+
     # Production requires secure cookies. Sibling HTTPS subdomains are normally
     # same-site; unrelated preview domains need SameSite=none plus Secure.
     COOKIE_SECURE: bool = False

@@ -173,3 +173,7 @@ Per-account request/storage/monthly-budget counters are erased. Provider ledger 
 Shared catalog and public-library recipes retain their original behavior: cover and step photos are immediately visible and copied with the recipe. Private import guidance remains excluded from shared responses. Content-report, account-block, and photo-review routes and discovery jobs are removed; historical report/review/block rows and suspension/digest columns are retained without affecting visibility.
 
 The deployed additive migrations remain unchanged through `20261013_media_review`. No schema downgrade or historical-data deletion is required. Account erasure continues to scrub retained historical report/review snapshots and cascade the deleting account's rows.
+
+## Google sign-in
+
+Optional `GOOGLE_CLIENT_ID` enables the web Google Identity Services button; see the root README for setup. The public config and signed ten-minute browser challenge use `/auth/google/config` and `/auth/google/nonce`; `/auth/google` verifies Google ID tokens and preserves session revocation, email verification and admission controls. Existing local accounts require password proof before linking Google. Google-only accounts can reauthenticate with a challenge-bound `{google_credential}` when deleting `/auth/account`. No client secret or schema migration is needed.

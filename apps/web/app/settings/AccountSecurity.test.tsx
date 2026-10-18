@@ -5,29 +5,49 @@ import { AccountSecurity } from "./AccountSecurity";
 
 const state = vi.hoisted(() => ({
   deleteAccount: vi.fn(), logoutAll: vi.fn(), refreshUser: vi.fn(), requestEmailVerification: vi.fn(), capabilities: vi.fn(),
-  user: { id: "alice", email: "alice@example.com", email_verified: false },
+  apiFetch: vi.fn(),
+  user: { id: "alice", email: "alice@example.com", email_verified: false } as { id: string; email: string; email_verified: boolean; has_password?: boolean; auth_providers?: string[] },
 }));
-const navigation = vi.hoisted(() => ({ search: "", router: { replace: vi.fn() } }));
+const navigation = vi.hoisted(() => ({ search: "", router: { replace: vi.fn(), push: vi.fn() } }));
 vi.mock("next/navigation", () => ({
   useRouter: () => navigation.router,
   useSearchParams: () => new URLSearchParams(navigation.search),
 }));
 vi.mock("../lib/auth", () => ({ useAuth: () => state }));
-vi.mock("../lib/api", () => ({ webApiClient: { auth: state } }));
+vi.mock("../lib/api", () => ({ apiFetch: state.apiFetch, webApiClient: { auth: state } }));
 vi.mock("../lib/i18n", () => {
   const t = (key: string) => MESSAGE_MAP.en[key] ?? key;
-  return { useT: () => t };
+  return { useT: () => t, useI18n: () => ({ t, language: "en" }) };
 });
-afterEach(cleanup);
+type GoogleConfiguration = { callback: (response: { credential: string }) => void };
+let googleConfiguration: GoogleConfiguration;
+const googleWindow = window as typeof window & { google?: unknown };
+afterEach(() => { cleanup(); delete googleWindow.google; vi.unstubAllGlobals(); });
 beforeEach(() => {
   vi.resetAllMocks();
   navigation.search = "";
+  window.history.replaceState({}, "", "/settings");
   navigation.router.replace.mockImplementation((url: string) => {
     navigation.search = new URL(url, "http://localhost").search.slice(1);
   });
   state.user = { id: "alice", email: "alice@example.com", email_verified: false };
   state.capabilities.mockResolvedValue({ password_recovery: true, email_verification: true });
   state.refreshUser.mockResolvedValue(undefined);
+  state.apiFetch.mockImplementation(async (path: string) => {
+    if (path === "/auth/google/config") return new Response('{"client_id":"chef-world.apps.googleusercontent.com"}');
+    if (path === "/auth/google/nonce") return new Response('{"nonce":"deletion-challenge"}');
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  googleWindow.google = { accounts: { id: {
+    initialize: (configuration: GoogleConfiguration) => { googleConfiguration = configuration; },
+    renderButton: (container: HTMLElement) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Continue with Google";
+      button.onclick = () => googleConfiguration.callback({ credential: "google-deletion-token" });
+      container.appendChild(button);
+    },
+  } } };
 });
 
 test("checking account status still refreshes when the email capability request fails", async () => {
@@ -182,4 +202,147 @@ test.each(["", "delete=0", "delete=true"])("ordinary settings visits do not open
   expect(screen.queryByLabelText("Current password")).not.toBeInTheDocument();
   expect(navigation.router.replace).not.toHaveBeenCalled();
   expect(state.deleteAccount).not.toHaveBeenCalled();
+});
+
+
+test("Google-only deletion requires permanent confirmation and a Google credential without asking for a password", async () => {
+  state.user = { ...state.user, has_password: false, auth_providers: ["google"] };
+  render(<AccountSecurity />);
+  fireEvent.click(screen.getByRole("button", { name: "Delete account" }));
+  const googleButton = await screen.findByRole("button", { name: "Continue with Google" });
+  expect(screen.queryByLabelText("Current password")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Delete account permanently" })).not.toBeInTheDocument();
+  fireEvent.click(googleButton);
+  expect(state.deleteAccount).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByLabelText("I understand that account deletion is permanent."));
+  fireEvent.click(googleButton);
+  await waitFor(() => expect(state.deleteAccount).toHaveBeenCalledWith({ google_credential: "google-deletion-token" }));
+  expect(navigation.router.push).not.toHaveBeenCalled();
+});
+
+test("a rejected Google deletion retains confirmation and the account, then permits a fresh Google attempt", async () => {
+  state.user = { ...state.user, has_password: false, auth_providers: ["google"] };
+  state.deleteAccount.mockRejectedValueOnce({ status: 403 }).mockResolvedValueOnce(undefined);
+  render(<AccountSecurity />);
+  fireEvent.click(screen.getByRole("button", { name: "Delete account" }));
+  fireEvent.click(screen.getByLabelText("I understand that account deletion is permanent."));
+  fireEvent.click(await screen.findByRole("button", { name: "Continue with Google" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Google could not confirm this account. Your account has not been deleted.");
+  expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+  expect(screen.getByLabelText("I understand that account deletion is permanent.")).toBeChecked();
+  expect(screen.queryByLabelText("Current password")).not.toBeInTheDocument();
+  await waitFor(() => expect(state.apiFetch.mock.calls.filter(([path]) => path === "/auth/google/nonce")).toHaveLength(2));
+  fireEvent.click(await screen.findByRole("button", { name: "Continue with Google" }));
+  await waitFor(() => expect(state.deleteAccount).toHaveBeenCalledTimes(2));
+});
+
+test.each([true, undefined])("password-capable and legacy accounts keep password confirmation (has_password=%s)", async (hasPassword) => {
+  state.user = { ...state.user, has_password: hasPassword, auth_providers: ["google"] };
+  render(<AccountSecurity />);
+  fireEvent.click(screen.getByRole("button", { name: "Delete account" }));
+  expect(screen.getByLabelText("Current password")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Continue with Google" })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Current password"), { target: { value: "current-password" } });
+  fireEvent.click(screen.getByLabelText("I understand that account deletion is permanent."));
+  fireEvent.click(screen.getByRole("button", { name: "Delete account permanently" }));
+  await waitFor(() => expect(state.deleteAccount).toHaveBeenCalledWith("current-password"));
+});
+
+
+test("a Google return reopens deletion with fresh confirmation and leaves its resume marker available", async () => {
+  state.user = { ...state.user, has_password: false, auth_providers: ["google"] };
+  navigation.search = "google_resume=1&redirect=%2Flibrary";
+  window.history.replaceState({}, "", `/settings?${navigation.search}`);
+  render(<AccountSecurity />);
+
+  const deletion = await screen.findByRole("group", { name: /^Delete account$/ });
+  expect(deletion).toHaveFocus();
+  expect(screen.getByRole("checkbox", { name: "I understand that account deletion is permanent." })).not.toBeChecked();
+  expect(screen.queryByLabelText("Current password")).not.toBeInTheDocument();
+  expect(navigation.router.replace).not.toHaveBeenCalled();
+  expect(state.deleteAccount).not.toHaveBeenCalled();
+});
+
+test("returning from Google resets a previously checked deletion confirmation", async () => {
+  state.user = { ...state.user, has_password: false, auth_providers: ["google"] };
+  const view = render(<AccountSecurity />);
+  fireEvent.click(screen.getByRole("button", { name: "Delete account" }));
+  const confirmation = screen.getByRole("checkbox", { name: "I understand that account deletion is permanent." });
+  fireEvent.click(confirmation);
+  expect(confirmation).toBeChecked();
+
+  navigation.search = "google_resume=1";
+  window.history.replaceState({}, "", "/settings?google_resume=1");
+  view.rerender(<AccountSecurity />);
+
+  expect(confirmation).not.toBeChecked();
+  expect(navigation.router.replace).not.toHaveBeenCalled();
+  expect(state.deleteAccount).not.toHaveBeenCalled();
+});
+
+test("switching accounts discards a resumed deletion confirmation", async () => {
+  state.user = { ...state.user, has_password: false, auth_providers: ["google"] };
+  navigation.search = "google_resume=1";
+  window.history.replaceState({}, "", "/settings?google_resume=1");
+  const view = render(<AccountSecurity />);
+  fireEvent.click(await screen.findByRole("checkbox", { name: "I understand that account deletion is permanent." }));
+
+  navigation.search = "";
+  window.history.replaceState({}, "", "/settings");
+  state.user = { ...state.user, id: "bob", email: "bob@example.com" };
+  view.rerender(<AccountSecurity />);
+
+  expect(screen.queryByRole("group", { name: /^Delete account$/ })).not.toBeInTheDocument();
+  expect(screen.getByText("bob@example.com")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Delete account" }));
+  expect(screen.getByRole("checkbox", { name: "I understand that account deletion is permanent." })).not.toBeChecked();
+  expect(state.deleteAccount).not.toHaveBeenCalled();
+});
+
+
+test("a resumed Google deletion waits for fresh confirmation and an explicit continuation", async () => {
+  const accountId = "b6ad3e09-9f2a-4123-908d-4f8107fd9356";
+  state.user = { ...state.user, id: accountId, has_password: false, auth_providers: ["google"] };
+  navigation.search = "google_resume=1";
+  window.history.replaceState({}, "", "/settings?google_resume=1");
+  const bridgeFetch = vi.fn(async (path: string) => {
+    if (path === "/api/auth/google/resume") return new Response(JSON.stringify({ credential: "resumed-google-proof", expected_account_id: accountId }));
+    if (path === "/api/auth/google/clear") return new Response('{"ok":true}');
+    throw new Error(`Unexpected bridge request: ${path}`);
+  });
+  vi.stubGlobal("fetch", bridgeFetch);
+  render(<AccountSecurity />);
+
+  const continuation = await screen.findByRole("button", { name: "Continue with verified Google account" });
+  expect(continuation).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: "I understand that account deletion is permanent." })).not.toBeChecked();
+  expect(state.deleteAccount).not.toHaveBeenCalled();
+  expect(state.apiFetch.mock.calls.some(([path]) => path === "/auth/google/nonce")).toBe(false);
+  fireEvent.click(continuation);
+  expect(state.deleteAccount).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("checkbox", { name: "I understand that account deletion is permanent." }));
+  expect(continuation).toBeEnabled();
+  expect(state.deleteAccount).not.toHaveBeenCalled();
+  fireEvent.click(continuation);
+  await waitFor(() => expect(state.deleteAccount).toHaveBeenCalledWith({ google_credential: "resumed-google-proof" }));
+});
+
+test("a Google return for another account cannot continue deletion of the current account", async () => {
+  state.user = { ...state.user, id: "b6ad3e09-9f2a-4123-908d-4f8107fd9356", has_password: false, auth_providers: ["google"] };
+  navigation.search = "google_resume=1";
+  window.history.replaceState({}, "", "/settings?google_resume=1");
+  vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+    if (path === "/api/auth/google/resume") return new Response(JSON.stringify({ credential: "other-account-proof", expected_account_id: "bbf355d6-da3e-4506-b869-2d6f730e9cd2" }));
+    if (path === "/api/auth/google/clear") return new Response('{"ok":true}');
+    throw new Error(`Unexpected bridge request: ${path}`);
+  }));
+  render(<AccountSecurity />);
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(/account changed/i);
+  expect(screen.queryByRole("button", { name: "Continue with verified Google account" })).not.toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "I understand that account deletion is permanent." })).not.toBeChecked();
+  fireEvent.click(screen.getByRole("checkbox", { name: "I understand that account deletion is permanent." }));
+  expect(state.deleteAccount).not.toHaveBeenCalled();
+  expect(state.apiFetch.mock.calls.some(([path]) => path === "/auth/google/nonce")).toBe(false);
 });

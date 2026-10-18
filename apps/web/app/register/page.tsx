@@ -8,6 +8,7 @@ import { safeAuthRedirect } from "@cooking/shared";
 import { apiFetch } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { AuthShell } from "../components/AuthShell";
+import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import { useT } from "../lib/i18n";
 
 export default function RegisterPage() {
@@ -18,9 +19,11 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading || googleBusy) return;
     setError(null);
     setLoading(true);
     try {
@@ -67,6 +70,7 @@ export default function RegisterPage() {
         </>
       }
     >
+      <GoogleSignInButton disabled={loading} onBusyChange={setGoogleBusy} />
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.35rem" }}>
         <p style={{ margin: 0, color: "var(--cw-color-muted-ink)", lineHeight: 1.6 }}>{t("account.signupVerificationHelp")}</p>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -105,7 +109,7 @@ export default function RegisterPage() {
             {error}
           </p>
         )}
-        <button type="submit" className="btn-primary" disabled={loading} style={{ width: "100%", marginTop: "0.25rem" }}>
+        <button type="submit" className="btn-primary" disabled={loading || googleBusy} style={{ width: "100%", marginTop: "0.25rem" }}>
           {loading ? t("auth.creatingAccount") : t("auth.createAccountCta")}
         </button>
       </form>

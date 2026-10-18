@@ -125,9 +125,7 @@ async def delete_account(body: DeleteAccountBody, request: Request, response: Re
                          session: AsyncSession = Depends(get_session),
                          current_user: UserModel = Depends(get_authenticated_user)):
     await account_limits(request, "confirm")
-    from app.api.auth import DeleteAccountBody, delete_me
-    # Reauthentication is repeated under the current account lock in the shared path.
-    from app.db.repo_auth import lock_account_erasure_barrier
-    await lock_account_erasure_barrier(session)
-    user = await current_locked_user(request, session, current_user)
-    return await delete_me(body, response, request, session, user)
+    from app.api.auth import delete_me
+    # The shared path verifies Google before taking the erasure barrier, then
+    # locks and rechecks the current session before either credential can erase.
+    return await delete_me(body, response, request, session, current_user)

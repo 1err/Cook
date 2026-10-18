@@ -12,6 +12,7 @@ def classify_operation(method, route, status):
     return {
         ("POST", "/auth/register"): "registered",
         ("POST", "/auth/login"): "login",
+        ("POST", "/auth/google"): "login",
         ("POST", "/recipes"): "recipe_saved",
         ("POST", "/recipes/catalog/{recipe_id}/copy"): "recipe_saved",
         ("POST", "/users/{user_id}/recipes/{recipe_id}/copy"): "recipe_saved",
