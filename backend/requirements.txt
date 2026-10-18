@@ -17,7 +17,7 @@ alembic==1.14.0
 bcrypt==4.2.0
 # Preserve strict signature canonicalization for raw-token logout revocations;
 # 2.15.1 reaccepts padded aliases (see test_logout_rejects_signature_aliases_of_revoked_session).
-PyJWT==2.15.0
+PyJWT[crypto]==2.15.0
 boto3==1.35.0
 APScheduler==3.11.2
 OpenCC==1.4.2

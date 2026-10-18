@@ -58,6 +58,18 @@ python run.py
 
 API: http://localhost:8000. Docs: http://localhost:8000/docs.
 
+### Google sign-in setup (web)
+
+The login and registration pages show Google's official button after the API has a Google Web client ID. Existing email/password accounts enter their Chef World password once to connect Google and keep their existing library. New Google users do not need a Chef World password. Google-only users can verify with Google to delete their account in web Settings.
+
+1. Open [Google Auth Platform](https://console.cloud.google.com/auth/overview) and select or create the Chef World project.
+2. Complete **Branding** with app name `Chef World`, a support/contact email you control, homepage `https://chef-world.com`, privacy URL `https://chef-world.com/privacy`, terms URL `https://chef-world.com/terms`, and authorized domain `chef-world.com`. Choose **External** under Audience for public users. While the app is in Testing, add your test accounts as test users.
+3. Under **Clients**, create a **Web application** named `Chef World Web`. Add authorized JavaScript origins `https://chef-world.com`, `https://www.chef-world.com`, and `http://localhost:3000` (and `http://127.0.0.1:3000` if used). Use exact origins without paths. Only add preview origins you intend to support, and also allow them in backend CORS. This popup ID-token flow needs no redirect URI or client secret.
+4. Set `GOOGLE_CLIENT_ID=<your-web-client-id>.apps.googleusercontent.com` in `backend/.env` locally and in the deployed backend's environment when releasing. Restart/redeploy the backend and release the updated web app. The frontend reads this public ID from the API; no frontend build variable is required. Keep `CORS_ALLOW_ORIGINS` aligned with the authorized app origins and retain secure production cookie settings.
+5. Test a new Google account, sign out/sign back in, connect an existing password account, verify its recipes remain, and test Google-only deletion using a disposable account. Move the Google app to Production under Audience before enabling public access. Google may require domain ownership or branding verification; complete any requirements shown in its console.
+
+Only identity is requested; this does not request Gmail, Drive, or Calendar access. Without `GOOGLE_CLIENT_ID`, Google sign-in stays hidden and password login remains available. This implementation is local until deliberately deployed. See [Google's setup guide](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid).
+
 ### Web App (Next.js)
 
 Use Node 22 (at least 22.9) and npm 11.19.1. The package-manager version is enforced because older npm versions did not consistently apply the security overrides across workspaces. The install command below uses the pinned version without changing your global npm.

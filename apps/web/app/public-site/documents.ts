@@ -60,12 +60,12 @@ export const PUBLIC_DOCUMENTS: Record<PublicDocumentKind, PublicDocumentContent>
     title: "Privacy Notice",
     intro:
       "This notice explains how Chef World handles information when you use its recipe, meal-planning, shopping, and cooking features. For privacy questions or data requests, contact jerryxiang24@gmail.com.",
-    updated: "Last updated: October 13, 2026",
+    updated: "Last updated: October 18, 2026",
     sections: [
       {
         heading: "Information used to provide the service",
         paragraphs: [
-          "When you create an account, Chef World stores your email address, an account identifier, your library-sharing setting, and a password hash used to verify your password. Your original password is submitted for registration or sign-in; the account database stores its hash.",
+          "When you create an account, Chef World stores your email address, an account identifier, and your library-sharing setting. If you use a password, it is submitted for registration or sign-in and the account database stores its hash. If you choose Google sign-in, Google verifies your identity and shares your email and a Google account identifier with Chef World to create or connect your account. This sign-in does not grant access to your Gmail, Drive, or Calendar.",
           "The service stores information you save, including recipe titles, ingredients, instructions, tags, source links, image links, meal plans, and cooking progress. Saved imports can include the original text and guidance you submitted. If you email us, we receive your address, message, and any attachments you choose to include.",
           "Operational records can include request status, timing, error information, AI usage counters, and grocery search terms. These records help operate the service, investigate problems, and manage usage.",
           "Chef World uses first-party analytics to understand registrations, successful logins, page visits, recipe saves, meal planning, cooking, and retailer handoffs. Administrators can view account emails, signup dates, and account-linked activity. Browser analytics use random visitor and visit identifiers, normalized page paths, referrer domains, campaign labels, and broad browser/device categories; they do not collect passwords, recipe contents, full page URLs, or keystrokes. A visitor identifier may be linked to your account when you sign in or register.",

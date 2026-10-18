@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.db import repo_store_cache
+from app.db import repo_recipes, repo_store_cache
 from app.db import session as db_session
 from app.jobs.cache_warmer_queries import ALL_QUERIES, DEFAULT_STORE
 from app.services.store_product_service import (
@@ -84,6 +84,29 @@ async def warm_cache_query(
         return ("empty" if not products else "cache_miss"), products
 
 
+async def _load_cache_warmer_queries() -> list[str]:
+    """Snapshot the catalog once and release its read session before scraping."""
+    candidates = list(ALL_QUERIES)
+    try:
+        if db_session.async_session_maker is None:
+            raise RuntimeError("Database session maker is not initialized.")
+        async with db_session.async_session_maker() as session:
+            candidates.extend(await repo_recipes.list_public_ingredient_names(session))
+    except Exception:
+        logger.exception(
+            "could not load public catalog ingredients; warming common queries only",
+            extra={"event": "cache_warmer_catalog_load_failed"},
+        )
+
+    queries: dict[tuple[str, str], str] = {}
+    for candidate in candidates:
+        prepared = prepare_store_query(candidate)
+        if prepared is not None:
+            key = (prepared.language, prepared.cache_query)
+            queries.setdefault(key, prepared.cache_query)
+    return list(queries.values())
+
+
 async def run_cache_warmer(
     *,
     force_refresh: bool = False,
@@ -138,7 +161,10 @@ async def run_cache_warmer(
                     logger.exception("cache warmer progress callback failed", extra={"query": query})
 
         try:
-            for index, query in enumerate(ALL_QUERIES, start=1):
+            queries = await _load_cache_warmer_queries()
+            summary["total"] = len(queries)
+            _warmer_status["total"] = len(queries)
+            for index, query in enumerate(queries, start=1):
                 await warm(index, query)
             elapsed = time.perf_counter() - started_at
             logger.info(

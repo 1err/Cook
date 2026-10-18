@@ -1,0 +1,15 @@
+.root { margin-bottom: 1.35rem; }
+.controls { display: flex; flex-direction: column; gap: 0.75rem; }
+.button { width: 100%; display: flex; justify-content: center; min-height: 40px; }
+.button[hidden] { display: none; }
+.status, .explanation { margin: 0; font-size: 0.85rem; line-height: 1.5; color: var(--on-surface-variant); }
+.status { text-align: center; }
+.linkForm { display: flex; flex-direction: column; gap: 0.75rem; }
+.passwordLabel { font-size: 0.875rem; font-weight: 700; color: var(--on-surface); }
+.error { margin: 0; color: var(--error-muted); font-size: 0.85rem; }
+.recovery { font-size: 0.8rem; color: var(--on-surface-variant); display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; align-items: center; }
+.retry { border: 0; padding: 0; background: transparent; color: var(--primary); cursor: pointer; font: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.retry:disabled { opacity: 0.55; cursor: default; }
+.retry:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
+.divider { display: flex; gap: 0.75rem; align-items: center; margin-top: 1.35rem; color: var(--on-surface-variant); font-size: 0.75rem; }
+.divider::before, .divider::after { content: ""; height: 1px; background: var(--outline-variant); flex: 1; }
