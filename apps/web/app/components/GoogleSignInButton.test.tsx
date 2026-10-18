@@ -10,10 +10,10 @@ const { push, refreshUser, apiFetch } = vi.hoisted(() => ({
   push: vi.fn(), refreshUser: vi.fn(), apiFetch: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }), usePathname: () => "/login" }));
-vi.mock("../lib/auth", () => ({ useAuth: () => ({ refreshUser }) }));
+vi.mock("../lib/auth", () => ({ useAuth: () => ({ refreshUser, user: { id: "11111111-1111-4111-8111-111111111111" } }) }));
 vi.mock("../lib/api", () => ({ apiFetch }));
 
-type GoogleConfig = { client_id: string; nonce: string; callback: (response: { credential: string }) => void; ux_mode: string; auto_select: boolean; use_fedcm_for_button: boolean; button_auto_select: boolean };
+type GoogleConfig = { client_id: string; nonce: string; callback: (response: { credential: string }) => void; ux_mode: string; login_uri?: string; auto_select: boolean; use_fedcm_for_button: boolean; button_auto_select: boolean };
 let configuration: GoogleConfig;
 let renderOptions: Record<string, unknown>;
 const googleWindow = window as typeof window & { google?: unknown };
@@ -37,6 +37,13 @@ async function googleButton() { return screen.findByRole("button", { name: "Cont
 
 beforeEach(() => {
   vi.clearAllMocks();
+  const stored = new Map<string, string>();
+  vi.stubGlobal("localStorage", { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key) });
+  vi.stubGlobal("fetch", vi.fn(async () => response({ ok: true })));
+  vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 Desktop Chrome");
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+  Object.defineProperty(navigator, "maxTouchPoints", { configurable: true, get: () => 0 });
+  vi.spyOn(navigator, "maxTouchPoints", "get").mockReturnValue(0);
   window.history.replaceState({}, "", "/login");
   installGoogle();
   refreshUser.mockResolvedValue(undefined);
@@ -52,6 +59,8 @@ afterEach(() => {
   delete googleWindow.google;
   document.querySelectorAll('script[src="https://accounts.google.com/gsi/client"]').forEach((script) => script.remove());
   vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 test("disabled Google configuration leaves email sign in available without loading Google's script", async () => {
@@ -316,4 +325,120 @@ test("unmounting while the SDK retries cannot create a challenge or sign in afte
   expect(apiFetch.mock.calls.some(([path]) => path === "/auth/google/nonce" || path === "/auth/google")).toBe(false);
   expect(refreshUser).not.toHaveBeenCalled();
   expect(push).not.toHaveBeenCalled();
+});
+
+
+test.each(["iPhone", "iPad desktop"])("%s uses the same-origin redirect bridge before creating the Google challenge", async (device) => {
+  if (device === "iPhone") vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)");
+  else vi.spyOn(navigator, "maxTouchPoints", "get").mockReturnValue(5);
+  window.history.replaceState({}, "", "/register?redirect=%2Fimport%3Fshare%3Dpending");
+  const order: string[] = [];
+  vi.mocked(fetch).mockImplementation(async (path) => { order.push(String(path)); return response({ ok: true }); });
+  const original = apiFetch.getMockImplementation()!;
+  apiFetch.mockImplementation((path: string, options?: RequestInit) => { order.push(path); return original(path, options); });
+  renderButton();
+  await googleButton();
+  expect(configuration).toMatchObject({ ux_mode: "redirect", login_uri: `${window.location.origin}/api/auth/google/callback`, use_fedcm_for_button: false, nonce: "browser-challenge" });
+  expect(fetch).toHaveBeenCalledWith("/api/auth/google/prepare", expect.objectContaining({ method: "POST", credentials: "same-origin", body: JSON.stringify({ return_path: "/register", redirect: "/import?share=pending" }) }));
+  expect(order.indexOf("/api/auth/google/prepare")).toBeLessThan(order.indexOf("/auth/google/nonce"));
+});
+
+test("desktop Google popup does not prepare a redirect context", async () => {
+  renderButton();
+  await googleButton();
+  expect(configuration.ux_mode).toBe("popup");
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+test("an iOS deletion redirect is bound to the current account UUID", async () => {
+  vi.spyOn(navigator, "userAgent", "get").mockReturnValue("iPhone");
+  window.history.replaceState({}, "", "/settings");
+  renderButton({ onCredential: vi.fn(), disabled: true });
+  await googleButton();
+  expect(fetch).toHaveBeenCalledWith("/api/auth/google/prepare", expect.objectContaining({ body: JSON.stringify({ return_path: "/settings", redirect: "/library", expected_account_id: "11111111-1111-4111-8111-111111111111" }) }));
+});
+
+test("a redirect return resumes the existing credential without creating a new challenge or SDK button", async () => {
+  window.history.replaceState({}, "", "/login?google_resume=1&redirect=%2Fplanner");
+  vi.mocked(fetch).mockResolvedValueOnce(response({ credential: "resumed-id-token" }));
+  renderButton();
+  await waitFor(() => expect(push).toHaveBeenCalledWith("/planner"));
+  expect(fetch).toHaveBeenCalledWith("/api/auth/google/resume", expect.objectContaining({ method: "POST", credentials: "same-origin", cache: "no-store" }));
+  expect(apiFetch).toHaveBeenCalledWith("/auth/google", expect.objectContaining({ body: JSON.stringify({ credential: "resumed-id-token" }) }));
+  expect(apiFetch.mock.calls.some(([path]) => path === "/auth/google/nonce")).toBe(false);
+  expect(window.location.search).toBe("?redirect=%2Fplanner");
+  expect(window.location.href).not.toContain("resumed-id-token");
+  expect(screen.queryByRole("button", { name: "Continue with Google" })).not.toBeInTheDocument();
+});
+
+test("resumed account linking retains the original challenge through a password retry and language change", async () => {
+  window.history.replaceState({}, "", "/login?google_resume=1");
+  vi.mocked(fetch).mockImplementation(async (path) => response(String(path).endsWith("/resume") ? { credential: "resumed-id-token" } : { ok: true }));
+  const original = apiFetch.getMockImplementation()!;
+  apiFetch.mockImplementation((path: string, options?: RequestInit) => path === "/auth/google"
+    ? Promise.resolve(response({ detail: { code: "google_password_required", message: "Confirm password" } }, 409))
+    : original(path, options));
+  render(<I18nProvider><LoginPage /></I18nProvider>);
+  fireEvent.change(await screen.findByLabelText("Your Chef World password"), { target: { value: "private" } });
+  fireEvent.click(screen.getByRole("button", { name: "中文" }));
+  const input = await screen.findByLabelText("你的 Chef World 密码");
+  expect(input).toHaveValue("");
+  fireEvent.change(input, { target: { value: "correct" } });
+  fireEvent.click(screen.getByRole("button", { name: "关联 Google 并登录" }));
+  await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/auth/google", expect.objectContaining({ body: JSON.stringify({ credential: "resumed-id-token", password: "correct" }) })));
+  expect(apiFetch.mock.calls.some(([path]) => path === "/auth/google/nonce")).toBe(false);
+});
+
+test("resumed deletion stages verification while disabled and waits for an explicit continue", async () => {
+  window.history.replaceState({}, "", "/settings?google_resume=1");
+  vi.mocked(fetch).mockImplementation(async (path) => response(String(path).endsWith("/resume") ? { credential: "delete-token", expected_account_id: "11111111-1111-4111-8111-111111111111" } : { ok: true }));
+  const onCredential = vi.fn().mockResolvedValue(undefined);
+  const view = renderButton({ onCredential, disabled: true });
+  const submit = await screen.findByRole("button", { name: "Continue with verified Google account" });
+  expect(submit).toBeDisabled();
+  expect(onCredential).not.toHaveBeenCalled();
+  expect(apiFetch.mock.calls.some(([path]) => path === "/auth/google/nonce")).toBe(false);
+  view.rerender(<I18nProvider><GoogleSignInButton onCredential={onCredential} /></I18nProvider>);
+  fireEvent.click(submit);
+  await waitFor(() => expect(onCredential).toHaveBeenCalledWith("delete-token"));
+});
+
+test("a resumed deletion for another account is cleared without offering to continue", async () => {
+  window.history.replaceState({}, "", "/settings?google_resume=1");
+  vi.mocked(fetch).mockImplementation(async (path) => response(String(path).endsWith("/resume") ? { credential: "other-account-token", expected_account_id: "22222222-2222-4222-8222-222222222222" } : { ok: true }));
+  const onCredential = vi.fn();
+  renderButton({ onCredential });
+  expect(await screen.findByRole("alert")).toHaveTextContent("Your Chef World account changed. Verify with Google again.");
+  expect(fetch).toHaveBeenCalledWith("/api/auth/google/clear", expect.anything());
+  expect(onCredential).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Continue with verified Google account" })).not.toBeInTheDocument();
+  expect(apiFetch.mock.calls.some(([path]) => path === "/auth/google/nonce")).toBe(false);
+});
+
+test("StrictMode can repeat a resume without a new challenge or duplicate authentication", async () => {
+  window.history.replaceState({}, "", "/login?google_resume=1");
+  vi.mocked(fetch).mockImplementation(async (path) => response(String(path).endsWith("/resume") ? { credential: "strict-token" } : { ok: true }));
+  render(<React.StrictMode><I18nProvider><GoogleSignInButton /></I18nProvider></React.StrictMode>);
+  await waitFor(() => expect(push).toHaveBeenCalledWith("/library"));
+  expect(apiFetch.mock.calls.filter(([path]) => path === "/auth/google")).toHaveLength(1);
+  expect(apiFetch.mock.calls.some(([path]) => path === "/auth/google/nonce")).toBe(false);
+});
+
+test("an expired redirect credential offers a fresh start without replacing its challenge until retry", async () => {
+  window.history.replaceState({}, "", "/login?google_resume=1");
+  vi.mocked(fetch).mockResolvedValueOnce(response({ error: "Expired" }, 401));
+  renderButton();
+  fireEvent.click(await screen.findByRole("button", { name: "Retry Google sign in" }));
+  expect(await googleButton()).toBeVisible();
+  expect(apiFetch.mock.calls.filter(([path]) => path === "/auth/google/nonce")).toHaveLength(1);
+});
+
+test("a redirect callback error is scrubbed and recoverable", async () => {
+  window.history.replaceState({}, "", "/login?google_error=1&redirect=%2Fplanner");
+  renderButton();
+  const retry = await screen.findByRole("button", { name: "Retry Google sign in" });
+  expect(apiFetch.mock.calls.some(([path]) => path === "/auth/google/nonce")).toBe(false);
+  expect(window.location.search).toBe("?redirect=%2Fplanner");
+  fireEvent.click(retry);
+  expect(await googleButton()).toBeVisible();
 });

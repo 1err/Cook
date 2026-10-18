@@ -4,9 +4,10 @@ export type GoogleIdentity = {
     client_id: string;
     nonce: string;
     callback: (response: CredentialResponse) => void;
-    ux_mode: "popup";
+    ux_mode: "popup" | "redirect";
+    login_uri?: string;
     auto_select: false;
-    use_fedcm_for_button: true;
+    use_fedcm_for_button: boolean;
     button_auto_select: false;
   }) => void;
   renderButton: (parent: HTMLElement, options: {
