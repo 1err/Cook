@@ -1,0 +1,2232 @@
+{
+  "source_commit": "081488452e3389cd620e6ff36989167dd33f67f2",
+  "backend_image_digest": "sha256:038a87b7d571921b574f03b7e6cd25b1f36a75af5c30b440191b86e5314c51bb",
+  "services": {
+    "observed_at": "2026-10-20T18:20:49.547462+00:00",
+    "services": [
+      {
+        "service": "cooking-backend-service",
+        "task_definition": "arn:aws:ecs:us-east-1:930067562682:task-definition/cooking-backend:52",
+        "deployment_id": "ecs-svc/9239928947965052043",
+        "rollout": "COMPLETED",
+        "desired": 1,
+        "running": 1,
+        "pending": 0,
+        "tasks": [
+          {
+            "task_arn": "arn:aws:ecs:us-east-1:930067562682:task/cooking-cluster/fe47684c4ef547db9769e26d12dcb8d2",
+            "digest": "sha256:038a87b7d571921b574f03b7e6cd25b1f36a75af5c30b440191b86e5314c51bb",
+            "health": "HEALTHY",
+            "started_at": "2026-10-20T13:03:53.914000-05:00",
+            "log_group": "/ecs/cooking-backend",
+            "log_stream": "ecs/backend/fe47684c4ef547db9769e26d12dcb8d2",
+            "log_window_start": "2026-10-20T18:05:49.547462+00:00",
+            "log_window_end": "2026-10-20T18:20:49.547462+00:00",
+            "error_marker_counts": {}
+          }
+        ],
+        "load_balancer_target_states": [
+          "healthy"
+        ]
+      },
+      {
+        "service": "cooking-store-worker-service",
+        "task_definition": "arn:aws:ecs:us-east-1:930067562682:task-definition/cooking-store-worker:3",
+        "deployment_id": "ecs-svc/1767781877235139368",
+        "rollout": "COMPLETED",
+        "desired": 1,
+        "running": 1,
+        "pending": 0,
+        "tasks": [
+          {
+            "task_arn": "arn:aws:ecs:us-east-1:930067562682:task/cooking-cluster/4298cb264d3b454f8ada8bd796172122",
+            "digest": "sha256:038a87b7d571921b574f03b7e6cd25b1f36a75af5c30b440191b86e5314c51bb",
+            "health": "HEALTHY",
+            "started_at": "2026-10-20T13:09:04.188000-05:00",
+            "log_group": "/ecs/cooking-backend",
+            "log_stream": "store-worker/store-worker/4298cb264d3b454f8ada8bd796172122",
+            "log_window_start": "2026-10-20T13:09:04.188000-05:00",
+            "log_window_end": "2026-10-20T18:20:49.547462+00:00",
+            "error_marker_counts": {}
+          }
+        ],
+        "daily_cache_config": {
+          "mode": "durable",
+          "enabled": true,
+          "interval_seconds": 86400,
+          "interval_from_environment": false
+        }
+      }
+    ]
+  },
+  "web": {
+    "deployment_id": "dpl_GuJ6nX8WMcfscXKZx5X9pp3Kw6V3",
+    "url": "cook-qsg6wwqcx-jerrys-projects-08f739a2.vercel.app",
+    "production_url": "https://chef-world.com",
+    "state": "READY",
+    "rollback_id": "dpl_9SWMCxmpGSHemZuFv6prJ2CB9116"
+  },
+  "http": {
+    "observed_at": "2026-10-20T18:12:01.100602+00:00",
+    "checks": [
+      {
+        "url": "https://chef-world.com/",
+        "final_url": "https://chef-world.com/",
+        "status": 200,
+        "bytes": 20615,
+        "sha256": "8b36cb3e2e8eb2f287ffd54c600a1606bb8ecf0447738d7fdc0305e3bdf89921",
+        "allow_origin": "*",
+        "allow_credentials": null
+      },
+      {
+        "url": "https://chef-world.com/login",
+        "final_url": "https://chef-world.com/login",
+        "status": 200,
+        "bytes": 12612,
+        "sha256": "69d43185f645b637f374394f0ff745780956f6b700f74b676650536b075afc2a",
+        "allow_origin": "*",
+        "allow_credentials": null
+      },
+      {
+        "url": "https://chef-world.com/shopping-list",
+        "final_url": "https://chef-world.com/shopping-list",
+        "status": 200,
+        "bytes": 10890,
+        "sha256": "6c5b839f1d0256b8d08d84c9f80b43a49df7ec1aadf199cd4835c5768390720e",
+        "allow_origin": "*",
+        "allow_credentials": null
+      },
+      {
+        "url": "https://api.chef-world.com/health",
+        "final_url": "https://api.chef-world.com/health",
+        "status": 200,
+        "bytes": 15,
+        "sha256": "a29ee2b15c494311c52521766e44af56a3ad2248e7a8ab465e5206463c13d288",
+        "allow_origin": null,
+        "allow_credentials": null,
+        "body": {
+          "status": "ok"
+        }
+      },
+      {
+        "url": "https://api.chef-world.com/ready",
+        "final_url": "https://api.chef-world.com/ready",
+        "status": 200,
+        "bytes": 18,
+        "sha256": "31bf75f4c0a97cc1f7b60df824fa390b3be9ba014f29b63c87c698ba63d9a9fd",
+        "allow_origin": null,
+        "allow_credentials": null,
+        "body": {
+          "status": "ready"
+        }
+      },
+      {
+        "url": "https://api.chef-world.com/shopping-list/refine",
+        "final_url": "https://api.chef-world.com/shopping-list/refine",
+        "status": 200,
+        "bytes": 2,
+        "sha256": "565339bc4d33d72817b583024112eb7f5cdf3e5eef0252d6ec1b9c9a94e12bb3",
+        "allow_origin": "https://chef-world.com",
+        "allow_credentials": "true"
+      },
+      {
+        "url": "https://api.chef-world.com/shopping-list/refine",
+        "final_url": "https://api.chef-world.com/shopping-list/refine",
+        "status": 401,
+        "bytes": 30,
+        "sha256": "cfec9feffbcc0dabaa0f92491e3609eeb1e9bc8d17625cd7f043be03b609c812",
+        "allow_origin": "https://chef-world.com",
+        "allow_credentials": "true"
+      }
+    ],
+    "assets": [
+      {
+        "url": "https://chef-world.com/_next/static/chunks/4148-8354fb66ffccabcc.js",
+        "final_url": "https://chef-world.com/_next/static/chunks/4148-8354fb66ffccabcc.js",
+        "status": 200,
+        "bytes": 8867,
+        "sha256": "34bc53542029e3d03835769070fb6895c871475b71a3e31134042e98d7731808",
+        "allow_origin": "*",
+        "allow_credentials": null
+      },
+      {
+        "url": "https://chef-world.com/_next/static/chunks/18-8a0e9dadb94224f5.js",
+        "final_url": "https://chef-world.com/_next/static/chunks/18-8a0e9dadb94224f5.js",
+        "status": 200,
+        "bytes": 174075,
+        "sha256": "94563c6ddc4a43268411b0ef3e0bd47c5de3d62e48c54040e4eb66d13857b4c3",
+        "allow_origin": "*",
+        "allow_credentials": null
+      },
+      {
+        "url": "https://chef-world.com/_next/static/chunks/4191-3c85a566fbc6f2e6.js",
+        "final_url": "https://chef-world.com/_next/static/chunks/4191-3c85a566fbc6f2e6.js",
+        "status": 200,
+        "bytes": 45958,
+        "sha256": "78d2a939ad5e9fd04299cef363d9cc3ddcfb6aa5e6beb15e295b1afbd7737265",
+        "allow_origin": "*",
+        "allow_credentials": null
+      },
+      {
+        "url": "https://chef-world.com/_next/static/chunks/app/shopping-list/page-3734a990ba0d9cea.js",
+        "final_url": "https://chef-world.com/_next/static/chunks/app/shopping-list/page-3734a990ba0d9cea.js",
+        "status": 200,
+        "bytes": 72373,
+        "sha256": "5cfa9bc500f957c14f1cf182d195d20847ba05e197aba0746e91b30ca8735616",
+        "allow_origin": "*",
+        "allow_credentials": null
+      },
+      {
+        "url": "https://chef-world.com/_next/static/chunks/app/layout-7d3ebbf7dc4f73c8.js",
+        "final_url": "https://chef-world.com/_next/static/chunks/app/layout-7d3ebbf7dc4f73c8.js",
+        "status": 200,
+        "bytes": 16212,
+        "sha256": "6db51028647ea1071c0fb08db90506732aa05896f56e50e007317b75bf045548",
+        "allow_origin": "*",
+        "allow_credentials": null
+      },
+      {
+        "url": "https://chef-world.com/_next/static/chunks/6769-ab61227b3b1839fa.js",
+        "final_url": "https://chef-world.com/_next/static/chunks/6769-ab61227b3b1839fa.js",
+        "status": 200,
+        "bytes": 127463,
+        "sha256": "a33e3d968ce1e814d100412df70453e72d5f6b7a9c2aff81d66d898a527c1b98",
+        "allow_origin": "*",
+        "allow_credentials": null
+      },
+      {
+        "url": "https://chef-world.com/_next/static/chunks/87c73c54-24122e7b92478d00.js",
+        "final_url": "https://chef-world.com/_next/static/chunks/87c73c54-24122e7b92478d00.js",
+        "status": 200,
+        "bytes": 173019,
+        "sha256": "0d30e73d8f3c24eee6941dd0861b15e22d943c0aec3bfc571eecfecb0e06b7c3",
+        "allow_origin": "*",
+        "allow_credentials": null
+      },
+      {
+        "url": "https://chef-world.com/_next/static/chunks/polyfills-42372ed130431b0a.js",
+        "final_url": "https://chef-world.com/_next/static/chunks/polyfills-42372ed130431b0a.js",
+        "status": 200,
+        "bytes": 112594,
+        "sha256": "0973c1d64c88adc8e3c950410cb58b288f72118d5965b78049438deb8f2f9683",
+        "allow_origin": "*",
+        "allow_credentials": null
+      },
+      {
+        "url": "https://chef-world.com/_next/static/chunks/webpack-6ad76091df0af573.js",
+        "final_url": "https://chef-world.com/_next/static/chunks/webpack-6ad76091df0af573.js",
+        "status": 200,
+        "bytes": 5345,
+        "sha256": "12b69a734dc1070869060862e505171547e350cec68e41f6c114f32c6f8a886a",
+        "allow_origin": "*",
+        "allow_credentials": null
+      },
+      {
+        "url": "https://chef-world.com/_next/static/chunks/8579-63c24ecce1352465.js",
+        "final_url": "https://chef-world.com/_next/static/chunks/8579-63c24ecce1352465.js",
+        "status": 200,
+        "bytes": 22767,
+        "sha256": "2bfd373bc26fa00523494b9b66b2d3ea350825f2bddaa7767335a127d57075b3",
+        "allow_origin": "*",
+        "allow_credentials": null
+      },
+      {
+        "url": "https://chef-world.com/_next/static/chunks/main-app-a5debb249d53d782.js",
+        "final_url": "https://chef-world.com/_next/static/chunks/main-app-a5debb249d53d782.js",
+        "status": 200,
+        "bytes": 553,
+        "sha256": "b37a84e2a3ad67873eaf86ae9840171482a18cec0f3616607bec64fa89e11d59",
+        "allow_origin": "*",
+        "allow_credentials": null
+      }
+    ],
+    "new_shopping_copy_present": true,
+    "old_unavailable_copy_absent": true,
+    "authenticated_refinement_http_tested": false
+  },
+  "web_error_checks": {
+    "web-runtime-errors.jsonl": [
+      {
+        "type": "summary",
+        "recordsReturned": 0,
+        "timeRange": {
+          "start": "2026-10-20T17:58:34.200Z",
+          "end": "2026-10-20T18:13:34.200Z"
+        },
+        "pagination": {
+          "hasMore": false,
+          "next": null
+        },
+        "excludedIntervals": []
+      }
+    ],
+    "web-http-errors.jsonl": [
+      {
+        "type": "summary",
+        "recordsReturned": 0,
+        "timeRange": {
+          "start": "2026-10-20T17:58:35.000Z",
+          "end": "2026-10-20T18:13:35.000Z"
+        },
+        "pagination": {
+          "hasMore": false,
+          "next": null
+        },
+        "excludedIntervals": []
+      }
+    ]
+  },
+  "refinement_timeout_before": {
+    "log_group": "/ecs/cooking-backend",
+    "window_utc": [
+      "2026-10-20T17:38:00+00:00",
+      "2026-10-20T17:40:00+00:00"
+    ],
+    "events": [
+      {
+        "timestamp": "2026-10-20T17:39:08.405000+00:00",
+        "event": "ai_call_failed",
+        "operation": "shopping_refine",
+        "error_type": "TimeoutError",
+        "reason": "timeout",
+        "latency_ms": "35026"
+      }
+    ]
+  },
+  "refinement_released_module_check": {
+    "account": "930067562682",
+    "cluster": "cooking-cluster",
+    "image_digest": "sha256:038a87b7d571921b574f03b7e6cd25b1f36a75af5c30b440191b86e5314c51bb",
+    "log_group": "/ecs/cooking-backend",
+    "log_stream": "ecs/backend/2e15ee1717804bd88fd603e6af338f55",
+    "marker": "REFINEMENT_RELEASE_VERIFIED",
+    "payload_sha256": "b7dd3affe38fde67e24b1ac8e91650c1f58d2418453770af526b7c77cb8aa58b",
+    "region": "us-east-1",
+    "report": {
+      "database_engine_initialized": false,
+      "external_io_attempts": 0,
+      "http_endpoint_tested": false,
+      "known_alias_totals_ranges": {
+        "purchase_items": [
+          {
+            "grocery_category": "Dairy",
+            "name": "Milk",
+            "suggested_purchase": "600 ml"
+          },
+          {
+            "grocery_category": "Produce",
+            "name": "大蒜",
+            "suggested_purchase": "约 26 g"
+          },
+          {
+            "grocery_category": "Pantry & Dry Goods",
+            "name": "生抽",
+            "suggested_purchase": "30 g"
+          },
+          {
+            "grocery_category": "Produce",
+            "name": "番茄",
+            "suggested_purchase": "300 g"
+          },
+          {
+            "grocery_category": "Pantry & Dry Goods",
+            "name": "盐",
+            "suggested_purchase": "18–23 g"
+          }
+        ],
+        "refinement_status": "refined"
+      },
+      "missing_contribution_preserved": {
+        "purchase_items": [
+          {
+            "grocery_category": "Dairy",
+            "name": "milk",
+            "suggested_purchase": "100 ml + amount unspecified"
+          }
+        ],
+        "refinement_status": "partial"
+      },
+      "real_auth_tested": false,
+      "real_provider_calls": 0,
+      "schema_version": 1,
+      "scope": "released_module_synthetic_inputs",
+      "simulated_timeout_calls": 2,
+      "timeout_preserves_partial": {
+        "purchase_items": [
+          {
+            "grocery_category": "Pantry & Dry Goods",
+            "name": "中筋面粉",
+            "suggested_purchase": "约 30 g；2（单位待确认）"
+          },
+          {
+            "grocery_category": "Pantry & Dry Goods",
+            "name": "盐",
+            "suggested_purchase": "18–23 g"
+          },
+          {
+            "grocery_category": "Produce",
+            "name": "胡萝卜",
+            "suggested_purchase": "200 g + 1 小段"
+          }
+        ],
+        "refinement_status": "partial"
+      }
+    },
+    "service": "cooking-backend-service",
+    "task_definition": "arn:aws:ecs:us-east-1:930067562682:task-definition/cooking-backend:52",
+    "verification_task": "arn:aws:ecs:us-east-1:930067562682:task/cooking-cluster/2e15ee1717804bd88fd603e6af338f55"
+  },
+  "cache_before": {
+    "observed_at": "2026-10-20T17:47:54.044756+00:00",
+    "catalog": {
+      "ingredient_occurrences": 220,
+      "malformed_ingredient_payloads": 0,
+      "recipes": 16,
+      "unique_names": 107,
+      "unique_normalized_keys": 107
+    },
+    "counts": {
+      "fresh": 61,
+      "missing": 0,
+      "stale": 46
+    },
+    "previous_daily_public_coverage": 59
+  },
+  "warm_admission": {
+    "account": "930067562682",
+    "cluster": "cooking-cluster",
+    "image_digest": "sha256:038a87b7d571921b574f03b7e6cd25b1f36a75af5c30b440191b86e5314c51bb",
+    "log_group": "/ecs/cooking-backend",
+    "log_stream": "ecs/backend/5918840c426a4a66ab7777b40f16a041",
+    "marker": "PUBLIC_CACHE_WARM_ENQUEUED",
+    "payload_sha256": "5d2b85896ef3e80f0d0cf4f7a3e93b39c7be30c52f8ad55d990a519ad6960597",
+    "region": "us-east-1",
+    "report": {
+      "created": true,
+      "current": 0,
+      "job_force_refresh": false,
+      "job_id": "74680dca-95bb-4513-8504-4547a83ecc82",
+      "payload_query_count": 453,
+      "payload_unique_key_count": 453,
+      "public_keys_in_payload": 107,
+      "public_keys_omitted_from_payload": [],
+      "public_unique_key_count": 107,
+      "requested_force_refresh": false,
+      "schema_version": 1,
+      "state": "queued",
+      "total": 453
+    },
+    "service": "cooking-backend-service",
+    "task_definition": "arn:aws:ecs:us-east-1:930067562682:task-definition/cooking-backend:52",
+    "verification_task": "arn:aws:ecs:us-east-1:930067562682:task/cooking-cluster/5918840c426a4a66ab7777b40f16a041",
+    "worker_image_digest": "sha256:038a87b7d571921b574f03b7e6cd25b1f36a75af5c30b440191b86e5314c51bb",
+    "worker_task_definition": "arn:aws:ecs:us-east-1:930067562682:task-definition/cooking-store-worker:3"
+  },
+  "warm_completion": {
+    "image_digest": "sha256:038a87b7d571921b574f03b7e6cd25b1f36a75af5c30b440191b86e5314c51bb",
+    "log_group": "/ecs/cooking-backend",
+    "log_stream": "ecs/backend/4b2803dfbfea48469dd0e9aee0df6fc3",
+    "observation_task": "arn:aws:ecs:us-east-1:930067562682:task/cooking-cluster/4b2803dfbfea48469dd0e9aee0df6fc3",
+    "payload_sha256": "0a20f21a6d8d7e4c9b834d2450c1a08fa4907d74b1e29d43c277daaa818664f9",
+    "report": {
+      "cache_counts": {
+        "fresh": 107,
+        "missing": 0,
+        "stale": 0
+      },
+      "completion_reason": "all_public_keys_fresh",
+      "current": 453,
+      "error": null,
+      "final": true,
+      "job_id": "74680dca-95bb-4513-8504-4547a83ecc82",
+      "observed_at": "2026-10-20T18:19:48.377497+00:00",
+      "public_keys": 107,
+      "public_keys_omitted_from_payload": 0,
+      "sequence": 12,
+      "state": "succeeded",
+      "summary": {
+        "cache_hit": 407,
+        "cache_miss": 46,
+        "empty": 0,
+        "failed": 0,
+        "skipped": 0
+      },
+      "total": 453,
+      "transaction_read_only": true,
+      "updated_age_seconds": 17.583
+    },
+    "task_definition": "arn:aws:ecs:us-east-1:930067562682:task-definition/cooking-backend:52"
+  },
+  "cache_after": {
+    "account": "930067562682",
+    "cluster": "cooking-cluster",
+    "image_digest": "sha256:038a87b7d571921b574f03b7e6cd25b1f36a75af5c30b440191b86e5314c51bb",
+    "log_group": "/ecs/cooking-backend",
+    "log_stream": "ecs/backend/6a4782a8e7554037b3b528324342a8ff",
+    "marker": "PUBLIC_CACHE_AUDITED",
+    "payload_sha256": "96a02db0483b3be6bb7070b72f74cce23e392b6b049914b6bbd29970e66455f8",
+    "region": "us-east-1",
+    "report": {
+      "cache": {
+        "cache_version": "v7",
+        "counts_by_unique_public_key": {
+          "fresh": 107,
+          "missing": 0,
+          "stale": 0
+        },
+        "missing_public_names": [],
+        "public_entries": [
+          {
+            "age_seconds": 311.478,
+            "cache_query": "中筋面粉",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "中筋面粉"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:15:41.641167+00:00"
+          },
+          {
+            "age_seconds": 6722.267,
+            "cache_query": "五花肉",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "五花肉"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:28:50.852582+00:00"
+          },
+          {
+            "age_seconds": 6702.553,
+            "cache_query": "八角",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "八角"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:29:10.565941+00:00"
+          },
+          {
+            "age_seconds": 173.974,
+            "cache_query": "剁椒",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "剁椒"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:17:59.144993+00:00"
+          },
+          {
+            "age_seconds": 6682.432,
+            "cache_query": "十三香",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "十三香"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:29:30.687760+00:00"
+          },
+          {
+            "age_seconds": 486.062,
+            "cache_query": "味精",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "味精"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:12:47.057372+00:00"
+          },
+          {
+            "age_seconds": 146.769,
+            "cache_query": "咖喱块",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "咖喱块"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:18:26.350608+00:00"
+          },
+          {
+            "age_seconds": 6665.272,
+            "cache_query": "咸鸭蛋",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "咸鸭蛋"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:29:47.847283+00:00"
+          },
+          {
+            "age_seconds": 6642.781,
+            "cache_query": "土豆",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "土豆"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:30:10.338182+00:00"
+          },
+          {
+            "age_seconds": 6622.855,
+            "cache_query": "大白菜",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "大白菜"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:30:30.264260+00:00"
+          },
+          {
+            "age_seconds": 496.843,
+            "cache_query": "大葱",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "大葱"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:12:36.275958+00:00"
+          },
+          {
+            "age_seconds": 6606.245,
+            "cache_query": "大蒜",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "大蒜"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:30:46.874665+00:00"
+          },
+          {
+            "age_seconds": 6594.772,
+            "cache_query": "姜",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "姜"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:30:58.347740+00:00"
+          },
+          {
+            "age_seconds": 138.447,
+            "cache_query": "娃娃菜",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "娃娃菜"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:18:34.672067+00:00"
+          },
+          {
+            "age_seconds": 355.841,
+            "cache_query": "小米辣",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "小米辣"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:14:57.278300+00:00"
+          },
+          {
+            "age_seconds": 6566.173,
+            "cache_query": "小苏打",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "小苏打"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:31:26.946333+00:00"
+          },
+          {
+            "age_seconds": 6558.155,
+            "cache_query": "小葱",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "小葱"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:31:34.964712+00:00"
+          },
+          {
+            "age_seconds": 6529.648,
+            "cache_query": "干辣椒",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "干辣椒"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:32:03.471317+00:00"
+          },
+          {
+            "age_seconds": 6511.063,
+            "cache_query": "年糕",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "年糕"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:32:22.056066+00:00"
+          },
+          {
+            "age_seconds": 6493.261,
+            "cache_query": "排骨",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "排骨"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:32:39.858414+00:00"
+          },
+          {
+            "age_seconds": 6484.94,
+            "cache_query": "料酒",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "料酒"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:32:48.179283+00:00"
+          },
+          {
+            "age_seconds": 6443.841,
+            "cache_query": "柠檬",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "柠檬"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:33:29.278399+00:00"
+          },
+          {
+            "age_seconds": 292.881,
+            "cache_query": "梨",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "梨"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:16:00.238714+00:00"
+          },
+          {
+            "age_seconds": 246.653,
+            "cache_query": "植物油",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "植物油"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:16:46.466421+00:00"
+          },
+          {
+            "age_seconds": 300.975,
+            "cache_query": "水",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "水"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:15:52.144556+00:00"
+          },
+          {
+            "age_seconds": 384.16,
+            "cache_query": "油",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "油"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:14:28.959279+00:00"
+          },
+          {
+            "age_seconds": 6371.165,
+            "cache_query": "泡打粉",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "泡打粉"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:34:41.954580+00:00"
+          },
+          {
+            "age_seconds": 6350.339,
+            "cache_query": "洋葱",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "洋葱"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:35:02.779950+00:00"
+          },
+          {
+            "age_seconds": 6322.073,
+            "cache_query": "淀粉",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "淀粉"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:35:31.046815+00:00"
+          },
+          {
+            "age_seconds": 2563.268,
+            "cache_query": "火腿",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "火腿"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T17:38:09.851583+00:00"
+          },
+          {
+            "age_seconds": 101.179,
+            "cache_query": "熟芝麻",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "熟芝麻"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:19:11.940857+00:00"
+          },
+          {
+            "age_seconds": 110.567,
+            "cache_query": "熟花生米",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "熟花生米"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:19:02.552065+00:00"
+          },
+          {
+            "age_seconds": 2541.028,
+            "cache_query": "牛仔骨",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "牛仔骨"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T17:38:32.091408+00:00"
+          },
+          {
+            "age_seconds": 6305.271,
+            "cache_query": "牛奶",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "牛奶"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:35:47.848577+00:00"
+          },
+          {
+            "age_seconds": 420.742,
+            "cache_query": "牛肉汤",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "牛肉汤"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:13:52.377131+00:00"
+          },
+          {
+            "age_seconds": 412.469,
+            "cache_query": "牛肉粉",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "牛肉粉"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:14:00.650365+00:00"
+          },
+          {
+            "age_seconds": 6255.45,
+            "cache_query": "牛肋条",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "牛肋条"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:36:37.669418+00:00"
+          },
+          {
+            "age_seconds": 6236.444,
+            "cache_query": "牛腩",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "牛腩"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:36:56.675138+00:00"
+          },
+          {
+            "age_seconds": 201.872,
+            "cache_query": "猪肉末",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "猪肉末"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:17:31.247727+00:00"
+          },
+          {
+            "age_seconds": 6134.538,
+            "cache_query": "生姜",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "生姜"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:38:38.580947+00:00"
+          },
+          {
+            "age_seconds": 6125.845,
+            "cache_query": "生抽",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "生抽"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:38:47.274650+00:00"
+          },
+          {
+            "age_seconds": 230.079,
+            "cache_query": "生抽酱油",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "生抽酱油"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:17:03.040542+00:00"
+          },
+          {
+            "age_seconds": 6104.652,
+            "cache_query": "番茄",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "番茄"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:39:08.467310+00:00"
+          },
+          {
+            "age_seconds": 6096.273,
+            "cache_query": "白糖",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "白糖"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:39:16.846560+00:00"
+          },
+          {
+            "age_seconds": 6084.454,
+            "cache_query": "白胡椒粉",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "白胡椒粉"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:39:28.665222+00:00"
+          },
+          {
+            "age_seconds": 347.386,
+            "cache_query": "白芝麻",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "白芝麻"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:15:05.733182+00:00"
+          },
+          {
+            "age_seconds": 375.568,
+            "cache_query": "白芷",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "白芷"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:14:37.551803+00:00"
+          },
+          {
+            "age_seconds": 337.082,
+            "cache_query": "白醋",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "白醋"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:15:16.037677+00:00"
+          },
+          {
+            "age_seconds": 6067.969,
+            "cache_query": "皮蛋",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "皮蛋"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:39:45.150299+00:00"
+          },
+          {
+            "age_seconds": 6056.874,
+            "cache_query": "盐",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "盐"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:39:56.245616+00:00"
+          },
+          {
+            "age_seconds": 210.147,
+            "cache_query": "米",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "米"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:17:22.972697+00:00"
+          },
+          {
+            "age_seconds": 392.377,
+            "cache_query": "粉条",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "粉条"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:14:20.742016+00:00"
+          },
+          {
+            "age_seconds": 440.74,
+            "cache_query": "粗辣椒面",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "粗辣椒面"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:13:32.379203+00:00"
+          },
+          {
+            "age_seconds": 6000.668,
+            "cache_query": "糖",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "糖"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:40:52.451939+00:00"
+          },
+          {
+            "age_seconds": 5972.669,
+            "cache_query": "紫皮茄子",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "紫皮茄子"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:41:20.450141+00:00"
+          },
+          {
+            "age_seconds": 449.076,
+            "cache_query": "红洋葱",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "红洋葱"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:13:24.043150+00:00"
+          },
+          {
+            "age_seconds": 5953.858,
+            "cache_query": "红甜椒",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "红甜椒"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:41:39.261342+00:00"
+          },
+          {
+            "age_seconds": 5945.373,
+            "cache_query": "红糖",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "红糖"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:41:47.746793+00:00"
+          },
+          {
+            "age_seconds": 431.459,
+            "cache_query": "细辣椒粉",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "细辣椒粉"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:13:41.660369+00:00"
+          },
+          {
+            "age_seconds": 5875.264,
+            "cache_query": "老抽",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "老抽"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:42:57.855667+00:00"
+          },
+          {
+            "age_seconds": 5866.158,
+            "cache_query": "老豆腐",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "老豆腐"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:43:06.961905+00:00"
+          },
+          {
+            "age_seconds": 127.766,
+            "cache_query": "胡椒粉",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "胡椒粉"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:18:45.352970+00:00"
+          },
+          {
+            "age_seconds": 5857.649,
+            "cache_query": "胡萝卜",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "胡萝卜"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:43:15.470754+00:00"
+          },
+          {
+            "age_seconds": 320.843,
+            "cache_query": "芝麻香油",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "芝麻香油"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:15:32.276703+00:00"
+          },
+          {
+            "age_seconds": 328.879,
+            "cache_query": "花椒油",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "花椒油"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:15:24.240935+00:00"
+          },
+          {
+            "age_seconds": 5752.647,
+            "cache_query": "花椒粉",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "花椒粉"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:45:00.472852+00:00"
+          },
+          {
+            "age_seconds": 364.137,
+            "cache_query": "花椒粒",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "花椒粒"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:14:48.982544+00:00"
+          },
+          {
+            "age_seconds": 5722.661,
+            "cache_query": "芹菜",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "芹菜"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:45:30.458244+00:00"
+          },
+          {
+            "age_seconds": 403.881,
+            "cache_query": "苏子粉",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "苏子粉"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:14:09.237972+00:00"
+          },
+          {
+            "age_seconds": 5706.154,
+            "cache_query": "苹果",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "苹果"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:45:46.965226+00:00"
+          },
+          {
+            "age_seconds": 5684.631,
+            "cache_query": "草果",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "草果"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:46:08.488753+00:00"
+          },
+          {
+            "age_seconds": 273.472,
+            "cache_query": "萝卜",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "萝卜"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:16:19.647936+00:00"
+          },
+          {
+            "age_seconds": 5628.862,
+            "cache_query": "葱",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "葱"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:47:04.257121+00:00"
+          },
+          {
+            "age_seconds": 265.441,
+            "cache_query": "葱花",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "葱花"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:16:27.678259+00:00"
+          },
+          {
+            "age_seconds": 5620.578,
+            "cache_query": "蒜",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "蒜"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:47:12.541428+00:00"
+          },
+          {
+            "age_seconds": 458.268,
+            "cache_query": "虎皮辣椒",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "虎皮辣椒"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:13:14.851520+00:00"
+          },
+          {
+            "age_seconds": 5553.87,
+            "cache_query": "蚝油",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "蚝油"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:48:19.249882+00:00"
+          },
+          {
+            "age_seconds": 5497.152,
+            "cache_query": "西红柿",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "西红柿"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:49:15.967116+00:00"
+          },
+          {
+            "age_seconds": 5478.162,
+            "cache_query": "豆瓣酱",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "豆瓣酱"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:49:34.957924+00:00"
+          },
+          {
+            "age_seconds": 5420.865,
+            "cache_query": "豆豉",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "豆豉"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:50:32.254177+00:00"
+          },
+          {
+            "age_seconds": 5412.473,
+            "cache_query": "辣椒",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "辣椒"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:50:40.646559+00:00"
+          },
+          {
+            "age_seconds": 5383.771,
+            "cache_query": "辣椒面",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "辣椒面"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:51:09.348393+00:00"
+          },
+          {
+            "age_seconds": 5355.651,
+            "cache_query": "酱油",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "酱油"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:51:37.468885+00:00"
+          },
+          {
+            "age_seconds": 118.969,
+            "cache_query": "酸萝卜",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "酸萝卜"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:18:54.150076+00:00"
+          },
+          {
+            "age_seconds": 193.679,
+            "cache_query": "醋",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "醋"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:17:39.440139+00:00"
+          },
+          {
+            "age_seconds": 5255.052,
+            "cache_query": "面条",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "面条"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:53:18.067398+00:00"
+          },
+          {
+            "age_seconds": 284.738,
+            "cache_query": "韩式辣椒粉",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "韩式辣椒粉"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:16:08.381579+00:00"
+          },
+          {
+            "age_seconds": 5235.359,
+            "cache_query": "韩式辣酱",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "韩式辣酱"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:53:37.760844+00:00"
+          },
+          {
+            "age_seconds": 5215.767,
+            "cache_query": "食用油",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "食用油"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:53:57.352773+00:00"
+          },
+          {
+            "age_seconds": 238.353,
+            "cache_query": "食用盐",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "食用盐"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:16:54.765974+00:00"
+          },
+          {
+            "age_seconds": 182.081,
+            "cache_query": "香油",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "香油"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:17:51.038117+00:00"
+          },
+          {
+            "age_seconds": 5179.547,
+            "cache_query": "香茅",
+            "language": "zh",
+            "positive_product_count": 2,
+            "public_names": [
+              "香茅"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:54:33.571958+00:00"
+          },
+          {
+            "age_seconds": 5171.455,
+            "cache_query": "香菇",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "香菇"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:54:41.664713+00:00"
+          },
+          {
+            "age_seconds": 5161.166,
+            "cache_query": "香菜",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "香菜"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:54:51.953009+00:00"
+          },
+          {
+            "age_seconds": 154.875,
+            "cache_query": "香葱",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "香葱"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:18:18.244510+00:00"
+          },
+          {
+            "age_seconds": 91.076,
+            "cache_query": "香醋",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "香醋"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:19:22.043022+00:00"
+          },
+          {
+            "age_seconds": 257.166,
+            "cache_query": "马苏里拉奶酪",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "马苏里拉奶酪"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:16:35.953593+00:00"
+          },
+          {
+            "age_seconds": 477.767,
+            "cache_query": "高度白酒",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "高度白酒"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:12:55.352764+00:00"
+          },
+          {
+            "age_seconds": 505.075,
+            "cache_query": "鲜味生抽",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "鲜味生抽"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:12:28.044407+00:00"
+          },
+          {
+            "age_seconds": 165.666,
+            "cache_query": "鲜辣椒",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "鲜辣椒"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:18:07.453642+00:00"
+          },
+          {
+            "age_seconds": 469.074,
+            "cache_query": "鸡精",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "鸡精"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:13:04.045662+00:00"
+          },
+          {
+            "age_seconds": 5048.023,
+            "cache_query": "鸡胸肉",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "鸡胸肉"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:56:45.096408+00:00"
+          },
+          {
+            "age_seconds": 5037.338,
+            "cache_query": "鸡腿",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "鸡腿"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:56:55.781125+00:00"
+          },
+          {
+            "age_seconds": 220.371,
+            "cache_query": "鸡腿肉",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "鸡腿肉"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T18:17:12.748239+00:00"
+          },
+          {
+            "age_seconds": 5028.27,
+            "cache_query": "鸡蛋",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "鸡蛋"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:57:04.849124+00:00"
+          },
+          {
+            "age_seconds": 4991.972,
+            "cache_query": "黄瓜",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "黄瓜"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:57:41.147463+00:00"
+          },
+          {
+            "age_seconds": 4972.07,
+            "cache_query": "黄酒",
+            "language": "zh",
+            "positive_product_count": 3,
+            "public_names": [
+              "黄酒"
+            ],
+            "reason": "positive_current_version",
+            "status": "fresh",
+            "updated_at": "2026-10-20T16:58:01.049412+00:00"
+          }
+        ],
+        "reason_counts": {
+          "positive_current_version": 107
+        },
+        "stale_public_names": [],
+        "store": "weee",
+        "ttl_seconds": 86400
+      },
+      "observed_at": "2026-10-20T18:20:53.119440+00:00",
+      "public_catalog": {
+        "ingredient_occurrences": 220,
+        "malformed_ingredient_payloads": 0,
+        "recipes": 16,
+        "unique_names": 107,
+        "unique_normalized_keys": 107
+      },
+      "schedule": {
+        "name": "weee-warm",
+        "next_due": "2026-10-21T15:54:11.478037+00:00",
+        "seconds_until_due": 77598.359
+      },
+      "schema_version": 1,
+      "transaction_read_only": true,
+      "warm_jobs": {
+        "jobs": [
+          {
+            "age_seconds": 515.808,
+            "attempts": 0,
+            "created_at": "2026-10-20T18:12:17.310940+00:00",
+            "error": null,
+            "force_refresh": false,
+            "heartbeat_age_seconds": 82.339,
+            "id": "74680dca-95bb-4513-8504-4547a83ecc82",
+            "lease_until": null,
+            "payload_invalid_query_count": 0,
+            "payload_query_count": 453,
+            "payload_unique_key_count": 453,
+            "progress": {
+              "current": 453,
+              "last_public_key": null,
+              "last_status": "cache_hit",
+              "summary": {
+                "cache_hit": 407,
+                "cache_miss": 46,
+                "empty": 0,
+                "failed": 0,
+                "skipped": 0
+              },
+              "total": 453
+            },
+            "public_keys_in_payload": 107,
+            "public_keys_in_unprocessed_payload": 0,
+            "public_keys_omitted_from_payload": [],
+            "state": "succeeded",
+            "updated_age_seconds": 82.325,
+            "updated_at": "2026-10-20T18:19:30.794834+00:00"
+          },
+          {
+            "age_seconds": 8801.641,
+            "attempts": 0,
+            "created_at": "2026-10-20T15:54:11.478037+00:00",
+            "error": null,
+            "force_refresh": true,
+            "heartbeat_age_seconds": 4966.975,
+            "id": "eaf87840-656e-49f9-be05-3cbdc6163e4e",
+            "lease_until": null,
+            "payload_invalid_query_count": 0,
+            "payload_query_count": 405,
+            "payload_unique_key_count": 405,
+            "progress": {
+              "current": 405,
+              "last_public_key": null,
+              "last_status": "cache_miss",
+              "summary": {
+                "cache_hit": 0,
+                "cache_miss": 405,
+                "empty": 0,
+                "failed": 0,
+                "skipped": 0
+              },
+              "total": 405
+            },
+            "public_keys_in_payload": 59,
+            "public_keys_in_unprocessed_payload": 0,
+            "public_keys_omitted_from_payload": [
+              {
+                "cache_query": "中筋面粉",
+                "language": "zh",
+                "public_names": [
+                  "中筋面粉"
+                ]
+              },
+              {
+                "cache_query": "剁椒",
+                "language": "zh",
+                "public_names": [
+                  "剁椒"
+                ]
+              },
+              {
+                "cache_query": "味精",
+                "language": "zh",
+                "public_names": [
+                  "味精"
+                ]
+              },
+              {
+                "cache_query": "咖喱块",
+                "language": "zh",
+                "public_names": [
+                  "咖喱块"
+                ]
+              },
+              {
+                "cache_query": "大葱",
+                "language": "zh",
+                "public_names": [
+                  "大葱"
+                ]
+              },
+              {
+                "cache_query": "娃娃菜",
+                "language": "zh",
+                "public_names": [
+                  "娃娃菜"
+                ]
+              },
+              {
+                "cache_query": "小米辣",
+                "language": "zh",
+                "public_names": [
+                  "小米辣"
+                ]
+              },
+              {
+                "cache_query": "梨",
+                "language": "zh",
+                "public_names": [
+                  "梨"
+                ]
+              },
+              {
+                "cache_query": "植物油",
+                "language": "zh",
+                "public_names": [
+                  "植物油"
+                ]
+              },
+              {
+                "cache_query": "水",
+                "language": "zh",
+                "public_names": [
+                  "水"
+                ]
+              },
+              {
+                "cache_query": "油",
+                "language": "zh",
+                "public_names": [
+                  "油"
+                ]
+              },
+              {
+                "cache_query": "火腿",
+                "language": "zh",
+                "public_names": [
+                  "火腿"
+                ]
+              },
+              {
+                "cache_query": "熟芝麻",
+                "language": "zh",
+                "public_names": [
+                  "熟芝麻"
+                ]
+              },
+              {
+                "cache_query": "熟花生米",
+                "language": "zh",
+                "public_names": [
+                  "熟花生米"
+                ]
+              },
+              {
+                "cache_query": "牛仔骨",
+                "language": "zh",
+                "public_names": [
+                  "牛仔骨"
+                ]
+              },
+              {
+                "cache_query": "牛肉汤",
+                "language": "zh",
+                "public_names": [
+                  "牛肉汤"
+                ]
+              },
+              {
+                "cache_query": "牛肉粉",
+                "language": "zh",
+                "public_names": [
+                  "牛肉粉"
+                ]
+              },
+              {
+                "cache_query": "猪肉末",
+                "language": "zh",
+                "public_names": [
+                  "猪肉末"
+                ]
+              },
+              {
+                "cache_query": "生抽酱油",
+                "language": "zh",
+                "public_names": [
+                  "生抽酱油"
+                ]
+              },
+              {
+                "cache_query": "白芝麻",
+                "language": "zh",
+                "public_names": [
+                  "白芝麻"
+                ]
+              },
+              {
+                "cache_query": "白芷",
+                "language": "zh",
+                "public_names": [
+                  "白芷"
+                ]
+              },
+              {
+                "cache_query": "白醋",
+                "language": "zh",
+                "public_names": [
+                  "白醋"
+                ]
+              },
+              {
+                "cache_query": "米",
+                "language": "zh",
+                "public_names": [
+                  "米"
+                ]
+              },
+              {
+                "cache_query": "粉条",
+                "language": "zh",
+                "public_names": [
+                  "粉条"
+                ]
+              },
+              {
+                "cache_query": "粗辣椒面",
+                "language": "zh",
+                "public_names": [
+                  "粗辣椒面"
+                ]
+              },
+              {
+                "cache_query": "红洋葱",
+                "language": "zh",
+                "public_names": [
+                  "红洋葱"
+                ]
+              },
+              {
+                "cache_query": "细辣椒粉",
+                "language": "zh",
+                "public_names": [
+                  "细辣椒粉"
+                ]
+              },
+              {
+                "cache_query": "胡椒粉",
+                "language": "zh",
+                "public_names": [
+                  "胡椒粉"
+                ]
+              },
+              {
+                "cache_query": "芝麻香油",
+                "language": "zh",
+                "public_names": [
+                  "芝麻香油"
+                ]
+              },
+              {
+                "cache_query": "花椒油",
+                "language": "zh",
+                "public_names": [
+                  "花椒油"
+                ]
+              },
+              {
+                "cache_query": "花椒粒",
+                "language": "zh",
+                "public_names": [
+                  "花椒粒"
+                ]
+              },
+              {
+                "cache_query": "苏子粉",
+                "language": "zh",
+                "public_names": [
+                  "苏子粉"
+                ]
+              },
+              {
+                "cache_query": "萝卜",
+                "language": "zh",
+                "public_names": [
+                  "萝卜"
+                ]
+              },
+              {
+                "cache_query": "葱花",
+                "language": "zh",
+                "public_names": [
+                  "葱花"
+                ]
+              },
+              {
+                "cache_query": "虎皮辣椒",
+                "language": "zh",
+                "public_names": [
+                  "虎皮辣椒"
+                ]
+              },
+              {
+                "cache_query": "酸萝卜",
+                "language": "zh",
+                "public_names": [
+                  "酸萝卜"
+                ]
+              },
+              {
+                "cache_query": "醋",
+                "language": "zh",
+                "public_names": [
+                  "醋"
+                ]
+              },
+              {
+                "cache_query": "韩式辣椒粉",
+                "language": "zh",
+                "public_names": [
+                  "韩式辣椒粉"
+                ]
+              },
+              {
+                "cache_query": "食用盐",
+                "language": "zh",
+                "public_names": [
+                  "食用盐"
+                ]
+              },
+              {
+                "cache_query": "香油",
+                "language": "zh",
+                "public_names": [
+                  "香油"
+                ]
+              },
+              {
+                "cache_query": "香葱",
+                "language": "zh",
+                "public_names": [
+                  "香葱"
+                ]
+              },
+              {
+                "cache_query": "香醋",
+                "language": "zh",
+                "public_names": [
+                  "香醋"
+                ]
+              },
+              {
+                "cache_query": "马苏里拉奶酪",
+                "language": "zh",
+                "public_names": [
+                  "马苏里拉奶酪"
+                ]
+              },
+              {
+                "cache_query": "高度白酒",
+                "language": "zh",
+                "public_names": [
+                  "高度白酒"
+                ]
+              },
+              {
+                "cache_query": "鲜味生抽",
+                "language": "zh",
+                "public_names": [
+                  "鲜味生抽"
+                ]
+              },
+              {
+                "cache_query": "鲜辣椒",
+                "language": "zh",
+                "public_names": [
+                  "鲜辣椒"
+                ]
+              },
+              {
+                "cache_query": "鸡精",
+                "language": "zh",
+                "public_names": [
+                  "鸡精"
+                ]
+              },
+              {
+                "cache_query": "鸡腿肉",
+                "language": "zh",
+                "public_names": [
+                  "鸡腿肉"
+                ]
+              }
+            ],
+            "state": "succeeded",
+            "updated_age_seconds": 4963.155,
+            "updated_at": "2026-10-20T16:58:09.963954+00:00"
+          }
+        ],
+        "recent_days": 7,
+        "recent_since": "2026-10-13T18:20:53.119440+00:00",
+        "retained_warm_job_count": 2,
+        "selection": "all active, created/updated in recent window, and latest retained job"
+      }
+    },
+    "service": "cooking-backend-service",
+    "task_definition": "arn:aws:ecs:us-east-1:930067562682:task-definition/cooking-backend:52",
+    "verification_task": "arn:aws:ecs:us-east-1:930067562682:task/cooking-cluster/6a4782a8e7554037b3b528324342a8ff"
+  },
+  "validation": {
+    "backend_passed": 1779,
+    "backend_skipped": 6,
+    "release_image_passed": 74,
+    "web_passed": 992,
+    "shared_passed": 420,
+    "api_client_passed": 78,
+    "mobile_passed": 411,
+    "deploy_script_passed": 33,
+    "shopping_browser_passed": 12,
+    "web_typecheck": "passed",
+    "mobile_typecheck": "passed",
+    "fresh_backend_image_build": "passed",
+    "fresh_web_image_build": "passed",
+    "fresh_web_image_runtime": [
+      {
+        "route": "/",
+        "status": 200,
+        "html_bytes": 20580
+      },
+      {
+        "route": "/login",
+        "status": 200,
+        "html_bytes": 12588
+      },
+      {
+        "route": "/shopping-list",
+        "status": 200,
+        "html_bytes": 10884
+      }
+    ]
+  }
+}
