@@ -1,5 +1,5 @@
 {
-  "shopping.refineFallback": "Smart refinement is temporarily unavailable. You can still shop with your recipe quantities below, or retry refinement.",
+  "shopping.refineFallback": "Your shopping list uses the recipe quantities. Review any uncertain amounts, or retry smart estimates.",
   "shopping.retryRefine": "Retry refinement",
   "shopping.refineFailed": "Could not prepare your smart list. Please try again.",
   "shopping.basicList": "Grocery checklist",

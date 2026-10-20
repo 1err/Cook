@@ -1,6 +1,7 @@
 """
 Shopping list aggregation and refine routes. All require auth.
 """
+from contextlib import asynccontextmanager
 from datetime import date
 from typing import Literal
 
@@ -14,7 +15,7 @@ from app.db import repo_mealplan, repo_recipes
 from app.db.models import UserModel
 from app.db.session import get_session
 from app.models import ShoppingListItem
-from app.refine import refine_shopping_list
+from app.refine import deterministic_shopping_list, refine_shopping_list
 from app.services.shopping_service import aggregate_ingredients, preferred_shopping_quantity
 
 router = APIRouter(tags=["shopping"])
@@ -81,14 +82,27 @@ async def shopping_list(
     return aggregate_ingredients(all_ingredients, for_purchase=True, include_sources=True)
 
 
-@router.post("/shopping-list/refine", response_model=RefineResponse, dependencies=[Depends(enforce_ai_budget)])
+@router.post("/shopping-list/refine", response_model=RefineResponse)
 async def shopping_list_refine(
     body: RefineRequest,
+    session: AsyncSession = Depends(get_session),
     _user: UserModel = Depends(get_current_user),
 ):
     """Group recipe ingredient entries into purchase quantities. Stateless."""
     raw = [{"name": i.name, "quantity": i.quantity} for i in body.items]
-    result = await refine_shopping_list(raw)
+    result = deterministic_shopping_list(raw)
+    if result["refinement_status"] == "refined":
+        await session.close()
+    else:
+        try:
+            # Local shopping never consumes AI allowance. Optional enhancement
+            # retains the same admission, lease and cost-accounting boundaries.
+            async with asynccontextmanager(enforce_ai_budget)(session, _user):
+                result = await refine_shopping_list(raw)
+        except HTTPException as exc:
+            if exc.status_code not in {429, 503}:
+                raise
+            await session.close()
     return RefineResponse(
         remove=[],
         likely_pantry=[],

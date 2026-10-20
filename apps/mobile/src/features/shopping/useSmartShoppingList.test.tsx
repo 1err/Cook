@@ -299,7 +299,7 @@ test("prepares the list from original recipe quantities rather than combined dis
 
 test("legacy compiled quantities stay visible and checked while offering refresh", async () => {
   mockReadSmartList.mockResolvedValue({
-    data: { ...REFINED, _quantityVersion: 1 },
+    data: { ...REFINED, _quantityVersion: 2 },
     hidden: new Set(), checked: new Set([0]), plannerFingerprint: null,
   });
   const { result } = await renderReady();

@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { RefineResult } from "@cooking/api-client";
+import { SHOPPING_QUANTITY_VERSION } from "@cooking/shared";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import ShoppingListPage from "./page";
 
@@ -313,6 +314,7 @@ test("smart groceries retain checked-item filtering and clipboard failure recove
 test("a malformed refreshed list cannot replace the current checklist", async () => {
   storage.setItem("smartShoppingList:2026-08-10", JSON.stringify({
     remove: [], likely_pantry: [], refinement_status: "fallback",
+    _quantityVersion: SHOPPING_QUANTITY_VERSION,
     purchase_items: [{ name: "Rice", suggested_purchase: "2 cups" }],
   }));
   const original = mockApiFetch.getMockImplementation()!;
@@ -333,6 +335,7 @@ test("an unchanged fallback retry retains Weee product and cart progress", async
   const token = JSON.stringify(["rice", url]);
   storage.setItem("smartShoppingList:2026-08-10", JSON.stringify({
     remove: [], likely_pantry: [], refinement_status: "fallback",
+    _quantityVersion: SHOPPING_QUANTITY_VERSION,
     purchase_items: rawItems.map(item => ({ name: item.name, suggested_purchase: item.total_quantity })),
   }));
   storage.setItem("smartShoppingProducts:2026-08-10:weee", JSON.stringify({
@@ -405,6 +408,7 @@ test("partial refinement remains usable without an outage warning after reload",
 test("refinement leaves changed quantities unchecked while preserving unchanged progress", async () => {
   storage.setItem("smartShoppingList:2026-08-10", JSON.stringify({
     remove: [], likely_pantry: [], refinement_status: "fallback",
+    _quantityVersion: SHOPPING_QUANTITY_VERSION,
     purchase_items: rawItems.map(item => ({ name: item.name, suggested_purchase: item.total_quantity })),
     _ui: { checked: [0, 1] },
   }));

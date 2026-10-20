@@ -9,7 +9,9 @@ from fractions import Fraction
 from typing import Any
 
 from app.core.llm import complete_chat, get_openai_client
+from app.services.shopping_categories import grocery_category
 from app.services.shopping_service import (
+    _COUNT_UNITS,
     _explicit_purchase_mass,
     _format_number,
     _normalize_text,
@@ -320,6 +322,7 @@ _CONSOLIDATED_QUANTITY_RE = re.compile(
 )
 _VAGUE_QUANTITIES = {"适量", "少许", "按需", "几颗", "as needed", "to taste", "a little"}
 _VAGUE_ALIASES = _VAGUE_QUANTITIES | {"若干", "少量", "几瓣", "some"}
+_LOCAL_PORTION_UNITS = _COUNT_UNITS | {"瓣", "段", "小段", "小块", "勺", "平勺", "滴"}
 
 
 def _sources_are_vague(sources: list[dict[str, str]]) -> bool:
@@ -502,7 +505,47 @@ def _valid_group_quantity(value: Any, sources: list[dict[str, str]]) -> bool:
     source_has_range = any(re.search(r"\d\s*(?:-|–|—|~|至|到|to)\s*\d", item["quantity"], re.I) for item in sources)
     if source_has_range and match["upper"] is None and not _APPROXIMATE_RE.search(value):
         return False
+    bounds = _measure_bounds(value)
+    if (bounds is not None and bounds[2].startswith("unit:") and bounds[2] != "unit:"
+            and bounds[2][5:] not in _LOCAL_PORTION_UNITS):
+        # Echoing an unsupported measure does not make that measure understood.
+        return False
     return _consistent_group_quantity(value, sources)
+
+
+def deterministic_shopping_list(items: list[dict[str, str]]) -> dict[str, Any]:
+    """Resolve known identities and quantities before optional model enhancement."""
+    items = _prepare_source_items(items)
+    groups = aggregate_ingredients(
+        [(item["name"], item["quantity"]) for item in items],
+        for_purchase=True,
+        include_sources=True,
+    )
+    output = []
+    resolved = True
+    for group in groups:
+        members = [{"name": source.name, "quantity": source.quantity}
+                   for source in group.source_items or []]
+        for row in _recover_group_quantities(members):
+            quantity = _normalize_vague_quantity(row["quantity"], members)
+            if any(not member["quantity"].strip() for member in members):
+                missing = "用量未注明" if _contains_cjk(row["name"]) else "amount unspecified"
+                quantity = " + ".join(filter(None, [quantity, missing]))
+            category = grocery_category(row["name"])
+            bounds = _measure_bounds(quantity)
+            if (category == "Other" or not _valid_group_quantity(quantity, members)
+                    or (bounds is not None and bounds[2].startswith("unit:")
+                        and bounds[2][5:] not in _LOCAL_PORTION_UNITS)):
+                resolved = False
+            output.append({
+                "name": row["name"],
+                "suggested_purchase": quantity or row["name"],
+                "grocery_category": category,
+            })
+    return {
+        "purchase_items": output,
+        "refinement_status": "refined" if resolved else "partial",
+    }
 
 
 def _parse_llm_refine_response(raw: str, items: list[dict[str, str]]) -> dict[str, Any]:
@@ -584,6 +627,14 @@ def _parse_llm_refine_response(raw: str, items: list[dict[str, str]]) -> dict[st
             _log_refinement_result("invalid_category", len(sources), group_count)
         category = _normalize_grocery_category(category if isinstance(category, str) else None)
         position = min(order_by_id[item["source_id"]] for item in members)
+        if any(not member["quantity"].strip() for member in members):
+            # A blank contribution is unknown, not zero or an explicit to-taste
+            # amount. Neither a model total nor local arithmetic may erase it.
+            used_fallback = True
+            for row in deterministic_shopping_list(members)["purchase_items"]:
+                output.append((position, row))
+            _log_refinement_result("quantity_missing", len(sources), group_count)
+            continue
         if _has_distinct_onion_varieties(members):
             for row in _aggregate_input_items(members):
                 original_members = [source for source in members if source["name"].casefold() == row["name"].casefold()]
@@ -631,15 +682,19 @@ def _parse_llm_refine_response(raw: str, items: list[dict[str, str]]) -> dict[st
 
 
 async def refine_shopping_list(items: list[dict[str, str]]) -> dict[str, Any]:
-    """Return source-checked ingredient groups and concise model quantity totals."""
+    """Resolve grocery totals locally; enhance only unresolved lists with the model."""
     items = _prepare_source_items(items)
     if not items:
         return {"purchase_items": [], "refinement_status": "refined"}
 
+    deterministic = deterministic_shopping_list(items)
+    if deterministic["refinement_status"] == "refined":
+        _log_refinement_result("deterministic_complete", len(items), len(deterministic["purchase_items"]))
+        return deterministic
     client = get_openai_client()
     if client is None:
-        logger.info("OPENAI_API_KEY not set; returning fallback refine.")
-        return _fallback_result(_aggregate_input_items(items))
+        _log_refinement_result("deterministic_partial", len(items), len(deterministic["purchase_items"]))
+        return deterministic
 
     try:
         raw = await complete_chat(
@@ -653,6 +708,7 @@ async def refine_shopping_list(items: list[dict[str, str]]) -> dict[str, Any]:
         )
     except Exception as e:
         logger.warning("Shopping refinement using normalized ingredients error_type=%s", type(e).__name__)
-        return _fallback_result(_aggregate_input_items(items))
+        return deterministic
 
-    return _parse_llm_refine_response(raw, items)
+    enhanced = _parse_llm_refine_response(raw, items)
+    return deterministic if enhanced["refinement_status"] == "fallback" else enhanced

@@ -1,6 +1,6 @@
 import type { ShoppingListItem, ShoppingSourceItem } from "./types";
 
-export const SHOPPING_QUANTITY_VERSION = 2;
+export const SHOPPING_QUANTITY_VERSION = 3;
 
 /** Preserve recipe contributions; the displayed total must not be counted again. */
 export function shoppingRefineInputs(items: ShoppingListItem[]): ShoppingSourceItem[] {

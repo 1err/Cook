@@ -35,7 +35,7 @@ async def test_refine_fallback_merges_aliases_without_losing_measured_amounts(mo
         {"name": "生抽", "quantity": "适量"},
     ])
     assert result["purchase_items"] == [{
-        "name": "生抽", "suggested_purchase": "约 35 g", "grocery_category": "Other",
+        "name": "生抽", "suggested_purchase": "约 35 g", "grocery_category": "Pantry & Dry Goods",
     }]
     assert normalize_purchase_quantity("鲜味生抽", "20 g; 1 汤匙") == "约 35 g"
 

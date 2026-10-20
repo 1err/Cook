@@ -47,7 +47,7 @@ async def test_provider_failure_preserves_normalized_totals_without_logging_inpu
 
 
 @pytest.mark.asyncio
-async def test_legacy_response_cannot_replace_original_amounts_without_source_ids(monkeypatch):
+async def test_known_totals_do_not_need_legacy_model_renaming(monkeypatch):
     monkeypatch.setattr(refine, "get_openai_client", object)
     complete = AsyncMock(return_value=json.dumps({"purchase_items": [
         {"source_name": "Sugar", "name": "Granulated sugar", "suggested_purchase": "1 kg bag", "grocery_category": "Pantry & Dry Goods"},
@@ -57,15 +57,9 @@ async def test_legacy_response_cannot_replace_original_amounts_without_source_id
 
     result = by_name(await refine.refine_shopping_list(INGREDIENTS))
 
-    messages = complete.await_args.kwargs["messages"]
-    payload = json.loads(messages[1]["content"].split("Input ingredients JSON:\n", 1)[1])
-    assert [(item["source_id"], item["name"], item["quantity"]) for item in payload] == [
-        ("ingredient-1", "Sugar", "12 g"), ("ingredient-2", "sugar", "3 g"),
-        ("ingredient-3", "盐", "适量"), ("ingredient-4", "盐", "适量"),
-        ("ingredient-5", "食用盐", "适量"),
-    ]
-    assert result["granulated sugar"]["suggested_purchase"] == "15 g"
-    assert result["granulated sugar"]["grocery_category"] == "Pantry & Dry Goods"
+    complete.assert_not_awaited()
+    assert result["sugar"]["suggested_purchase"] == "15 g"
+    assert result["sugar"]["grocery_category"] == "Pantry & Dry Goods"
     assert result["盐"]["suggested_purchase"] == "适量"
 
 
@@ -150,7 +144,8 @@ async def test_name_cleanup_cannot_hide_distinct_ingredients_behind_duplicate_na
     assert set(names) == {item["name"] for item in items}
     for item in items:
         assert names[item["name"]]["suggested_purchase"] == item["quantity"]
-        assert names[item["name"]]["grocery_category"] == "Pantry & Dry Goods"
+        assert names[item["name"]]["grocery_category"] == "Other"
+    assert result["refinement_status"] == "partial"
 
 
 @pytest.mark.parametrize("source_name", ["oil (sesame)", "oil", "oil（sesame）"])

@@ -229,7 +229,7 @@ test("recovers from refinement admission failure without losing checklist progre
   });
 
   await page.getByRole("button", { name: "Prepare smart shopping list" }).click();
-  const fallbackNotice = page.getByText("Smart refinement is temporarily unavailable. You can still shop with your recipe quantities below, or retry refinement.", { exact: true });
+  const fallbackNotice = page.getByText("Your shopping list uses the recipe quantities. Review any uncertain amounts, or retry smart estimates.", { exact: true });
   await expect(fallbackNotice).toBeVisible();
   await expect(page.getByRole("checkbox")).toHaveCount(shoppingItems.length);
   for (const item of shoppingItems) {

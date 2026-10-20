@@ -8,10 +8,10 @@ from app import refine
 async def test_legacy_response_preserves_total_while_model_receives_original_amounts(monkeypatch):
     monkeypatch.setattr(refine, "get_openai_client", lambda: object())
     complete = AsyncMock(return_value=json.dumps({"purchase_items": [{
-        "name": "Milk", "suggested_purchase": "1 bottle", "grocery_category": "Dairy",
+        "name": "Specialty milk", "suggested_purchase": "1 bottle", "grocery_category": "Dairy",
     }]}))
     monkeypatch.setattr(refine, "complete_chat", complete)
-    result = await refine.refine_shopping_list([{"name": "Milk", "quantity": "100 ml, 0.5 l"}])
+    result = await refine.refine_shopping_list([{"name": "Specialty milk", "quantity": "100 ml, 0.5 l"}])
     assert result["purchase_items"][0]["suggested_purchase"] == "600 ml"
     assert '"quantity": "100 ml, 0.5 l"' in complete.call_args.kwargs["messages"][1]["content"]
 
@@ -23,14 +23,14 @@ async def test_provider_failure_still_returns_consolidated_quantities(monkeypatc
     assert result["purchase_items"][0]["suggested_purchase"] == "600 ml"
 
 @pytest.mark.asyncio
-async def test_screenshot_estimates_survive_successful_renaming(monkeypatch):
+async def test_screenshot_estimates_keep_known_name_without_model_renaming(monkeypatch):
     monkeypatch.setattr(refine, "get_openai_client", object)
     monkeypatch.setattr(refine, "complete_chat", AsyncMock(return_value=json.dumps({"purchase_items": [
         {"source_name": "盐", "name": "食盐", "suggested_purchase": "1 jar", "grocery_category": "Pantry & Dry Goods"}
     ]})))
     result = await refine.refine_shopping_list([{"name": "盐", "quantity": "1 茶勺; 7 g; 少许; 适量"}])
     assert result["purchase_items"][0]["suggested_purchase"] == "约 13 g"
-    assert result["purchase_items"][0]["name"] == "食盐"
+    assert result["purchase_items"][0]["name"] == "盐"
 
 @pytest.mark.asyncio
 async def test_missing_flour_unit_remains_visible_in_provider_fallback(monkeypatch):

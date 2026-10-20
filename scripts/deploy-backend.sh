@@ -7,6 +7,8 @@
 # only after ECR confirms this committed SHA's tag has that exact sha256 digest.
 # Optional TASK_ENV_OVERRIDES_FILE is a private JSON object of env names/string
 # values merged into the selected container in the same revision as the image.
+# DEPLOY_ROLE=store-worker deploys the same committed image to the existing
+# durable worker while preserving its command and health check.
 set -euo pipefail
 umask 077
 
@@ -20,6 +22,12 @@ cd "$REPO_ROOT"
 DIRTY=$(git status --porcelain --untracked-files=all -- backend scripts/deploy-backend.sh .dockerignore .gitignore)
 [ -z "$DIRTY" ] || fail "Backend or release inputs have uncommitted changes. Commit the intended release in an isolated checkout before deploying."
 PREBUILT_IMAGE_DIGEST="${PREBUILT_IMAGE_DIGEST:-}"
+DEPLOY_ROLE="${DEPLOY_ROLE:-api}"
+case "$DEPLOY_ROLE" in
+  api) DEFAULT_SERVICE="cooking-backend-service" ;;
+  store-worker) DEFAULT_SERVICE="cooking-store-worker-service" ;;
+  *) fail "DEPLOY_ROLE must be api or store-worker" ;;
+esac
 if [ -n "$PREBUILT_IMAGE_DIGEST" ]; then
   [[ "$PREBUILT_IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]] || fail "PREBUILT_IMAGE_DIGEST must be a full lowercase sha256 digest"
 fi
@@ -35,7 +43,7 @@ ACCOUNT="${ACCOUNT:-$(aws sts get-caller-identity --query Account --output text)
 [[ "$ACCOUNT" =~ ^[0-9]{12}$ ]] || fail "ACCOUNT must be a 12-digit AWS account ID"
 REPO_NAME="${REPO_NAME:-cooking-backend}"
 CLUSTER="${CLUSTER:-cooking-cluster}"
-SERVICE="${SERVICE:-cooking-backend-service}"
+SERVICE="${SERVICE:-$DEFAULT_SERVICE}"
 API_BASE="${API_BASE:-https://api.chef-world.com}"
 PROBE_PATH="${PROBE_PATH:-/users/search?email=preflight@example.com}"
 REPO="$ACCOUNT.dkr.ecr.$REGION.amazonaws.com/$REPO_NAME"
@@ -78,6 +86,17 @@ if [ -z "${CONTAINER_NAME:-}" ]; then
   ' "$RELEASE_TMP/current-task.json")
 fi
 jq -e --arg name "$CONTAINER_NAME" '[.taskDefinition.containerDefinitions[] | select(.name == $name)] | length == 1' "$RELEASE_TMP/current-task.json" >/dev/null || fail "CONTAINER_NAME must identify exactly one task container"
+if [ "$DEPLOY_ROLE" = "store-worker" ]; then
+  jq -e --arg name "$CONTAINER_NAME" '
+    .taskDefinition.containerDefinitions[] | select(.name == $name) |
+    .command == ["python", "-m", "app.jobs.worker"]
+  ' "$RELEASE_TMP/current-task.json" >/dev/null || fail "Worker release requires an existing durable worker task"
+else
+  jq -e --arg name "$CONTAINER_NAME" '
+    .taskDefinition.containerDefinitions[] | select(.name == $name) |
+    .command != ["python", "-m", "app.jobs.worker"]
+  ' "$RELEASE_TMP/current-task.json" >/dev/null || fail "Use DEPLOY_ROLE=store-worker for a durable worker task"
+fi
 jq -e --arg name "$CONTAINER_NAME" --slurpfile overrides "$RELEASE_TMP/task-env-overrides.json" '
   $overrides[0] as $env |
   [.taskDefinition.containerDefinitions[] | select(.name == $name) |
@@ -125,16 +144,18 @@ assert_service_unchanged() {
   jq -e --arg task "$OLD_TASK" '(.failures | length) == 0 and (.services | length) == 1 and .services[0].taskDefinition == $task' "$RELEASE_TMP/pre-update-service.json" >/dev/null || fail "Service changed during the build; rerun from its current task definition"
 }
 assert_service_unchanged
-jq --arg name "$CONTAINER_NAME" --arg image "$IMAGE" --slurpfile overrides "$RELEASE_TMP/task-env-overrides.json" '
+jq --arg name "$CONTAINER_NAME" --arg image "$IMAGE" --arg role "$DEPLOY_ROLE" --slurpfile overrides "$RELEASE_TMP/task-env-overrides.json" '
   $overrides[0] as $env |
   .tags as $tags | .taskDefinition |
   del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt) |
   (.containerDefinitions[] | select(.name == $name)) |= (
     .image = $image |
+    if $role == "api" then
     .command = ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"] |
     # ECS ignores image-only health checks. Readiness belongs to the load
     # balancer; a shared database outage must not restart every API container.
-    .healthCheck = {command: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/health\", timeout=4)"], interval: 30, timeout: 5, retries: 3, startPeriod: 60} |
+    .healthCheck = {command: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/health\", timeout=4)"], interval: 30, timeout: 5, retries: 3, startPeriod: 60}
+    else . end |
     .stopTimeout = 120 |
     if ($env | length) > 0 then
       (.environment // []) as $existing |
@@ -154,7 +175,7 @@ assert_service_unchanged
 # subnets. A missing/invalid value fails the migration before service update.
 # Use the exact immutable API revision, including its environment and secrets.
 # Network values and overrides stay in private files rather than command output.
-echo "==> running the release migration before changing the API service"
+echo "==> running the release migration before changing $SERVICE"
 jq --arg cluster "$CLUSTER" --arg task "$NEW_TASK" --arg name "$CONTAINER_NAME" '
   .services[0] as $service |
   {cluster: $cluster, taskDefinition: $task, count: 1,

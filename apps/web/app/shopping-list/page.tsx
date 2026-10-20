@@ -422,6 +422,8 @@ function ShoppingListPageContent() {
     [weekDates, mealPlans]
   );
   const activeRefinedData = smartWeekStart === start ? refinedData : null;
+  const hasCurrentRefinementFallback = activeRefinedData?.refinement_status === "fallback"
+    && activeRefinedData._quantityVersion === SHOPPING_QUANTITY_VERSION;
   const activeSavedPlannerFingerprint = smartWeekStart === start ? savedPlannerFingerprint : null;
   const smartProgressRef = useRef({ data: activeRefinedData, hidden: smartHidden, checked: smartChecked });
   smartProgressRef.current = { data: activeRefinedData, hidden: smartHidden, checked: smartChecked };
@@ -1221,7 +1223,7 @@ function ShoppingListPageContent() {
           itemCount={smartItemCount}
           totalCount={visiblePurchaseItems.length}
           stale={smartListStale || activeRefinedData._quantityVersion !== SHOPPING_QUANTITY_VERSION}
-          fallback={activeRefinedData.refinement_status === "fallback"}
+          fallback={hasCurrentRefinementFallback}
           refining={refining}
           copied={copied}
           bulkLoading={bulkLoadingProducts}
@@ -1244,7 +1246,7 @@ function ShoppingListPageContent() {
       >
         <div className={styles.listColumn}>
       {activeRefinedData && refineError ? <p className={styles.error} role="alert">{refineError}</p> : null}
-      {activeRefinedData?.refinement_status === "fallback" ? <p role="status">{t("shopping.refineFallback")}</p> : null}
+      {hasCurrentRefinementFallback ? <p role="status">{t("shopping.refineFallback")}</p> : null}
       {copyError ? <p className={styles.error} role="alert">{copyError}</p> : null}
       {previewUnavailable ? <p role="status">{t("shopping.previewUnavailable")}</p> : null}
       {!hasPlannedMeals && items.length === 0 ? (
@@ -1300,7 +1302,7 @@ function ShoppingListPageContent() {
             stale={smartListStale || activeRefinedData._quantityVersion !== SHOPPING_QUANTITY_VERSION}
             refreshing={refining}
             refreshError={refineError}
-            refinementFallback={activeRefinedData.refinement_status === "fallback"}
+            refinementFallback={hasCurrentRefinementFallback}
             onRefresh={() => void handlePrepareSmartList()}
             onClose={() => setMuseDialogOpen(false)}
           />

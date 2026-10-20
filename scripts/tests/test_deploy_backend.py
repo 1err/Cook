@@ -168,6 +168,48 @@ class DeploySafetyTests(unittest.TestCase):
         result = self.deploy(ASSERT_ARCHIVE_MODES="1")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_worker_release_preserves_worker_command_and_health_check(self):
+        backend, _, _ = self.task_with_environment()
+        fixture_path = self.root / "task-fixture.json"
+        fixture = json.loads(fixture_path.read_text())
+        worker = fixture["taskDefinition"]["containerDefinitions"][0]
+        worker["command"] = ["python", "-m", "app.jobs.worker"]
+        worker["healthCheck"] = {
+            "command": ["CMD", "python", "-c", "print('worker health')"],
+            "interval": 30, "timeout": 15, "retries": 3, "startPeriod": 60,
+        }
+        fixture_path.write_text(json.dumps(fixture))
+        result = self.deploy(DEPLOY_ROLE="store-worker", PREBUILT_IMAGE_DIGEST=DIGEST)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        registered = json.loads((self.root / "registered.json").read_text())
+        actual = registered["containerDefinitions"][0]
+        self.assertEqual(actual["command"], worker["command"])
+        self.assertEqual(actual["healthCheck"], worker["healthCheck"])
+        self.assertEqual(actual["environment"], backend["environment"])
+        self.assertEqual(actual["image"], "123456789012.dkr.ecr.us-east-1.amazonaws.com/cooking-backend@" + DIGEST)
+        updates = [call for call in self.calls() if call[1:3] == ["ecs", "update-service"]]
+        self.assertEqual(updates[0][updates[0].index("--service") + 1], "cooking-store-worker-service")
+
+    def test_worker_release_rejects_api_task_before_registration(self):
+        result = self.deploy(DEPLOY_ROLE="store-worker", PREBUILT_IMAGE_DIGEST=DIGEST)
+        self.assertNotEqual(result.returncode, 0)
+        self.assert_no_build_or_registration()
+
+    def test_api_release_rejects_worker_task_before_registration(self):
+        self.task_with_environment()
+        fixture_path = self.root / "task-fixture.json"
+        fixture = json.loads(fixture_path.read_text())
+        fixture["taskDefinition"]["containerDefinitions"][0]["command"] = ["python", "-m", "app.jobs.worker"]
+        fixture_path.write_text(json.dumps(fixture))
+        result = self.deploy(SERVICE="cooking-store-worker-service", PREBUILT_IMAGE_DIGEST=DIGEST)
+        self.assertNotEqual(result.returncode, 0)
+        self.assert_no_build_or_registration()
+
+    def test_unknown_release_role_fails_before_cloud_mutation(self):
+        result = self.deploy(DEPLOY_ROLE="typo")
+        self.assertNotEqual(result.returncode, 0)
+        self.assert_no_build_or_registration()
+
     def test_migration_uses_new_revision_private_network_and_precedes_update(self):
         result = self.deploy()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

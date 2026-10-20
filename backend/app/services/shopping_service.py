@@ -307,6 +307,7 @@ def aggregate_quantities(quantities: list[str]) -> str:
 # stay separate; this is not substring or model-based ingredient matching.
 _PURCHASE_NAME_ALIASES = {
     "蒜": "大蒜", "姜": "生姜",
+    "西红柿": "番茄",
     "食用盐": "盐",
     "生抽酱油": "生抽", "鲜味生抽": "生抽",
     "老抽酱油": "老抽",

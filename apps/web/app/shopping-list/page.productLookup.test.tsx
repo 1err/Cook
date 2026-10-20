@@ -190,7 +190,26 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test.each([undefined, 1])("offers to refresh legacy quantities without discarding shopping progress (version %s)", async (version) => {
+test("an old fallback offers a fresh calculation without claiming the service is still unavailable", async () => {
+  const storage = stubSessionStorage();
+  storage.set("smartShoppingList:2026-08-10", JSON.stringify({
+    remove: [], likely_pantry: [], refinement_status: "fallback", _quantityVersion: 2,
+    purchase_items: [{ name: "盐", suggested_purchase: "13 g; 5–10 g", category: "Other" }],
+    _ui: { hidden: [], checked: [0] },
+  }));
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/shopping-list?")) return Promise.resolve(jsonResponse([{ name: "盐", total_quantity: "13 g; 5–10 g" }]));
+    if (path.startsWith("/meal-plan?") || path === "/recipes") return Promise.resolve(jsonResponse([]));
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  render(<ShoppingListPage />);
+  expect(await screen.findByRole("checkbox")).toBeChecked();
+  expect(screen.queryByText("shopping.refineFallback")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "shopping.refreshSmartList" })).toBeEnabled();
+  expect(mockApiFetch.mock.calls.some(([path]) => path === "/shopping-list/refine")).toBe(false);
+});
+
+test.each([undefined, 1, 2])("offers to refresh legacy quantities without discarding shopping progress (version %s)", async (version) => {
   const storage = stubSessionStorage();
   storage.set("smartShoppingList:2026-08-10", JSON.stringify({
     remove: [], likely_pantry: [],

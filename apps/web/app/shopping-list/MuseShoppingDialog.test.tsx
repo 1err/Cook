@@ -400,7 +400,7 @@ test("closes on Escape and returns focus to the opener", async () => {
 test("shows fallback refinement inside the dialog while keeping recipe quantities usable", () => {
   const onRefresh = vi.fn();
   const view = setup({ refinementFallback: true, onRefresh });
-  expect(screen.getByRole("status")).toHaveTextContent("Smart refinement is temporarily unavailable");
+  expect(screen.getByRole("status")).toHaveTextContent("Your shopping list uses the recipe quantities");
   expect(confirmButton()).toBeEnabled();
   fireEvent.click(screen.getByRole("button", { name: "Retry refinement" }));
   expect(onRefresh).toHaveBeenCalledTimes(1);

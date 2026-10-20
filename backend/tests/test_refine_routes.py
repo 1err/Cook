@@ -43,16 +43,22 @@ def refinement_app(monkeypatch):
     return app, provider, session
 
 
-async def post_refine(app):
+async def post_refine(app, *, unresolved=False):
+    items = [
+        {"name": "食用盐", "quantity": "1 茶匙"},
+        {"name": "盐", "quantity": "7 g"},
+    ]
+    if unresolved:
+        items.extend([
+            {"name": "胡萝卜", "quantity": "200 g"},
+            {"name": "胡萝卜", "quantity": "1 小段"},
+        ])
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-        return await client.post("/shopping-list/refine", json={"items": [
-            {"name": "食用盐", "quantity": "1 茶匙"},
-            {"name": "盐", "quantity": "7 g"},
-        ]})
+        return await client.post("/shopping-list/refine", json={"items": items})
 
 
 @pytest.mark.asyncio
-async def test_refine_route_accepts_complete_source_group_and_consolidated_model_quantity(refinement_app):
+async def test_refine_route_consolidates_known_totals_without_provider_work(refinement_app):
     app, provider, session = refinement_app
     response = await post_refine(app)
 
@@ -61,14 +67,33 @@ async def test_refine_route_accepts_complete_source_group_and_consolidated_model
         "refinement_status": "refined", "remove": [], "likely_pantry": [],
         "purchase_items": [{"name": "盐", "suggested_purchase": "约 13 g", "category": "Pantry & Dry Goods"}],
     }
-    provider.assert_awaited_once()
+    provider.assert_not_awaited()
     session.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_refine_route_retains_bounded_provider_enhancement_for_unresolved_portions(refinement_app):
+    app, provider, _ = refinement_app
+    provider.return_value = completion(json.dumps({"purchase_items": [
+        {"source_ids": ["ingredient-1", "ingredient-2"], "name": "盐",
+         "suggested_purchase": "约 13 g", "grocery_category": "Pantry & Dry Goods"},
+        {"source_ids": ["ingredient-3", "ingredient-4"], "name": "胡萝卜",
+         "suggested_purchase": "约 220–240 g", "grocery_category": "Produce"},
+    ]}))
+    response = await post_refine(app, unresolved=True)
+    assert response.status_code == 200
+    assert response.json()["refinement_status"] == "refined"
+    assert response.json()["purchase_items"] == [
+        {"name": "盐", "suggested_purchase": "约 13 g", "category": "Pantry & Dry Goods"},
+        {"name": "胡萝卜", "suggested_purchase": "约 220–240 g", "category": "Produce"},
+    ]
+    provider.assert_awaited_once()
     assert provider.await_args.kwargs["max_completion_tokens"] == llm.settings.OPENAI_SHOPPING_MAX_OUTPUT_TOKENS
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["provider-error", "malformed-json", "truncated", "timeout", "missing-provider"])
-async def test_refine_route_returns_marked_fallback_without_retrying_provider(refinement_app, monkeypatch, caplog, failure):
+async def test_refine_route_preserves_useful_local_list_when_enhancement_fails(refinement_app, monkeypatch, caplog, failure):
     app, provider, _ = refinement_app
     if failure == "provider-error":
         provider.side_effect = RuntimeError("private provider detail")
@@ -84,12 +109,15 @@ async def test_refine_route_returns_marked_fallback_without_retrying_provider(re
     else:
         monkeypatch.setattr(refine, "get_openai_client", lambda: None)
     started = time.monotonic()
-    response = await post_refine(app)
+    response = await post_refine(app, unresolved=True)
 
     assert response.status_code == 200
     assert response.json() == {
-        "refinement_status": "fallback", "remove": [], "likely_pantry": [],
-        "purchase_items": [{"name": "盐", "suggested_purchase": "约 13 g", "category": "Other"}],
+        "refinement_status": "partial", "remove": [], "likely_pantry": [],
+        "purchase_items": [
+            {"name": "盐", "suggested_purchase": "约 13 g", "category": "Pantry & Dry Goods"},
+            {"name": "胡萝卜", "suggested_purchase": "200 g + 1 小段", "category": "Produce"},
+        ],
     }
     assert provider.await_count == (0 if failure == "missing-provider" else 1)
     assert "private provider detail" not in caplog.text
@@ -98,23 +126,106 @@ async def test_refine_route_returns_marked_fallback_without_retrying_provider(re
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure,status,retry_after", [
-    (AIUsageLimitExceeded(60), 429, "60"),
-    (OperationalError("private SQL", {}, RuntimeError("private connection")), 503, "30"),
+@pytest.mark.parametrize("failure", [
+    AIUsageLimitExceeded(60),
+    OperationalError("private SQL", {}, RuntimeError("private connection")),
 ])
-async def test_refine_admission_still_fails_closed_without_provider_calls(refinement_app, monkeypatch, failure, status, retry_after):
+@pytest.mark.parametrize("unresolved", [False, True])
+async def test_refine_admission_limits_never_block_local_groceries_or_allow_paid_calls(
+        refinement_app, monkeypatch, failure, unresolved):
     app, provider, session = refinement_app
     monkeypatch.setattr(ai_budget, "is_llm_enabled", lambda: True)
-    monkeypatch.setattr(ai_budget, "reserve_ai_budget", AsyncMock(side_effect=failure))
+    reserve = AsyncMock(side_effect=failure)
+    monkeypatch.setattr(ai_budget, "reserve_ai_budget", reserve)
 
-    response = await post_refine(app)
+    response = await post_refine(app, unresolved=unresolved)
 
-    assert response.status_code == status
-    assert response.headers["retry-after"] == retry_after
+    assert response.status_code == 200
+    assert response.json()["refinement_status"] == ("partial" if unresolved else "refined")
+    assert response.json()["purchase_items"][0] == {
+        "name": "盐", "suggested_purchase": "约 13 g", "category": "Pantry & Dry Goods",
+    }
+    if unresolved:
+        assert response.json()["purchase_items"][1] == {
+            "name": "胡萝卜", "suggested_purchase": "200 g + 1 小段", "category": "Produce",
+        }
+        reserve.assert_awaited_once()
+        session.rollback.assert_awaited_once()
+    else:
+        reserve.assert_not_awaited()
     assert "private" not in response.text
     provider.assert_not_awaited()
-    session.rollback.assert_awaited_once()
     session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_optional_enhancement_keeps_operation_and_provider_cost_admission(refinement_app, monkeypatch):
+    from app.core.ai_context import current_ai_request
+
+    app, provider, session = refinement_app
+    monkeypatch.setattr(ai_budget, "is_llm_enabled", lambda: True)
+    reserve = AsyncMock()
+    lease = AsyncMock()
+    cleanup = AsyncMock()
+    call_id = uuid4()
+    events = []
+
+    async def reserve_call(context, messages, operation):
+        assert context is current_ai_request.get()
+        assert operation == "shopping_refine"
+        session.commit.assert_awaited_once()
+        session.close.assert_awaited_once()
+        events.append("cost-reserved")
+        return call_id
+
+    async def complete(**options):
+        assert events == ["cost-reserved"]
+        assert current_ai_request.get() is not None
+        events.append("provider")
+        return completion(json.dumps({"purchase_items": [
+            {"source_ids": ["ingredient-1", "ingredient-2"], "name": "盐",
+             "suggested_purchase": "约 13 g", "grocery_category": "Pantry & Dry Goods"},
+            {"source_ids": ["ingredient-3", "ingredient-4"], "name": "胡萝卜",
+             "suggested_purchase": "约 220–240 g", "grocery_category": "Produce"},
+        ]}))
+
+    reconcile = AsyncMock()
+    monkeypatch.setattr(ai_budget, "reserve_ai_budget", reserve)
+    monkeypatch.setattr(ai_budget, "acquire_lease", lease)
+    monkeypatch.setattr(ai_budget, "cleanup_lease", cleanup)
+    monkeypatch.setattr(llm, "reserve_provider_call", reserve_call)
+    monkeypatch.setattr(llm, "finish_provider_call", reconcile)
+    provider.side_effect = complete
+    response = await post_refine(app, unresolved=True)
+    assert response.status_code == 200
+    assert response.json()["refinement_status"] == "refined"
+    assert events == ["cost-reserved", "provider"]
+    reserve.assert_awaited_once()
+    lease.assert_awaited_once()
+    cleanup.assert_awaited_once()
+    reconcile.assert_awaited_once_with(call_id, input_tokens=None, output_tokens=None, provider_request_id=None)
+    assert current_ai_request.get() is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["authentication", "validation"])
+async def test_local_refinement_does_not_bypass_authentication_or_input_validation(refinement_app, monkeypatch, failure):
+    from fastapi import HTTPException
+
+    app, provider, _ = refinement_app
+    reserve = AsyncMock()
+    monkeypatch.setattr(ai_budget, "reserve_ai_budget", reserve)
+    if failure == "authentication":
+        def unauthenticated():
+            raise HTTPException(401, "Authentication required")
+        app.dependency_overrides[get_current_user] = unauthenticated
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/shopping-list/refine", json={"items": [{
+            "name": "" if failure == "validation" else "盐", "quantity": "1 g",
+        }]})
+    assert response.status_code == (401 if failure == "authentication" else 422)
+    provider.assert_not_awaited()
+    reserve.assert_not_awaited()
 
 
 def test_refine_status_is_an_additive_documented_response_field():
@@ -132,7 +243,7 @@ async def test_refine_route_preserves_more_than_200_original_entries_when_provid
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post("/shopping-list/refine", json={"items": items})
     assert response.status_code == 200
-    assert response.json()["refinement_status"] == "fallback"
+    assert response.json()["refinement_status"] == "partial"
     assert {row["name"]: row["suggested_purchase"] for row in response.json()["purchase_items"]} == {
         f"ingredient {i}": "1 g" for i in range(250)
     }

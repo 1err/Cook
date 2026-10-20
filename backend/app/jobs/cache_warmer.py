@@ -12,9 +12,10 @@ from typing import Any, Literal
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.db import repo_recipes, repo_store_cache
+from app.db import repo_store_cache
 from app.db import session as db_session
 from app.jobs.cache_warmer_queries import ALL_QUERIES, DEFAULT_STORE
+from app.jobs.cache_warmer_catalog import load_cache_warmer_queries, normalize_cache_warmer_queries
 from app.services.store_product_service import (
     CACHE_TTL_SECONDS,
     CACHE_VERSION,
@@ -86,25 +87,17 @@ async def warm_cache_query(
 
 async def _load_cache_warmer_queries() -> list[str]:
     """Snapshot the catalog once and release its read session before scraping."""
-    candidates = list(ALL_QUERIES)
     try:
         if db_session.async_session_maker is None:
             raise RuntimeError("Database session maker is not initialized.")
         async with db_session.async_session_maker() as session:
-            candidates.extend(await repo_recipes.list_public_ingredient_names(session))
+            return await load_cache_warmer_queries(session, common_queries=ALL_QUERIES)
     except Exception:
         logger.exception(
             "could not load public catalog ingredients; warming common queries only",
             extra={"event": "cache_warmer_catalog_load_failed"},
         )
-
-    queries: dict[tuple[str, str], str] = {}
-    for candidate in candidates:
-        prepared = prepare_store_query(candidate)
-        if prepared is not None:
-            key = (prepared.language, prepared.cache_query)
-            queries.setdefault(key, prepared.cache_query)
-    return list(queries.values())
+    return normalize_cache_warmer_queries(ALL_QUERIES)
 
 
 async def run_cache_warmer(

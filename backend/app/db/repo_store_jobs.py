@@ -61,9 +61,16 @@ class StoreJobRepository:
                 payload=dict(query=query, language=language, cache_version=cache_version, force_refresh=force_refresh), now=now)
 
     async def _enqueue_warm(self, session, now, force_refresh):
-        from app.jobs.cache_warmer_queries import ALL_QUERIES
-        return await self._enqueue(session, kind='warm', key='weee-warm', payload=dict(force_refresh=force_refresh, queries=list(ALL_QUERIES)),
-                                   now=now, progress=initial_progress(force_refresh, len(ALL_QUERIES)))
+        from app.jobs.cache_warmer_catalog import load_cache_warmer_queries
+
+        # Joining a run must retain its snapshot even if the catalog changes or
+        # becomes unavailable. The admission lock already serializes this read.
+        existing = await session.scalar(select(Job).where(Job.dedupe_key == 'weee-warm', Job.state.in_(ACTIVE)))
+        if existing is not None:
+            return existing, False
+        queries = await load_cache_warmer_queries(session)
+        return await self._enqueue(session, kind='warm', key='weee-warm', payload=dict(force_refresh=force_refresh, queries=queries),
+                                   now=now, progress=initial_progress(force_refresh, len(queries)))
 
     async def enqueue_warm(self, *, force_refresh):
         async with self.sessions.begin() as session:

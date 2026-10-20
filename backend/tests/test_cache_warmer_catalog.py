@@ -82,7 +82,7 @@ async def test_warmer_includes_all_public_ingredients_with_normalized_unique_que
         progress_callback=lambda *args: progress.append(args),
     )
 
-    expected = ["tofu", "tomato paste", "fenugreek leaves", "番茄", "5-spice powder"]
+    expected = ["tofu", "fenugreek leaves", "番茄", "5-spice powder", "tomato paste"]
     assert searches == [(query, True, "background") for query in expected]
     assert summary == {
         "cache_hit": 0, "cache_miss": 5, "empty": 0,
@@ -107,7 +107,7 @@ async def test_each_warmer_run_reloads_published_and_removed_catalog_ingredients
 
     summary = await cache_warmer.run_cache_warmer(force_refresh=True)
 
-    assert [query for query, _, _ in searches] == ["tofu", "tomato paste", "sumac"]
+    assert [query for query, _, _ in searches] == ["sumac", "tofu", "tomato paste"]
     assert summary["total"] == 3
 
 
@@ -127,7 +127,7 @@ async def test_malformed_catalog_ingredients_do_not_drop_other_public_recipes(ca
 
     summary = await cache_warmer.run_cache_warmer(force_refresh=True)
 
-    assert [query for query, _, _ in searches] == ["tofu", "tomato paste", "sumac", "葛根粉"]
+    assert [query for query, _, _ in searches] == ["sumac", "葛根粉", "tofu", "tomato paste"]
     assert summary["total"] == 4
 
 
