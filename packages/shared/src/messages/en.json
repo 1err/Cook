@@ -26,6 +26,7 @@
   "recipe.author.all": "All creators",
   "recipe.author.filterAll": "All creators",
   "recipe.author.searchRecipes": "Search recipes or creators",
+  "planner.creatorFilterAria": "Filter planner recipes by creator",
   "shopping.refineFallback": "Your shopping list uses the recipe quantities. Review any uncertain amounts, or retry smart estimates.",
   "shopping.retryRefine": "Retry refinement",
   "shopping.refineFailed": "Could not prepare your smart list. Please try again.",

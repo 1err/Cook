@@ -28,6 +28,8 @@ Library preserves the existing natural-image waterfall, tag filters, timing labe
 
 Apply Alembic revision `20261101_recipe_authors` before running this source against a database. It adds `recipe_authors`, unique normalized name/alias keys, and nullable `recipes.author_id`. The November 1 review uses a separate loopback-only runner and disposable database populated from the signed-in Library's displayed recipes; that runner's local identity override is outside application source and must never be deployed. No automatic production backfill or deployment has occurred.
 
+Web Planner places an All creators dropdown beside All tags in both its saved-recipe rail and Choose recipe dialog. The searchable existing-creator directory accepts names and aliases; selection filters the server page by canonical ID alongside the current search and tag, and All creators clears only the creator selection. The weekly board and meal assignments remain independent of these browsing filters.
+
 ## Repo shape (npm workspaces + Python)
 
 Visible Instacart controls are removed from web and mobile for the beta release at the owner’s request. The unused panel components, shared helpers, and backend export endpoint remain for possible future integration; they do not alter Weee lookup, cart selections, or progress.

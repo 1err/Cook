@@ -26,9 +26,9 @@ vi.mock("../components/RequireAuth", () => ({
 vi.mock("../lib/api", () => ({
   apiFetch: mockApiFetch,
   webApiClient: { recipes: {
-    page: async (options: {q?: string; tags?: string[]} = {}) => {
+    page: async (options: {q?: string; tags?: string[]; authorId?: string} = {}) => {
       const rows = await (await mockApiFetch("/recipes")).json();
-      return { items: rows.filter((r: any) => (!options.q || r.title.toLowerCase().includes(options.q.toLowerCase())) && (!options.tags?.length || options.tags.every(tag => r.library_tags?.includes(tag) || r.library_category === tag))).map((r: any) => ({...r, ingredient_count:r.ingredients.length, step_count:r.steps?.length ?? 0, already_saved:true})), next_cursor:null };
+      return { items: rows.filter((r: any) => (!options.authorId || r.author_id === options.authorId) && (!options.q || r.title.toLowerCase().includes(options.q.toLowerCase())) && (!options.tags?.length || options.tags.every(tag => r.library_tags?.includes(tag) || r.library_category === tag))).map((r: any) => ({...r, ingredient_count:r.ingredients.length, step_count:r.steps?.length ?? 0, already_saved:true})), next_cursor:null };
     },
     get: mockRecipeGet,
   } },
@@ -52,6 +52,11 @@ const messages: Record<string, string> = {
   "planner.clearFilter": "Clear filter",
   "planner.closeRecipePicker": "Close recipe picker",
   "planner.filterAria": "Filter planner recipes by tag",
+  "planner.creatorFilterAria": "Filter planner recipes by creator",
+  "recipe.author.filter": "Creators",
+  "recipe.author.all": "All creators",
+  "recipe.author.search": "Search creators or aliases",
+  "recipe.tag.weeknight": "Weeknight",
   "planner.importRecipes": "Import recipes",
   "planner.loadFailed": "Could not load this week's saved plan. Planner changes are disabled to protect existing meals.",
   "planner.mealBreakfast": "breakfast",
@@ -173,7 +178,53 @@ beforeEach(() => {
   });
 });
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+test("creator selection combines with tags and stays active in Choose recipe", async () => {
+  vi.spyOn(HTMLElement.prototype, "getClientRects").mockImplementation(function (this: HTMLElement) {
+    return [this.getBoundingClientRect()] as unknown as DOMRectList;
+  });
+  const author = { id: "creator-1", name: "Lin's Kitchen", aliases: ["阿林"] };
+  const rows = [
+    { id: "recipe-1", title: "Tofu", ingredients: [], library_tags: ["weeknight"], author_id: author.id, author },
+    { id: "recipe-2", title: "Soup", ingredients: [], library_tags: ["soup"], author_id: author.id, author },
+    { id: "recipe-3", title: "Other tofu", ingredients: [], library_tags: ["weeknight"], author_id: "creator-2" },
+  ];
+  mockApiFetch.mockImplementation(async (path: string) => {
+    if (path.startsWith("/meal-plan?")) return jsonResponse([]);
+    if (path === "/recipes") return jsonResponse(rows);
+    if (path.startsWith("/recipes/authors?")) return jsonResponse([author]);
+    throw new Error(`Unexpected request: ${path}`);
+  });
+  const user = userEvent.setup();
+  render(<PlannerPage />);
+  await user.click(await screen.findByRole("button", { name: "Filter planner recipes by creator" }));
+  const creators = screen.getByRole("dialog", { name: "Creators" });
+  await user.type(within(creators).getByRole("searchbox"), "阿林");
+  await user.click(await within(creators).findByRole("button", { name: /Lin's Kitchen/ }));
+  await waitFor(() => expect(screen.queryByRole("heading", { name: "Other tofu" })).not.toBeInTheDocument());
+  expect(screen.getByRole("heading", { name: "Soup" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Filter planner recipes by tag" }));
+  await user.click(screen.getByRole("button", { name: "Weeknight" }));
+  await waitFor(() => expect(screen.queryByRole("heading", { name: "Soup" })).not.toBeInTheDocument());
+  expect(screen.getByRole("heading", { name: "Tofu" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Choose a recipe for dinner on 2026-08-10" }));
+  const picker = screen.getByRole("dialog", { name: "Choose recipe for meal slot" });
+  expect(within(picker).getByRole("button", { name: "Filter planner recipes by creator" })).toHaveTextContent("Lin's Kitchen");
+  expect(within(picker).getByRole("heading", { name: "Tofu" })).toBeInTheDocument();
+  await user.type(within(picker).getByRole("searchbox", { name: "Search recipes for planner" }), "missing");
+  await within(picker).findByText("No recipes match the current search or filter.");
+  await user.clear(within(picker).getByRole("searchbox", { name: "Search recipes for planner" }));
+  await user.click(within(picker).getByRole("button", { name: "Filter planner recipes by creator" }));
+  const nestedCreators = within(picker).getByRole("dialog", { name: "Creators" });
+  fireEvent.keyDown(within(nestedCreators).getByRole("searchbox"), { key: "Escape" });
+  expect(screen.getByRole("dialog", { name: "Choose recipe for meal slot" })).toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "Creators" })).not.toBeInTheDocument();
+  await user.click(within(picker).getByRole("button", { name: "Filter planner recipes by creator" }));
+  await user.click(within(picker).getByRole("button", { name: "All creators" }));
+  await within(picker).findByRole("heading", { name: "Other tofu" });
+  expect(within(picker).queryByRole("heading", { name: "Soup" })).not.toBeInTheDocument();
+});
 
 test("renders Planner controls without exposing icon-font names", async () => {
   render(<PlannerPage />);

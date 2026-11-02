@@ -26,6 +26,7 @@
   "recipe.author.all": "全部作者",
   "recipe.author.filterAll": "全部作者",
   "recipe.author.searchRecipes": "搜索菜谱或作者",
+  "planner.creatorFilterAria": "按作者筛选计划菜谱",
   "shopping.refineFallback": "购物清单使用食谱中的用量。请核对不确定的用量，或重试智能估算。",
   "shopping.retryRefine": "重试智能整理",
   "shopping.refineFailed": "暂时无法准备智能清单，请重试。",

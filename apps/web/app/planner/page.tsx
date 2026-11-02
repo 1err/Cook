@@ -11,6 +11,7 @@ import { RequireAuth } from "../components/RequireAuth";
 import { PageHeader, PageShell } from "../components/PageShell";
 import { useT } from "../lib/i18n";
 import { TagFilterPopover } from "../components/TagFilterPopover";
+import { AuthorFilterPopover } from "../components/AuthorFilterPopover";
 import { Icon } from "../components/ui/Icon";
 import type { Recipe } from "../types";
 import {
@@ -25,6 +26,7 @@ import {
   type MealPlanDay,
   type MealPlanSlots,
   type MealType,
+  type RecipeAuthor,
 } from "@cooking/shared";
 import { type LibraryFilterId } from "../lib/recipeCategories";
 import { getRecipeTags } from "../lib/recipeTags";
@@ -84,6 +86,7 @@ function PlannerPageContent() {
   const [draggingSlot, setDraggingSlot] = useState<{ date: string; slot: MealType } | null>(null);
   const [sideSearch, setSideSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<LibraryFilterId>("all");
+  const [authorFilter, setAuthorFilter] = useState<RecipeAuthor | null>(null);
   const [slotPicker, setSlotPicker] = useState<SlotPanel | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [planLoadFailed, setPlanLoadFailed] = useState(false);
@@ -95,7 +98,7 @@ function PlannerPageContent() {
   const pickerFallbackRef = useRef<HTMLElement | null>(null);
   const pickerWasOpenRef = useRef(false);
 
-  const recipePage = useRecipePage("mine", {q: sideSearch, tags: categoryFilter === "all" ? [] : [categoryFilter]});
+  const recipePage = useRecipePage("mine", {q: sideSearch, tags: categoryFilter === "all" ? [] : [categoryFilter], authorId: authorFilter?.id});
   const sidebarRecipes = recipePage.items;
 
   useEffect(() => {
@@ -454,6 +457,7 @@ function PlannerPageContent() {
           onChange={setCategoryFilter}
           ariaLabel={t("planner.filterAria")}
         />
+        <AuthorFilterPopover selected={authorFilter} onSelect={setAuthorFilter} ariaLabel={t("planner.creatorFilterAria")} />
         {categoryFilter !== "all" ? (
           <button
             type="button"
@@ -514,7 +518,7 @@ function PlannerPageContent() {
       ))
     ) : (
       <p className="planner-source-empty">
-        {!sideSearch.trim() && categoryFilter === "all" ? (
+        {!sideSearch.trim() && categoryFilter === "all" && !authorFilter ? (
           <>
             <Link href="/import" className="font-bold">
               {t("planner.importRecipes")}
