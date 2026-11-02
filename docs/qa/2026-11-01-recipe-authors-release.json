@@ -1,0 +1,154 @@
+{
+  "source_commit": "0a15ef11c9d9ba67c2a2ef5d19e116b1a4ffa98d",
+  "backend_digest": "sha256:51fa85c52f46e6e2667c5bd0cade8dd75f5556522db9fa80f1eeede508785916",
+  "local_web_image_digest": "sha256:13130bf639fbf1175586b56f7dcee7ebcacd9741d96fc1787b15cffd162234e9",
+  "migration_head": "20261101_recipe_authors",
+  "api_config_preserved": true,
+  "api_rollback": "cooking-backend:52",
+  "worker_rollback": "cooking-store-worker:3",
+  "web_rollback": "dpl_GuJ6nX8WMcfscXKZx5X9pp3Kw6V3",
+  "tests": {
+    "backend_passed": 1645,
+    "backend_opt_in_skipped": 157,
+    "backend_dependency_warnings": 2,
+    "postgres_release_checks_passed": 23,
+    "web_passed": 1013,
+    "shared_passed": 423,
+    "image_api_checks_passed": 11,
+    "image_web_checks_passed": 7,
+    "planner_browser_checks_passed": 9
+  },
+  "production_recipe_backfill": false,
+  "services": [
+    {
+      "service": "cooking-backend-service",
+      "task_definition": "arn:aws:ecs:us-east-1:930067562682:task-definition/cooking-backend:53",
+      "deployment_id": "ecs-svc/6936729246450505647",
+      "rollout": "COMPLETED",
+      "desired": 1,
+      "running": 1,
+      "configuration_preserved": true,
+      "target_health": [
+        "healthy"
+      ],
+      "tasks": [
+        {
+          "task_arn": "arn:aws:ecs:us-east-1:930067562682:task/cooking-cluster/0d21740495444dec97f8414510062f25",
+          "image_digest": "sha256:51fa85c52f46e6e2667c5bd0cade8dd75f5556522db9fa80f1eeede508785916",
+          "health": "HEALTHY",
+          "log_group": "/ecs/cooking-backend",
+          "log_stream": "ecs/backend/0d21740495444dec97f8414510062f25",
+          "error_markers": 0
+        }
+      ]
+    },
+    {
+      "service": "cooking-store-worker-service",
+      "task_definition": "arn:aws:ecs:us-east-1:930067562682:task-definition/cooking-store-worker:4",
+      "deployment_id": "ecs-svc/0508501183781212580",
+      "rollout": "COMPLETED",
+      "desired": 1,
+      "running": 1,
+      "configuration_preserved": true,
+      "target_health": [],
+      "tasks": [
+        {
+          "task_arn": "arn:aws:ecs:us-east-1:930067562682:task/cooking-cluster/5c444034258b4b6dbf5ea1005081b7d0",
+          "image_digest": "sha256:51fa85c52f46e6e2667c5bd0cade8dd75f5556522db9fa80f1eeede508785916",
+          "health": "HEALTHY",
+          "log_group": "/ecs/cooking-backend",
+          "log_stream": "store-worker/store-worker/5c444034258b4b6dbf5ea1005081b7d0",
+          "error_markers": 0
+        }
+      ]
+    }
+  ],
+  "observed_at": "2026-11-02T04:05:02.532347+00:00",
+  "public_api_http_checks": [
+    {
+      "check": "production API health",
+      "status": 200
+    },
+    {
+      "check": "production database readiness",
+      "status": 200
+    },
+    {
+      "check": "new creator directory is deployed and protected",
+      "status": 401
+    },
+    {
+      "check": "creator creation requires authentication",
+      "status": 401
+    },
+    {
+      "check": "existing recipe pages remain protected",
+      "status": 401
+    },
+    {
+      "check": "author endpoint credentialed CORS",
+      "status": 200
+    }
+  ],
+  "web": {
+    "deployment_id": "dpl_DdxiBVtByACDRAah6N6aLaaj5k91",
+    "url": "cook-33jjm844v-jerrys-projects-08f739a2.vercel.app",
+    "state": "READY",
+    "target": "production",
+    "source_commit": "0a15ef11c9d9ba67c2a2ef5d19e116b1a4ffa98d",
+    "aliases": [
+      "chef-world.com",
+      "www.chef-world.com"
+    ],
+    "promotion": "automatic; explicit promote returned already-current 409",
+    "error_fatal_logs_last_15m": 0
+  },
+  "public_web_checks": {
+    "pages": [
+      {
+        "path": "/library",
+        "status": 200,
+        "sha256": "6a957b227f90a7cdd0aee9721e6ac451e28bf316e7bbfdc688661e07c32a035f"
+      },
+      {
+        "path": "/planner",
+        "status": 200,
+        "sha256": "f7cde7d45a5e96767587dd0e15a28fa311357a1cf63e62a8fd24c3ffa2028548"
+      },
+      {
+        "path": "/import",
+        "status": 200,
+        "sha256": "4b5e9f4c06fd235dc702bbb53e6f3bc1687096926acdbd3a5bd2ea7a1f4a11cc"
+      },
+      {
+        "path": "/recipe/797a2ff3-3949-4a73-a105-b8e49691d673",
+        "status": 200,
+        "sha256": "c5898a059b86271d753b95e6cb999deb01c6c569d8c8a851f10feed4d758466a"
+      },
+      {
+        "path": "www/planner",
+        "status": 200,
+        "canonical_redirect": true
+      }
+    ],
+    "assets_passed": 28,
+    "creator_controls_present": true,
+    "production_api_base_verified": true,
+    "local_preview_configuration_absent": true
+  },
+  "live_browser_checks": {
+    "library_recipes": 16,
+    "waterfall_columns": 4,
+    "layout": "masonry",
+    "horizontal_overflow": false,
+    "detail_author_picker_opened": true,
+    "planner_creator_dropdown_opened": true,
+    "choose_recipe_controls_verified": true,
+    "dish_search_verified": true,
+    "browser_errors": 0,
+    "customer_recipe_or_meal_writes": false
+  },
+  "worker_helper_transient_guard_exit": 1,
+  "worker_independent_audit_passed": true,
+  "protected_candidate_fetch": "Automatic approval review rejected share-link creation; no access change; public production checks used."
+}
