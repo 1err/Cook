@@ -29,6 +29,7 @@ import {
 import { type LibraryFilterId } from "../lib/recipeCategories";
 import { getRecipeTags } from "../lib/recipeTags";
 import { useEditorialCopy } from "../lib/editorialCopy";
+import { RecipeAuthorCredit } from "../components/RecipeAuthorCredit";
 import { PlannerRecipeRail } from "./components/PlannerRecipeRail";
 import { PlannerToolbar } from "./components/PlannerToolbar";
 import { PlannerWeekBoard } from "./components/PlannerWeekBoard";
@@ -482,6 +483,7 @@ function PlannerPageContent() {
             </div>
             <div className="planner-drag-card__body">
               <h4 className="planner-drag-card__title font-headline">{r.title}</h4>
+              <RecipeAuthorCredit author={r.author} plain />
               {(() => {
                 const tags = getRecipeTags(r);
                 return (

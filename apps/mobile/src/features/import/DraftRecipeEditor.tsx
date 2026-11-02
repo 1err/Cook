@@ -15,6 +15,7 @@ import { TotalTimeField } from "./TotalTimeField";
 import { useImageUpload } from "./useImageUpload";
 import { resolveImageUrl } from "../../lib/imageUrl";
 import { RecipeImageGenerator } from "./RecipeImageGenerator";
+import { AuthorPicker } from "../authors/AuthorPicker";
 
 export type DraftRecipeEditorProps = {
   draft: Recipe;
@@ -58,8 +59,10 @@ export function DraftRecipeEditor({
   const latestDraft = React.useRef(draft);
   latestDraft.current = draft;
   const [tutorialValid, setTutorialValid] = useState(true);
+  const [authorBusy, setAuthorBusy] = useState(false);
   const tutorialOnly = focus === "tutorial";
-  const busy = saving || estimating || disabled;
+  const locked = saving || estimating || disabled;
+  const busy = locked;
   const onChange = (next: Recipe) => { if (!busy) onChangeDraft(next); };
   const complete = !requireCompleteRecipe || isCompleteRecipeDraft(draft);
   const resolvedSaveLabel = saveLabel ?? (tutorialOnly ? t("recipe.tutorial.save") : "Save recipe");
@@ -135,6 +138,11 @@ export function DraftRecipeEditor({
             onChangeText={(title) => onChange({ ...draft, title })}
             autoCapitalize="words"
           />
+
+          <AuthorPicker value={draft.author} disabled={locked} onBusyChange={setAuthorBusy}
+            onChange={author => {
+              if (!locked) onChangeDraft({ ...latestDraft.current, author_id: author?.id ?? null, author });
+            }} />
 
           <View style={styles.field}>
             <Text style={styles.sectionLabel}>Description</Text>
@@ -213,7 +221,7 @@ export function DraftRecipeEditor({
           title={resolvedSaveLabel}
           onPress={onSave}
           loading={saving}
-          disabled={busy || !tutorialValid || !complete}
+          disabled={busy || authorBusy || !tutorialValid || !complete}
           fullWidth
           size="lg"
         />

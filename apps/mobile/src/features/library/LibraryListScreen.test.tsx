@@ -2,7 +2,7 @@ import React from "react";
 jest.mock("../../lib/auth", () => ({ useAuth: () => ({ user: { id: "account" } }) }));
 jest.mock("../../lib/i18n", () => {
   const { MESSAGE_MAP } = require("@cooking/shared");
-  return { useT: () => (key: string, vars?: Record<string, unknown>) => key.startsWith("menu.") ? (MESSAGE_MAP.en[key] ?? key).replace(/\{(\w+)\}/g, (_: string, token: string) => String(vars?.[token] ?? "")) : key };
+  return { useT: () => (key: string, vars?: Record<string, unknown>) => key.startsWith("menu.") || key.startsWith("recipe.") ? (MESSAGE_MAP.en[key] ?? key).replace(/\{(\w+)\}/g, (_: string, token: string) => String(vars?.[token] ?? "")) : key };
 });
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { LibraryListScreen } from "./LibraryListScreen";
@@ -25,8 +25,9 @@ const mockList = jest.fn(async () => recipes);
 const mockCatalog = jest.fn<Promise<unknown[]>, []>(async () => []);
 const mockApiClient = {
   recipes: {
+    authors: jest.fn(async () => [{ id: "creator-1", name: "Chef Lin", aliases: ["小林"] }]),
     list: jest.fn(async () => recipes),
-    page: async () => ({items: await mockList(), next_cursor:null}),
+    page: jest.fn(async (_options?: unknown) => ({items: await mockList(), next_cursor:null})),
     catalogPage: async () => ({items: await mockCatalog(), next_cursor:null}),
     copyCatalog: jest.fn(),
   },
@@ -37,10 +38,27 @@ jest.mock("../../lib/api", () => ({
 }));
 
 beforeEach(() => {
+  mockApiClient.recipes.page.mockClear();
   mockApiClient.recipes.list.mockReset().mockResolvedValue(recipes);
   mockList.mockReset().mockResolvedValue(recipes);
   mockCatalog.mockReset().mockResolvedValue([]);
   mockApiClient.recipes.copyCatalog.mockReset().mockResolvedValue({ id: "copy-1" });
+});
+
+test("creator, text and tag filters reach the same paginated library request", async () => {
+  await render(<LibraryListScreen navigation={{ addListener: jest.fn(() => jest.fn()), navigate: jest.fn() } as never}
+    route={{ key: "library", name: "LibraryList" }} />);
+  await screen.findByText("Tomato egg stir-fry");
+  await fireEvent.changeText(screen.getByPlaceholderText("Search recipes"), "小林");
+  await fireEvent.press(screen.getByRole("checkbox", { name: "Weeknight" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Search creators or aliases" }));
+  await fireEvent.press(await screen.findByRole("button", { name: "By Chef Lin" }));
+  await waitFor(() => expect(mockApiClient.recipes.page).toHaveBeenLastCalledWith(expect.objectContaining({ q: "小林", tags: ["weeknight"], authorId: "creator-1" })));
+  await fireEvent.press(screen.getByRole("button", { name: "All creators" }));
+  await waitFor(() => {
+    expect(mockApiClient.recipes.page).toHaveBeenLastCalledWith(expect.objectContaining({ q: "小林", tags: ["weeknight"] }));
+    expect(mockApiClient.recipes.page.mock.calls.at(-1)?.[0]).not.toHaveProperty("authorId");
+  });
 });
 
 let focusLibrary: () => void;
@@ -193,7 +211,7 @@ test("menu selection loads the whole owned library only on request and selects a
   expect(navigate).toHaveBeenLastCalledWith("MenuMaker", { recipeIds: ["recipe-1", "recipe-2"] });
   await fireEvent.press(screen.getByRole("button", { name: "Public Library" }));
   expect(screen.queryByRole("button", { name: "Make a menu" })).toBeNull();
-  expect(screen.queryByRole("checkbox")).toBeNull();
+  expect(screen.queryByRole("checkbox", { name: /^Select / })).toBeNull();
 });
 
 test("menu load failure keeps library browsing available and supports retry", async () => {

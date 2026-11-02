@@ -1,10 +1,10 @@
 import React from "react";
 jest.mock("../../lib/i18n", () => ({useT: () => (key: string) => key}));
-import { render, screen, within } from "@testing-library/react-native";
+import { fireEvent, render, screen, within } from "@testing-library/react-native";
 import type { Recipe } from "@cooking/shared";
 import { RecipePickerSheet } from "./RecipePickerSheet";
 
-const mockApi = { recipes: {page: jest.fn(async () => ({items: [{id:"recipe-1", title:"Tomato egg stir-fry", ingredient_count:2, step_count:0, already_saved:true}],next_cursor:null}))} };
+const mockApi = { recipes: {page: jest.fn(async (_options?: unknown) => ({items: [{id:"recipe-1", title:"Tomato egg stir-fry", ingredient_count:2, step_count:0, already_saved:true, author_id:"creator-1", author:{id:"creator-1", name:"Chef Lin", aliases:["小林"]}}],next_cursor:null}))} };
 jest.mock("../../lib/api", () => ({useApiClient: () => mockApi}));
 
 jest.mock("@gorhom/bottom-sheet", () => {
@@ -44,4 +44,11 @@ test("keeps picker controls and recipe results in one scroll surface", async () 
   expect(within(content).getByPlaceholderText("Search your library")).toBeOnTheScreen();
   expect(within(content).getByText("All")).toBeOnTheScreen();
   expect(await within(content).findByText("Tomato egg stir-fry")).toBeOnTheScreen();
+});
+
+test("planner searches the server by creator alias and displays the canonical credit", async () => {
+  await render(<RecipePickerSheet recipes={[recipe]} onPick={jest.fn()} onImportRecipe={jest.fn()} />);
+  await fireEvent.changeText(screen.getByPlaceholderText("Search your library"), "小林");
+  expect(await screen.findByText("recipe.author.credit")).toBeOnTheScreen();
+  expect(mockApi.recipes.page).toHaveBeenLastCalledWith(expect.objectContaining({ q: "小林", tags: [] }));
 });

@@ -2,6 +2,7 @@ import React, { useCallback, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
+import type { RecipeAuthor, RecipeTagSlug } from "@cooking/shared";
 import type { CompositeScreenProps } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
@@ -18,6 +19,8 @@ import type {
   RootStackParamList,
 } from "../../navigation/types";
 import { RecipeListMeta } from "./RecipeListMeta";
+import { RecipeAuthorCredit } from "../authors/RecipeAuthorCredit";
+import { LibraryRecipeFilters } from "./LibraryRecipeFilters";
 
 type Props = CompositeScreenProps<
   NativeStackScreenProps<LibraryStackParamList, "FriendLibrary">,
@@ -32,7 +35,9 @@ export function FriendLibraryScreen({ route }: Props) {
   const apiClient = useApiClient();
   const { userId } = route.params;
   const [search, setSearch] = useState("");
-  const page = useRecipePage(userId, {q: search});
+  const [author, setAuthor] = useState<RecipeAuthor | null>(null);
+  const [tag, setTag] = useState<RecipeTagSlug | null>(null);
+  const page = useRecipePage(userId, {q: search, tags: tag ? [tag] : [], authorId: author?.id});
   const friendRecipes = page.items;
   const loading = page.loading && !friendRecipes.length;
   const [unavailable, setUnavailable] = useState(false);
@@ -76,7 +81,10 @@ export function FriendLibraryScreen({ route }: Props) {
   return (
     <FlatList
       data={friendRecipes}
-      ListHeaderComponent={<View><TextField placeholder="Search recipes" value={search} onChangeText={setSearch} />{page.error ? <Text accessibilityRole="alert">{page.error}</Text> : null}</View>}
+      keyboardShouldPersistTaps="handled"
+      ListHeaderComponent={<View><TextField placeholder="Search recipes" value={search} onChangeText={setSearch} />
+        <LibraryRecipeFilters author={author} onAuthorChange={setAuthor} tag={tag} onTagChange={setTag} />
+        {page.error ? <Text accessibilityRole="alert">{page.error}</Text> : null}</View>}
       ListFooterComponent={page.next ? <Button title={t("common.loadMoreRecipes")} disabled={page.loading} onPress={() => void page.more()} /> : null}
       keyExtractor={(item) => item.id}
       contentInsetAdjustmentBehavior="automatic"
@@ -87,7 +95,7 @@ export function FriendLibraryScreen({ route }: Props) {
       ListEmptyComponent={
         loading ? <ActivityIndicator color={colors.primary} /> : <EmptyState
           icon="restaurant-outline"
-          title={search.trim() ? "No matching recipes" : "This library is empty"}
+          title={search.trim() || author || tag ? "No matching recipes" : "This library is empty"}
           description="No recipes here yet."
         />
       }
@@ -112,6 +120,7 @@ export function FriendLibraryScreen({ route }: Props) {
               <Text style={styles.cardTitle} numberOfLines={2}>
                 {item.title}
               </Text>
+              <RecipeAuthorCredit author={item.author} onPress={setAuthor} />
               <RecipeListMeta recipe={item} />
               <View style={styles.action}>
                 <Button

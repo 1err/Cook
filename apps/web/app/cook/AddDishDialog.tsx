@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { RecipeAuthorCredit } from "../components/RecipeAuthorCredit";
 import { useRecipePage } from "../lib/useRecipePage";
 import { Button } from "../components/ui/Button";
 import { useT } from "../lib/i18n";
@@ -55,7 +56,7 @@ export function AddDishDialog({
                   )}
                   type="checkbox"
                 />
-                <span>{recipe.title}</span>
+                <span>{recipe.title}<RecipeAuthorCredit author={recipe.author} plain /></span>
               </label>
             ))}
             {!choices.length ? <p>{t("cook.add.empty")}</p> : null}

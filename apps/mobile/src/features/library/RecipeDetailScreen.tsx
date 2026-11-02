@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ActionSheetIOS,
   ActivityIndicator,
@@ -20,6 +20,7 @@ import {
   formatRecipeStepMetadata,
   RECIPE_ACTION_MESSAGE_KEYS,
   type Recipe,
+  type RecipeAuthor,
 } from "@cooking/shared";
 import { useApiClient } from "../../lib/api";
 import { Button, EmptyState, IconButton } from "../../components";
@@ -30,6 +31,7 @@ import { colors, radii, spacing, typography } from "../../theme";
 import { haptics } from "../../lib/haptics";
 import { StepEvidence } from "../import/StepEvidence";
 import { RecipeCookAction } from "./RecipeCookAction";
+import { AuthorPicker } from "../authors/AuthorPicker";
 import type {
   LibraryStackParamList,
   MainTabsParamList,
@@ -65,18 +67,60 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [canManage, setCanManage] = useState(false);
   const [heroRatio, setHeroRatio] = useState<number | null>(null);
+  const [authorSaving, setAuthorSaving] = useState(false);
+  const [authorError, setAuthorError] = useState<string | null>(null);
+  const currentClient = useRef(apiClient);
+  currentClient.current = apiClient;
+  const currentRecipeId = useRef(route.params.recipeId);
+  currentRecipeId.current = route.params.recipeId;
+  const mounted = useRef(true);
+  const authorVersion = useRef(0);
+  const authorRequest = useRef<object | null>(null);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    authorVersion.current += 1;
+    authorRequest.current = null;
+    setAuthorSaving(false);
+    setAuthorError(null);
+  }, [apiClient, route.params.recipeId]);
+
+  const saveAuthor = async (author: RecipeAuthor | null) => {
+    if (!recipe || recipe.id !== route.params.recipeId || authorRequest.current) return;
+    const recipeId = recipe.id;
+    const request = {};
+    authorRequest.current = request;
+    authorVersion.current += 1;
+    const isCurrent = () => mounted.current && currentClient.current === apiClient
+      && currentRecipeId.current === recipeId && authorRequest.current === request;
+    setAuthorSaving(true);
+    setAuthorError(null);
+    try {
+      const updated = await apiClient.recipes.update(recipeId, { author_id: author?.id ?? null });
+      if (isCurrent()) setRecipe(updated);
+    } catch {
+      if (isCurrent()) setAuthorError(t("recipe.author.saveError"));
+    } finally {
+      if (isCurrent()) {
+        authorRequest.current = null;
+        setAuthorSaving(false);
+      }
+    }
+  };
 
   useFocusEffect(useCallback(() => {
     let cancelled = false;
+    const version = authorVersion.current;
+    const authorSaveInFlight = Boolean(authorRequest.current);
+    const acceptsRefresh = () => !cancelled && !authorSaveInFlight && version === authorVersion.current;
     async function load() {
       try {
         const row = await apiClient.recipes.get(route.params.recipeId);
-        if (!cancelled) {
+        if (acceptsRefresh()) {
           setRecipe(row);
           setError(null);
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load recipe");
+        if (acceptsRefresh()) setError(e instanceof Error ? e.message : "Failed to load recipe");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -209,6 +253,7 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
   return (
     <ScrollView
       style={styles.flex}
+      keyboardShouldPersistTaps="handled"
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={styles.content}
     >
@@ -231,6 +276,9 @@ export function RecipeDetailScreen({ navigation, route }: Props) {
 
       <View style={styles.body}>
         <Text style={styles.title}>{recipe.title}</Text>
+        <AuthorPicker value={recipe.author} disabled={authorSaving} onChange={author => void saveAuthor(author)} />
+        {authorSaving ? <ActivityIndicator color={colors.primary} /> : null}
+        {authorError ? <Text accessibilityRole="alert" style={styles.error}>{authorError}</Text> : null}
 
         {recipe.description ? (
           <Text style={styles.description}>{recipe.description}</Text>

@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import type { RecipeAuthor } from "@cooking/shared";
+import { RecipeAuthorCredit } from "./RecipeAuthorCredit";
 import { RecipeTiming } from "./RecipeTiming";
 import type { Recipe } from "../types";
 import { useT } from "../lib/i18n";
@@ -8,11 +10,12 @@ import { getRecipeTags } from "../lib/recipeTags";
 import styles from "./RecipeCard.module.css";
 
 type RecipeCardProps = {
-  recipe: Pick<Recipe, "id" | "title" | "thumbnail_url" | "library_tags" | "library_category" | "total_time_minutes" | "timing_summary">;
+  recipe: Pick<Recipe, "id" | "title" | "thumbnail_url" | "library_tags" | "library_category" | "total_time_minutes" | "timing_summary" | "author">;
   isHighlighted?: boolean;
+  onAuthorSelect?: (author: RecipeAuthor) => void;
 };
 
-export function RecipeCard({ recipe, isHighlighted = false }: RecipeCardProps) {
+export function RecipeCard({ recipe, isHighlighted = false, onAuthorSelect }: RecipeCardProps) {
   const t = useT();
   const featuredTags = getRecipeTags(recipe).slice(0, 2);
 
@@ -33,6 +36,7 @@ export function RecipeCard({ recipe, isHighlighted = false }: RecipeCardProps) {
           <h2 className={`cw-display ${styles.title}`}>{recipe.title}</h2>
         </div>
       </Link>
+      <RecipeAuthorCredit author={recipe.author} onSelect={onAuthorSelect} />
       <div className={styles.metadata}>
         <RecipeTiming {...recipe} />
         {featuredTags.length ? (

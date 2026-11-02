@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { getRecipeTags, type Recipe, type RecipeTagSlug } from "@cooking/shared";
+import { getRecipeTags, matchesRecipeSearch, type Recipe, type RecipeTagSlug } from "@cooking/shared";
 import { useDebouncedValue } from "../../lib/useDebouncedValue";
 
 export type TagFilter = "all" | RecipeTagSlug;
@@ -13,7 +13,7 @@ export function useRecipePickerData(recipes: Recipe[]) {
     const q = debouncedSearch.trim().toLowerCase();
     return [...recipes]
       .filter((r) => {
-        if (q && !r.title.toLowerCase().includes(q)) return false;
+        if (!matchesRecipeSearch(r, q)) return false;
         if (tagFilter !== "all") {
           const tags = getRecipeTags(r);
           if (!tags.includes(tagFilter)) return false;

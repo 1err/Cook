@@ -4,6 +4,7 @@ import { useRecipePage } from "../../lib/useRecipePage";
 import { Button, TextField } from "../../components";
 import { useT } from "../../lib/i18n";
 import { colors, radii, spacing, typography } from "../../theme";
+import { RecipeAuthorCredit } from "../authors/RecipeAuthorCredit";
 
 export function AddDishModal({
   existingRecipeIds,
@@ -44,13 +45,13 @@ export function AddDishModal({
       <View style={styles.backdrop}>
         <View accessibilityViewIsModal style={styles.sheet}>
           <Text style={styles.title}>{t("cook.add.title")}</Text>
-          <TextField placeholder="Search recipes" value={search} onChangeText={setSearch} />
-          <ScrollView contentContainerStyle={styles.list}>
+          <TextField placeholder={t("recipe.author.searchRecipes")} value={search} onChangeText={setSearch} />
+          <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
             {loading ? <Text style={styles.muted}>{t("common.loading")}</Text> : choices.map((recipe) => {
               const checked = selected.includes(recipe.id);
               return (
                 <Pressable
-                  accessibilityLabel={recipe.title}
+                  accessibilityLabel={recipe.author ? `${recipe.title} · ${t("recipe.author.credit", { name: recipe.author.name })}` : recipe.title}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked }}
                   key={recipe.id}
@@ -60,7 +61,10 @@ export function AddDishModal({
                   style={styles.choice}
                 >
                   <View style={[styles.checkbox, checked && styles.checked]} />
-                  <Text style={styles.recipe}>{recipe.title}</Text>
+                  <View style={styles.recipeBody}>
+                    <Text style={styles.recipe}>{recipe.title}</Text>
+                    <RecipeAuthorCredit author={recipe.author} />
+                  </View>
                 </Pressable>
               );
             })}
@@ -88,6 +92,7 @@ const styles = StyleSheet.create({
   checkbox: { width: 24, height: 24, borderWidth: 2, borderColor: colors.divider, borderRadius: 6 },
   checked: { borderColor: colors.terracotta, backgroundColor: colors.terracotta },
   recipe: { ...typography.body, color: colors.ink },
+  recipeBody: { flex: 1 },
   muted: { ...typography.body, color: colors.mutedInk },
   error: { ...typography.body, color: colors.error },
   actions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },

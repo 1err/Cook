@@ -10,6 +10,7 @@ import type {
   InstacartItem,
   MealPlanDay,
   Recipe,
+  RecipeAuthor,
   RecipeImageInput,
   RecipePage,
   RecipeStep,
@@ -22,7 +23,7 @@ import type {
 import { normalizeStoreProductResponse } from "./storeProductExpiry";
 export { normalizeStoreProductResponse } from "./storeProductExpiry";
 
-export type RecipePageOptions = { expectedAccountId?: string; limit?: number; cursor?: string | null; q?: string; tags?: RecipeTagSlug[] };
+export type RecipePageOptions = { expectedAccountId?: string; limit?: number; cursor?: string | null; q?: string; tags?: RecipeTagSlug[]; authorId?: string };
 export type LibrarySearchOptions = RecipePageOptions & { scope?: "all" | "mine" | "catalog"; ingredients?: string[]; match?: "all" | "any"; includeIngredients?: boolean };
 export function librarySearchQuery(options: LibrarySearchOptions = {}): string {
   const params = new URLSearchParams(recipePageQuery(options));
@@ -36,6 +37,7 @@ export function recipePageQuery(options: RecipePageOptions = {}): string {
   const params = new URLSearchParams({ limit: String(options.limit ?? 40) });
   if (options.cursor) params.set("cursor", options.cursor);
   if (options.q?.trim()) params.set("q", options.q.trim());
+  if (options.authorId) params.set("author_id", options.authorId);
   for (const tag of options.tags ?? []) params.append("tags", tag);
   return params.toString();
 }
@@ -285,6 +287,13 @@ export function createApiClient(options: ApiClientOptions) {
         }),
     },
     recipes: {
+      authors: (options: { q?: string; limit?: number; signal?: AbortSignal } = {}) => {
+        const params = new URLSearchParams({ limit: String(options.limit ?? 40) });
+        if (options.q?.trim()) params.set("q", options.q.trim());
+        return json<RecipeAuthor[]>(`/recipes/authors?${params.toString()}`, { signal: options.signal });
+      },
+      createAuthor: (payload: { name: string; aliases?: string[] }, options: { signal?: AbortSignal } = {}) =>
+        json<RecipeAuthor>("/recipes/authors", { method: "POST", body: JSON.stringify(payload), signal: options.signal }),
       importCapabilities: () => json<RecipeImportCapabilities>("/recipes/import-capabilities"),
       createImportJob: (payload: RecipeImportPayload) => json<RecipeImportJob>("/recipes/import-jobs", { method: "POST", body: JSON.stringify(payload) }),
       createMediaImportJob: (form: FormData) => json<RecipeImportJob>("/recipes/import-jobs/media", { method: "POST", body: form }),

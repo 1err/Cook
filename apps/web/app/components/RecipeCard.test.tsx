@@ -1,4 +1,4 @@
-import { cleanup, render, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Recipe } from "../types";
 import { RecipeCard } from "./RecipeCard";
@@ -32,4 +32,17 @@ describe("RecipeCard", () => {
     expect(card.queryByText("Main Dish")).not.toBeInTheDocument();
     expect(card.getAllByTestId("recipe-tag")).toHaveLength(2);
   });
+});
+
+
+it("shows a separate clickable creator credit without nesting links or altering timing and tags", () => {
+  const author = { id: "author-1", name: "Lin", aliases: [] };
+  const onSelect = vi.fn();
+  render(<RecipeCard recipe={{ ...recipe, author }} onAuthorSelect={onSelect} />);
+  const credit = screen.getByRole("button", { name: "recipe.author.by" });
+  expect(credit.closest("a")).toBeNull();
+  fireEvent.click(credit);
+  expect(onSelect).toHaveBeenCalledWith(author);
+  expect(screen.getByText("55 min")).toBeVisible();
+  expect(screen.getAllByTestId("recipe-tag")).toHaveLength(2);
 });

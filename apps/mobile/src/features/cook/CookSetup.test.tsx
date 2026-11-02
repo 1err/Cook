@@ -2,6 +2,7 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import type { CookingSession, Recipe } from "@cooking/shared";
 import { CookSetup } from "./CookSetup";
+import { matchesRecipeSearch } from "@cooking/shared";
 
 const mockCreate = jest.fn();
 const mockActive = jest.fn();
@@ -11,7 +12,7 @@ const mockMealPlanList = jest.fn();
 const mockApiClient = {
   cooking: { create: mockCreate, active: mockActive, discard: mockDiscard },
   recipes: {
-      page: async (options: {q?: string} = {}) => ({items: (await mockRecipesList()).filter((r: Recipe) => !options.q || r.title.toLowerCase().includes(options.q.toLowerCase())).map((r: Recipe) => ({...r, ingredient_count:r.ingredients.length, step_count:r.steps?.length ?? 0, already_saved:true})), next_cursor:null}),
+      page: async (options: {q?: string} = {}) => ({items: (await mockRecipesList()).filter((r: Recipe) => matchesRecipeSearch(r, options.q ?? "")).map((r: Recipe) => ({...r, ingredient_count:r.ingredients.length, step_count:r.steps?.length ?? 0, already_saved:true})), next_cursor:null}),
       get: async (id: string) => (await mockRecipesList()).find((r: Recipe) => r.id === id),
     },
   mealPlan: { list: mockMealPlanList },
@@ -22,6 +23,7 @@ const translate = (key: string, vars?: Record<string, string | number>) => {
     const messages: Record<string, string> = {
       "common.loading": "Loading...",
       "common.search": "Search",
+      "recipe.author.credit": "By {name}",
       "cook.empty.title": "Start cooking",
       "cook.empty.description": "Choose a planned meal or recipes from your library.",
       "cook.setup.plannedMeal": "Planned meal",
@@ -84,4 +86,20 @@ test("supports manual selection and excludes recipes without tutorial steps", as
   await fireEvent.press(screen.getByRole("button", { name: "Start 1 dishes" }));
 
   await waitFor(() => expect(mockCreate).toHaveBeenCalledWith(["tofu"]));
+});
+
+test("cooking search by alias keeps duplicate recipe names distinguishable by credit", async () => {
+  mockMealPlanList.mockResolvedValue([]);
+  mockRecipesList.mockResolvedValue([
+    { ...recipes[0], author_id: "creator-1", author: { id: "creator-1", name: "Chef Lin", aliases: ["小林"] } },
+    { ...recipes[0], id: "other-tofu", author_id: "creator-2", author: { id: "creator-2", name: "Chef Wang", aliases: [] } },
+  ]);
+  await render(<CookSetup onSessionCreated={jest.fn()} />);
+  await fireEvent.press(await screen.findByRole("button", { name: "Choose recipes" }));
+  await fireEvent.changeText(screen.getByLabelText("Search"), "小林");
+  const result = await screen.findByRole("checkbox", { name: "Mapo tofu · By Chef Lin" });
+  expect(screen.queryByRole("checkbox", { name: "Mapo tofu · By Chef Wang" })).toBeNull();
+  await fireEvent.press(result);
+  await fireEvent.press(screen.getByRole("button", { name: "Start 1 dishes" }));
+  await waitFor(() => expect(mockCreate).toHaveBeenLastCalledWith(["tofu"]));
 });

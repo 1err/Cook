@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { getRecipeTags, type Recipe, type RecipeTagSlug } from '@cooking/shared';
+import { getRecipeTags, matchesRecipeSearch, type Recipe, type RecipeTagSlug } from '@cooking/shared';
 import { useT } from '../../lib/i18n';
+import { RecipeAuthorCredit } from '../../components/RecipeAuthorCredit';
 import { TagFilterPopover } from '../../components/TagFilterPopover';
 import styles from './SimpleMenu.module.css';
 
@@ -9,7 +10,7 @@ type Props = { recipes:Recipe[]; selectedIds:string[]; onChange:(ids:string[]) =
 export function MenuSelection({ recipes,selectedIds,onChange,initialSearch='',initialFilters=[],disabled=false }:Props) {
  const t=useT(); const [search,setSearch]=useState(initialSearch); const [tags,setTags]=useState(initialFilters);
  const selected=useMemo(() => new Set(selectedIds),[selectedIds]);
- const matching=useMemo(() => recipes.filter(recipe => recipe.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()) && tags.every(tag => getRecipeTags(recipe).includes(tag))).sort((a,b) => a.title.localeCompare(b.title)),[recipes,search,tags]);
+ const matching=useMemo(() => recipes.filter(recipe => matchesRecipeSearch(recipe, search) && tags.every(tag => getRecipeTags(recipe).includes(tag))).sort((a,b) => a.title.localeCompare(b.title)),[recipes,search,tags]);
  return <section className={styles.selection} aria-label={t('menu.selection.title')}>
   <div className={styles.sectionHeading}><h2>{t('menu.selection.title')}</h2><span className={styles.count} aria-live="polite">{t('menu.selection.count',{ count:selectedIds.length })}</span></div>
   <div className={styles.searchRow}>
@@ -21,7 +22,7 @@ export function MenuSelection({ recipes,selectedIds,onChange,initialSearch='',in
    {matching.map(recipe => <label key={recipe.id} className={styles.recipeRow} data-selected={selected.has(recipe.id)}>
     <input type="checkbox" checked={selected.has(recipe.id)} disabled={disabled} aria-label={t('menu.selection.selectDish',{ name:recipe.title })} onChange={event => onChange(event.target.checked ? [...new Set([...selectedIds,recipe.id])] : selectedIds.filter(id => id !== recipe.id))} />
     {recipe.thumbnail_url ? <img src={recipe.thumbnail_url} alt="" width={40} height={40} loading="lazy" referrerPolicy="no-referrer" /> : <span className={styles.thumbnailPlaceholder} aria-hidden="true">{recipe.title.trim().slice(0,1)}</span>}
-    <span className={styles.recipeName}>{recipe.title}</span>
+    <span className={styles.recipeName}>{recipe.title}<RecipeAuthorCredit author={recipe.author} plain /></span>
    </label>)}
   </div>}
  </section>;

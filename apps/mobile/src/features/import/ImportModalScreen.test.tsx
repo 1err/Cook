@@ -34,6 +34,7 @@ const mockPickVideo = jest.fn();
 const mockPermission = jest.fn();
 const mockApiClient = {
   recipes: {
+    authors: jest.fn(async () => [{ id: "creator-1", name: "Chef Lin", aliases: ["小林"] }]),
     parseLink: mockParseLink,
     parseTranscript: mockParseTranscript,
     create: mockCreate,
@@ -131,11 +132,15 @@ test("reviews imported tutorial metadata and saves user edits without dropping h
   expect(screen.queryByText("Equipment")).not.toBeOnTheScreen();
   expect(screen.queryByDisplayValue("Legacy noodle pot")).not.toBeOnTheScreen();
   await fireEvent.press(screen.getByRole("button", { name: "Passive" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Add author" }));
+  await fireEvent.press(await screen.findByRole("button", { name: "By Chef Lin" }));
   await fireEvent.press(screen.getByRole("button", { name: "Save recipe" }));
 
   await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
   const saved = mockCreate.mock.calls[0][0] as Recipe;
   expect(saved).not.toHaveProperty("equipment");
+  expect(saved.author_id).toBe("creator-1");
+  expect(saved).not.toHaveProperty("author");
   expect(saved.steps?.[0]).toEqual({
     ...parsedDraft.steps?.[0],
     attention_type: "passive",
@@ -356,6 +361,25 @@ test("applies a reviewed candidate only after explicit acceptance", async () => 
   expect(screen.getByLabelText("Title")).toHaveDisplayValue("New video result");
   await fireEvent.press(screen.getByRole("button", { name: "Save recipe" }));
   expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ title: "New video result", source_url: parsedDraft.source_url }));
+});
+
+test.each([false, true])("replacement import preserves chosen author including cleared=%s", async (clearAuthor) => {
+  const nav = navigation();
+  await render(<ImportModalScreen navigation={nav.value as never} route={{ params: { initialUrl: parsedDraft.source_url } } as never} />);
+  await fireEvent.press(screen.getByRole("button", { name: "Preview recipe" }));
+  await screen.findByLabelText("Title");
+  await fireEvent.press(screen.getByRole("button", { name: "Add author" }));
+  await fireEvent.press(await screen.findByRole("button", { name: "By Chef Lin" }));
+  if (clearAuthor) {
+    await fireEvent.press(screen.getByRole("button", { name: "Edit author" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Clear author" }));
+  }
+  mockParseLink.mockResolvedValueOnce({ ...parsedDraft, title: "New video result", source_url: null });
+  await fireEvent.press(screen.getByRole("button", { name: "Read steps from video" }));
+  await fireEvent.press(await screen.findByRole("button", { name: "Apply new draft" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Save recipe" }));
+  await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+  expect(mockCreate.mock.calls[0][0].author_id).toBe(clearAuthor ? null : "creator-1");
 });
 
 test("account changes cancel pending jobs and discard the previous account draft", async () => {

@@ -119,6 +119,8 @@ async def copy_friend_recipe_to_user(
         id=uuid.uuid4().hex,
         user_id=caller_user_id,
         title=source.title,
+        author_id=source.author_id,
+        author=source.author,
         source_url=source.source_url,
         thumbnail_url=source.thumbnail_url,
         ingredients=source.ingredients,

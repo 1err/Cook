@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -295,4 +296,41 @@ test('regular catalog browsing shows the original photo and bookmark without mod
  expect(screen.getByRole('button',{name:/^library.addToMyLibrary:/})).toBeEnabled();
  expect(screen.queryByRole('button',{name:/safety\.(report|block)/})).not.toBeInTheDocument();
  expect(screen.queryByText('safety.photosPending')).not.toBeInTheDocument();
+});
+
+
+test('creator, text and existing tag filters compose on every page and reset the cursor independently', async () => {
+  const author = { id: 'author-1', name: 'Lin', aliases: ['阿林'] };
+  mine.mockImplementation(async (options) => ({ items: [{...page(options.cursor ? 'Later matching recipe' : 'Matching recipe').items[0], author}], next_cursor: options.cursor ? null : 'next' }));
+  render(<LibraryPage />);
+  await screen.findByRole('heading', { name: 'Matching recipe' });
+  const rects = vi.spyOn(HTMLElement.prototype, 'getClientRects').mockImplementation(function (this: HTMLElement) { return [this.getBoundingClientRect()] as unknown as DOMRectList; });
+  fireEvent.click(screen.getByRole('button', { name: 'library.filterAria' }));
+  fireEvent.click(screen.getByRole('button', { name: 'recipe.tag.chinese' }));
+  fireEvent.click(screen.getByRole('button', { name: 'recipe.filters.done' }));
+  rects.mockRestore();
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Noodles' } });
+  fireEvent.click(await screen.findByRole('button', { name: 'Lin' }));
+  await waitFor(() => expect(mine).toHaveBeenLastCalledWith({ q: 'Noodles', tags: ['chinese'], authorId: author.id, cursor: null, expectedAccountId: 'account-a' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'common.loadMoreRecipes' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: 'common.loadMoreRecipes' }));
+  await screen.findByRole('heading', { name: 'Later matching recipe' });
+  expect(mine).toHaveBeenLastCalledWith({ q: 'Noodles', tags: ['chinese'], authorId: author.id, cursor: 'next', expectedAccountId: 'account-a' });
+  fireEvent.click(screen.getByRole('button', { name: 'recipe.author.all' }));
+  await waitFor(() => expect(mine).toHaveBeenLastCalledWith({ q: 'Noodles', tags: ['chinese'], cursor: null, expectedAccountId: 'account-a' }));
+  expect(screen.queryByRole('heading', { name: 'Later matching recipe' })).not.toBeInTheDocument();
+});
+
+test('directory alias search can choose a creator absent from the loaded recipe page', async () => {
+  const author = { id: 'beyond-first-page', name: 'Lin', aliases: ['阿林'] };
+  const { apiFetch } = await import('../lib/api');
+  vi.mocked(apiFetch).mockImplementation(async () => new Response(JSON.stringify([author])));
+  mine.mockResolvedValue(page('First page has no creator'));
+  render(<LibraryPage />);
+  await screen.findByRole('heading', { name: 'First page has no creator' });
+  await userEvent.click(screen.getByText('recipe.author.search'));
+  await userEvent.type(screen.getByLabelText('recipe.author.search'), '阿林');
+  await userEvent.click(await screen.findByRole('button', { name: /Lin/ }));
+  await waitFor(() => expect(mine).toHaveBeenLastCalledWith({ q: '', tags: [], authorId: author.id, cursor: null, expectedAccountId: 'account-a' }));
+  expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining('q=%E9%98%BF%E6%9E%97'), expect.anything());
 });

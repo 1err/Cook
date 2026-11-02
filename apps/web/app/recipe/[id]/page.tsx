@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { isSafeExternalUrl } from "@cooking/shared";
 import { presentIngredient } from "../../lib/ingredientPresentation";
 import { PageShell } from "../../components/PageShell";
+import { RecipeAuthorEditor } from "../../components/RecipeAuthorEditor";
 import { RecipeCoverEditor } from "../../components/RecipeCoverEditor";
 import { RequireAuth } from "../../components/RequireAuth";
 import { apiFetch } from "../../lib/api";
@@ -95,6 +96,8 @@ function RecipeDetailContent() {
           <RecipeCoverEditor key={id} value={recipe.thumbnail_url} variant="hero" onChange={updateCover} onBusyChange={setCoverBusy} disabled={deleting} />
           <header className={styles.recipeHeader}>
             <h1 className="cw-display">{recipe.title}</h1>
+            <RecipeAuthorEditor key={id} recipeId={id} author={recipe.author} disabled={deleting || coverBusy}
+              onSaved={author => setRecipe(current => current ? { ...current, author, author_id: author?.id ?? null } : current)} />
             {recipe.description ? <p>{recipe.description}</p> : null}
             <div className={styles.recipeMetadata}>
             <RecipeTimingDetails recipe={recipe} />

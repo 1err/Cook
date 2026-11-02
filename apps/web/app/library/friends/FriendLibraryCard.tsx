@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { RecipeAuthorCredit } from "../../components/RecipeAuthorCredit";
 import { RecipeTiming } from "../../components/RecipeTiming";
 import { CATEGORY_LABELS } from "../../lib/recipeCategories";
 import { getRecipeTags } from "../../lib/recipeTags";
@@ -8,7 +9,7 @@ import type { Recipe } from "../../types";
 import styles from "./Friends.module.css";
 
 type FriendLibraryCardProps = {
-  recipe: Pick<Recipe, "id" | "title" | "thumbnail_url" | "library_tags" | "library_category" | "total_time_minutes" | "timing_summary">;
+  recipe: Pick<Recipe, "id" | "title" | "thumbnail_url" | "library_tags" | "library_category" | "total_time_minutes" | "timing_summary" | "author">;
   href: string;
   state: "idle" | "copying" | "added";
   onCopy: () => void;
@@ -33,6 +34,7 @@ export function FriendLibraryCard({ recipe, href, state, onCopy }: FriendLibrary
           <h2 className="cw-display">{recipe.title}</h2>
         </div>
       </Link>
+      <RecipeAuthorCredit author={recipe.author} />
       <div className={styles.recipeMetadata}>
         <RecipeTiming {...recipe} />
         {tags.length ? (

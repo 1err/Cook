@@ -7,6 +7,8 @@ import { MESSAGE_MAP, type Recipe } from "@cooking/shared";
 import { DraftRecipeEditor } from "./DraftRecipeEditor";
 
 const mockApiClient = { recipes: {
+  authors: jest.fn(),
+  createAuthor: jest.fn(),
   uploadImage: jest.fn(),
   imageGenerationAccess: jest.fn(),
   generateImage: jest.fn(),
@@ -24,6 +26,7 @@ const access = {
 
 beforeEach(() => {
   jest.resetAllMocks();
+  mockApiClient.recipes.authors.mockResolvedValue([{ id: "creator-1", name: "Chef Lin", aliases: ["小林"] }]);
   mockApiClient.recipes.imageGenerationAccess.mockResolvedValue(access);
   mockApiClient.recipes.generateImage.mockImplementation(async ({ request_id }) => ({
     request_id,
@@ -46,6 +49,34 @@ function RecipeHarness({ allowImageEditing = true, saving = false }: { allowImag
 function currentDraft(): Recipe {
   return JSON.parse(screen.getByTestId("saved-draft").props.children);
 }
+
+test("import review chooses an existing canonical creator and explicitly clears the credit", async () => {
+  await render(<RecipeHarness allowImageEditing={false} />);
+  await fireEvent.press(screen.getByRole("button", { name: "Add author" }));
+  await fireEvent.press(await screen.findByRole("button", { name: "By Chef Lin" }));
+  expect(currentDraft()).toMatchObject({ author_id: "creator-1", author: { name: "Chef Lin" } });
+  expect(mockApiClient.recipes.createAuthor).not.toHaveBeenCalled();
+  await fireEvent.press(screen.getByRole("button", { name: "Edit author" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Clear author" }));
+  expect(currentDraft()).toMatchObject({ author_id: null, author: null });
+});
+
+test("a manual creator name is created only after an explicit add and blocks Save while pending", async () => {
+  let finish!: (value: { id: string; name: string; aliases: string[] }) => void;
+  mockApiClient.recipes.authors.mockResolvedValue([]);
+  mockApiClient.recipes.createAuthor.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  await render(<RecipeHarness allowImageEditing={false} />);
+  await fireEvent.press(screen.getByRole("button", { name: "Add author" }));
+  await fireEvent.changeText(screen.getByPlaceholderText("Search creators or aliases"), "My chosen name");
+  const add = await screen.findByRole("button", { name: "Add “My chosen name”" });
+  expect(mockApiClient.recipes.createAuthor).not.toHaveBeenCalled();
+  await fireEvent.press(add);
+  expect(screen.getByRole("button", { name: "Save recipe" })).toBeDisabled();
+  await fireEvent.changeText(screen.getByLabelText("Title"), "Updated while the creator saves");
+  await act(async () => { finish({ id: "new-creator", name: "My chosen name", aliases: [] }); });
+  expect(currentDraft()).toMatchObject({ title: "Updated while the creator saves", author_id: "new-creator", author: { name: "My chosen name" } });
+  expect(screen.getByRole("button", { name: "Save recipe" })).toBeEnabled();
+});
 
 jest.mock("../../lib/api", () => ({
   useApiClient: () => mockApiClient,

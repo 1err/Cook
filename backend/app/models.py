@@ -211,8 +211,16 @@ class ImportReview(BaseModel):
     can_analyze_video: bool = False
 
 
+class RecipeAuthor(BaseModel):
+    id: str
+    name: str
+    aliases: list[str] = Field(default_factory=list)
+
+
 class RecipeCreate(BaseModel):
     title: str
+    author_id: str | None = Field(default=None, min_length=1, max_length=36)
+    author: RecipeAuthor | None = None
     source_url: Optional[str] = None
     thumbnail_url: Optional[str] = None
     ingredients: list[IngredientItem]
@@ -346,6 +354,8 @@ class RecipeSummary(BaseModel):
     """List projection; recipe instructions and private import text are detail-only."""
     id: str
     title: str
+    author_id: str | None = None
+    author: RecipeAuthor | None = None
     source_url: Optional[str] = None
     thumbnail_url: Optional[str] = None
     library_tags: list[str] = Field(default_factory=list)

@@ -18,6 +18,16 @@ The web beta polish keeps Library, Planner, Shopping, Cook setup, Import, and Se
 
 Sharing rollback (October 13): friend libraries and the public catalog retain the original photo display and copying behavior. The experimental report/block controls, blocked-account panels, photo-preapproval notices and moderation queues are removed at the owner's request. Password-confirmed account deletion, owned-media cleanup and public Privacy/Terms remain. The prepared native source retains AI consent. Apple submission is on hold; this rollback is not App Store approval.
 
+## Recipe creator credits (feature branch, not deployed)
+
+Recipes optionally reference a canonical creator using `author_id`; recipe and paginated summary responses include `author: {id, name, aliases}`. Ownership, importing, and saving never infer authorship. Public and friend copies retain their creator ID; editing a copy's credit does not edit the source. Older clients omitting the author field preserve existing credit, including title-only PATCH requests racing with another credit edit; explicit `author_id: null` clears it.
+
+Authenticated `GET /recipes/authors?q=&limit=40` searches the bounded creator directory. `POST /recipes/authors` explicitly creates or reuses a creator, with names of 1–80 visible characters and up to eight aliases of 1–80 characters each. Unicode-normalized case/spacing equivalents and known aliases reuse canonical IDs. Conflicting aliases return 409; recipe writes cannot rename creators. These are user-entered attribution names, not verified accounts. Same-name people still need future profile-based disambiguation.
+
+Library preserves the existing natural-image waterfall, tag filters, timing labels and menu maker, adding compact credits and creator filtering. Existing paginated list/search routes accept `author_id` alongside `q` and `tags`; search combines whitespace-separated dish/creator/alias terms and cursors bind selected filters. Web and native import review, full edit and recipe detail expose author selection, including manual self-authorship and clearing. Replacing an import candidate preserves the user's selected or explicitly cleared credit. Library, friend/public views, planner, cooking selectors and menu selection retain or display credit and support creator search. Shared `matchesRecipeSearch` provides local selector matching; the API client exposes author lookup/create and `RecipePageOptions.authorId`.
+
+Apply Alembic revision `20261101_recipe_authors` before running this source against a database. It adds `recipe_authors`, unique normalized name/alias keys, and nullable `recipes.author_id`. The November 1 review uses a separate loopback-only runner and disposable database populated from the signed-in Library's displayed recipes; that runner's local identity override is outside application source and must never be deployed. No automatic production backfill or deployment has occurred.
+
 ## Repo shape (npm workspaces + Python)
 
 Visible Instacart controls are removed from web and mobile for the beta release at the owner’s request. The unused panel components, shared helpers, and backend export endpoint remain for possible future integration; they do not alter Weee lookup, cart selections, or progress.

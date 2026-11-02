@@ -13,6 +13,7 @@ import { presentIngredient } from "../../../lib/ingredientPresentation";
 import { CATEGORY_LABELS } from "../../../lib/recipeCategories";
 import { getRecipeTags } from "../../../lib/recipeTags";
 import { RecipeTutorial } from "../../../recipe/[id]/RecipeTutorial";
+import { RecipeAuthorCredit } from "../../../components/RecipeAuthorCredit";
 import { RecipeTimingDetails } from "../../../components/RecipeTimingDetails";
 import { useAccountScope } from "../../../lib/useAccountScope";
 import styles from "../../../recipe/[id]/RecipeDetail.module.css";
@@ -132,6 +133,7 @@ function PublicRecipeContent({ id }: { id: string }) {
           </div>
           <header className={styles.recipeHeader}>
             <h1 className="cw-display">{recipe.title}</h1>
+            <RecipeAuthorCredit author={recipe.author} view="public" />
             {recipe.description ? <p>{recipe.description}</p> : null}
             <div className={styles.recipeMetadata}>
               <RecipeTimingDetails recipe={recipe} />

@@ -130,6 +130,7 @@ export function RecipeEditScreen({ navigation, route }: Props) {
         );
         await apiClient.recipes.update(recipeId, {
           title: submittedDraft.title,
+          ...(submittedDraft.author_id !== undefined ? { author_id: submittedDraft.author_id } : {}),
           thumbnail_url: submittedDraft.thumbnail_url,
           ingredients: cleanedIngredients,
           library_tags: submittedDraft.library_tags,

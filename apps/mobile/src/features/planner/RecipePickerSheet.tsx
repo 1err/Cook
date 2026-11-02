@@ -20,6 +20,7 @@ import { EmptyState, TextField, Button } from "../../components";
 import { colors, radii, spacing, typography } from "../../theme";
 import { resolveImageUrl } from "../../lib/imageUrl";
 import { useRecipePickerData, type TagFilter } from "./useRecipePickerData";
+import { RecipeAuthorCredit } from "../authors/RecipeAuthorCredit";
 
 const SLOT_LABELS: Record<MealType, string> = {
   breakfast: "Breakfast",
@@ -183,6 +184,8 @@ export const RecipePickerSheet = forwardRef<RecipePickerSheetHandle, RecipePicke
           }
           renderItem={({ item }) => (
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={item.author ? `${item.title} · ${t("recipe.author.credit", { name: item.author.name })}` : item.title}
               onPress={() => handlePick(item.id)}
               style={({ pressed }) => [styles.row, pressed && styles.pressed]}
             >
@@ -197,6 +200,7 @@ export const RecipePickerSheet = forwardRef<RecipePickerSheetHandle, RecipePicke
                 <Text style={styles.rowTitle} numberOfLines={1}>
                   {item.title}
                 </Text>
+                <RecipeAuthorCredit author={item.author} />
                 <Text style={styles.rowSub}>
                   {item.ingredient_count}{" "}
                   {item.ingredient_count === 1 ? "ingredient" : "ingredients"}

@@ -8,6 +8,7 @@ import { DraftRecipeEditor } from "./DraftRecipeEditor";
 const { mockApiFetch } = vi.hoisted(() => ({ mockApiFetch: vi.fn() }));
 
 vi.mock("../lib/api", () => ({ apiFetch: mockApiFetch }));
+vi.mock("../lib/useAccountScope", () => ({ useAccountScope: () => ({ accountId: "account-1", capture: () => ({ id: "account-1", generation: 1 }), active: () => true }) }));
 
 vi.mock("../lib/i18n", () => ({
   useT: () => (key: string, vars?: Record<string, string | number>) => {
@@ -377,4 +378,24 @@ it("saves tags chosen from multiple groups alongside source amounts", async () =
   const saved = JSON.parse(mockApiFetch.mock.calls[0][1].body);
   expect(saved.library_tags).toEqual(["weeknight", "chinese", "soup"]);
   expect(saved.ingredients).toEqual(draft.ingredients);
+});
+
+
+it("selects an existing creator by alias and includes its canonical id in an import save", async () => {
+  const author = { id: "author-1", name: "Lin's Kitchen", aliases: ["阿林"] };
+  mockApiFetch.mockImplementation(async (url: string, options?: RequestInit) =>
+    new Response(JSON.stringify(options?.method === "POST" ? { ...draft, id: "saved-1" } : [author])));
+  function ControlledDraft() {
+    const [value, setValue] = useState(draft);
+    return <DraftRecipeEditor draft={value} onChange={setValue} onBack={vi.fn()} onSaveSuccess={vi.fn()} />;
+  }
+  render(<ControlledDraft />);
+  await userEvent.click(screen.getByRole("button", { name: "recipe.author.add" }));
+  await userEvent.type(screen.getByRole("combobox", { name: "recipe.author.search" }), "阿林");
+  await userEvent.click(await screen.findByRole("option", { name: /Lin's Kitchen/ }));
+  await userEvent.click(screen.getByRole("button", { name: "Save recipe" }));
+  await waitFor(() => expect(mockApiFetch.mock.calls.some(([url, options]) => url === "/recipes" && options?.method === "POST")).toBe(true));
+  const [, request] = mockApiFetch.mock.calls.find(([url, options]) => url === "/recipes" && options?.method === "POST")!;
+  expect(JSON.parse(request.body)).toMatchObject({ author_id: "author-1" });
+  expect(mockApiFetch.mock.calls.some(([, options]) => options?.method === "POST" && JSON.parse(options.body).name)).toBe(false);
 });

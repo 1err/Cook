@@ -9,6 +9,9 @@ import { apiFetch } from "../lib/api";
 import { RequireAuth } from "../components/RequireAuth";
 import { useT } from "../lib/i18n";
 import { useEditorialCopy } from "../lib/editorialCopy";
+import type { RecipeAuthor } from "@cooking/shared";
+import { AuthorFilters } from "../components/AuthorFilters";
+import { RecipeAuthorCredit } from "../components/RecipeAuthorCredit";
 import { RecipeCard } from "../components/RecipeCard";
 import { RecipeTiming } from "../components/RecipeTiming";
 import { Button, ActionLink } from "../components/ui/Button";
@@ -37,6 +40,10 @@ function LibraryPageContent() {
   const [mineFilters, setMineFilters] = useState<RecipeTagSlug[]>([]);
   const [publicFilter, setPublicFilter] = useState<LibraryFilterId>("all");
   const [search, setSearch] = useState("");
+  const [authorFilter, setAuthorFilter] = useState<RecipeAuthor | null>(() => {
+    const id = searchParams.get("author_id");
+    return id ? { id, name: searchParams.get("author_name") || "…", aliases: [] } : null;
+  });
   const [catalogVisited, setCatalogVisited] = useState(searchParams.get("view") === "public");
   const [view, setView] = useState<"mine" | "public">(searchParams.get("view") === "public" ? "public" : "mine");
   const knownBookmarkParents = useRef(new Map<string, string>());
@@ -46,8 +53,8 @@ function LibraryPageContent() {
   const t = useT();
   const copy = useEditorialCopy();
 
-  const minePage = useRecipePage("mine", { q: search, tags: mineFilters });
-  const catalogPage = useRecipePage("catalog", { q: search, tags: publicFilter === "all" ? [] : [publicFilter] }, catalogVisited);
+  const minePage = useRecipePage("mine", { q: search, tags: mineFilters, authorId: authorFilter?.id });
+  const catalogPage = useRecipePage("catalog", { q: search, tags: publicFilter === "all" ? [] : [publicFilter], authorId: authorFilter?.id }, catalogVisited);
   const page = view === "mine" ? minePage : catalogPage;
   const recipes = view === "mine" ? page.items : [];
   const publicRecipes = view === "public" ? page.items : [];
@@ -124,7 +131,7 @@ function LibraryPageContent() {
     }
   }
 
-  const hasFilters = Boolean(search.trim()) || (view === "mine" ? mineFilters.length > 0 : publicFilter !== "all");
+  const hasFilters = Boolean(authorFilter) || Boolean(search.trim()) || (view === "mine" ? mineFilters.length > 0 : publicFilter !== "all");
   const activeList = view === "mine" ? filteredMine : filteredPublic;
 
   if (menuOpen) return <MenuMaker initialSearch={search} initialFilters={mineFilters} onClose={() => { setMenuOpen(false); requestAnimationFrame(() => menuTrigger.current?.focus()); }} />;
@@ -192,6 +199,9 @@ function LibraryPageContent() {
         )}
       </div>
 
+      <AuthorFilters key={view} selected={authorFilter} onSelect={setAuthorFilter}
+        authors={page.items.flatMap(recipe => recipe.author ? [recipe.author] : [])} />
+
       <p className={styles.visuallyHidden} role="status">{copyStatus}</p>
       {view === "public" && activeList.length ? <p className={styles.bookmarkHelp}>
         <Icon name="bookmark" size={16} />{t("library.bookmarkHelp")}
@@ -238,6 +248,7 @@ function LibraryPageContent() {
                   key={recipe.id}
                   recipe={recipe}
                   isHighlighted={highlightId === recipe.id}
+                  onAuthorSelect={setAuthorFilter}
                 />
               );
             }
@@ -258,6 +269,7 @@ function LibraryPageContent() {
                     <h2 className="cw-display">{recipe.title}</h2>
                   </div>
                 </Link>
+                <RecipeAuthorCredit author={recipe.author} onSelect={setAuthorFilter} />
                 <div className={styles.metadata}>
                   <RecipeTiming {...recipe} />
                   {tags.length ? (

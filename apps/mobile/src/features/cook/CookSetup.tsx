@@ -7,6 +7,7 @@ import { useApiClient } from "../../lib/api";
 import { useT } from "../../lib/i18n";
 import { useRecipePage } from "../../lib/useRecipePage";
 import { colors, radii, spacing, typography } from "../../theme";
+import { RecipeAuthorCredit } from "../authors/RecipeAuthorCredit";
 
 const MEALS: MealType[] = ["breakfast", "lunch", "dinner"];
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -125,9 +126,13 @@ export function CookSetup({
             options={MEALS.map((value) => ({ value, label: t(`cook.setup.${value}`) }))}
             value={meal}
           />
-          {plannedSelection.length ? plannedSelection.map((recipeId) => (
-            <Text key={recipeId} style={styles.recipeTitle}>{recipes.find((recipe) => recipe.id === recipeId)?.title ?? recipeId}</Text>
-          )) : (
+          {plannedSelection.length ? plannedSelection.map((recipeId) => {
+            const recipe = recipes.find(row => row.id === recipeId);
+            return <View key={recipeId}>
+              <Text style={styles.recipeTitle}>{recipe?.title ?? recipeId}</Text>
+              <RecipeAuthorCredit author={recipe?.author} />
+            </View>;
+          }) : (
             <View style={styles.emptyPlanned}>
               <Text style={styles.muted}>{t("cook.setup.noPlannedRecipes")}</Text>
               <Button onPress={() => setMode("manual")} title={t("cook.setup.chooseInstead")} variant="secondary" />
@@ -136,10 +141,10 @@ export function CookSetup({
         </View>
       ) : (
         <View style={styles.panel}>
-          <TextField accessibilityLabel={t("common.search")} label={t("common.search")} onChangeText={setSearch} value={search} />
+          <TextField accessibilityLabel={t("common.search")} label={t("common.search")} placeholder={t("recipe.author.searchRecipes")} onChangeText={setSearch} value={search} />
           {visibleRecipes.map((recipe) => recipe.step_count ? (
             <Pressable
-              accessibilityLabel={recipe.title}
+              accessibilityLabel={recipe.author ? `${recipe.title} · ${t("recipe.author.credit", { name: recipe.author.name })}` : recipe.title}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: manualSelection.includes(recipe.id) }}
               key={recipe.id}
@@ -147,11 +152,17 @@ export function CookSetup({
               style={styles.choice}
             >
               <View style={[styles.checkbox, manualSelection.includes(recipe.id) && styles.checkboxSelected]} />
-              <Text style={styles.recipeTitle}>{recipe.title}</Text>
+              <View style={styles.grow}>
+                <Text style={styles.recipeTitle}>{recipe.title}</Text>
+                <RecipeAuthorCredit author={recipe.author} />
+              </View>
             </Pressable>
           ) : (
             <View key={recipe.id} style={styles.choice}>
-              <Text style={[styles.recipeTitle, styles.grow]}>{recipe.title}</Text>
+              <View style={styles.grow}>
+                <Text style={styles.recipeTitle}>{recipe.title}</Text>
+                <RecipeAuthorCredit author={recipe.author} />
+              </View>
               <Pressable
                 accessibilityLabel={`${t("cook.setup.editTutorial")} ${recipe.title}`}
                 accessibilityRole="button"

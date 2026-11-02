@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { RecipeAuthorCredit } from "../components/RecipeAuthorCredit";
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, resolveRecipeDetails } from "@cooking/api-client";
 import type { CookingSession, MealPlanDay, MealType, Recipe } from "@cooking/shared";
@@ -158,7 +159,7 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
                     <span className={styles.recipeThumb}>
                       {recipe?.thumbnail_url ? <img alt="" src={recipe.thumbnail_url} /> : null}
                     </span>
-                    <strong>{recipe?.title ?? recipeId}</strong>
+                    <span><strong>{recipe?.title ?? recipeId}</strong><RecipeAuthorCredit author={recipe?.author} plain /></span>
                   </li>
                 );
               })}
@@ -202,7 +203,7 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
                   <span className={styles.recipeThumb}>
                     {recipe.thumbnail_url ? <img alt="" src={recipe.thumbnail_url} /> : null}
                   </span>
-                  <span className={styles.recipeChoiceTitle}>{recipe.title}</span>
+                  <span className={styles.recipeChoiceTitle}>{recipe.title}<RecipeAuthorCredit author={recipe.author} plain /></span>
                   <input
                     type="checkbox"
                     checked={manualSelection.includes(recipe.id)}
@@ -214,7 +215,7 @@ export function CookSetup({ onSessionCreated }: CookSetupProps) {
                   <span className={styles.recipeThumb}>
                     {recipe.thumbnail_url ? <img alt="" src={recipe.thumbnail_url} /> : null}
                   </span>
-                  <span className={styles.recipeChoiceTitle}>{recipe.title}</span>
+                  <span className={styles.recipeChoiceTitle}>{recipe.title}<RecipeAuthorCredit author={recipe.author} plain /></span>
                   <Link
                     aria-label={`${t("cook.setup.editTutorial")} ${recipe.title}`}
                     href={`/recipe/${encodeURIComponent(recipe.id)}/tutorial/edit`}

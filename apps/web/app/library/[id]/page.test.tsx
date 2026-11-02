@@ -20,6 +20,7 @@ vi.mock("../../components/RequireAuth", () => ({
 }));
 
 vi.mock("../../lib/api", () => ({ apiFetch: mockApiFetch }));
+vi.mock("../../lib/useAccountScope", () => ({ useAccountScope: () => ({ accountId: "account-1", capture: () => ({ id: "account-1", generation: 1 }), active: () => true }) }));
 vi.mock("../../lib/uploadRecipeImage", () => ({ uploadRecipeImage: mockUploadRecipeImage }));
 vi.mock("../../lib/i18n", () => ({
   useT: () => (key: string, vars?: Record<string, string | number>) => {
@@ -329,4 +330,34 @@ describe("source link editing for ordinary recipe owners", () => {
     expect(screen.getByLabelText("Source link")).toHaveValue("https://example.com/original");
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
+});
+
+
+it("preserves a canonical author id when optional nested author metadata is absent", async () => {
+  mockApiFetch.mockImplementation(async (path: string, options?: RequestInit) => new Response(JSON.stringify(path === "/recipes/catalog/editor-status" ? { can_manage: false } : { ...recipe, author_id: "author-1" })));
+  render(<RecipeEditPage />);
+  await screen.findByLabelText("Recipe title");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/library"));
+  const [, request] = mockApiFetch.mock.calls.find(([, options]) => options?.method === "PATCH")!;
+  expect(JSON.parse(request.body).author_id).toBe("author-1");
+});
+
+
+it.each(["select", "clear"])("%s author in the full recipe editor saves only the chosen canonical id", async mode => {
+  const original = { id: "author-1", name: "Lin", aliases: [] };
+  const other = { id: "author-2", name: "Ming", aliases: ["小明"] };
+  mockApiFetch.mockImplementation(async (path: string) => new Response(JSON.stringify(path.startsWith("/recipes/authors?") ? [other]
+    : path === "/recipes/catalog/editor-status" ? { can_manage: false } : { ...recipe, author_id: original.id, author: original })));
+  render(<RecipeEditPage />);
+  await userEvent.click(await screen.findByRole("button", { name: "Lin" }));
+  if (mode === "clear") await userEvent.click(screen.getByRole("button", { name: "recipe.author.clear" }));
+  else {
+    await userEvent.type(screen.getByRole("combobox", { name: "recipe.author.search" }), "小明");
+    await userEvent.click(await screen.findByRole("option", { name: /Ming/ }));
+  }
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/library"));
+  const [, request] = mockApiFetch.mock.calls.find(([, options]) => options?.method === "PATCH")!;
+  expect(JSON.parse(request.body).author_id).toBe(mode === "clear" ? null : other.id);
 });

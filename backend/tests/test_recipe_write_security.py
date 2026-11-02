@@ -49,6 +49,9 @@ class SqlSession:
 def sql_session():
     engine = create_engine("sqlite:///:memory:")
     UserModel.__table__.create(engine)
+    from app.db.models import RecipeAuthorModel, RecipeAuthorKeyModel
+    RecipeAuthorModel.__table__.create(engine)
+    RecipeAuthorKeyModel.__table__.create(engine)
     RecipeModel.__table__.create(engine)
     from readiness_schema import create_readiness_schema
     create_readiness_schema(engine)

@@ -112,12 +112,30 @@ class MenuCreationModel(Base):
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now())
 
 
+class RecipeAuthorModel(Base):
+    __tablename__ = "recipe_authors"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    aliases: Mapped[str] = mapped_column(Text, nullable=False, server_default="[]")
+
+
+class RecipeAuthorKeyModel(Base):
+    """One global namespace prevents canonical names and aliases splitting identities."""
+    __tablename__ = "recipe_author_keys"
+
+    normalized_name: Mapped[str] = mapped_column(String(240), primary_key=True)
+    author_id: Mapped[str] = mapped_column(String(36), sa.ForeignKey("recipe_authors.id", ondelete="CASCADE"), nullable=False, index=True)
+
+
 class RecipeModel(Base):
     __tablename__ = "recipes"
 
     id: Mapped[str] = mapped_column(String(255), primary_key=True)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     title: Mapped[str] = mapped_column(String(1024), nullable=False)
+    author_id: Mapped[str | None] = mapped_column(String(36), sa.ForeignKey("recipe_authors.id", ondelete="SET NULL"), nullable=True, index=True)
+    author: Mapped["RecipeAuthorModel | None"] = relationship(lazy="joined")
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     ingredients: Mapped[str] = mapped_column(Text, nullable=False)  # JSON array

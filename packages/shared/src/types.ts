@@ -64,9 +64,17 @@ export interface RecipeTimingSummary {
   is_estimate: boolean;
 }
 
+export interface RecipeAuthor {
+  id: string;
+  name: string;
+  aliases: string[];
+}
+
 export interface Recipe {
   id: string;
   title: string;
+  author_id?: string | null;
+  author?: RecipeAuthor | null;
   source_url?: string | null;
   thumbnail_url?: string | null;
   ingredients: IngredientItem[];
@@ -134,7 +142,7 @@ export interface User {
 }
 
 
-export type RecipeSummary = Pick<Recipe, "id" | "title" | "source_url" | "thumbnail_url" | "library_tags" | "library_category" | "is_public_catalog" | "catalog_source_recipe_id" | "total_time_minutes" | "timing_summary"> & {
+export type RecipeSummary = Pick<Recipe, "id" | "title" | "author_id" | "author" | "source_url" | "thumbnail_url" | "library_tags" | "library_category" | "is_public_catalog" | "catalog_source_recipe_id" | "total_time_minutes" | "timing_summary"> & {
   ingredient_count: number;
   step_count: number;
   already_saved: boolean;

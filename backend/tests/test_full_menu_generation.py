@@ -17,8 +17,8 @@ def full_menu_app(menu_app, monkeypatch):
     from app.api import routes_menu_creations
     from app.core.config import settings
     from app.db import repo_menu_creations
-    from app.db.models import MenuCreationModel, RecipeModel
-    for model in (MenuCreationModel, RecipeModel):
+    from app.db.models import MenuCreationModel, RecipeModel, RecipeAuthorModel, RecipeAuthorKeyModel
+    for model in (MenuCreationModel, RecipeAuthorModel, RecipeAuthorKeyModel, RecipeModel):
         model.__table__.create(menu_app.database.bind)
     menu_app.app.include_router(routes_menu_creations.router)
     monkeypatch.setattr(repo_menu_creations, 'database_now', menu_app.repo.database_now)

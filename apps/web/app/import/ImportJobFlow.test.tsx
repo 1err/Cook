@@ -425,3 +425,22 @@ test("ambiguous repeated instructions do not copy a source moment or manual time
   expect(saved.steps[0]).toMatchObject({ id: "new-step", duration_seconds: 180, duration_source: "estimated" });
   expect(saved.steps[0].source_start_seconds ?? null).toBeNull();
 });
+
+
+test.each(["additional text", "video analysis"])("applying %s preserves an explicitly selected author rather than replacing it with parser metadata", async mode => {
+  const author = { id: "author-1", name: "Family kitchen", aliases: [] };
+  mocks.createImportJob.mockResolvedValueOnce({ id: "original", status: "completed", recipe: { ...partial, author_id: author.id, author } });
+  await importPartial();
+  const candidate = { ...partial, id: "updated", title: "Updated tofu" };
+  if (mode === "additional text") await requestAdditionalCandidate(candidate);
+  else {
+    mocks.createImportJob.mockResolvedValueOnce({ id: "analyzed", status: "completed", recipe: candidate });
+    fireEvent.click(screen.getByRole("button", { name: "Read steps from video" }));
+    await screen.findByRole("button", { name: "Apply new draft" });
+  }
+  fireEvent.click(screen.getByRole("button", { name: "Apply new draft" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
+  await waitFor(() => expect(mocks.apiFetch.mock.calls.some(([path]) => path === "/recipes")).toBe(true));
+  const saved = JSON.parse(mocks.apiFetch.mock.calls.find(([path]) => path === "/recipes")![1].body);
+  expect(saved).toMatchObject({ author_id: author.id, author });
+});

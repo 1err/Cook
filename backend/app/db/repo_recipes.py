@@ -25,7 +25,8 @@ from app.models import (
     coerce_steps,
     coerce_string_list,
 )
-from app.db.models import RecipeModel, UserModel
+from app.db.models import RecipeModel, RecipeAuthorModel, UserModel
+from app.db.repo_recipe_authors import author_payload, get_author, UnknownRecipeAuthor, recipe_search_predicate, normalize_recipe_query
 from app.services.recipe_timing import summarize_recipe_timing
 from app.db.repo_auth import lock_account_erasure_barrier
 
@@ -83,6 +84,8 @@ def _row_to_recipe(row: RecipeModel) -> Recipe:
     return Recipe(
         id=row.id,
         title=row.title,
+        author_id=getattr(row, "author_id", None),
+        author=author_payload(getattr(row, "author", None)) if getattr(row, "author_id", None) else None,
         source_url=row.source_url,
         thumbnail_url=row.thumbnail_url,
         ingredients=[IngredientItem(**i) for i in ingredients_data],
@@ -110,6 +113,9 @@ async def save_recipe(session: AsyncSession, recipe: Recipe, user_id: uuid.UUID)
                                   .with_for_update().execution_options(populate_existing=True))).scalars().one_or_none()
     if owner is None:
         raise RecipeOwnershipConflict("Account is unavailable")
+    if "author_id" in recipe.model_fields_set and recipe.author_id is not None:
+        if await get_author(session, recipe.author_id) is None:
+            raise UnknownRecipeAuthor("Unknown recipe author")
     ingredients_json = json.dumps(
         [i.model_dump() if hasattr(i, "model_dump") else i for i in recipe.ingredients]
     )
@@ -137,6 +143,8 @@ async def save_recipe(session: AsyncSession, recipe: Recipe, user_id: uuid.UUID)
         tips=json.dumps(tips_list),
         equipment=json.dumps(equipment_list),
     )
+    if "author_id" in recipe.model_fields_set:
+        values["author_id"] = recipe.author_id
     # The database checks ownership at the same instant it resolves an ID
     # conflict. A prior SELECT alone would leave a cross-account write race.
     statement = insert(RecipeModel).values(**values)
@@ -150,7 +158,9 @@ async def save_recipe(session: AsyncSession, recipe: Recipe, user_id: uuid.UUID)
     row = result.scalars().one_or_none()
     if row is None:
         raise RecipeOwnershipConflict("Recipe ID is unavailable for this account")
-    return _row_to_recipe(row)
+    # RETURNING does not eagerly load the relationship; fetch authoritative
+    # directory metadata rather than accepting nested client metadata.
+    return await get_recipe(session, row.id, user_id)
 
 
 async def get_recipe(session: AsyncSession, recipe_id: str, user_id: uuid.UUID) -> Optional[Recipe]:
@@ -221,7 +231,7 @@ async def set_recipe_public_catalog(
         return None
     result = await session.execute(
         select(RecipeModel).where(RecipeModel.id == recipe_id, RecipeModel.user_id == user_id)
-        .with_for_update().execution_options(populate_existing=True)
+        .with_for_update(of=RecipeModel).execution_options(populate_existing=True)
     )
     row = result.scalars().one_or_none()
     if not row:
@@ -268,6 +278,8 @@ async def copy_public_recipe_to_user(
         id=str(uuid.uuid4()),
         user_id=user_id,
         title=source.title,
+        author_id=source.author_id,
+        author=source.author,
         source_url=source.source_url,
         thumbnail_url=source.thumbnail_url,
         ingredients=source.ingredients,
@@ -387,16 +399,17 @@ def recipe_summary_statement(caller_id):
     ))).select_from(timing_step).correlate(r).scalar_subquery()
     return select(
         r.id, r.title, func.lower(r.title).label("sort_title"), r.source_url, r.thumbnail_url,
+        r.author_id, RecipeAuthorModel.name.label("author_name"), RecipeAuthorModel.aliases.label("author_aliases"),
         r.library_tags, r.library_category, r.is_public_catalog, r.catalog_source_recipe_id,
         r.total_time_minutes, func.jsonb_array_length(cast(r.ingredients, JSONB)).label("ingredient_count"),
         func.jsonb_array_length(steps_array).label("step_count"), already_saved.label("already_saved"),
         timing_steps.label('timing_steps'),
-    )
+    ).outerjoin(RecipeAuthorModel, r.author_id == RecipeAuthorModel.id)
 
 async def recipe_page(
     session: AsyncSession, caller_id: uuid.UUID, *, owner_id: uuid.UUID | None = None,
     catalog: bool = False, limit: int = 40, cursor: str | None = None,
-    q: str = "", tags: list[str] | None = None,
+    q: str = "", tags: list[str] | None = None, author_id: str | None = None,
 ):
     """Read-committed keyset traversal: edits may move rows; clients deduplicate IDs.
 
@@ -406,13 +419,15 @@ async def recipe_page(
     from app.models import RecipePage, RecipeSummary, LEGACY_LIBRARY_CATEGORY_TO_TAG
     if not 1 <= limit <= 100:
         raise ValueError("Page limit must be between 1 and 100")
-    q = q.strip().lower()
+    q = normalize_recipe_query(q)
     if len(q) > 200:
         raise ValueError("Search is limited to 200 characters")
     tags = sorted(coerce_library_tags(tags or []))
     if owner_id is not None and catalog:
         raise ValueError("Choose one library scope")
     scope = [f"friend:{owner_id}" if owner_id is not None else "catalog" if catalog else "mine", str(caller_id), q, tags]
+    if author_id is not None:
+        scope.append(author_id)
     r = RecipeModel
     statement = recipe_summary_statement(caller_id)
     if catalog:
@@ -424,7 +439,9 @@ async def recipe_page(
     else:
         statement = statement.where(r.user_id == caller_id, r.is_library_hidden.is_(False))
     if q:
-        statement = statement.where(func.lower(r.title).contains(q, autoescape=True))
+        statement = statement.where(recipe_search_predicate(r, q))
+    if author_id is not None:
+        statement = statement.where(r.author_id == author_id)
     for tag in tags:
         legacy = [key for key, value in LEGACY_LIBRARY_CATEGORY_TO_TAG.items() if value == tag]
         statement = statement.where(or_(
@@ -440,9 +457,16 @@ async def recipe_page(
     for row in rows[:limit]:
         values = dict(row)
         values.pop("sort_title")
+        add_summary_author(values)
         values['timing_summary'] = summarize_recipe_timing(values.pop('timing_steps', None))
         values["library_tags"] = coerce_library_tags(json.loads(values["library_tags"] or "[]") or values["library_category"])
         values["library_category"] = values["library_tags"][0] if values["library_tags"] else None
         items.append(RecipeSummary(**values))
     next_cursor = _encode_page_cursor(scope, rows[limit - 1]["sort_title"], rows[limit - 1]["id"]) if len(rows) > limit else None
     return RecipePage(items=items, next_cursor=next_cursor)
+
+
+def add_summary_author(values: dict) -> None:
+    name = values.pop("author_name", None)
+    aliases = values.pop("author_aliases", None)
+    values["author"] = {"id": values["author_id"], "name": name, "aliases": json.loads(aliases or "[]")} if name else None

@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { MEAL_PLAN_SLOTS, type MealType, type Recipe } from "@cooking/shared";
 import { useT } from "../../lib/i18n";
+import { RecipeAuthorCredit } from "../../components/RecipeAuthorCredit";
 import { Icon } from "../../components/ui/Icon";
 import { PLANNER_MEAL_LABEL_KEYS } from "../plannerMessages";
 
@@ -50,6 +51,7 @@ function RecipeTile({
       )}
       <div className="planner-meal-card__body">
         <p className="planner-meal-card__title font-headline">{recipe.title}</p>
+        <RecipeAuthorCredit author={recipe.author} plain />
       </div>
     </button>
   );

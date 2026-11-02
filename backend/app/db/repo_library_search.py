@@ -5,27 +5,30 @@ from sqlalchemy import and_, case, cast, column, distinct, func, literal, or_, s
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased
 from app.db.models import RecipeModel
-from app.db.repo_recipes import recipe_summary_statement, _encode_page_cursor, _decode_page_cursor
+from app.db.repo_recipes import recipe_summary_statement, _encode_page_cursor, _decode_page_cursor, add_summary_author
+from app.db.repo_recipe_authors import recipe_search_predicate, normalize_recipe_query
 from app.models import LibrarySearchPage, LibraryRecipeSummary, coerce_library_tags, LEGACY_LIBRARY_CATEGORY_TO_TAG
 from app.services.ingredient_search import canonical_sql, selected_ingredients
 from app.services.recipe_timing import summarize_recipe_timing
 
-async def search_library(session,caller_id: uuid.UUID,*,scope="all",limit=40,cursor=None,q="",tags=None,ingredients=None,match="all",include_ingredients=False):
+async def search_library(session,caller_id: uuid.UUID,*,scope="all",limit=40,cursor=None,q="",tags=None,author_id=None,ingredients=None,match="all",include_ingredients=False):
     if scope not in {"all","mine","catalog"}:raise ValueError("Invalid library scope")
     if match not in {"all","any"}:raise ValueError("Invalid ingredient matching rule")
     if not 1<=limit<=100:raise ValueError("Page limit must be between 1 and 100")
-    q=q.strip().lower()
+    q=normalize_recipe_query(q)
     if len(q)>200:raise ValueError("Search is limited to 200 characters")
     tags=sorted(coerce_library_tags(tags or []));selected=selected_ingredients(ingredients or [])
     names_needed=bool(selected) or include_ingredients
     cursor_scope=["search",scope,str(caller_id),q,tags,selected,match,names_needed]
+    if author_id is not None:cursor_scope.append(author_id)
     r=RecipeModel;copy=aliased(r)
     owned=and_(r.user_id==caller_id,r.is_library_hidden.is_(False))
     visible_copy=select(copy.id).where(copy.user_id==caller_id,copy.is_library_hidden.is_(False),copy.catalog_source_recipe_id==r.id).exists()
     public=r.is_public_catalog.is_(True)
     visibility=owned if scope=="mine" else public if scope=="catalog" else or_(owned,and_(public,~visible_copy))
     predicates=[visibility]
-    if q:predicates.append(func.lower(r.title).contains(q,autoescape=True))
+    if q:predicates.append(recipe_search_predicate(r,q))
+    if author_id is not None:predicates.append(r.author_id==author_id)
     for tag in tags:
         legacy=[key for key,value in LEGACY_LIBRARY_CATEGORY_TO_TAG.items() if value==tag]
         predicates.append(or_(cast(r.library_tags,JSONB).contains([tag]),and_(or_(r.library_tags.is_(None),cast(r.library_tags,JSONB)==[]),r.library_category.in_([tag,*legacy]))))
@@ -57,6 +60,7 @@ async def search_library(session,caller_id: uuid.UUID,*,scope="all",limit=40,cur
     rows=result.mappings().all();items=[]
     for row in rows[:limit]:
         values=dict(row);values.pop("sort_title");values.pop("remaining_count")
+        add_summary_author(values)
         keys=sorted(values.pop("ingredient_keys",[]));wanted=set(selected)
         values.update(matched_ingredients=[k for k in keys if k in wanted],remaining_ingredients=[k for k in keys if k not in wanted] if names_needed else None)
         values["timing_summary"]=summarize_recipe_timing(values.pop("timing_steps",None))

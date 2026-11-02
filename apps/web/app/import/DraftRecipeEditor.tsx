@@ -3,6 +3,7 @@
 import { isCompleteRecipeDraft } from "@cooking/shared";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../components/ui/Icon";
+import { AuthorPicker } from "../components/AuthorPicker";
 import { RecipeCoverEditor } from "../components/RecipeCoverEditor";
 import { RecipeImageGenerator } from "../components/RecipeImageGenerator";
 import { apiFetch } from "../lib/api";
@@ -48,10 +49,11 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [savingRequest, setSaving] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
+  const [authorBusy, setAuthorBusy] = useState(false);
   const [tagGroup, setTagGroup] = useState("cuisine");
   const latestDraft = useRef(draft);
   latestDraft.current = draft;
-  const saving = savingRequest || disabled || coverUploading;
+  const saving = savingRequest || disabled || coverUploading || authorBusy;
   const [error, setError] = useState<string | null>(null);
   const [tutorialValid, setTutorialValid] = useState(true);
   const [fixedTotalForId, setFixedTotalForId] = useState<string | null>(null);
@@ -160,6 +162,9 @@ export function DraftRecipeEditor({ draft, onChange, onBack, onSaveSuccess, requ
               disabled={saving}
             />
           </div>
+
+          <AuthorPicker value={draft.author} disabled={savingRequest || disabled} onBusyChange={setAuthorBusy}
+            onChange={author => onChange({ ...latestDraft.current, author, author_id: author?.id ?? null })} />
 
           <div className={styles.field}>
             <label htmlFor="draft-description">{t("recipe.description")}</label>

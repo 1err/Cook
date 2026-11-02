@@ -15,6 +15,8 @@ const mockApiClient = {
     addDishes: jest.fn(),
   },
   recipes: {
+    authors: jest.fn(),
+    update: jest.fn(),
     get: mockGet,
     editorStatus: mockEditorStatus,
     setCatalogVisibility: jest.fn(),
@@ -73,6 +75,45 @@ beforeEach(() => {
   mockFocusEffect = undefined;
   mockEditorStatus.mockResolvedValue({ can_manage: false });
   mockGet.mockResolvedValue(recipe);
+  mockApiClient.recipes.authors.mockResolvedValue([{ id: "creator-1", name: "Chef Lin", aliases: [] }]);
+  mockApiClient.recipes.update.mockImplementation(async (_id, payload) => ({ ...recipe, ...payload, author: payload.author_id ? { id: "creator-1", name: "Chef Lin", aliases: [] } : null }));
+});
+
+test("adds and clears an author directly on detail with an author-only patch", async () => {
+  await render(<RecipeDetailScreen navigation={navigation() as never}
+    route={{ key: "detail", name: "RecipeDetail", params: { recipeId: recipe.id } } as never} />);
+  await fireEvent.press(await screen.findByRole("button", { name: "Add author" }));
+  await fireEvent.press(await screen.findByRole("button", { name: "By Chef Lin" }));
+  await waitFor(() => expect(mockApiClient.recipes.update).toHaveBeenLastCalledWith(recipe.id, { author_id: "creator-1" }));
+  await screen.findByText("By Chef Lin");
+  await fireEvent.press(screen.getByRole("button", { name: "Edit author" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Clear author" }));
+  await waitFor(() => expect(mockApiClient.recipes.update).toHaveBeenLastCalledWith(recipe.id, { author_id: null }));
+});
+
+test("a failed detail credit save preserves the existing credit and exposes a retryable picker", async () => {
+  mockApiClient.recipes.update.mockRejectedValueOnce(new Error("Offline"));
+  await render(<RecipeDetailScreen navigation={navigation() as never}
+    route={{ key: "detail", name: "RecipeDetail", params: { recipeId: recipe.id } } as never} />);
+  await fireEvent.press(await screen.findByRole("button", { name: "Add author" }));
+  await fireEvent.press(await screen.findByRole("button", { name: "By Chef Lin" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Could not save author. Try again.");
+  expect(screen.queryByText("By Chef Lin")).toBeNull();
+  expect(screen.getByRole("button", { name: "Add author" })).toBeEnabled();
+});
+
+test.each(["success", "failure"])("a focus refresh started before an author save cannot restore the old credit (%s)", async (outcome) => {
+  let finish!: (value: Recipe) => void;
+  let fail!: (error: Error) => void;
+  mockGet.mockResolvedValueOnce(recipe).mockImplementationOnce(() => new Promise((resolve, reject) => { finish = resolve; fail = reject; }));
+  await render(<RecipeDetailScreen navigation={navigation() as never}
+    route={{ key: "detail", name: "RecipeDetail", params: { recipeId: recipe.id } } as never} />);
+  await fireEvent.press(await screen.findByRole("button", { name: "Add author" }));
+  await act(async () => { mockFocusEffect?.(); });
+  await fireEvent.press(await screen.findByRole("button", { name: "By Chef Lin" }));
+  await screen.findByText("By Chef Lin");
+  await act(async () => { if (outcome === "success") finish(recipe); else fail(new Error("Refresh offline")); });
+  expect(screen.getByText("By Chef Lin")).toBeOnTheScreen();
 });
 
 test("refetches tutorial steps when the mounted detail screen regains focus", async () => {

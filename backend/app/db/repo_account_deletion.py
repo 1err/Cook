@@ -46,7 +46,7 @@ async def delete_account(session: AsyncSession, account_id: UUID) -> bool:
     rows = (await session.execute(select(RecipeModel).where(
         RecipeModel.user_id != account_id,
         or_(RecipeModel.thumbnail_url.contains(marker), RecipeModel.steps.contains(marker)),
-    ).with_for_update())).scalars().all()
+    ).with_for_update(of=RecipeModel))).scalars().all()
     for row in rows:
         if is_owned_media_url(row.thumbnail_url, account_id, bucket):
             row.thumbnail_url = None

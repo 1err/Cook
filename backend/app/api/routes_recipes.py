@@ -18,7 +18,7 @@ from app.api.ai_budget import enforce_ai_budget
 from app.api.abuse import enforce_upload_limits
 from app.core.config import settings
 from app.core.admin import can_manage_public_catalog
-from app.db import repo_mealplan, repo_recipes
+from app.db import repo_mealplan, repo_recipes, repo_recipe_authors
 from app.services.owned_images import reserve_owned_image, finish_owned_upload
 from app.db.models import UserModel
 from app.db.session import get_session
@@ -29,7 +29,7 @@ from app.extract import (
     is_usable_instruction_text,
     is_usable_ingredient_name,
 )
-from app.models import IngredientItem, Recipe, RecipeStep, RecipePage, ImportReview, coerce_steps
+from app.models import IngredientItem, Recipe, RecipeAuthor, RecipeStep, RecipePage, ImportReview, coerce_steps
 from app.services.video_analysis import video_analysis_available
 from app.services.recipe_language import normalize_import_display_fields
 from app.rednote import download_rednote_video
@@ -52,6 +52,41 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 class UploadImageResponse(BaseModel):
     upload_url: str
     file_url: str
+
+
+class RecipeAuthorCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    aliases: list[str] = Field(default_factory=list, max_length=8)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return repo_recipe_authors.clean_author_name(value)
+
+    @field_validator("aliases")
+    @classmethod
+    def validate_aliases(cls, values: list[str]) -> list[str]:
+        return [repo_recipe_authors.clean_author_name(value) for value in values]
+
+
+@router.get("/authors", response_model=list[RecipeAuthor])
+async def recipe_authors(
+    q: str = Query("", max_length=200), limit: int = Query(40, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    current_user: UserModel = Depends(get_current_user),
+):
+    return await repo_recipe_authors.list_authors(session, q=q, limit=limit)
+
+
+@router.post("/authors", response_model=RecipeAuthor)
+async def recipe_author_create(
+    body: RecipeAuthorCreate, session: AsyncSession = Depends(get_session),
+    current_user: UserModel = Depends(get_current_user),
+):
+    try:
+        return await repo_recipe_authors.create_author(session, body.name, body.aliases)
+    except repo_recipe_authors.AuthorIdentityConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.post("/upload-image", response_model=UploadImageResponse)
@@ -381,6 +416,7 @@ async def recipe_set_catalog_visibility(
 
 class RecipeUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=1024)
+    author_id: str | None = Field(default=None, min_length=1, max_length=36)
     source_url: Optional[str] = Field(default=None, max_length=4096)
     thumbnail_url: Optional[str] = None
     ingredients: Optional[list[IngredientItem]] = None
@@ -436,11 +472,18 @@ async def recipe_update(
     if not r:
         raise HTTPException(404, "Recipe not found")
     updates = body.model_dump(exclude_unset=True)
-    updated = Recipe.model_validate({**r.model_dump(), **updates})
+    payload = {**r.model_dump(), **updates}
+    if "author_id" not in body.model_fields_set:
+        # Keep omission meaningful even if another edit changes credit while
+        # this request waits for the account's save lock.
+        payload.pop("author_id", None)
+    updated = Recipe.model_validate(payload)
     try:
         return await repo_recipes.save_recipe(session, updated, current_user.id)
     except repo_recipes.RecipeOwnershipConflict as exc:
         raise HTTPException(409, "Recipe ID is unavailable for this account") from exc
+    except repo_recipe_authors.UnknownRecipeAuthor as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.delete("/{recipe_id}", status_code=204)
@@ -474,3 +517,5 @@ async def recipe_create(
         return await repo_recipes.save_recipe(session, recipe, current_user.id)
     except repo_recipes.RecipeOwnershipConflict as exc:
         raise HTTPException(409, "Recipe ID is unavailable for this account") from exc
+    except repo_recipe_authors.UnknownRecipeAuthor as exc:
+        raise HTTPException(422, str(exc)) from exc

@@ -63,7 +63,11 @@ function reducer(state: State, action: Action): State {
       ...(state.draft ? { candidate: action.draft } : { draft: action.draft }) };
     case "previewFailed": return { ...state, parsing: false, error: action.error };
     case "setDraft": return { ...state, draft: action.draft };
-    case "applyCandidate": return { ...state, draft: state.candidate ?? state.draft, candidate: null };
+    case "applyCandidate": return { ...state,
+      draft: state.candidate ? { ...state.candidate, ...(state.draft ? {
+        author_id: state.draft.author_id, author: state.draft.author,
+      } : {}) } : state.draft,
+      candidate: null };
     case "keepDraft": return { ...state, candidate: null };
     case "resumeDraft": return { ...state, phase: "draft", error: null };
     case "saveStarted": return { ...state, saving: true, error: null };
@@ -184,7 +188,7 @@ export function ImportModalScreen({ navigation, route }: Props) {
     dispatch({ type: "saveStarted" });
     try {
       // Older import jobs may still include the retired equipment field.
-      const { equipment: _equipment, ...recipeDraft } = state.draft;
+      const { equipment: _equipment, author: _author, ...recipeDraft } = state.draft;
       const saved = await apiClient.recipes.create({ ...recipeDraft,
         ingredients: state.draft.ingredients.filter(ingredient => ingredient.name.trim()),
         ...(manual ? { title: state.draft.title.trim(), steps: state.draft.steps?.filter(step => step.text.trim()) } : {}),

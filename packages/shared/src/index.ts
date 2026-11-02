@@ -17,6 +17,7 @@ export * from "./cookingSession";
 export * from "./cookingSessionQueue";
 export * from "./uuid";
 export * from "./recipeImage";
+export * from "./recipeAuthor";
 export * from "./authRedirect";
 export * from "./externalUrl";
 export * from "./menu/types";

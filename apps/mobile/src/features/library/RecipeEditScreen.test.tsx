@@ -20,6 +20,7 @@ const mockCreateTranslate = () => (
 let mockTranslate = mockCreateTranslate();
 const mockApiClient = {
   recipes: {
+    authors: jest.fn(async () => [{ id: "creator-1", name: "Chef Lin", aliases: [] }]),
     get: mockGet,
     update: mockUpdate,
     estimateTutorial: mockEstimateTutorial,
@@ -110,6 +111,19 @@ beforeEach(() => {
       action_type: "simmer" as const,
     })),
   }));
+});
+
+test("full edit saves canonical author selection and an explicit clear", async () => {
+  await render(<RecipeEditScreen navigation={navigation() as never} route={route("recipe")} />);
+  await fireEvent.press(await screen.findByRole("button", { name: "Add author" }));
+  await fireEvent.press(await screen.findByRole("button", { name: "By Chef Lin" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Save changes" }));
+  await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(recipe.id, expect.objectContaining({ author_id: "creator-1" })));
+  expect(mockUpdate.mock.calls.at(-1)?.[1]).not.toHaveProperty("author");
+  await fireEvent.press(screen.getByRole("button", { name: "Edit author" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Clear author" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Save changes" }));
+  await waitFor(() => expect(mockUpdate).toHaveBeenLastCalledWith(recipe.id, expect.objectContaining({ author_id: null })));
 });
 
 test("keeps Estimate preview-only and applies it to an independent local tutorial draft", async () => {

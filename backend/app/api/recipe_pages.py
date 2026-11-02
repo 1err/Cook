@@ -4,9 +4,13 @@ from app.models import coerce_library_tags
 
 class RecipePageQuery:
     def __init__(self, limit: int = Query(40, ge=1, le=100), cursor: str | None = Query(None, max_length=8192),
-                 q: str = Query("", max_length=200), tags: list[str] = Query(default=[], max_length=32)):
+                 q: str = Query("", max_length=200), tags: list[str] = Query(default=[], max_length=32),
+                 author_id: str | None = Query(None, min_length=1, max_length=36)):
         try:
-            self.values = dict(limit=limit, cursor=cursor, q=q, tags=coerce_library_tags(tags))
+            # Direct Python callers can omit the new parameter as before.
+            if not isinstance(author_id, str):
+                author_id = None
+            self.values = dict(limit=limit, cursor=cursor, q=q, tags=coerce_library_tags(tags), author_id=author_id)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 

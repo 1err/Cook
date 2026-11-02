@@ -179,6 +179,8 @@ function ImportPageContent({ userId }: { userId: string }) {
     setDraftRecipe(current => current ? {
       ...candidate,
       thumbnail_url: current.thumbnail_url,
+      author: current.author,
+      author_id: current.author_id,
       library_tags: current.library_tags,
     } : candidate);
     setCandidate(null);

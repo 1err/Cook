@@ -54,7 +54,8 @@ def boundary_app(monkeypatch, tmp_path):
         f"sqlite:///{tmp_path / 'boundaries.db'}", poolclass=QueuePool,
         connect_args={"check_same_thread": False},
     )
-    for model in (UserModel, RecipeModel, AIUsageCounterModel, AIInflightLeaseModel, RevokedSessionModel, OwnedImageModel):
+    from app.db.models import RecipeAuthorModel, RecipeAuthorKeyModel
+    for model in (UserModel, RecipeAuthorModel, RecipeAuthorKeyModel, RecipeModel, AIUsageCounterModel, AIInflightLeaseModel, RevokedSessionModel, OwnedImageModel):
         model.__table__.create(engine)
     from readiness_schema import create_readiness_schema
     create_readiness_schema(engine)

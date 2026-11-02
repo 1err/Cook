@@ -13,7 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { CompositeScreenProps } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
-import type { Recipe, RecipeSummary } from "@cooking/shared";
+import { getRecipeTags, matchesRecipeSearch, type Recipe, type RecipeAuthor, type RecipeSummary, type RecipeTagSlug } from "@cooking/shared";
 import { useAuth } from "../../lib/auth";
 import { useApiClient } from "../../lib/api";
 import { useT } from "../../lib/i18n";
@@ -28,6 +28,8 @@ import type {
   RootStackParamList,
 } from "../../navigation/types";
 import { RecipeListMeta } from "./RecipeListMeta";
+import { RecipeAuthorCredit } from "../authors/RecipeAuthorCredit";
+import { LibraryRecipeFilters } from "./LibraryRecipeFilters";
 
 type Props = CompositeScreenProps<
   NativeStackScreenProps<LibraryStackParamList, "LibraryList">,
@@ -52,6 +54,8 @@ function LibraryListContent({ navigation }: Props) {
   const [catalogVisited, setCatalogVisited] = useState(false);
   const [view, setView] = useState<LibraryView>("mine");
   const [search, setSearch] = useState("");
+  const [author, setAuthor] = useState<RecipeAuthor | null>(null);
+  const [tag, setTag] = useState<RecipeTagSlug | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [menuRecipes, setMenuRecipes] = useState<Recipe[]>([]);
   const [menuLoading, setMenuLoading] = useState(false);
@@ -72,8 +76,9 @@ function LibraryListContent({ navigation }: Props) {
       if (mounted.current && version === menuLoadVersion.current) setMenuLoading(false);
     }
   };
-  const minePage = useRecipePage("mine", { q: search });
-  const catalogPage = useRecipePage("catalog", { q: search }, catalogVisited);
+  const filters = { q: search, tags: tag ? [tag] : [], authorId: author?.id };
+  const minePage = useRecipePage("mine", filters);
+  const catalogPage = useRecipePage("catalog", filters, catalogVisited);
   const page = view === "mine" ? minePage : catalogPage;
   const [savedPublicIds, setSavedPublicIds] = useState(new Map<string, number>());
   const copyVersion = useRef(0);
@@ -121,13 +126,16 @@ function LibraryListContent({ navigation }: Props) {
 
 
   const menuSelecting = selecting && view === "mine";
-  const data = menuSelecting ? menuRecipes.filter(recipe => recipe.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())) : page.items;
+  const data = menuSelecting ? menuRecipes.filter(recipe => matchesRecipeSearch(recipe, search)
+    && (!author || recipe.author_id === author.id)
+    && (!tag || getRecipeTags(recipe).includes(tag))) : page.items;
   const visibleError = error || page.error;
 
   return (
     <FlatList<Recipe | RecipeSummary>
       data={data}
       numColumns={2}
+      keyboardShouldPersistTaps="handled"
       keyExtractor={(item) => item.id}
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={data.length === 0 ? styles.emptyContent : styles.listContent}
@@ -144,6 +152,7 @@ function LibraryListContent({ navigation }: Props) {
           <SegmentPill label="My Library" active={view === "mine"} onPress={() => setView("mine")} />
           <SegmentPill label="Public Library" active={view === "catalog"} onPress={() => { setCatalogVisited(true); setView("catalog"); }} />
         </View>
+        <LibraryRecipeFilters author={author} onAuthorChange={setAuthor} tag={tag} onTagChange={setTag} />
         {view === "mine" && (selecting ? <View style={styles.menuControls}>
           <Text style={styles.menuCount} accessibilityLiveRegion="polite">{t("menu.selection.count", { count: selected.length })}</Text>
           <View style={styles.menuRow}>
@@ -166,7 +175,7 @@ function LibraryListContent({ navigation }: Props) {
             title="Couldn't load recipes"
             description={visibleError}
           />
-        ) : search.trim() ? (
+        ) : search.trim() || author || tag ? (
           <EmptyState title="No matching recipes" description="Try a different search." />
         ) : view === "mine" ? (
           <EmptyState
@@ -205,6 +214,7 @@ function LibraryListContent({ navigation }: Props) {
                 <Text style={styles.cardTitle} numberOfLines={2}>
                   {item.title}
                 </Text>
+                <RecipeAuthorCredit author={item.author} onPress={setAuthor} />
                 <RecipeListMeta recipe={item} />
                 {menuSelecting && <Ionicons name={selected.includes(item.id) ? "checkbox" : "square-outline"} size={24} color={colors.primary} />}
               </View>
@@ -225,6 +235,7 @@ function LibraryListContent({ navigation }: Props) {
               <Text style={styles.cardTitle} numberOfLines={2}>
                 {item.title}
               </Text>
+              <RecipeAuthorCredit author={item.author} onPress={setAuthor} />
               <RecipeListMeta recipe={item} />
               <View style={styles.publicAction}>
                 <Button

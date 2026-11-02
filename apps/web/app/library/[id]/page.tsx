@@ -8,6 +8,8 @@ import { apiFetch } from "../../lib/api";
 import { uploadRecipeImage } from "../../lib/uploadRecipeImage";
 import { RequireAuth } from "../../components/RequireAuth";
 import { PageShell } from "../../components/PageShell";
+import { AuthorPicker } from "../../components/AuthorPicker";
+import type { RecipeAuthor } from "@cooking/shared";
 import { RecipeCoverEditor } from "../../components/RecipeCoverEditor";
 import { RecipeImageGenerator } from "../../components/RecipeImageGenerator";
 import { useT } from "../../lib/i18n";
@@ -29,6 +31,9 @@ function RecipeEditContent() {
   const id = params?.id as string;
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [title, setTitle] = useState("");
+  const [author, setAuthor] = useState<RecipeAuthor | null>(null);
+  const [authorId, setAuthorId] = useState<string | null>(null);
+  const [authorBusy, setAuthorBusy] = useState(false);
   const [thumbnailUrl, setThumbnailUrl] = useState("");
   const [libraryTags, setLibraryTags] = useState<RecipeTagSlug[]>([]);
   const [ingredients, setIngredients] = useState<IngredientItem[]>([]);
@@ -61,6 +66,8 @@ function RecipeEditContent() {
         if (!cancelled) {
           setRecipe(data);
           setTitle(data.title);
+          setAuthor(data.author ?? null);
+          setAuthorId(data.author_id ?? data.author?.id ?? null);
           setThumbnailUrl(data.thumbnail_url ?? "");
           setLibraryTags(nextTags);
           setIngredients(data.ingredients?.length ? [...data.ingredients] : []);
@@ -124,12 +131,13 @@ function RecipeEditContent() {
   }
 
   async function handleSave() {
-    if (!id || !stepsValid || sourceSaving || saving || uploadingImage || deleting) return;
+    if (!id || !stepsValid || sourceSaving || saving || uploadingImage || deleting || authorBusy) return;
     setSaving(true);
     setError(null);
     try {
       const payload: Record<string, unknown> = {
         title: title.trim() || recipe?.title,
+        author_id: authorId,
         thumbnail_url: thumbnailUrl.trim() || null,
         ingredients: ingredients.filter((i) => i.name.trim() !== ""),
         library_tags: libraryTags,
@@ -208,7 +216,7 @@ function RecipeEditContent() {
             type="button"
             className={styles.saveButton}
             onClick={handleSave}
-            disabled={sourceSaving || saving || uploadingImage || deleting || !stepsValid}
+            disabled={sourceSaving || saving || uploadingImage || deleting || authorBusy || !stepsValid}
           >
             {saving ? t("common.saving") : t("common.save")}
           </button>
@@ -242,6 +250,8 @@ function RecipeEditContent() {
                   placeholder="e.g. Lemon garlic salmon"
                 />
               </label>
+
+              <AuthorPicker value={author} onChange={value => { setAuthor(value); setAuthorId(value?.id ?? null); }} disabled={sourceSaving || saving || deleting} onBusyChange={setAuthorBusy} />
 
               <label className={styles.field}>
                 <span>{t("recipe.description")}</span>

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { RecipeAuthorCredit } from "../../../../components/RecipeAuthorCredit";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { formatIngredientQuantity, isSafeExternalUrl } from "@cooking/shared";
@@ -211,6 +212,7 @@ function FriendRecipeContent({ userId, recipeId }: { userId: string; recipeId: s
             </>
           ) : null}
         </h1>
+        <RecipeAuthorCredit author={recipe.author} />
         {blurb ? (
           <p
             style={{
