@@ -200,8 +200,9 @@ test("creator selection combines with tags and stays active in Choose recipe", a
   render(<PlannerPage />);
   await user.click(await screen.findByRole("button", { name: "Filter planner recipes by creator" }));
   const creators = screen.getByRole("dialog", { name: "Creators" });
-  await user.type(within(creators).getByRole("searchbox"), "阿林");
-  await user.click(await within(creators).findByRole("button", { name: /Lin's Kitchen/ }));
+  await user.type(within(creators).getByRole("combobox"), "阿林");
+  await within(creators).findByRole("option", { name: /Lin's Kitchen/ });
+  await user.keyboard("{ArrowDown}{Enter}");
   await waitFor(() => expect(screen.queryByRole("heading", { name: "Other tofu" })).not.toBeInTheDocument());
   expect(screen.getByRole("heading", { name: "Soup" })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Filter planner recipes by tag" }));
@@ -217,11 +218,11 @@ test("creator selection combines with tags and stays active in Choose recipe", a
   await user.clear(within(picker).getByRole("searchbox", { name: "Search recipes for planner" }));
   await user.click(within(picker).getByRole("button", { name: "Filter planner recipes by creator" }));
   const nestedCreators = within(picker).getByRole("dialog", { name: "Creators" });
-  fireEvent.keyDown(within(nestedCreators).getByRole("searchbox"), { key: "Escape" });
+  fireEvent.keyDown(within(nestedCreators).getByRole("combobox"), { key: "Escape" });
   expect(screen.getByRole("dialog", { name: "Choose recipe for meal slot" })).toBeInTheDocument();
   expect(screen.queryByRole("dialog", { name: "Creators" })).not.toBeInTheDocument();
   await user.click(within(picker).getByRole("button", { name: "Filter planner recipes by creator" }));
-  await user.click(within(picker).getByRole("button", { name: "All creators" }));
+  await user.click(within(picker).getByRole("option", { name: "All creators" }));
   await within(picker).findByRole("heading", { name: "Other tofu" });
   expect(within(picker).queryByRole("heading", { name: "Soup" })).not.toBeInTheDocument();
 });

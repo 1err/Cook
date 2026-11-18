@@ -380,3 +380,15 @@
 .saveSpinner { width: 18px; height: 18px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: saveSpin 700ms linear infinite; }
 @keyframes saveSpin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .saveButton, .saveHint { transition: none; } .saveSpinner { animation: none; } }
+
+.toolbar :global(.author-filter-popover) { min-width: 0; max-width: 15rem; }
+@media (min-width: 641px) {
+  .toolbar :global(.author-filter-popover > button) { min-height: 36px; padding-block: 0.45rem; font-size: 0.8125rem; }
+}
+@media (max-width: 640px) {
+  .toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .toolbar .search { grid-column: 1 / -1; width: 100%; box-sizing: border-box; }
+  .toolbar :global(.author-filter-popover) { max-width: none; }
+  .toolbar :global(.author-filter-popover > button), .toolbar :global(.tag-filter-popover__trigger) { width: 100%; }
+  .toolbar :global(.author-filter-popover > button > span:last-child), .toolbar :global(.tag-filter-popover__trigger > span:last-child) { margin-left: auto; }
+}

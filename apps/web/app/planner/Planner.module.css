@@ -826,3 +826,5 @@
     max-height: 88dvh;
   }
 }
+
+.page :global(.planner-filter-bar .author-filter-popover > button > span:first-child) { display: none; }

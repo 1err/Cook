@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { RecipeAuthor } from "@cooking/shared";
 import { useT } from "../lib/i18n";
-import { useRecipeAuthors } from "../lib/useRecipeAuthors";
+import { AuthorSearch } from "./AuthorSearch";
 import { Icon } from "./ui/Icon";
 import styles from "./AuthorFilterPopover.module.css";
 import popover from "./TagFilterPopover.module.css";
@@ -14,14 +14,13 @@ export function AuthorFilterPopover({ selected, onSelect, ariaLabel }: {
   ariaLabel: string;
 }) {
   const t = useT();
-  const summaryId = useId();
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const lookup = useRecipeAuthors(query, open);
+  const id = useId();
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  const input = useRef<HTMLInputElement>(null);
-  const [position, setPosition] = useState({ left: 16, top: 80, width: 320, maxHeight: 420 });
+  const panel = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [position, setPosition] = useState<CSSProperties>({});
 
   function close() {
     setOpen(false);
@@ -30,27 +29,36 @@ export function AuthorFilterPopover({ selected, onSelect, ariaLabel }: {
 
   useLayoutEffect(() => {
     if (!open) return;
+    const viewport = window.visualViewport;
     function place() {
-      const rect = trigger.current?.getBoundingClientRect();
-      if (!rect) return;
-      const width = Math.min(320, window.innerWidth - 32);
-      const below = window.innerHeight - rect.bottom - 20;
-      const above = rect.top - 20;
-      const openAbove = below < 280 && above > below;
-      const maxHeight = Math.min(440, window.innerHeight - 32, Math.max(160, openAbove ? above : below));
-      const top = openAbove ? rect.top - maxHeight - 8 : rect.bottom + 8;
-      setPosition({ width, maxHeight,
-        left: Math.max(16, Math.min(rect.left, window.innerWidth - width - 16)),
-        top: Math.max(16, Math.min(top, window.innerHeight - maxHeight - 16)),
+      if (!trigger.current) return;
+      const rect = trigger.current.getBoundingClientRect();
+      const leftEdge = viewport?.offsetLeft ?? 0;
+      const topEdge = viewport?.offsetTop ?? 0;
+      const rightEdge = leftEdge + (viewport?.width ?? window.innerWidth);
+      const bottomEdge = topEdge + (viewport?.height ?? window.innerHeight);
+      const width = Math.min(336, rightEdge - leftEdge - 24);
+      const below = bottomEdge - rect.bottom - 20;
+      const above = rect.top - topEdge - 20;
+      const flip = below < 250 && above > below;
+      setPosition({
+        width,
+        left: Math.max(leftEdge + 12, Math.min(rect.left, rightEdge - width - 12)),
+        maxHeight: Math.max(0, Math.min(400, flip ? above : below)),
+        ...(flip ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
       });
     }
     place();
-    input.current?.focus({ preventScroll: true });
+    if (window.matchMedia?.("(pointer: coarse)").matches) panel.current?.focus({ preventScroll: true });
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
+    viewport?.addEventListener("resize", place);
+    viewport?.addEventListener("scroll", place);
     return () => {
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
+      viewport?.removeEventListener("resize", place);
+      viewport?.removeEventListener("scroll", place);
     };
   }, [open]);
 
@@ -63,41 +71,31 @@ export function AuthorFilterPopover({ selected, onSelect, ariaLabel }: {
     return () => document.removeEventListener("pointerdown", outside);
   }, [open]);
 
-  function select(author: RecipeAuthor | null) {
-    onSelect(author);
-    close();
-  }
-
-  return <div ref={root} className={`author-filter-popover ${popover.root}`} onKeyDownCapture={event => {
-    if (open && event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
-  }} onBlur={event => {
-    if (open && !event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
-  }}>
-    <button ref={trigger} type="button" className={`${popover.trigger} ${styles.trigger}`}
-      aria-label={ariaLabel} aria-describedby={summaryId} aria-expanded={open} aria-haspopup="dialog"
-      title={selected?.name ?? t("recipe.author.all")} data-active={selected ? "true" : undefined}
-      onClick={() => { setQuery(""); setOpen(value => !value); }}>
-      <span id={summaryId} className={styles.label}>{selected?.name ?? t("recipe.author.all")}</span>
-      <span aria-hidden="true"><Icon name="chevronDown" size={16} /></span>
+  return <div ref={root} className={"author-filter-popover " + popover.root}
+    onKeyDownCapture={event => {
+      if (open && event.key === "Escape" && !event.nativeEvent.isComposing) {
+        event.preventDefault(); event.stopPropagation(); close();
+      }
+    }}
+    onBlur={event => {
+      if (open && event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) setOpen(false);
+    }}>
+    <button type="button" ref={trigger} className={popover.trigger + " " + styles.trigger}
+      aria-label={ariaLabel} aria-describedby={id + "-label"} aria-expanded={open} aria-haspopup="dialog"
+      aria-controls={open ? id : undefined} title={selected?.name ?? t("recipe.author.all")}
+      data-active={selected ? true : undefined} onClick={() => { setQuery(""); setOpen(current => !current); }}>
+      <span className={styles.triggerIcon}><Icon name="account" size={17} /></span>
+      <span className={styles.label} id={id + "-label"}>{selected?.name ?? t("recipe.author.all")}</span>
+      <span className={styles.chevron}><Icon name="chevronDown" size={15} /></span>
     </button>
-    {open ? <div role="dialog" aria-label={t("recipe.author.filter")} className={`${popover.panel} ${styles.panel}`}
-      style={{ position: "fixed", ...position }}>
-      <div className={popover.heading}>
+    {open && <div id={id} tabIndex={-1} ref={panel} role="dialog" aria-label={t("recipe.author.filter")}
+      className={popover.panel + " " + styles.panel} style={position}>
+      <div className={styles.heading}>
         <strong>{t("recipe.author.filter")}</strong>
-        <button type="button" aria-label={t("common.close")} onClick={close}><Icon name="close" size={18} /></button>
+        <button type="button" aria-label={t("common.close")} onClick={close}><Icon name="close" size={16} /></button>
       </div>
-      <div className={styles.search}>
-        <input ref={input} type="search" maxLength={200} value={query} onChange={event => setQuery(event.target.value)}
-          aria-label={t("recipe.author.search")} placeholder={t("recipe.author.search")} />
-      </div>
-      <div className={styles.results}>
-        <button type="button" aria-pressed={!selected} onClick={() => select(null)}>{t("recipe.author.all")}</button>
-        {lookup.loading ? <p role="status">{t("recipe.author.loading")}</p> : null}
-        {lookup.error ? <div role="alert"><p>{t("recipe.author.lookupError")}</p><button type="button" onClick={lookup.retry}>{t("library.retry")}</button></div> : null}
-        {lookup.authors.map(author => <button type="button" key={author.id} aria-pressed={selected?.id === author.id}
-          onClick={() => select(author)}><strong>{author.name}</strong>{author.aliases.length ? <small>{author.aliases.join(" · ")}</small> : null}</button>)}
-        {!lookup.loading && !lookup.error && lookup.authors.length === 0 ? <p>{t("recipe.author.empty")}</p> : null}
-      </div>
-    </div> : null}
+      <AuthorSearch includeAll selected={selected} query={query} onQueryChange={setQuery}
+        onSelect={author => { onSelect(author); close(); }} />
+    </div>}
   </div>;
 }

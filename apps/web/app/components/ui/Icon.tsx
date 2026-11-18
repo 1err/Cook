@@ -17,6 +17,9 @@ export type IconName =
   | "logout"
   | "admin"
   | "search"
+  | "check"
+  | "edit"
+  | "arrowLeft"
   | "filter"
   | "chevronDown";
 
@@ -35,6 +38,9 @@ const SYMBOLS: Record<IconName, ReactNode> = {
   chef: <><path d="M7 14a5 5 0 0 1-1-10 6 6 0 0 1 12 0 5 5 0 0 1-1 10v6H7v-6ZM7 17h10" /></>,
   add: <path d="M12 5v14M5 12h14" />,
   search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></>,
+  check: <path d="m5 12 4 4L19 6" />,
+  edit: <><path d="m14.5 5.5 4 4M4 20l4.6-1 12-12a1.7 1.7 0 0 0 0-2.4l-1.2-1.2a1.7 1.7 0 0 0-2.4 0l-12 12L4 20Z" /></>,
+  arrowLeft: <path d="m10 5-7 7 7 7M4 12h16" />,
   filter: <path d="M4 5h16l-6 7v6l-4 2v-8L4 5Z" />,
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
   menuCard: <><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 7h6M9 11h6M9 15h3M15 15h.01M9 18h3M15 18h.01" /></>,

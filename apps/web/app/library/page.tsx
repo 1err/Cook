@@ -10,6 +10,7 @@ import { RequireAuth } from "../components/RequireAuth";
 import { useT } from "../lib/i18n";
 import { useEditorialCopy } from "../lib/editorialCopy";
 import type { RecipeAuthor } from "@cooking/shared";
+import { AuthorFilterPopover } from "../components/AuthorFilterPopover";
 import { AuthorFilters } from "../components/AuthorFilters";
 import { RecipeAuthorCredit } from "../components/RecipeAuthorCredit";
 import { RecipeCard } from "../components/RecipeCard";
@@ -197,10 +198,11 @@ function LibraryPageContent() {
             ariaLabel={t("library.filterAria")}
           />
         )}
+        <AuthorFilterPopover selected={authorFilter} onSelect={setAuthorFilter} ariaLabel={t("library.creatorFilterAria")} />
       </div>
 
-      <AuthorFilters key={view} selected={authorFilter} onSelect={setAuthorFilter}
-        authors={page.items.flatMap(recipe => recipe.author ? [recipe.author] : [])} />
+      <AuthorFilters key={scope.accountId + ":" + view} selected={authorFilter} onSelect={setAuthorFilter}
+        recipes={page.items} unfiltered={!hasFilters && !page.loading && !page.error} />
 
       <p className={styles.visuallyHidden} role="status">{copyStatus}</p>
       {view === "public" && activeList.length ? <p className={styles.bookmarkHelp}>

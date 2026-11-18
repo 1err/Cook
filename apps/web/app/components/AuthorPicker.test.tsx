@@ -1,8 +1,6 @@
-import { useState } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { RecipeAuthor } from "@cooking/shared";
 import { AuthorPicker } from "./AuthorPicker";
 
 const mocks = vi.hoisted(() => ({ apiFetch: vi.fn(), account: { id: "account-1", generation: 0 } }));
@@ -36,8 +34,9 @@ test("creates only after an explicit save, supports chosen self-name and aliases
   mocks.apiFetch.mockImplementation(async (_url: string, options: RequestInit) => new Response(JSON.stringify(options.method === "POST" ? author : [])));
   render(<AuthorPicker onChange={changed} />);
   await userEvent.click(screen.getByRole("button", { name: "Add author" }));
-  await userEvent.click(screen.getByRole("button", { name: "Use my chosen author name" }));
+  await userEvent.click(screen.getByRole("button", { name: "Credit myself" }));
   await userEvent.type(screen.getByLabelText("Author name"), "My kitchen");
+  await userEvent.click(screen.getByText("Add other names (optional)"));
   await userEvent.type(screen.getByLabelText("Aliases (comma separated)"), "阿林, Lin, Lin");
   expect(changed).not.toHaveBeenCalled();
   expect(mocks.apiFetch.mock.calls.some(([, options]) => options.method === "POST")).toBe(false);
@@ -58,7 +57,7 @@ test("cancel leaves the selected author unchanged and clearing is explicit", asy
   expect(changed).toHaveBeenCalledWith(null);
 });
 
-test("retains a new name and aliases after a create failure and allows retry", async () => {
+test("explains a creator name conflict, keeps the fields, and allows a correction", async () => {
   const changed = vi.fn(); let attempts = 0;
   mocks.apiFetch.mockImplementation(async (_url: string, options: RequestInit) => options.method === "POST"
     ? new Response(JSON.stringify(author), { status: ++attempts === 1 ? 409 : 200 })
@@ -67,12 +66,14 @@ test("retains a new name and aliases after a create failure and allows retry", a
   await userEvent.click(screen.getByRole("button", { name: "Add author" }));
   await userEvent.click(screen.getByRole("button", { name: "Add a new author" }));
   await userEvent.type(screen.getByLabelText("Author name"), "Lin");
+  await userEvent.click(screen.getByText("Add other names (optional)"));
   await userEvent.type(screen.getByLabelText("Aliases (comma separated)"), "阿林");
   await userEvent.click(screen.getByRole("button", { name: "Save" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("Could not add author");
+  expect(await screen.findByRole("alert")).toHaveTextContent("already belongs to a creator");
   expect(screen.getByLabelText("Author name")).toHaveValue("Lin");
   expect(screen.getByLabelText("Aliases (comma separated)")).toHaveValue("阿林");
   expect(changed).not.toHaveBeenCalled();
+  await userEvent.clear(screen.getByLabelText("Aliases (comma separated)"));
   await userEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(changed).toHaveBeenCalledWith(author));
 });
@@ -128,4 +129,39 @@ test("a long search query cannot create an over-limit name through the prefilled
   fireEvent.change(screen.getByLabelText("Author name"), { target: { value: "x".repeat(80) } });
   await userEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(changed).toHaveBeenCalledWith(author));
+});
+
+test("Chinese IME confirmation does not pick a suggestion before composition is complete", async () => {
+  const changed = vi.fn();
+  render(<AuthorPicker onChange={changed} />);
+  await userEvent.click(screen.getByRole("button", { name: "Add author" }));
+  const input = screen.getByRole("combobox");
+  await userEvent.type(input, "阿林");
+  await screen.findByRole("option", { name: /Lin's Kitchen/ });
+  fireEvent.keyDown(input, { key: "ArrowDown" });
+  fireEvent.keyDown(input, { key: "Enter", isComposing: true, keyCode: 229 });
+  expect(changed).not.toHaveBeenCalled();
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(changed).toHaveBeenCalledWith(author);
+});
+
+test("retrying a failed detail save reuses the creator and cancel discards a staged selection", async () => {
+  const save = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(undefined);
+  mocks.apiFetch.mockImplementation(async (_url: string, options: RequestInit) => new Response(JSON.stringify(options.method === "POST" ? author : [author])));
+  render(<AuthorPicker inline onChange={save} />);
+  const trigger = screen.getByRole("button", { name: "Add author" });
+  await userEvent.click(trigger);
+  await userEvent.click(await screen.findByRole("option", { name: /Lin's Kitchen/ }));
+  expect(screen.getByRole("option", { name: /Lin's Kitchen/ })).toHaveAttribute("aria-selected", "true");
+  await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(save).not.toHaveBeenCalled();
+  await userEvent.click(trigger);
+  await userEvent.click(screen.getByRole("button", { name: "Add a new author" }));
+  await userEvent.type(screen.getByLabelText("Author name"), "Lin");
+  await userEvent.click(screen.getByRole("button", { name: "Save author" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Could not save author");
+  await userEvent.click(screen.getByRole("button", { name: "Save author" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(save.mock.calls).toEqual([[author], [author]]);
+  expect(mocks.apiFetch.mock.calls.filter(([, options]) => options.method === "POST")).toHaveLength(1);
 });

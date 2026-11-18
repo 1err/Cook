@@ -1,4 +1,13 @@
 {
+  "recipe.author.identityConflict": "A name or alias already belongs to a creator. Go back to find them, or change the name or alias.",
+  "library.creatorFilterAria": "Filter library recipes by creator",
+  "recipe.author.clearSearch": "Clear creator search",
+  "recipe.author.directoryEmpty": "No creators have been added yet.",
+  "recipe.author.creditSelf": "Credit myself",
+  "recipe.author.otherNames": "Add other names (optional)",
+  "recipe.author.saveCredit": "Save author",
+  "recipe.author.removalPending": "Credit will be removed",
+  "recipe.author.saved": "Saved",
   "recipe.author.nameLimit": "Use a name of 80 characters or fewer.",
   "recipe.author.aliasLimit": "Use up to 8 aliases, each 80 characters or fewer.",
   "recipe.author.label": "Author (optional)",

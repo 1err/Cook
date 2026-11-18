@@ -1,11 +1,21 @@
-.trigger { max-width: 100%; }
-.trigger[data-active="true"] { border-color: var(--cw-color-sage); background: var(--cw-color-subtle-surface); color: var(--cw-color-action); }
-.label { display: block !important; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.search { padding: 0.75rem 0.9rem 0.35rem; }
-.search input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 0.55rem 0.65rem; border: 1px solid var(--cw-color-divider); border-radius: 8px; background: var(--cw-color-canvas); color: var(--cw-color-ink); font: inherit; font-size: 0.875rem; }
-.results { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0.35rem 0.9rem 0.8rem; }
-.results button { display: grid; gap: 0.25rem; width: 100%; min-height: 44px; padding: 0.6rem 0.65rem; border: 0; border-radius: 8px; background: transparent; color: var(--cw-color-ink); font: inherit; font-size: 0.875rem; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
-.results button:hover, .results button[aria-pressed="true"] { background: var(--cw-color-subtle-surface); color: var(--cw-color-action); }
-.results small, .results p { color: var(--cw-color-muted-ink); font-size: 0.8125rem; }
-.trigger:focus-visible, .panel button:focus-visible, .search input:focus-visible { outline: 2px solid var(--cw-color-action); outline-offset: 2px; }
-@media(max-width:640px) { .search input { font-size: 1rem; } }
+.trigger { max-width: 100%; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.trigger:active { background: #eff3eb; }
+.trigger[data-active="true"] {
+  border-color: var(--cw-color-sage);
+  color: #40533b;
+  background: #f1f5ee;
+}
+.trigger .label { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.triggerIcon, .chevron { flex: none; }
+.chevron { transition: transform var(--cw-motion-fast-ms) ease; }
+.trigger[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+.panel { position: fixed; padding: 0.75rem; gap: 0.55rem; animation: appear 120ms ease-out; }
+.heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.heading strong { font: 600 1.15rem/1.25 var(--cw-font-display); }
+.heading button {
+  display: grid; place-items: center; min-width: 32px; min-height: 32px; border: 0;
+  border-radius: 50%; color: var(--cw-color-muted-ink); background: transparent; cursor: pointer;
+}
+.heading button:hover { background: var(--cw-color-subtle-surface); }
+@keyframes appear { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 640px) { .heading button { min-width: 44px; min-height: 44px; } }

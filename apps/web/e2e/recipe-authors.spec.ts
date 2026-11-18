@@ -94,7 +94,7 @@ test("detail author selection and clearing save in place and survive reload", as
   await expect(search).toBeVisible();
   await search.fill("阿林");
   await page.getByRole("option", { name: /Lin/ }).click();
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: "Save author", exact: true }).click();
   await expect(page.getByRole("link", { name: "By Lin", exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("link", { name: "By Lin", exact: true })).toBeVisible();
@@ -103,7 +103,7 @@ test("detail author selection and clearing save in place and survive reload", as
   await healthy(page, errors);
   await page.screenshot({ path: `/tmp/recipe-authors-${testInfo.project.name}-picker.png`, fullPage: true });
   await page.getByRole("button", { name: "Clear author", exact: true }).click();
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: "Save author", exact: true }).click();
   await expect(page.getByRole("button", { name: "Add author", exact: true })).toBeVisible();
   expect(writes).toEqual([{ author_id: author.id }, { author_id: null }]);
 });
@@ -112,12 +112,21 @@ test("creator directory remains within the viewport when its trigger wraps", asy
   await fixtures(page);
   await page.goto("/library");
   await expect(page.getByRole("list").getByRole("listitem")).toHaveCount(2);
-  await page.getByText("Search creators or aliases", { exact: true }).click();
-  const search = page.getByRole("searchbox", { name: "Search creators or aliases" });
+  const filter = page.getByRole("button", { name: "Filter library recipes by creator" });
+  await filter.click();
+  const directory = page.getByRole("dialog", { name: "Creators" });
+  const search = directory.getByRole("combobox", { name: "Search creators or aliases" });
   await expect(search).toBeVisible();
-  const bounds = await search.locator("..").boundingBox();
+  const bounds = await directory.boundingBox();
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual((page.viewportSize()?.width ?? 0) + 1);
+  await search.fill("小明");
+  await expect(directory.getByRole("option", { name: /Ming/ })).toBeVisible();
+  await search.press("ArrowDown");
+  await search.press("Enter");
+  await expect(filter).toHaveText("Ming");
+  await expect(filter).toBeFocused();
+  await expect(page.getByRole("button", { name: "Lin", exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 

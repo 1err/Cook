@@ -316,7 +316,8 @@ test('creator, text and existing tag filters compose on every page and reset the
   fireEvent.click(screen.getByRole('button', { name: 'common.loadMoreRecipes' }));
   await screen.findByRole('heading', { name: 'Later matching recipe' });
   expect(mine).toHaveBeenLastCalledWith({ q: 'Noodles', tags: ['chinese'], authorId: author.id, cursor: 'next', expectedAccountId: 'account-a' });
-  fireEvent.click(screen.getByRole('button', { name: 'recipe.author.all' }));
+  fireEvent.click(screen.getByRole('button', { name: 'library.creatorFilterAria' }));
+  fireEvent.click(screen.getByRole('option', { name: 'recipe.author.all' }));
   await waitFor(() => expect(mine).toHaveBeenLastCalledWith({ q: 'Noodles', tags: ['chinese'], cursor: null, expectedAccountId: 'account-a' }));
   expect(screen.queryByRole('heading', { name: 'Later matching recipe' })).not.toBeInTheDocument();
 });
@@ -328,9 +329,9 @@ test('directory alias search can choose a creator absent from the loaded recipe 
   mine.mockResolvedValue(page('First page has no creator'));
   render(<LibraryPage />);
   await screen.findByRole('heading', { name: 'First page has no creator' });
-  await userEvent.click(screen.getByText('recipe.author.search'));
+  await userEvent.click(screen.getByRole('button', { name: 'library.creatorFilterAria' }));
   await userEvent.type(screen.getByLabelText('recipe.author.search'), '阿林');
-  await userEvent.click(await screen.findByRole('button', { name: /Lin/ }));
+  await userEvent.click(await screen.findByRole('option', { name: /Lin/ }));
   await waitFor(() => expect(mine).toHaveBeenLastCalledWith({ q: '', tags: [], authorId: author.id, cursor: null, expectedAccountId: 'account-a' }));
   expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining('q=%E9%98%BF%E6%9E%97'), expect.anything());
 });

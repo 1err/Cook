@@ -165,15 +165,18 @@ it.each(["javascript:alert(1)", "https://user:password@example.com/recipe", "htt
 it.each([true, false])("clears an author directly from details only after a successful save (success=%s)", async success => {
   const author = { id: "author-1", name: "Lin", aliases: [] };
   const recipe = { id: "recipe-1", title: "Noodles", author_id: author.id, author, ingredients: [], steps: [] };
-  mockApiFetch.mockImplementation(async (_url: string, options?: RequestInit) => new Response(JSON.stringify(options?.method === "PATCH" ? { ...recipe, author: null, author_id: null } : recipe), { status: options?.method === "PATCH" && !success ? 503 : 200 }));
+  mockApiFetch.mockImplementation(async (url: string, options?: RequestInit) => new Response(JSON.stringify(url.startsWith("/recipes/authors?") ? [author] : options?.method === "PATCH" ? { ...recipe, author: null, author_id: null } : recipe), { status: options?.method === "PATCH" && !success ? 503 : 200 }));
   render(<RecipeDetailPage />);
   await userEvent.click(await screen.findByRole("button", { name: "recipe.author.edit" }));
   expect(screen.getByRole("combobox", { name: "recipe.author.search" })).toBeVisible();
+  expect(screen.getAllByRole("button", { name: "common.cancel" })).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "recipe.author.saveCredit" })).toBeDisabled();
   await userEvent.click(screen.getByRole("button", { name: "recipe.author.clear" }));
-  await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+  await userEvent.click(screen.getByRole("button", { name: "recipe.author.saveCredit" }));
   if (success) expect(await screen.findByRole("button", { name: "recipe.author.add" })).toBeVisible();
   else {
     expect(await screen.findByRole("alert")).toHaveTextContent("recipe.author.saveError");
+    await userEvent.click(screen.getByRole("button", { name: "common.cancel" }));
     expect(screen.getByRole("link", { name: "recipe.author.by" })).toBeVisible();
   }
   expect(mockApiFetch).toHaveBeenCalledWith("/recipes/recipe-1", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ author_id: null }) }));

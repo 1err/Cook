@@ -1,4 +1,13 @@
 {
+  "recipe.author.identityConflict": "这个名字或别名已有作者使用。请返回查找该作者，或修改名字或别名。",
+  "library.creatorFilterAria": "按作者筛选菜谱",
+  "recipe.author.clearSearch": "清除作者搜索",
+  "recipe.author.directoryEmpty": "还没有添加过作者。",
+  "recipe.author.creditSelf": "署上我的名字",
+  "recipe.author.otherNames": "添加别名（可选）",
+  "recipe.author.saveCredit": "保存署名",
+  "recipe.author.removalPending": "将移除署名",
+  "recipe.author.saved": "已保存",
   "recipe.author.nameLimit": "姓名不能超过80个字符。",
   "recipe.author.aliasLimit": "最多填写8个别名，每个不超过80个字符。",
   "recipe.author.label": "作者（可选）",
