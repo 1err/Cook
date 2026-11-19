@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { isSafeExternalUrl } from "@cooking/shared";
 import { apiFetch } from "../../lib/api";
 import { useT } from "../../lib/i18n";
@@ -16,11 +16,17 @@ export function SourceLinkEditor({ recipeId, value, disabled, onSaved, onBusyCha
 }) {
   const t = useT();
   const inputId = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  function closeEditor() {
+    setEditing(false);
+    requestAnimationFrame(() => trigger.current?.focus({ preventScroll: true }));
+  }
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -41,7 +47,7 @@ export function SourceLinkEditor({ recipeId, value, disabled, onSaved, onBusyCha
       if (!response.ok) throw new Error("Source link save failed");
       const updated: Recipe = await response.json();
       onSaved(updated.source_url ?? null);
-      setEditing(false);
+      closeEditor();
       setSaved(true);
     } catch {
       setError(t("recipe.sourceLinkSaveError"));
@@ -66,7 +72,7 @@ export function SourceLinkEditor({ recipeId, value, disabled, onSaved, onBusyCha
               {saving ? t("common.saving") : t("recipe.saveSourceLink")}
             </button>
             <button type="button" className={styles.textButton} disabled={saving}
-              onClick={() => { setEditing(false); setError(null); }}>{t("common.cancel")}</button>
+              onClick={() => { closeEditor(); setError(null); }}>{t("recipe.editor.cancelLink")}</button>
           </div>
           {error ? <p id={`${inputId}-error`} className={styles.error} role="alert">{error}</p> : null}
         </form>
@@ -77,7 +83,7 @@ export function SourceLinkEditor({ recipeId, value, disabled, onSaved, onBusyCha
               {t("recipe.openSourceLink")} ↗
             </a>
           ) : null}
-          <button type="button" className={styles.secondaryButton} disabled={disabled}
+          <button ref={trigger} type="button" className={styles.secondaryButton} disabled={disabled}
             onClick={() => { setDraft(value ?? ""); setError(null); setSaved(false); setEditing(true); }}>
             {value ? t("recipe.editSourceLink") : t("recipe.addSourceLink")}
           </button>

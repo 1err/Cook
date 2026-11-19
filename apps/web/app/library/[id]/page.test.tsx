@@ -33,6 +33,11 @@ vi.mock("../../lib/i18n", () => ({
       "common.saving": "Saving",
       "common.tags": "Tags",
       "recipe.coverImage": "Cover image",
+      "recipe.basicDetails": "Basic details",
+      "recipe.sharingAndSource": "Sharing & source",
+      "recipe.editor.stepDetails": "Step details",
+      "recipe.editor.cancelLink": "Cancel link edit",
+      "recipe.editor.reviewSteps": "Review unfinished changes in Steps",
       "recipe.sourceLinkLabel": "Source link",
       "recipe.addSourceLink": "Add link",
       "recipe.editSourceLink": "Edit link",
@@ -109,6 +114,7 @@ const recipe = {
 };
 
 beforeEach(() => {
+  window.history.replaceState(null, "", "/library/recipe-1");
   mockUploadRecipeImage.mockReset();
   mockPush.mockReset();
   mockApiFetch.mockReset().mockImplementation((path: string, options?: RequestInit) => {
@@ -123,6 +129,32 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+async function selectSection(name: RegExp) {
+  await userEvent.click(await screen.findByRole("tab", { name }));
+}
+
+function openStepDetails(number: number) {
+  const details = screen.getByRole("textbox", { name: "Step " + number }).closest("li")!.querySelector("details")!;
+  if (!details.open) fireEvent.click(details.querySelector("summary")!);
+}
+
+it("navigates sections by keyboard and keeps the recipe draft when returning", async () => {
+  const user = userEvent.setup();
+  render(<RecipeEditPage />);
+  const title = await screen.findByLabelText("Recipe title");
+  await user.clear(title);
+  await user.type(title, "My mapo tofu");
+  const basics = screen.getByRole("tab", { name: /Basic details/ });
+  basics.focus();
+  await user.keyboard("{ArrowRight}");
+  expect(screen.getByRole("tab", { name: /Ingredients/ })).toHaveFocus();
+  expect(screen.getByRole("tabpanel", { name: /Ingredients/ })).toBeVisible();
+  expect(window.location.hash).toBe("#recipe-ingredients");
+  await user.keyboard("{Home}");
+  expect(basics).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByLabelText("Recipe title")).toHaveValue("My mapo tofu");
+});
 
 it("blocks Save while uploading a cover and keeps newer text edits when it finishes", async () => {
   let finishUpload!: (url: string) => void;
@@ -161,11 +193,14 @@ describe("saved recipe total time", () => {
     loadRecipe(8);
     const user = userEvent.setup();
     render(<RecipeEditPage />);
-    const minutes = await screen.findByLabelText("Step 1 minutes");
-    const total = screen.getByRole("spinbutton", { name: /Total time/ });
+    const total = await screen.findByRole("spinbutton", { name: /Total time/ });
+    await selectSection(/^Steps/);
+    openStepDetails(1);
+    const minutes = screen.getByLabelText("Step 1 minutes");
     fireEvent.change(minutes, { target: { value: "3" } });
     expect(total).toHaveValue(3);
     fireEvent.change(screen.getByLabelText("Step 1 seconds"), { target: { value: "15" } });
+    await selectSection(/Basic details/);
     expect(total).toHaveValue(4);
     await user.click(screen.getByRole("button", { name: "Save" }));
     const [, options] = mockApiFetch.mock.calls.find(([, request]) => request?.method === "PATCH")!;
@@ -179,8 +214,7 @@ describe("saved recipe total time", () => {
     loadRecipe(null);
     const user = userEvent.setup();
     render(<RecipeEditPage />);
-    await screen.findByLabelText("Step 1 minutes");
-    expect(screen.getByRole("spinbutton", { name: /Total time/ })).toHaveValue(8);
+    expect(await screen.findByRole("spinbutton", { name: /Total time/ })).toHaveValue(8);
     await user.click(screen.getByRole("button", { name: "Save" }));
     const [, options] = mockApiFetch.mock.calls.find(([, request]) => request?.method === "PATCH")!;
     expect(JSON.parse(options.body).total_time_minutes).toBe(8);
@@ -190,35 +224,42 @@ describe("saved recipe total time", () => {
     loadRecipe(8);
     const user = userEvent.setup();
     render(<RecipeEditPage />);
-    await screen.findByLabelText("Step 1 minutes");
+    const total = await screen.findByRole("spinbutton", { name: /Total time/ });
+    await selectSection(/^Steps/);
     await user.click(screen.getByRole("button", { name: "Add step" }));
-    const total = screen.getByRole("spinbutton", { name: /Total time/ });
     expect(total).toHaveValue(8);
     fireEvent.change(screen.getByLabelText("Step 2"), { target: { value: "Serve the tofu." } });
     expect(total).toHaveValue(null);
+    openStepDetails(2);
     fireEvent.change(screen.getByLabelText("Step 2 minutes"), { target: { value: "2" } });
     expect(total).toHaveValue(10);
     await user.click(screen.getByRole("button", { name: "Remove step 1" }));
+    await selectSection(/Basic details/);
     expect(total).toHaveValue(2);
   });
 
   it("preserves a separate source total even if intermediate steps match it", async () => {
     loadRecipe(40);
     render(<RecipeEditPage />);
-    const minutes = await screen.findByLabelText("Step 1 minutes");
+    await selectSection(/^Steps/);
+    openStepDetails(1);
+    const minutes = screen.getByLabelText("Step 1 minutes");
     fireEvent.change(minutes, { target: { value: "40" } });
     fireEvent.change(minutes, { target: { value: "3" } });
+    await selectSection(/Basic details/);
     expect(screen.getByRole("spinbutton", { name: /Total time/ })).toHaveValue(40);
   });
 
   it("preserves an explicitly edited total even when it matches the step sum", async () => {
     loadRecipe(8);
     render(<RecipeEditPage />);
-    const minutes = await screen.findByLabelText("Step 1 minutes");
-    const total = screen.getByRole("spinbutton", { name: /Total time/ });
+    const total = await screen.findByRole("spinbutton", { name: /Total time/ });
     fireEvent.change(total, { target: { value: "12" } });
     fireEvent.change(total, { target: { value: "8" } });
-    fireEvent.change(minutes, { target: { value: "3" } });
+    await selectSection(/^Steps/);
+    openStepDetails(1);
+    fireEvent.change(screen.getByLabelText("Step 1 minutes"), { target: { value: "3" } });
+    await selectSection(/Basic details/);
     expect(total).toHaveValue(8);
   });
 });
@@ -228,9 +269,17 @@ describe("full recipe editor tutorial validity", () => {
     const user = userEvent.setup();
     render(<RecipeEditPage />);
 
-    const minutes = await screen.findByLabelText("Step 1 minutes");
+    await selectSection(/^Steps/);
+    openStepDetails(1);
+    const minutes = screen.getByLabelText("Step 1 minutes");
     const save = screen.getByRole("button", { name: "Save" });
     await user.clear(minutes);
+    fireEvent.click(minutes.closest("details")!.querySelector("summary")!);
+    await selectSection(/Ingredients/);
+    expect(save).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Review unfinished changes in Steps" }));
+    await waitFor(() => expect(minutes).toHaveFocus());
+    expect(minutes.closest("details")).toHaveAttribute("open");
 
     expect(minutes).toHaveValue(null);
     expect(save).toBeDisabled();
@@ -274,6 +323,7 @@ describe("source link editing for ordinary recipe owners", () => {
     const title = await screen.findByLabelText("Recipe title");
     await user.clear(title);
     await user.type(title, "Unsaved recipe title");
+    await selectSection(/Sharing & source/);
     await user.click(screen.getByRole("button", { name: "Add link" }));
     await user.type(screen.getByLabelText("Source link"), "  https://example.com/original  ");
     await user.click(screen.getByRole("button", { name: "Save link" }));
@@ -292,12 +342,13 @@ describe("source link editing for ordinary recipe owners", () => {
     storedRecipe("https://example.com/old");
     const user = userEvent.setup();
     render(<RecipeEditPage />);
+    await selectSection(/Sharing & source/);
     await user.click(await screen.findByRole("button", { name: "Edit link" }));
     const input = screen.getByLabelText("Source link");
     expect(input).toHaveValue("https://example.com/old");
     await user.clear(input);
     await user.type(input, "https://example.com/new");
-    const formCancel = screen.getAllByRole("button", { name: "Cancel" }).at(-1)!;
+    const formCancel = screen.getByRole("button", { name: "Cancel link edit" });
     await user.click(formCancel);
     expect(mockApiFetch.mock.calls.filter(([, options]) => options?.method === "PATCH")).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "Edit link" }));
@@ -312,6 +363,7 @@ describe("source link editing for ordinary recipe owners", () => {
     storedRecipe();
     const user = userEvent.setup();
     render(<RecipeEditPage />);
+    await selectSection(/Sharing & source/);
     await user.click(await screen.findByRole("button", { name: "Add link" }));
     await user.type(screen.getByLabelText("Source link"), url);
     await user.click(screen.getByRole("button", { name: "Save link" }));
@@ -323,6 +375,7 @@ describe("source link editing for ordinary recipe owners", () => {
     storedRecipe(null, true);
     const user = userEvent.setup();
     render(<RecipeEditPage />);
+    await selectSection(/Sharing & source/);
     await user.click(await screen.findByRole("button", { name: "Add link" }));
     await user.type(screen.getByLabelText("Source link"), "https://example.com/original");
     await user.click(screen.getByRole("button", { name: "Save link" }));

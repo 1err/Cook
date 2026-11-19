@@ -1,5 +1,6 @@
 import { expect, test, type Route } from "@playwright/test";
 import { API_BASE } from "./api";
+import { selectEditorSection } from "./recipe-editor";
 
 const appOrigin = `http://127.0.0.1:${process.env.PORT ?? "3000"}`;
 
@@ -76,10 +77,15 @@ for (const editor of ["recipe", "tutorial"] as const) {
     await expect(page).toHaveURL(new RegExp(`${route}$`));
     await expect(page).toHaveTitle(/Chef World/);
     await expect(page.getByRole("heading", { level: 1, name: editor === "recipe" ? "Edit recipe" : "Edit tutorial" })).toBeVisible();
+    if (editor === "recipe") {
+      await selectEditorSection(page, "recipe-steps");
+      await page.getByText("Step details", { exact: true }).first().click();
+    }
     await expect(page.getByLabel("Step 1 minutes")).toHaveValue("2");
     await page.getByLabel("Step 1 minutes").fill("7");
     await page.getByLabel("Step 1 seconds").fill("15");
     if (editor === "recipe") {
+      await selectEditorSection(page, "recipe-basics");
       await expect(page.getByRole("spinbutton", { name: /Total time/ })).toHaveValue("11");
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);

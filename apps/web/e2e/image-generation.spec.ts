@@ -53,6 +53,7 @@ for (const flow of ["import", "edit"] as const) {
       await page.getByRole("button", { name: "Prepare draft" }).click();
     } else {
       await page.goto(`/library/${recipe.id}`);
+      await page.getByText("Image options", { exact: true }).click();
     }
     await expect(page.getByRole("button", { name: "Generate with AI" })).toBeEnabled();
     await page.getByRole("button", { name: "Generate with AI" }).click();

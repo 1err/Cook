@@ -1,4 +1,5 @@
 import { API_BASE } from "./api";
+import { selectEditorSection } from "./recipe-editor";
 import { expect, test, type Page, type Route } from "@playwright/test";
 
 const appOrigin = `http://127.0.0.1:${process.env.PORT ?? "3000"}`;
@@ -146,25 +147,11 @@ test("presents recipe editing as one clear, functional workflow", async ({ page 
   await page.goto(`/library/${recipe.id}`);
 
   await expect(page.getByRole("heading", { level: 1, name: "Edit recipe" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Generate with AI", exact: true })).toBeEnabled();
   expect(reactKeyWarnings).toEqual([]);
-  const sectionHeadings = await page.getByRole("heading", { level: 2 }).allTextContents();
-  expect(sectionHeadings).toEqual([
-    "Basic details",
-    "Ingredients",
-    "Steps",
-    "More details",
-    "Sharing & source",
-  ]);
-  await expect(page.getByText("Update the cover, tags, and ingredients.")).toHaveCount(0);
-  await expect(page.locator("details").filter({ hasText: "Tips" })).not.toHaveAttribute("open", "");
-  await expect(page.getByText(/^Equipment/)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Add equipment", exact: true })).toHaveCount(0);
-  await expect(page.getByPlaceholder("Add a pan or tool", { exact: true })).toHaveCount(0);
-  await expect(page.locator("details").filter({ hasText: "Tags" })).not.toHaveAttribute("open", "");
-
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await expect(page.getByRole("button", { name: "Save" })).toBeInViewport();
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText("Basic details");
+  await page.getByText("Image options", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "Generate with AI", exact: true })).toBeEnabled();
+  await page.getByText("Image options", { exact: true }).click();
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
 
   if (testInfo.project.name === "desktop") {
@@ -175,6 +162,22 @@ test("presents recipe editing as one clear, functional workflow", async ({ page 
   }
 
   await page.getByLabel("Recipe title").fill("Updated scallion pockets");
+  await selectEditorSection(page, "recipe-ingredients");
+  await expect(page.getByRole("textbox", { name: "Ingredient 1", exact: true })).toHaveValue("Flour");
+  await selectEditorSection(page, "recipe-steps");
+  await expect(page.getByRole("textbox", { name: "Step 1", exact: true })).toHaveValue(recipe.steps[0].text);
+  await expect(page.getByLabel("Step 1 minutes")).toBeHidden();
+  await page.getByText("Step details", { exact: true }).click();
+  await expect(page.getByLabel("Step 1 minutes")).toHaveValue("15");
+  await selectEditorSection(page, "recipe-more");
+  await expect(page.getByRole("button", { name: "Healthy", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("textbox", { name: "Tip 1" })).toHaveValue(recipe.tips[0]);
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect(page.getByRole("button", { name: "Save" })).toBeInViewport();
+  await selectEditorSection(page, "recipe-sharing");
+  await expect(page.getByRole("link", { name: /Open source link/ })).toHaveAttribute("href", recipe.source_url);
+  await selectEditorSection(page, "recipe-basics");
+  await expect(page.getByLabel("Recipe title")).toHaveValue("Updated scallion pockets");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL(/\/library$/);
   expect(saveCapture.current).not.toHaveProperty("equipment");

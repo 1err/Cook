@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
   createRecipeStep,
   createUuid,
   editRecipeStepText,
+  formatRecipeStepMetadata,
   RECIPE_ACTION_MESSAGE_KEYS,
   RECIPE_ACTION_TYPES,
   RECIPE_ATTENTION_TYPE_MESSAGE_KEYS,
@@ -15,6 +16,7 @@ import {
 import { useT } from "../lib/i18n";
 import { StepEvidence } from "./StepEvidence";
 import { DurationField } from "./DurationField";
+import { Icon } from "../components/ui/Icon";
 import styles from "./StepListEditor.module.css";
 
 export interface StepListEditorProps {
@@ -25,6 +27,20 @@ export interface StepListEditorProps {
   onValidityChange?: (valid: boolean) => void;
   disabled?: boolean;
   estimateOnEdit?: boolean;
+  compact?: boolean;
+}
+
+function StepOptions({ compact, step, invalid, children }: { compact: boolean; step: RecipeStep; invalid: boolean; children: ReactNode }) {
+  const t = useT();
+  if (!compact) return <>{children}</>;
+  return <details className={styles.options}>
+    <summary>
+      <span>{t("recipe.editor.stepDetails")}</span>
+      <small>{invalid ? t("recipe.editor.checkDuration") : formatRecipeStepMetadata(step, t)}</small>
+      <Icon name="chevronDown" size={16} />
+    </summary>
+    {children}
+  </details>;
 }
 
 function hasValidDuration(step: RecipeStep): boolean {
@@ -48,6 +64,7 @@ export function StepListEditor({
   onValidityChange,
   disabled = false,
   estimateOnEdit = false,
+  compact = false,
 }: StepListEditorProps) {
   const t = useT();
   const headingId = useId();
@@ -68,7 +85,13 @@ export function StepListEditor({
     updated[index] = next;
     onChange(updated);
   };
-  const removeAt = (index: number) => onChange(steps.filter((_, itemIndex) => itemIndex !== index));
+  function focusStep(index: number) {
+    if (compact) requestAnimationFrame(() => document.getElementById(headingId + (index < 0 ? "-add" : "-text-" + index))?.focus());
+  }
+  const removeAt = (index: number) => {
+    onChange(steps.filter((_, itemIndex) => itemIndex !== index));
+    focusStep(Math.min(index, steps.length - 2));
+  };
   const swap = (index: number, nextIndex: number) => {
     if (nextIndex < 0 || nextIndex >= steps.length) return;
     const updated = steps.slice();
@@ -129,15 +152,16 @@ export function StepListEditor({
     <fieldset
       aria-busy={disabled || undefined}
       aria-labelledby={headingId}
-      className={styles.editor}
+      className={compact ? `${styles.editor} ${styles.compact}` : styles.editor}
       disabled={disabled}
     >
       <div className={styles.sectionHeader}>
         <h2 className="cw-display" id={headingId}>{t("recipe.steps")}</h2>
         <button
           type="button"
+          id={headingId + "-add"}
           aria-label={t("recipe.step.addRow")}
-          onClick={() => onChange([...steps, createRecipeStep()])}
+          onClick={() => { onChange([...steps, createRecipeStep()]); focusStep(steps.length); }}
         >
           + {t("recipe.step.addRow")}
         </button>
@@ -156,101 +180,104 @@ export function StepListEditor({
             </div>
             <div className={styles.stepBody}>
               <textarea
-                rows={3}
+                id={headingId + "-text-" + index}
+                rows={compact ? 2 : 3}
                 aria-label={t("recipe.tutorial.editor.stepLabel", { step: index + 1 })}
                 placeholder={t("recipe.step.textPlaceholder")}
                 value={step.text}
                 onChange={(event) => updateAt(index, editRecipeStepText(step, event.target.value, estimateOnEdit))}
               />
               <StepEvidence step={step} sourceUrl={sourceUrl} showSuggestedWarning />
-              <div className={styles.stepMetadata}>
-                <div className={styles.durationControl}>
-                  <div className={styles.metadataLabel}>
-                    <span>{t("recipe.tutorial.editor.duration")}</span>
-                    <span className={styles.metadataSource}>
-                      {t(RECIPE_DURATION_SOURCE_MESSAGE_KEYS[step.duration_source ?? "unknown"])}
-                    </span>
-                  </div>
-                  <DurationField
-                    seconds={step.duration_seconds ?? null}
-                    onChange={(next) => updateAt(index, {
-                      ...step,
-                      duration_seconds: next,
-                      duration_source: next == null ? "unknown" : "user",
-                    })}
-                    ariaLabel={t("recipe.tutorial.editor.durationLabel", { step: index + 1 })}
-                    minutesAriaLabel={t("recipe.tutorial.editor.durationMinutes", { step: index + 1 })}
-                    secondsAriaLabel={t("recipe.tutorial.editor.durationSeconds", { step: index + 1 })}
-                    validationMessage={t("recipe.tutorial.editor.durationInvalid")}
-                    onValidityChange={(valid) => reportDurationValidity(stepKey(step, index), valid)}
-                  />
-                </div>
-
-                <fieldset className={styles.attentionControl}>
-                  <legend>{t("recipe.tutorial.editor.attention")}</legend>
-                  <div>
-                    {(["hands_on", "passive"] as const).map((attentionType) => (
-                      <button
-                        key={attentionType}
-                        type="button"
-                        aria-pressed={(step.attention_type ?? "hands_on") === attentionType}
-                        onClick={() => updateAt(index, {
-                          ...step,
-                          attention_type: attentionType,
-                        })}
-                      >
-                        {t(RECIPE_ATTENTION_TYPE_MESSAGE_KEYS[attentionType])}
-                      </button>
-                    ))}
-                  </div>
-                </fieldset>
-
-                <label className={styles.actionControl}>
-                  <span>{t("recipe.tutorial.editor.illustration")}</span>
-                  <select
-                    value={step.action_type ?? "other"}
-                    aria-label={t("recipe.tutorial.editor.illustrationLabel", { step: index + 1 })}
-                    onChange={(event) => updateAt(index, {
-                      ...step,
-                      action_type: event.target.value as RecipeActionType,
-                    })}
-                  >
-                    {RECIPE_ACTION_TYPES.map((actionType) => (
-                      <option key={actionType} value={actionType}>
-                        {t(RECIPE_ACTION_MESSAGE_KEYS[actionType])}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              {uploadImage ? (
-                step.image_url ? (
-                  <div className={styles.stepImage}>
-                    <img src={step.image_url} alt="" />
-                    <button type="button" onClick={() => updateAt(index, { ...step, image_url: null })}>
-                      {t("recipe.step.removeImage")}
-                    </button>
-                  </div>
-                ) : (
-                  <label className={styles.stepUpload}>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      aria-label={t("recipe.step.imageUploadLabel", { step: index + 1 })}
-                      disabled={uploadingIds.has(step.id ?? "")}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        event.currentTarget.value = "";
-                        if (file) void onPickImage(index, file);
-                      }}
+              <StepOptions compact={compact} step={step} invalid={invalidStepKeys.has(stepKey(step, index)) || !hasValidDuration(step)}>
+                <div className={styles.stepMetadata}>
+                  <div className={styles.durationControl}>
+                    <div className={styles.metadataLabel}>
+                      <span>{t("recipe.tutorial.editor.duration")}</span>
+                      <span className={styles.metadataSource}>
+                        {t(RECIPE_DURATION_SOURCE_MESSAGE_KEYS[step.duration_source ?? "unknown"])}
+                      </span>
+                    </div>
+                    <DurationField
+                      seconds={step.duration_seconds ?? null}
+                      onChange={(next) => updateAt(index, {
+                        ...step,
+                        duration_seconds: next,
+                        duration_source: next == null ? "unknown" : "user",
+                      })}
+                      ariaLabel={t("recipe.tutorial.editor.durationLabel", { step: index + 1 })}
+                      minutesAriaLabel={t("recipe.tutorial.editor.durationMinutes", { step: index + 1 })}
+                      secondsAriaLabel={t("recipe.tutorial.editor.durationSeconds", { step: index + 1 })}
+                      validationMessage={t("recipe.tutorial.editor.durationInvalid")}
+                      onValidityChange={(valid) => reportDurationValidity(stepKey(step, index), valid)}
                     />
-                    <span role={uploadingIds.has(step.id ?? "") ? "status" : undefined}>
-                      {uploadingIds.has(step.id ?? "") ? t("recipe.uploading") : t("recipe.step.uploadImage")}
-                    </span>
+                  </div>
+
+                  <fieldset className={styles.attentionControl}>
+                    <legend>{t("recipe.tutorial.editor.attention")}</legend>
+                    <div>
+                      {(["hands_on", "passive"] as const).map((attentionType) => (
+                        <button
+                          key={attentionType}
+                          type="button"
+                          aria-pressed={(step.attention_type ?? "hands_on") === attentionType}
+                          onClick={() => updateAt(index, {
+                            ...step,
+                            attention_type: attentionType,
+                          })}
+                        >
+                          {t(RECIPE_ATTENTION_TYPE_MESSAGE_KEYS[attentionType])}
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+
+                  <label className={styles.actionControl}>
+                    <span>{t("recipe.tutorial.editor.illustration")}</span>
+                    <select
+                      value={step.action_type ?? "other"}
+                      aria-label={t("recipe.tutorial.editor.illustrationLabel", { step: index + 1 })}
+                      onChange={(event) => updateAt(index, {
+                        ...step,
+                        action_type: event.target.value as RecipeActionType,
+                      })}
+                    >
+                      {RECIPE_ACTION_TYPES.map((actionType) => (
+                        <option key={actionType} value={actionType}>
+                          {t(RECIPE_ACTION_MESSAGE_KEYS[actionType])}
+                        </option>
+                      ))}
+                    </select>
                   </label>
-                )
-              ) : null}
-              {imageErrors[step.id ?? ""] ? <p role="alert">{imageErrors[step.id ?? ""]}</p> : null}
+                </div>
+                {uploadImage ? (
+                  step.image_url ? (
+                    <div className={styles.stepImage}>
+                      <img src={step.image_url} alt="" />
+                      <button type="button" onClick={() => updateAt(index, { ...step, image_url: null })}>
+                        {t("recipe.step.removeImage")}
+                      </button>
+                    </div>
+                  ) : (
+                    <label className={styles.stepUpload}>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        aria-label={t("recipe.step.imageUploadLabel", { step: index + 1 })}
+                        disabled={uploadingIds.has(step.id ?? "")}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.currentTarget.value = "";
+                          if (file) void onPickImage(index, file);
+                        }}
+                      />
+                      <span role={uploadingIds.has(step.id ?? "") ? "status" : undefined}>
+                        {uploadingIds.has(step.id ?? "") ? t("recipe.uploading") : t("recipe.step.uploadImage")}
+                      </span>
+                    </label>
+                  )
+                ) : null}
+                {imageErrors[step.id ?? ""] ? <p role="alert">{imageErrors[step.id ?? ""]}</p> : null}
+              </StepOptions>
             </div>
           </li>
         ))}

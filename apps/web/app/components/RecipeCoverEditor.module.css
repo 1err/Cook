@@ -13,4 +13,39 @@
 .hero .preview { min-height: 18rem; aspect-ratio: auto; }
 .hero .preview img { height: auto; max-height: 34rem; object-fit: contain; }
 .hero .changeButton { position: absolute; bottom: 1rem; right: 1rem; width: 2.75rem; height: 2.75rem; padding: 0; border-radius: 50%; background: color-mix(in srgb, var(--cw-color-surface) 94%, transparent); box-shadow: 0 2px 8px rgb(0 0 0 / 8%); }
-@media (max-width: 820px) { .hero .preview { min-height: 12rem; } .hero .changeButton { bottom: 0.75rem; right: 0.75rem; } }
+.compact {
+  gap: .42rem;
+}
+
+.compact .label {
+  font: 650 .875rem/1.4 var(--cw-font-ui);
+}
+
+.compact .preview {
+  border-radius: var(--cw-radius-field);
+}
+
+.compact .changeButton {
+  display: inline-flex;
+  gap: .4rem;
+  border-color: var(--cw-color-divider);
+  background: var(--cw-color-surface);
+}
+
+.compact .preview img + .changeButton {
+  position: absolute;
+  right: .55rem;
+  bottom: .55rem;
+  box-shadow: 0 1px 4px rgb(36 27 19 / 12%);
+}
+
+@media (max-width: 820px) {
+  .hero .preview {
+    min-height: 12rem;
+  }
+
+  .hero .changeButton {
+    bottom: 0.75rem;
+    right: 0.75rem;
+  }
+}

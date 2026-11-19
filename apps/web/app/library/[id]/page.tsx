@@ -1,473 +1,362 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { SourceLinkEditor } from "./SourceLinkEditor";
 import { useParams, useRouter } from "next/navigation";
-import { apiFetch } from "../../lib/api";
-import { uploadRecipeImage } from "../../lib/uploadRecipeImage";
-import { RequireAuth } from "../../components/RequireAuth";
-import { PageShell } from "../../components/PageShell";
 import { AuthorPicker } from "../../components/AuthorPicker";
-import type { RecipeAuthor } from "@cooking/shared";
+import { PageShell } from "../../components/PageShell";
 import { RecipeCoverEditor } from "../../components/RecipeCoverEditor";
 import { RecipeImageGenerator } from "../../components/RecipeImageGenerator";
-import { useT } from "../../lib/i18n";
-import { stepTotalMinutes } from "../../lib/recipeTotalTime";
-import {
-  CATEGORY_LABELS,
-  RECIPE_TAG_GROUPS,
-  type RecipeTagSlug,
-} from "../../lib/recipeCategories";
-import { getRecipeTags } from "../../lib/recipeTags";
-import type { Recipe, IngredientItem, RecipeStep } from "../../types";
+import { RequireAuth } from "../../components/RequireAuth";
+import { Icon } from "../../components/ui/Icon";
 import { StepListEditor } from "../../import/StepListEditor";
-import { StringListEditor } from "../../import/StringListEditor";
+import { apiFetch } from "../../lib/api";
+import { useT } from "../../lib/i18n";
+import { RECIPE_TAG_GROUPS, type RecipeTagSlug } from "../../lib/recipeCategories";
+import { getRecipeTags } from "../../lib/recipeTags";
+import { stepTotalMinutes } from "../../lib/recipeTotalTime";
+import { uploadRecipeImage } from "../../lib/uploadRecipeImage";
+import type { IngredientItem, Recipe } from "../../types";
+import { EditorSections, useEditorSection } from "./EditorSections";
+import { SourceLinkEditor } from "./SourceLinkEditor";
 import styles from "./RecipeEdit.module.css";
 
-function RecipeEditContent() {
-  const params = useParams();
-  const router = useRouter();
-  const id = params?.id as string;
-  const [recipe, setRecipe] = useState<Recipe | null>(null);
-  const [title, setTitle] = useState("");
-  const [author, setAuthor] = useState<RecipeAuthor | null>(null);
-  const [authorId, setAuthorId] = useState<string | null>(null);
-  const [authorBusy, setAuthorBusy] = useState(false);
-  const [thumbnailUrl, setThumbnailUrl] = useState("");
-  const [libraryTags, setLibraryTags] = useState<RecipeTagSlug[]>([]);
-  const [ingredients, setIngredients] = useState<IngredientItem[]>([]);
-  const [description, setDescription] = useState("");
-  const [totalTimeMinutes, setTotalTimeMinutes] = useState<number | null>(null);
-  const [automaticTotal, setAutomaticTotal] = useState(false);
-  const [steps, setSteps] = useState<RecipeStep[]>([]);
-  const displayedTotal = automaticTotal ? stepTotalMinutes(steps) : totalTimeMinutes;
-  const [stepsValid, setStepsValid] = useState(true);
-  const [tips, setTips] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [sourceSaving, setSourceSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [catalogSaving, setCatalogSaving] = useState(false);
-  const [canManageCatalog, setCanManageCatalog] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function draftFromRecipe(recipe: Recipe) {
+  const steps = recipe.steps ?? [];
+  const total = recipe.total_time_minutes ?? null;
+  return {
+    title: recipe.title,
+    author: recipe.author ?? null,
+    authorId: recipe.author_id ?? recipe.author?.id ?? null,
+    cover: recipe.thumbnail_url ?? "",
+    description: recipe.description ?? "",
+    total,
+    // A separate total may include unlisted prep or overlapping steps.
+    automaticTotal: total === null || total === stepTotalMinutes(steps),
+    ingredients: recipe.ingredients ?? [],
+    steps,
+    tags: getRecipeTags(recipe),
+    tips: recipe.tips ?? [],
+  };
+}
+
+type Draft = ReturnType<typeof draftFromRecipe>;
+
+function focusRow(inputId: string) {
+  requestAnimationFrame(() => document.getElementById(inputId)?.focus());
+}
+
+function RecipeEditContent({ id }: { id: string }) {
   const t = useT();
+  const router = useRouter();
+  const section = useEditorSection();
+  const [recipe, setRecipe] = useState<Recipe | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const originalDraft = useRef("");
+  const [canManageCatalog, setCanManageCatalog] = useState(false);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [sourceSaving, setSourceSaving] = useState(false);
+  const [catalogSaving, setCatalogSaving] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [authorBusy, setAuthorBusy] = useState(false);
+  const [stepsValid, setStepsValid] = useState(true);
+  const locked = saving || deleting;
+  const busy = locked || sourceSaving || catalogSaving || uploadingCover || authorBusy;
 
   useEffect(() => {
-    if (!id) return;
-    let cancelled = false;
+    let current = true;
     async function load() {
       try {
-        const res = await apiFetch(`/recipes/${id}`);
-        if (!res.ok) throw new Error("Recipe not found");
-        const data: Recipe = await res.json();
-        const nextTags = getRecipeTags(data);
-        if (!cancelled) {
+        const response = await apiFetch("/recipes/" + id);
+        if (!response.ok) throw new Error();
+        const data: Recipe = await response.json();
+        if (current) {
+          const initial = draftFromRecipe(data);
+          originalDraft.current = JSON.stringify(initial);
+          setDraft(initial);
           setRecipe(data);
-          setTitle(data.title);
-          setAuthor(data.author ?? null);
-          setAuthorId(data.author_id ?? data.author?.id ?? null);
-          setThumbnailUrl(data.thumbnail_url ?? "");
-          setLibraryTags(nextTags);
-          setIngredients(data.ingredients?.length ? [...data.ingredients] : []);
-          setDescription(data.description ?? "");
-          const loadedTotal = typeof data.total_time_minutes === "number" ? data.total_time_minutes : null;
-          setTotalTimeMinutes(loadedTotal);
-          // Separate source totals can include unlisted prep or overlapping work.
-          setAutomaticTotal(loadedTotal == null || loadedTotal === stepTotalMinutes(data.steps));
-          setSteps(Array.isArray(data.steps) ? data.steps.map((s) => ({ ...s })) : []);
-          setTips(Array.isArray(data.tips) ? [...data.tips] : []);
         }
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load");
-      } finally {
-        if (!cancelled) setLoading(false);
+      } catch {
+        if (current) setError("recipe.editor.loadError");
       }
     }
-    load();
-    return () => {
-      cancelled = true;
-    };
+    async function loadPermissions() {
+      try {
+        const response = await apiFetch("/recipes/catalog/editor-status");
+        if (!response.ok) return;
+        const permissions = await response.json();
+        if (current) setCanManageCatalog(Boolean(permissions.can_manage));
+      } catch {
+        if (current) setCanManageCatalog(false);
+      }
+    }
+    void load();
+    void loadPermissions();
+    return () => { current = false; };
   }, [id]);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadCatalogStatus() {
-      try {
-        const res = await apiFetch("/recipes/catalog/editor-status");
-        if (!res.ok) return;
-        const data = (await res.json()) as { can_manage?: boolean };
-        if (!cancelled) setCanManageCatalog(Boolean(data.can_manage));
-      } catch {
-        if (!cancelled) setCanManageCatalog(false);
-      }
-    }
-    loadCatalogStatus();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  function updateIngredient(index: number, field: keyof IngredientItem, value: string | null) {
-    setIngredients((prev) => {
-      const next = [...prev];
-      if (!next[index]) return next;
-      next[index] = { ...next[index], [field]: value ?? "" };
-      return next;
-    });
+  function update(changes: Partial<Draft>) {
+    setDraft(current => current ? { ...current, ...changes } : current);
   }
 
-  function removeIngredient(index: number) {
-    setIngredients((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function addIngredient() {
-    setIngredients((prev) => [...prev, { name: "", quantity: "", metric_quantity: "", notes: null }]);
+  function changeIngredient(index: number, field: keyof IngredientItem, value: string) {
+    if (draft) update({ ingredients: draft.ingredients.map((item, i) => i === index ? { ...item, [field]: value } : item) });
   }
 
   function toggleTag(tag: RecipeTagSlug) {
-    setLibraryTags((prev) => (prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]));
+    if (draft) update({ tags: draft.tags.includes(tag) ? draft.tags.filter(item => item !== tag) : [...draft.tags, tag] });
   }
 
-  async function handleSave() {
-    if (!id || !stepsValid || sourceSaving || saving || uploadingImage || deleting || authorBusy) return;
+  function reviewSteps() {
+    section.select("recipe-steps");
+    requestAnimationFrame(() => {
+      const steps = document.getElementById("recipe-steps");
+      const invalid = steps?.querySelector<HTMLInputElement>('input[aria-invalid="true"]');
+      const pending = steps?.querySelector<HTMLInputElement>('input[type="file"]:disabled');
+      const details = (invalid ?? pending)?.closest("details");
+      if (details) {
+        details.open = true;
+        (invalid ?? details.querySelector("summary"))?.focus();
+      }
+    });
+  }
+
+  const total = draft?.automaticTotal ? stepTotalMinutes(draft.steps) : draft?.total;
+  async function save() {
+    if (!draft || !recipe || busy || !stepsValid) return;
     setSaving(true);
-    setError(null);
+    setError("");
     try {
-      const payload: Record<string, unknown> = {
-        title: title.trim() || recipe?.title,
-        author_id: authorId,
-        thumbnail_url: thumbnailUrl.trim() || null,
-        ingredients: ingredients.filter((i) => i.name.trim() !== ""),
-        library_tags: libraryTags,
-        description: description.trim() || null,
-        total_time_minutes: displayedTotal,
-        steps,
-        tips,
-      };
-      const res = await apiFetch(`/recipes/${id}`, {
+      const response = await apiFetch("/recipes/" + id, {
         method: "PATCH",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          title: draft.title.trim() || recipe.title,
+          author_id: draft.authorId,
+          thumbnail_url: draft.cover.trim() || null,
+          ingredients: draft.ingredients.filter(item => item.name.trim()),
+          description: draft.description.trim() || null,
+          total_time_minutes: total,
+          library_tags: draft.tags,
+          steps: draft.steps,
+          tips: draft.tips,
+        }),
       });
-      if (!res.ok) throw new Error("Failed to save");
+      if (!response.ok) throw new Error();
       router.push("/library");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
+    } catch {
+      setError("recipe.editor.saveError");
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleDelete() {
-    if (!id || !recipe || sourceSaving || uploadingImage || saving || deleting) return;
-    if (!confirm(`Delete “${recipe.title}”?`)) return;
-    setDeleting(true);
-    setError(null);
-    try {
-      const res = await apiFetch(`/recipes/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete");
-      router.push("/library");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Delete failed");
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  async function handleCatalogToggle() {
-    if (!id || !recipe) return;
+  async function toggleCatalog() {
+    if (!recipe || !canManageCatalog || busy) return;
     setCatalogSaving(true);
-    setError(null);
+    setError("");
     try {
-      const res = await apiFetch(`/recipes/${id}/catalog`, {
+      const response = await apiFetch("/recipes/" + id + "/catalog", {
         method: "POST",
         body: JSON.stringify({ is_public: !recipe.is_public_catalog }),
       });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Could not update public library");
-      }
-      const updated: Recipe = await res.json();
-      setRecipe(updated);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update public library");
+      if (!response.ok) throw new Error();
+      const updated: Recipe = await response.json();
+      setRecipe(current => current ? { ...current, is_public_catalog: updated.is_public_catalog } : current);
+    } catch {
+      setError("recipe.editor.catalogError");
     } finally {
       setCatalogSaving(false);
     }
   }
 
-  if (loading) return <p className={styles.status}>{t("common.loading")}</p>;
-  if (error && !recipe) return <p className={styles.error}>{error}</p>;
-  if (!recipe) return null;
+  async function deleteRecipe() {
+    if (!recipe || busy || !window.confirm(t("recipe.deleteConfirm", { title: recipe.title }))) return;
+    setDeleting(true);
+    setError("");
+    try {
+      const response = await apiFetch("/recipes/" + id, { method: "DELETE" });
+      if (!response.ok) throw new Error();
+      router.push("/library");
+    } catch {
+      setError("recipe.editor.deleteError");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
+  if (!recipe || !draft) return error
+    ? <p className={styles.error} role="alert">{t(error)}</p>
+    : <p className={styles.help} role="status">{t("common.loading")}</p>;
+
+  const dirty = JSON.stringify(draft) !== originalDraft.current;
   return (
     <div className={styles.editor}>
-      <header className={styles.pageHeader}>
-        <div className={styles.pageHeading}>
-          <Link href="/library" className={styles.back}>← {t("nav.library")}</Link>
-          <h1>{t("recipe.editRecipeTitle")}</h1>
+      <nav aria-label={t("recipe.editor.breadcrumb")} className={styles.crumbs}>
+        <Link href="/library">{t("nav.library")}</Link>
+        <span aria-hidden="true">/</span>
+        <Link href={"/recipe/" + id}>{recipe.title}</Link>
+      </nav>
+      <header className={styles.toolbar}>
+        <div className={styles.titleRow}>
+          <div className={styles.heading}>
+            <h1>{t("recipe.editRecipeTitle")}</h1>
+            <span className={styles.draftStatus} role="status">{dirty && t("recipe.editor.unsaved")}</span>
+          </div>
+          <div className={styles.headerActions}>
+            <button type="button" className={styles.cancelButton} onClick={() => router.push("/library")} disabled={locked}>{t("common.cancel")}</button>
+            <button type="button" className={styles.saveButton} onClick={save} disabled={busy || !stepsValid}>
+              {saving ? t("common.saving") : t("common.save")}
+            </button>
+          </div>
         </div>
-        <div className={styles.headerActions}>
-          <button type="button" className={styles.cancelButton} onClick={() => router.push("/library")}>
-            {t("common.cancel")}
-          </button>
-          <button
-            type="button"
-            className={styles.saveButton}
-            onClick={handleSave}
-            disabled={sourceSaving || saving || uploadingImage || deleting || authorBusy || !stepsValid}
-          >
-            {saving ? t("common.saving") : t("common.save")}
-          </button>
-        </div>
+        <EditorSections active={section.active} onSelect={section.select} ingredientCount={draft.ingredients.length} stepCount={draft.steps.length} />
+        {error && <p className={styles.error} role="alert">{t(error)}</p>}
+        {!stepsValid && <p className={styles.review} role="status">
+          <button type="button" onClick={reviewSteps}>{t("recipe.editor.reviewSteps")}</button>
+        </p>}
       </header>
 
-      {error ? <p className={styles.error} role="alert">{error}</p> : null}
-
-      <div className={styles.editorLayout}>
-        <nav className={styles.sectionNav} aria-label="Recipe editor sections">
-          <a href="#recipe-basics"><span>01</span>{t("recipe.basicDetails")}</a>
-          <a href="#recipe-ingredients"><span>02</span>{t("common.ingredients")}</a>
-          <a href="#recipe-steps"><span>03</span>{t("recipe.steps")}</a>
-          <a href="#recipe-more"><span>04</span>{t("recipe.moreDetails")}</a>
-          <a href="#recipe-sharing"><span>05</span>{t("recipe.sharingAndSource")}</a>
-        </nav>
-
-        <div className={styles.workflow}>
-        <section className={styles.section} id="recipe-basics">
-          <div className={styles.sectionHeader}>
-            <h2>{t("recipe.basicDetails")}</h2>
-          </div>
+      <fieldset disabled={locked} className={styles.panels}>
+        <section {...section.panel("recipe-basics")} className={styles.panel}>
+          <h2>{t("recipe.basicDetails")}</h2>
           <div className={styles.basicGrid}>
             <div className={styles.basicFields}>
               <label className={styles.field}>
                 <span>{t("recipe.recipeTitle")}</span>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  placeholder="e.g. Lemon garlic salmon"
-                />
+                <input type="text" value={draft.title} onChange={event => update({ title: event.target.value })} />
               </label>
-
-              <AuthorPicker value={author} onChange={value => { setAuthor(value); setAuthorId(value?.id ?? null); }} disabled={sourceSaving || saving || deleting} onBusyChange={setAuthorBusy} />
-
+              <div className={styles.authorField}>
+                <AuthorPicker value={draft.author} onChange={author => update({ author, authorId: author?.id ?? null })}
+                  disabled={locked || sourceSaving} onBusyChange={setAuthorBusy} />
+              </div>
+              <div className={styles.field}>
+                <label htmlFor="edit-description">{t("recipe.description")}</label>
+                <textarea id="edit-description" rows={3} maxLength={500} value={draft.description}
+                  placeholder={t("recipe.description.placeholder")} onChange={event => update({ description: event.target.value })} />
+                <small className={styles.counter}>{draft.description.length} / 500</small>
+              </div>
               <label className={styles.field}>
-                <span>{t("recipe.description")}</span>
-                <textarea
-                  rows={4}
-                  maxLength={500}
-                  placeholder={t("recipe.description.placeholder")}
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                />
-                <small>{description.length} / 500</small>
-              </label>
-
-              <label className={`${styles.field} ${styles.timeField}`}>
                 <span>{t("recipe.totalTime")}</span>
                 <span className={styles.timeControl}>
-                  <input
-                    type="number"
-                    min={0}
-                    placeholder={t("recipe.totalTime.placeholder")}
-                    value={displayedTotal ?? ""}
-                    onChange={(event) => {
-                      const raw = event.target.value;
-                      setAutomaticTotal(false);
-                      setTotalTimeMinutes(raw === "" ? null : Math.max(0, Math.floor(Number(raw) || 0)));
-                    }}
-                  />
+                  <input type="number" min={0} value={total ?? ""} placeholder={t("recipe.totalTime.placeholder")}
+                    onChange={event => update({ automaticTotal: false, total: event.target.value === "" ? null : Math.max(0, Math.floor(Number(event.target.value))) })} />
                   <span>{t("recipe.totalTime.minutesSuffix")}</span>
                 </span>
               </label>
             </div>
-
-            <div className={styles.coverEditor}>
-              <RecipeCoverEditor key={`cover:${id}`} value={thumbnailUrl} onChange={setThumbnailUrl} onBusyChange={setUploadingImage} disabled={saving || deleting} />
-              <details className={styles.imageUrlDisclosure}>
-                <summary>{t("recipe.imageUrl")}</summary>
-                <input
-                  type="url"
-                  aria-label={t("recipe.imageUrl")}
-                  value={thumbnailUrl}
-                  onChange={(event) => setThumbnailUrl(event.target.value)}
-                  disabled={uploadingImage || saving || deleting}
-                  placeholder="https://…"
-                />
+            <div className={styles.coverColumn}>
+              <RecipeCoverEditor variant="compact" value={draft.cover} onChange={cover => update({ cover })} onBusyChange={setUploadingCover} disabled={locked} />
+              <details className={styles.imageOptions}>
+                <summary>{t("recipe.editor.imageOptions")}<Icon name="chevronDown" size={16} /></summary>
+                <label className={styles.field}>
+                  <span>{t("recipe.imageUrl")}</span>
+                  <input type="url" value={draft.cover} onChange={event => update({ cover: event.target.value })} disabled={uploadingCover} placeholder="https://…" />
+                </label>
+                <RecipeImageGenerator recipe={{ title: draft.title, description: draft.description, ingredients: draft.ingredients, steps: draft.steps }}
+                  headingLevel={3} disabled={locked || uploadingCover} onAccept={cover => update({ cover })} />
               </details>
-              <RecipeImageGenerator key={`generation:${id}`} recipe={{ title, description, ingredients, steps }} headingLevel={3}
-                disabled={saving || deleting || uploadingImage} onAccept={setThumbnailUrl} />
             </div>
           </div>
         </section>
 
-        <section className={styles.section} id="recipe-ingredients">
-          <div className={styles.sectionHeader}>
-            <h2>{t("common.ingredients")}</h2>
-            <button type="button" className={styles.textButton} onClick={addIngredient}>
-              + {t("common.add")}
+        <section {...section.panel("recipe-ingredients")} className={styles.panel}>
+          <h2>{t("common.ingredients")}</h2>
+          <p className={styles.help} id="recipe-conversion-help">{t("recipe.metricQtyHelp")}</p>
+          {draft.ingredients.length > 0 && <div className={styles.ingredientLabels} aria-hidden="true">
+            <span>{t("recipe.ingredient")}</span><span>{t("recipe.originalAmount")}</span><span>{t("recipe.metricQty")}</span>
+          </div>}
+          <ul className={styles.ingredientRows}>
+            {draft.ingredients.map((item, index) => <li key={index}>
+              <label className={styles.ingredientName}>
+                <span>{t("recipe.ingredient")}</span>
+                <input id={"ingredient-" + index} aria-label={t("recipe.ingredient") + " " + (index + 1)} value={item.name}
+                  onChange={event => changeIngredient(index, "name", event.target.value)} />
+              </label>
+              <label><span>{t("recipe.originalAmount")}</span>
+                <input aria-label={t("recipe.originalAmount") + " " + (index + 1)} value={item.quantity ?? ""}
+                  onChange={event => changeIngredient(index, "quantity", event.target.value)} />
+              </label>
+              <label><span>{t("recipe.metricQty")}</span>
+                <input aria-label={t("recipe.metricQty") + " " + (index + 1)} aria-describedby="recipe-conversion-help" value={item.metric_quantity ?? ""}
+                  onChange={event => changeIngredient(index, "metric_quantity", event.target.value)} />
+              </label>
+              <button type="button" className={styles.removeButton} aria-label={t("recipe.removeIngredient") + " " + (index + 1)}
+                onClick={() => {
+                  const next = draft.ingredients.filter((_, i) => i !== index);
+                  update({ ingredients: next });
+                  focusRow(next.length ? "ingredient-" + Math.min(index, next.length - 1) : "add-ingredient");
+                }}><Icon name="trash" size={16} /></button>
+            </li>)}
+          </ul>
+          <button id="add-ingredient" type="button" className={styles.addButton} onClick={() => {
+            update({ ingredients: [...draft.ingredients, { name: "", quantity: "", metric_quantity: "", notes: null }] });
+            focusRow("ingredient-" + draft.ingredients.length);
+          }}><Icon name="add" size={16} />{t("recipe.editor.addIngredient")}</button>
+        </section>
+
+        <section {...section.panel("recipe-steps")} className={styles.panel}>
+          <StepListEditor compact steps={draft.steps} sourceUrl={recipe.source_url} onChange={steps => update({ steps })} disabled={locked}
+            uploadImage={file => uploadRecipeImage(file, t("common.upload"))} onValidityChange={setStepsValid} />
+        </section>
+
+        <section {...section.panel("recipe-more")} className={styles.panel}>
+          <h2>{t("recipe.editor.tipsAndTags")}</h2>
+          <div className={styles.tipSection}>
+            <h3>{t("recipe.tips")}</h3>
+            {draft.tips.map((tip, index) => <div key={index} className={styles.tipRow}>
+              <textarea rows={2} id={"tip-" + index} value={tip} aria-label={t("recipe.editor.tip", { number: index + 1 })} placeholder={t("recipe.tips.placeholder")}
+                onChange={event => update({ tips: draft.tips.map((value, i) => i === index ? event.target.value : value) })} />
+              <button type="button" className={styles.removeButton} aria-label={t("recipe.editor.removeTip", { number: index + 1 })}
+                onClick={() => {
+                  const next = draft.tips.filter((_, i) => i !== index);
+                  update({ tips: next });
+                  focusRow(next.length ? "tip-" + Math.min(index, next.length - 1) : "add-tip");
+                }}><Icon name="trash" size={16} /></button>
+            </div>)}
+            <button id="add-tip" type="button" className={styles.addButton} onClick={() => {
+              update({ tips: [...draft.tips, ""] });
+              focusRow("tip-" + draft.tips.length);
+            }}><Icon name="add" size={16} />{t("recipe.tips.addRow")}</button>
+          </div>
+          <h3>{t("common.tags")}</h3>
+          <div className={styles.tagGroups}>
+            {RECIPE_TAG_GROUPS.map(group => <fieldset key={group.id}>
+              <legend>{t("recipe.tagGroup." + group.id)}</legend>
+              <div>{group.tags.map(tag => <button key={tag.id} type="button" aria-pressed={draft.tags.includes(tag.id)}
+                onClick={() => toggleTag(tag.id)}>{draft.tags.includes(tag.id) && <Icon name="check" size={14} />}{t("recipe.tag." + tag.id)}</button>)}</div>
+            </fieldset>)}
+          </div>
+        </section>
+
+        <section {...section.panel("recipe-sharing")} className={styles.panel}>
+          <h2>{t("recipe.sharingAndSource")}</h2>
+          <div className={styles.setting}>
+            <div><h3>{t("recipe.sourceLinkLabel")}</h3><p>{t("recipe.editor.sourceHelp")}</p></div>
+            <SourceLinkEditor recipeId={id} value={recipe.source_url} disabled={locked || catalogSaving} onBusyChange={setSourceSaving}
+              onSaved={source_url => setRecipe(current => current ? { ...current, source_url } : current)} />
+          </div>
+          {canManageCatalog && <div className={styles.setting}>
+            <div><h3>{t("recipe.publicLibrary")}</h3>
+              <p role="status">{t(recipe.is_public_catalog ? "recipe.editor.public" : "recipe.editor.private")}</p></div>
+            <button type="button" className={styles.secondaryButton} onClick={toggleCatalog} disabled={busy}>
+              {catalogSaving ? t("common.saving") : t(recipe.is_public_catalog ? "recipe.removeFromPublicLibrary" : "recipe.addToPublicLibrary")}
+            </button>
+          </div>}
+          <div className={styles.setting}>
+            <div><h3>{t("recipe.deleteRecipe")}</h3><p>{t("recipe.editor.deleteHelp")}</p></div>
+            <button type="button" className={styles.dangerButton} onClick={deleteRecipe} disabled={busy}>
+              <Icon name="trash" size={16} />{deleting ? t("recipe.deleting") : t("common.delete")}
             </button>
           </div>
-          <p id="recipe-conversion-help" className={styles.selectionSummary}>{t("recipe.metricQtyHelp")}</p>
-          <div className={styles.ingredientLabels} aria-hidden>
-            <span>{t("recipe.ingredient")}</span>
-            <span>{t("recipe.originalAmount")}</span>
-            <span>{t("recipe.metricQty")}</span>
-          </div>
-          <ul className={styles.ingredientRows}>
-            {ingredients.map((item, index) => (
-              <li key={index}>
-                <input
-                  type="text"
-                  value={item.name}
-                  onChange={(event) => updateIngredient(index, "name", event.target.value)}
-                  placeholder={t("recipe.ingredient")}
-                  aria-label={`${t("recipe.ingredient")} ${index + 1}`}
-                />
-                <input
-                  type="text"
-                  value={item.quantity}
-                  onChange={(event) => updateIngredient(index, "quantity", event.target.value)}
-                  placeholder={t("recipe.originalAmount")}
-                  aria-label={`${t("recipe.originalAmount")} ${index + 1}`}
-                />
-                <input
-                  type="text"
-                  value={item.metric_quantity ?? ""}
-                  onChange={(event) => updateIngredient(index, "metric_quantity", event.target.value)}
-                  placeholder={t("recipe.metricQty")}
-                  aria-label={`${t("recipe.metricQty")} ${index + 1}`}
-                  aria-describedby="recipe-conversion-help"
-                />
-                <button
-                  type="button"
-                  className={styles.removeButton}
-                  onClick={() => removeIngredient(index)}
-                  aria-label={t("recipe.removeIngredient")}
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
         </section>
-
-        <div className={`${styles.section} ${styles.stepsSection}`} id="recipe-steps">
-          <StepListEditor
-            steps={steps}
-            onChange={setSteps}
-            uploadImage={(file) => uploadRecipeImage(file, t("common.upload"))}
-            onValidityChange={setStepsValid}
-          />
-        </div>
-
-        <section className={`${styles.section} ${styles.moreSection}`} id="recipe-more">
-          <div className={styles.sectionHeader}>
-            <h2>{t("recipe.moreDetails")}</h2>
-          </div>
-          <div className={styles.optionalRows}>
-            <StringListEditor
-              label={t("recipe.tips")}
-              addLabel={t("recipe.tips.addRow")}
-              placeholder={t("recipe.tips.placeholder")}
-              values={tips}
-              onChange={setTips}
-              collapsed
-            />
-            <details className={styles.tagsDisclosure}>
-              <summary>{t("common.tags")}{libraryTags.length ? ` (${libraryTags.length})` : ""}</summary>
-              <div className={styles.tagsEditor}>
-                <div className="recipe-tag-picker">
-                  {RECIPE_TAG_GROUPS.map((group) => (
-                    <div key={group.id} className="recipe-tag-group">
-                      <p className="recipe-tag-group__title">{group.label}</p>
-                      <div className="recipe-tag-group__chips">
-                        {group.tags.map((tag) => {
-                          const active = libraryTags.includes(tag.id);
-                          return (
-                            <button
-                              key={tag.id}
-                              type="button"
-                              className={`library-chip ${active ? "library-chip--active" : "library-chip--idle"}`}
-                              onClick={() => toggleTag(tag.id)}
-                            >
-                              {tag.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {libraryTags.length ? (
-                  <p className={styles.selectionSummary}>
-                    {t("recipe.selectedTags", { tags: libraryTags.map((tag) => CATEGORY_LABELS[tag]).join(", ") })}
-                  </p>
-                ) : null}
-              </div>
-            </details>
-          </div>
-        </section>
-
-        <section className={styles.section} id="recipe-sharing">
-          <div className={styles.sectionHeader}>
-            <h2>{t("recipe.sharingAndSource")}</h2>
-          </div>
-          <div className={styles.sharingRows}>
-            {canManageCatalog ? (
-              <div className={styles.sharingRow}>
-                <div>
-                  <h3>{t("recipe.publicLibrary")}</h3>
-                  <p>{t("recipe.publicLibraryDesc")}</p>
-                </div>
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={handleCatalogToggle}
-                  disabled={catalogSaving || sourceSaving}
-                >
-                  {catalogSaving
-                    ? t("common.saving")
-                    : recipe.is_public_catalog
-                      ? t("recipe.removeFromPublicLibrary")
-                      : t("recipe.addToPublicLibrary")}
-                </button>
-              </div>
-            ) : null}
-            <SourceLinkEditor
-              key={id}
-              recipeId={id}
-              value={recipe.source_url}
-              disabled={saving || deleting || catalogSaving}
-              onBusyChange={setSourceSaving}
-              onSaved={(source_url) => setRecipe((current) => current ? { ...current, source_url } : current)}
-            />
-          </div>
-        </section>
-
-        <section className={styles.dangerZone} aria-label={t("recipe.deleteRecipe")}>
-          <div>
-            <strong>{t("recipe.deleteRecipe")}</strong>
-            <p>{recipe.title}</p>
-          </div>
-          <button type="button" onClick={handleDelete} disabled={sourceSaving || deleting || saving || uploadingImage}>
-            {deleting ? t("recipe.deleting") : t("common.delete")}
-          </button>
-        </section>
-        </div>
-      </div>
+      </fieldset>
     </div>
   );
 }
 
 export default function RecipeEditPage() {
-  return (
-    <RequireAuth>
-      <PageShell>
-        <RecipeEditContent />
-      </PageShell>
-    </RequireAuth>
-  );
+  const { id } = useParams<{ id: string }>();
+  return <RequireAuth><PageShell><RecipeEditContent key={id} id={id} /></PageShell></RequireAuth>;
 }
