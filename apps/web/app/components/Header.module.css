@@ -90,9 +90,17 @@
   font-family: Inter, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
   font-size: 0.875rem;
   font-weight: 600;
+  gap: 0.4rem;
   position: relative;
   text-decoration: none;
   white-space: nowrap;
+}
+
+.navIcon {
+  display: block;
+  flex: none;
+  width: 18px;
+  height: 18px;
 }
 
 .navLink:hover,
@@ -217,7 +225,6 @@ button.menuButton {
 }
 
 /* The same four routes stay within thumb reach on phones. */
-.navIcon { display: none; }
 @media (max-width: 640px) {
   .inner { grid-template-columns: minmax(0, 1fr) auto; }
   .actions { grid-column: 2; }
@@ -238,7 +245,7 @@ button.menuButton {
     box-shadow: 0 -4px 16px rgb(47 38 33 / 3%);
   }
   .navLink { min-height: 56px; padding: 4px; flex-direction: column; justify-content: center; gap: 4px; font-size: 0.75rem; font-weight: 500; }
-  .navIcon { display: block; }
+  .navIcon { width: 22px; height: 22px; }
   .navLinkActive { color: var(--cw-color-action); }
   .navLinkActive::after { display: none; }
 }

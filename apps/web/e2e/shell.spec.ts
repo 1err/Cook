@@ -74,11 +74,14 @@ test("renders an accessible responsive authenticated shell", async ({ page }, te
     expect(navLayout.position).toBe("fixed");
     expect(Math.abs(navLayout.bottom - navLayout.viewportBottom)).toBeLessThanOrEqual(1);
   }
-  await expect(page.getByRole("link", { name: "Library" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Planner" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Cook" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Shopping" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link")).toHaveText(["Library", "Planner", "Shopping", "Cook"]);
+  const navigation = page.getByRole("navigation", { name: "Main", exact: true });
+  const destinations = ["Library", "Planner", "Shopping", "Cook"];
+  await expect(navigation.getByRole("link")).toHaveText(destinations);
+  for (const name of destinations) {
+    const link = navigation.getByRole("link", { name, exact: true });
+    await expect(link).toBeVisible();
+    await expect(link.locator('svg[aria-hidden="true"]')).toBeVisible();
+  }
   const results = await new AxeBuilder({ page }).include("header").analyze();
   expect(results.violations).toEqual([]);
   await expect(page.locator("header")).toHaveScreenshot("authenticated-shell.png", {
