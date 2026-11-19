@@ -247,6 +247,8 @@
   "recipe.timing.hours": "{hours} hr",
   "recipe.timing.hoursMinutes": "{hours} hr {minutes} min",
   "recipe.timing.handsOn": "{duration} hands-on",
+  "recipe.timing.handsOnLabel": "Hands-on",
+  "recipe.timing.passiveLabel": "Passive",
   "recipe.timing.passive": "{duration} passive",
   "recipe.timing.total": "{duration} total",
   "recipe.timing.includesPassive": "Includes {duration} passive",

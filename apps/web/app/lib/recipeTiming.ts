@@ -8,6 +8,7 @@ export type RecipeTimingPresentation = {
   handsOnLabel: string | null;
   passiveLabel: string | null;
   estimatePrefix: string | null;
+  splitDurations: { handsOn: string; passive: string } | null;
   hasDetails: boolean;
 };
 
@@ -42,9 +43,10 @@ export function getRecipeTimingPresentation(
     && Math.abs(handsOn + passive - total) <= 1);
   const fullSplit = showPassive && positiveMinutes(handsOn) && matchesTotal;
   const format = (minutes: number) => formatRecipeMinutes(minutes, t);
+  const splitDurations = fullSplit ? { handsOn: format(handsOn), passive: format(passive) } : null;
   let passiveLabel: string | null = null;
   if (showPassive) {
-    if (fullSplit) passiveLabel = t("recipe.timing.passive", { duration: format(passive) });
+    if (splitDurations) passiveLabel = t("recipe.timing.passive", { duration: splitDurations.passive });
     else if (total === null && handsOn === 0) {
       passiveLabel = `${summary?.is_estimate ? `${t("recipe.timing.about")} ` : ""}${t("recipe.timing.passive", { duration: format(passive) })}`;
     } else {
@@ -53,9 +55,10 @@ export function getRecipeTimingPresentation(
   }
   return {
     totalLabel: total === null ? null : format(total),
-    handsOnLabel: fullSplit ? t("recipe.timing.handsOn", { duration: format(handsOn) }) : null,
+    handsOnLabel: splitDurations ? t("recipe.timing.handsOn", { duration: splitDurations.handsOn }) : null,
     passiveLabel,
     estimatePrefix: fullSplit && summary?.is_estimate ? t("recipe.timing.about") : null,
+    splitDurations,
     hasDetails: passiveLabel !== null,
   };
 }

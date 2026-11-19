@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { isSafeExternalUrl } from "@cooking/shared";
 import { presentIngredient } from "../../lib/ingredientPresentation";
 import { PageShell } from "../../components/PageShell";
 import { RecipeAuthorEditor } from "../../components/RecipeAuthorEditor";
@@ -11,13 +10,13 @@ import { RecipeCoverEditor } from "../../components/RecipeCoverEditor";
 import { RequireAuth } from "../../components/RequireAuth";
 import { apiFetch } from "../../lib/api";
 import { useT } from "../../lib/i18n";
-import { CATEGORY_LABELS } from "../../lib/recipeCategories";
-import { getRecipeTags } from "../../lib/recipeTags";
+import { Icon } from "../../components/ui/Icon";
 import type { Recipe } from "../../types";
 import styles from "./RecipeDetail.module.css";
 import { RecipeTutorial } from "./RecipeTutorial";
 import { RecipeCookAction } from "./RecipeCookAction";
-import { RecipeTimingDetails } from "../../components/RecipeTimingDetails";
+import { RecipeHeader } from "./RecipeHeader";
+import { RecipeManagementActions } from "./RecipeManagementActions";
 
 function RecipeDetailContent() {
   const params = useParams();
@@ -79,57 +78,26 @@ function RecipeDetailContent() {
   if (!recipe) return null;
 
   const ingredients = recipe.ingredients.filter((ingredient) => ingredient.name?.trim());
-  const tags = getRecipeTags(recipe);
   const ingredientRows = ingredients.map(ingredient => ({ ingredient, display: presentIngredient(ingredient) }));
 
   return (
     <PageShell>
       <article>
         <div className={styles.topbar}>
-          <Link href="/library" className={styles.back}>← {t("nav.library")}</Link>
-
+          <Link href="/library" className={styles.back}><Icon name="arrowLeft" size={15} />{t("nav.library")}</Link>
         </div>
 
         {error ? <p className={styles.error} role="alert">{error}</p> : null}
 
         <div className={styles.hero}>
           <RecipeCoverEditor key={id} value={recipe.thumbnail_url} variant="hero" onChange={updateCover} onBusyChange={setCoverBusy} disabled={deleting} />
-          <header className={styles.recipeHeader}>
-            <h1 className="cw-display">{recipe.title}</h1>
-            <RecipeAuthorEditor key={id} recipeId={id} author={recipe.author} disabled={deleting || coverBusy}
-              onSaved={author => setRecipe(current => current ? { ...current, author, author_id: author?.id ?? null } : current)} />
-            {recipe.description ? <p>{recipe.description}</p> : null}
-            <div className={styles.recipeMetadata}>
-            <RecipeTimingDetails recipe={recipe} />
-            {tags.length ? (
-              <div className={styles.tags}>
-                {tags.map((tag) => (
-                  <span key={tag}>{CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}</span>
-                ))}
-              </div>
-            ) : null}
-            </div>
-          <div className={styles.actions}>
+          <RecipeHeader recipe={recipe}
+            author={<RecipeAuthorEditor key={id} recipeId={id} author={recipe.author} disabled={deleting || coverBusy}
+              onSaved={author => setRecipe(current => current ? { ...current, author, author_id: author?.id ?? null } : current)} />}
+            management={<RecipeManagementActions id={id} deleting={deleting} disabled={coverBusy} onDelete={handleDelete} />}>
             <RecipeCookAction recipe={recipe} />
-            <Link href="/planner">{t("recipe.mealPlanner")}</Link>
-          </div>
-          <div className={styles.utilityActions}>
-            <Link href={`/library/${id}`}>{t("common.edit")}</Link>
-            {isSafeExternalUrl(recipe.source_url) ? (
-              <a href={recipe.source_url} target="_blank" rel="noopener noreferrer">
-                {t("recipe.originalVideo")} ↗
-              </a>
-            ) : null}
-            <details className={styles.moreActions}>
-              <summary aria-label={t("common.moreActions")}>•••</summary>
-              <div className={styles.moreActionsMenu}>
-                <button type="button" onClick={handleDelete} disabled={deleting || coverBusy}>
-                  {deleting ? t("recipe.deleting") : t("common.delete")}
-                </button>
-              </div>
-            </details>
-          </div>
-          </header>
+            <Link href="/planner"><Icon name="calendar" size={17} />{t("recipe.mealPlanner")}</Link>
+          </RecipeHeader>
         </div>
 
         <div className={styles.content}>

@@ -80,27 +80,44 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("keeps the editorial recipe hero readable and responsive", async ({ page }, testInfo) => {
+  const creditedRecipe = {
+    ...recipe,
+    author: { id: "recipe-creator", name: "阿林", aliases: [] },
+    author_id: "recipe-creator",
+    total_time_minutes: 85,
+    timing_summary: { hands_on_minutes: 15, passive_minutes: 70, is_estimate: true },
+    steps: [
+      { id: "9ef9c806-914c-4dfb-a4aa-57d2cdb42a22", text: "Mix the dough.", duration_seconds: 900, duration_source: "fallback", attention_type: "hands_on", action_type: "other", image_url: null },
+      { id: "77d2341f-8d62-46e2-a6dd-0b36de4f8161", text: "Cover the dough and let it rest.", duration_seconds: 4200, duration_source: "stated", attention_type: "passive", action_type: "other", image_url: null },
+    ],
+  };
+  await page.route(`${API_BASE}/recipes/${recipe.id}`, route => fulfillJson(route, creditedRecipe));
   await page.goto(`/recipe/${recipe.id}`);
 
   const title = page.getByRole("heading", { level: 1, name: recipe.title });
-  const heroHeader = title.locator("xpath=..");
+  const heroHeader = page.locator("article header").filter({ has: title });
   await expect(title).toBeVisible();
+  await expect(heroHeader.getByRole("link", { name: "By 阿林" })).toBeVisible();
   await expect(page.getByText("Failed to fetch", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Equipment", exact: true })).toHaveCount(0);
   await expect(page.getByText(recipe.equipment[0], { exact: true })).toHaveCount(0);
-  await expect(page.getByText(recipe.steps[0].text, { exact: true })).toBeVisible();
+  await expect(page.getByText(creditedRecipe.steps[0].text, { exact: true })).toBeVisible();
 
   const layout = await heroHeader.evaluate((header) => {
     const heading = header.querySelector("h1")!;
     return {
       fontSize: Number.parseFloat(getComputedStyle(heading).fontSize),
-      justifyContent: getComputedStyle(header).justifyContent,
+      timeValues: Array.from(header.querySelectorAll("dd"), value => ({
+        height: value.getBoundingClientRect().height,
+        lineHeight: Number.parseFloat(getComputedStyle(value).lineHeight),
+      })),
       viewportOverflow: document.documentElement.scrollWidth - window.innerWidth,
     };
   });
 
   expect(layout.fontSize).toBeLessThanOrEqual(testInfo.project.name === "desktop" ? 64 : 44);
-  expect(layout.justifyContent).toBe("center");
+  expect(layout.timeValues).toHaveLength(3);
+  for (const value of layout.timeValues) expect(value.height).toBeLessThanOrEqual(value.lineHeight + 1);
   expect(layout.viewportOverflow).toBeLessThanOrEqual(1);
 
   if (testInfo.project.name === "desktop") {

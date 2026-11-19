@@ -7,28 +7,36 @@ import styles from "./RecipeTimingDetails.module.css";
 
 type Props = { recipe: Pick<Recipe, "total_time_minutes" | "timing_summary" | "steps"> };
 
+function TimeStat({ label, value, estimate }: { label: string; value: string; estimate?: string | null }) {
+  return (
+    <div className={styles.stat}>
+      <dt>{label}</dt>
+      <dd>
+        {estimate && <><span className={styles.srOnly}>{estimate} </span><span aria-hidden="true" className={styles.approx}>≈</span></>}
+        {value}
+      </dd>
+    </div>
+  );
+}
+
 export function RecipeTimingDetails({ recipe }: Props) {
   const t = useT();
-  const timing = getRecipeTimingPresentation(recipe, t, 0);
-  if (!timing.totalLabel && !timing.hasDetails) return null;
+  const { totalLabel, splitDurations, passiveLabel, estimatePrefix } = getRecipeTimingPresentation(recipe, t, 0);
+  if (!totalLabel && !passiveLabel) return null;
   const estimatedTotal = recipe.steps?.some(step => step.duration_source === "estimated" || step.duration_source === "fallback");
+
   return (
     <div className={styles.timing} role="group" aria-label={t("recipe.timing.details")}>
-      {timing.totalLabel ? (
-        <dl className={styles.total}>
-          <div>
-            <dt>{t(estimatedTotal ? "recipe.estimatedTotal" : "recipe.totalTime")}</dt>
-            <dd>{timing.totalLabel}</dd>
-          </div>
+      {(totalLabel || splitDurations) && (
+        <dl className={styles.values}>
+          {totalLabel && <TimeStat label={t(estimatedTotal ? "recipe.estimatedTotal" : "recipe.totalTime")} value={totalLabel} />}
+          {splitDurations && <>
+            <TimeStat label={t("recipe.timing.handsOnLabel")} value={splitDurations.handsOn} estimate={estimatePrefix} />
+            <TimeStat label={t("recipe.timing.passiveLabel")} value={splitDurations.passive} estimate={estimatePrefix} />
+          </>}
         </dl>
-      ) : null}
-      {timing.hasDetails ? (
-        <p className={styles.breakdown}>
-          {timing.estimatePrefix ? <><span>{timing.estimatePrefix}</span>{" "}</> : null}
-          {timing.handsOnLabel ? <><strong>{timing.handsOnLabel}</strong>{" · "}</> : null}
-          <span className={styles.passive}>{timing.passiveLabel}</span>
-        </p>
-      ) : null}
+      )}
+      {!splitDurations && passiveLabel && <p className={styles.note}>{passiveLabel}</p>}
     </div>
   );
 }

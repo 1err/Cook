@@ -12,7 +12,7 @@ const { mockActive, mockApiFetch, mockPush, mockUploadRecipeImage, translate } =
   translate: (key: string, vars?: Record<string, string | number>) => {
     const messages: Record<string, string> = {
       "common.delete": "Delete",
-      "common.edit": "Edit",
+      "recipe.editRecipe": "Edit recipe",
       "common.ingredients": "Ingredients",
       "common.moreActions": "More actions",
       "nav.library": "Library",
@@ -27,6 +27,8 @@ const { mockActive, mockApiFetch, mockPush, mockUploadRecipeImage, translate } =
       "recipe.estimatedTotal": "Estimated total",
       "recipe.totalTime.minutesSuffix": "min",
       "recipe.timing.details": "Timing details",
+      "recipe.timing.handsOnLabel": "Hands-on",
+      "recipe.timing.passiveLabel": "Passive",
       "recipe.timing.hours": "{hours} hr",
       "recipe.timing.hoursMinutes": "{hours} hr {minutes} min",
       "recipe.timing.handsOn": "{duration} hands-on",
@@ -101,7 +103,7 @@ it.each([true, false])("changes only the saved cover and preserves the prior cov
   expect(mockApiFetch).toHaveBeenCalledWith("/recipes/recipe-1", { method: "PATCH", body: JSON.stringify({ thumbnail_url: "https://images.example/new.jpg" }) });
 });
 
-it("keeps destructive actions behind an explicit overflow control", async () => {
+it("opens the recipe management disclosure and dismisses it with Escape or an outside click", async () => {
   const user = userEvent.setup();
   render(<RecipeDetailPage />);
 
@@ -109,16 +111,25 @@ it("keeps destructive actions behind an explicit overflow control", async () => 
   const disclosure = screen.getByLabelText("More actions");
   const menu = disclosure.closest("details");
   expect(menu).not.toHaveAttribute("open");
-  expect(within(menu!).getByRole("button", { name: "Delete" })).toBeInTheDocument();
-
   await user.click(disclosure);
   expect(menu).toHaveAttribute("open");
+  const edit = within(menu!).getByRole("link", { name: "Edit recipe" });
+  expect(edit).toHaveAttribute("href", "/library/recipe-1");
+  expect(within(menu!).getByRole("button", { name: "Delete" })).toBeVisible();
+  await user.tab();
+  expect(edit).toHaveFocus();
+  await user.keyboard("{Escape}");
+  expect(menu).not.toHaveAttribute("open");
+  expect(disclosure).toHaveFocus();
+  await user.click(disclosure);
+  await user.click(screen.getByRole("heading", { name: "Tomato noodles" }));
+  expect(menu).not.toHaveAttribute("open");
 });
 
 afterEach(cleanup);
 
 it.each([
-  { total: 500, hands: 20, passive: 480, expectedTotal: "8 hr 20 min", expectedPassive: "8 hr passive", expectedHands: "20 min hands-on" },
+  { total: 500, hands: 20, passive: 480, expectedTotal: "8 hr 20 min", expectedPassive: "8 hr", expectedHands: "20 min" },
   { total: 490, hands: null, passive: 480, expectedTotal: "8 hr 10 min", expectedPassive: "Includes 8 hr passive", expectedHands: null },
   { total: 500, hands: 20, passive: 60, expectedTotal: "8 hr 20 min", expectedPassive: "Includes 1 hr passive", expectedHands: null },
 ])("shows useful timing in recipe details without inventing effort ($expectedTotal, $expectedHands)", async ({ total, hands, passive, expectedTotal, expectedPassive, expectedHands }) => {
@@ -130,9 +141,12 @@ it.each([
   const timing = await screen.findByRole("group", { name: "Timing details" });
   expect(within(timing).getByText(expectedTotal)).toBeVisible();
   expect(within(timing).getByText(expectedPassive)).toBeVisible();
-  if (expectedHands) expect(within(timing).getByText(expectedHands)).toBeVisible();
-  else expect(within(timing).queryByText(/hands-on/)).not.toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/library/recipe-1");
+  if (expectedHands) {
+    expect(within(timing).getByText("Hands-on").nextElementSibling).toHaveTextContent(expectedHands);
+    expect(within(timing).getByText("Passive").nextElementSibling).toHaveTextContent(expectedPassive);
+  } else {
+    expect(within(timing).queryByText("Hands-on")).not.toBeInTheDocument();
+  }
 });
 
 it("integrates the timed tutorial without losing existing recipe actions", async () => {
@@ -146,7 +160,6 @@ it("integrates the timed tutorial without losing existing recipe actions", async
     "href",
     "/recipe/recipe-1/tutorial/edit",
   );
-  expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/library/recipe-1");
   expect(screen.getByRole("link", { name: "Meal planner" })).toHaveAttribute("href", "/planner");
   expect(screen.getByRole("link", { name: /Original video/ })).toHaveAttribute(
     "href",

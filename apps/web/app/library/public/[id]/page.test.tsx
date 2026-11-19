@@ -79,8 +79,8 @@ it("shows the timing breakdown on public details while leaving the source read-o
     timing_summary: { hands_on_minutes: 15, passive_minutes: 120, is_estimate: false } }] });
   render(<PublicRecipePage />);
   expect(await screen.findByText("2 hr 15 min")).toBeVisible();
-  expect(screen.getByText("15 min hands-on")).toBeVisible();
-  expect(screen.getByText("2 hr passive")).toBeVisible();
+  expect(screen.getByText("Hands-on").nextElementSibling).toHaveTextContent("15 min");
+  expect(screen.getByText("Passive", { selector: "dt" }).nextElementSibling).toHaveTextContent("2 hr");
   expect(screen.queryByRole("link", { name: /Edit/ })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Add to my library" })).toBeEnabled();
 });

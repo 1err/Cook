@@ -3,18 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { isSafeExternalUrl } from "@cooking/shared";
 import { PageShell } from "../../../components/PageShell";
 import { RequireAuth } from "../../../components/RequireAuth";
 import { apiFetch } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth";
 import { useT } from "../../../lib/i18n";
 import { presentIngredient } from "../../../lib/ingredientPresentation";
-import { CATEGORY_LABELS } from "../../../lib/recipeCategories";
-import { getRecipeTags } from "../../../lib/recipeTags";
+import { Icon } from "../../../components/ui/Icon";
 import { RecipeTutorial } from "../../../recipe/[id]/RecipeTutorial";
 import { RecipeAuthorCredit } from "../../../components/RecipeAuthorCredit";
-import { RecipeTimingDetails } from "../../../components/RecipeTimingDetails";
+import { RecipeHeader } from "../../../recipe/[id]/RecipeHeader";
 import { useAccountScope } from "../../../lib/useAccountScope";
 import styles from "../../../recipe/[id]/RecipeDetail.module.css";
 import type { Recipe } from "../../../types";
@@ -99,7 +97,7 @@ function PublicRecipeContent({ id }: { id: string }) {
     }
   }
 
-  const backLink = <Link href="/library?view=public" className={styles.back}>← {t("library.publicLibrary")}</Link>;
+  const backLink = <Link href="/library?view=public" className={styles.back}><Icon name="arrowLeft" size={15} />{t("library.publicLibrary")}</Link>;
 
   if (loading) return <PageShell>{backLink}<p className={styles.status}>{t("common.loading")}</p></PageShell>;
   if (loadFailed) return (
@@ -119,7 +117,6 @@ function PublicRecipeContent({ id }: { id: string }) {
     </PageShell>
   );
 
-  const tags = getRecipeTags(recipe);
   const ingredientRows = recipe.ingredients.filter(ingredient => ingredient.name?.trim())
     .map(ingredient => ({ ingredient, display: presentIngredient(ingredient) }));
 
@@ -131,34 +128,16 @@ function PublicRecipeContent({ id }: { id: string }) {
           <div className={styles.heroMedia}>
             {recipe.thumbnail_url ? <img src={recipe.thumbnail_url} alt="" /> : <span className="cw-display" aria-hidden>CW</span>}
           </div>
-          <header className={styles.recipeHeader}>
-            <h1 className="cw-display">{recipe.title}</h1>
-            <RecipeAuthorCredit author={recipe.author} view="public" />
-            {recipe.description ? <p>{recipe.description}</p> : null}
-            <div className={styles.recipeMetadata}>
-              <RecipeTimingDetails recipe={recipe} />
-              {tags.length ? (
-                <div className={styles.tags}>
-                  {tags.map(tag => <span key={tag}>{CATEGORY_LABELS[tag] ?? tag.replace(/_/g, " ")}</span>)}
-                </div>
-              ) : null}
-            </div>
-            <div className={styles.actions}>
-              {ownedId ? (
-                <Link className={styles.primaryAction} href={`/recipe/${encodeURIComponent(ownedId)}`}>{t("library.publicRecipe.viewCopy")}</Link>
-              ) : (
-                <button className={styles.primaryAction} type="button" disabled={adding} onClick={() => void addToLibrary()}>
-                  {t(adding ? "library.adding" : "library.addToMyLibrary")}
-                </button>
-              )}
-            </div>
-            {copyFailed ? <p className={styles.error} role="alert">{t("library.publicRecipe.copyFailed")}</p> : null}
-            {isSafeExternalUrl(recipe.source_url) ? (
-              <div className={styles.utilityActions}>
-                <a href={recipe.source_url} target="_blank" rel="noopener noreferrer">{t("recipe.originalVideo")} ↗</a>
-              </div>
-            ) : null}
-          </header>
+          <RecipeHeader recipe={recipe} author={<RecipeAuthorCredit detail author={recipe.author} view="public" />}
+            feedback={copyFailed && <p className={styles.error} role="alert">{t("library.publicRecipe.copyFailed")}</p>}>
+            {ownedId ? (
+              <Link className={styles.primaryAction} href={`/recipe/${encodeURIComponent(ownedId)}`}>{t("library.publicRecipe.viewCopy")}</Link>
+            ) : (
+              <button className={styles.primaryAction} type="button" disabled={adding} onClick={() => void addToLibrary()}>
+                {t(adding ? "library.adding" : "library.addToMyLibrary")}
+              </button>
+            )}
+          </RecipeHeader>
         </div>
         <div className={styles.content}>
           <aside className={styles.ingredients}>

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import type { CookingSession, Recipe } from "@cooking/shared";
 import { webApiClient } from "../../lib/api";
 import { useT } from "../../lib/i18n";
+import { Icon } from "../../components/ui/Icon";
 import styles from "./RecipeDetail.module.css";
 
 export function RecipeCookAction({ recipe }: { recipe: Recipe }) {
@@ -37,6 +38,7 @@ export function RecipeCookAction({ recipe }: { recipe: Recipe }) {
   if (!recipe.steps?.length) {
     return (
       <Link className={styles.primaryAction} href={`/recipe/${encodeURIComponent(recipe.id)}/tutorial/edit`}>
+        <Icon name="edit" size={17} />
         {t("cook.recipe.editTutorial")}
       </Link>
     );
@@ -46,6 +48,7 @@ export function RecipeCookAction({ recipe }: { recipe: Recipe }) {
   if (existingDish) {
     return (
       <Link className={styles.primaryAction} href={`/cook?dish=${encodeURIComponent(existingDish.id)}`}>
+        <Icon name="chef" size={18} />
         {t("cook.recipe.open")}
       </Link>
     );
@@ -71,6 +74,7 @@ export function RecipeCookAction({ recipe }: { recipe: Recipe }) {
   return (
     <span className={styles.cookAction}>
       <button className={styles.primaryAction} disabled={loading || busy} onClick={() => void begin()} type="button">
+        <Icon name="chef" size={18} />
         {loading ? t("common.loading") : session ? t("cook.recipe.add") : t("cook.recipe.start")}
       </button>
       {error ? <span className={styles.actionError} role="alert">{error}</span> : null}

@@ -19,6 +19,9 @@ export type IconName =
   | "search"
   | "check"
   | "edit"
+  | "externalLink"
+  | "more"
+  | "trash"
   | "arrowLeft"
   | "filter"
   | "chevronDown";
@@ -40,6 +43,9 @@ const SYMBOLS: Record<IconName, ReactNode> = {
   search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></>,
   check: <path d="m5 12 4 4L19 6" />,
   edit: <><path d="m14.5 5.5 4 4M4 20l4.6-1 12-12a1.7 1.7 0 0 0 0-2.4l-1.2-1.2a1.7 1.7 0 0 0-2.4 0l-12 12L4 20Z" /></>,
+  externalLink: <path d="M6 18 18 6M7 6h11v11" />,
+  more: <g fill="currentColor" stroke="none">{[4, 12, 20].map(cx => <circle key={cx} cx={cx} cy="12" r="1.8" />)}</g>,
+  trash: <><path d="M4 6h16M9 6V3h6v3M6 6l1 14h10l1-14M10 10v6M14 10v6" /></>,
   arrowLeft: <path d="m10 5-7 7 7 7M4 12h16" />,
   filter: <path d="M4 5h16l-6 7v6l-4 2v-8L4 5Z" />,
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,

@@ -247,6 +247,8 @@
   "recipe.timing.hours": "{hours} 小时",
   "recipe.timing.hoursMinutes": "{hours} 小时 {minutes} 分钟",
   "recipe.timing.handsOn": "{duration}动手",
+  "recipe.timing.handsOnLabel": "动手用时",
+  "recipe.timing.passiveLabel": "等待用时",
   "recipe.timing.passive": "{duration}等待",
   "recipe.timing.total": "总用时 {duration}",
   "recipe.timing.includesPassive": "含 {duration}等待",

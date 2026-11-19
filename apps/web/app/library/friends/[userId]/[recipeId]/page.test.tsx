@@ -29,9 +29,8 @@ test("shows recorded timing on a friend's recipe without adding editing controls
   })));
   render(<FriendRecipeDetailPage />);
   expect(await screen.findByText("2 hr 15 min")).toBeVisible();
-  expect(screen.getByText("15 min hands-on")).toBeVisible();
-  expect(screen.getByText("2 hr passive")).toBeVisible();
-  expect(screen.getByText("About")).toBeVisible();
+  expect(screen.getByText("Hands-on").nextElementSibling).toHaveTextContent(/About.*15 min/);
+  expect(screen.getByText("Passive").nextElementSibling).toHaveTextContent(/About.*2 hr/);
   expect(screen.queryByRole("link", { name: /Edit/ })).not.toBeInTheDocument();
   for (const button of screen.getAllByRole("button", { name: "Add to library" })) {
     expect(button).toBeEnabled();

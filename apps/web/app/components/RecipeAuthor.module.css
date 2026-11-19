@@ -10,8 +10,10 @@
 }
 .credit svg { flex: none; }
 .credit:hover { color: var(--cw-color-ink); text-decoration: underline; text-underline-offset: 3px; }
-.byline { display: flex; align-items: center; flex-wrap: wrap; gap: 0.2rem 0.65rem; margin: 0.3rem 0 0.5rem; }
+.byline { display: flex; min-width: 0; max-width: 100%; align-items: center; flex-wrap: wrap; gap: 0.125rem 0.35rem; }
 .byline .credit { margin: 0; font-size: 0.9rem; }
+.credit.detailCredit { gap: 0.45rem; min-height: 44px; margin: 0; font-size: 0.9rem; font-weight: 600; }
+.detailCredit svg { box-sizing: border-box; padding: 5px; border-radius: 50%; background: #e8ecdf; }
 .inlinePicker { display: inline-flex; }
 .inlineTrigger, .pickerTrigger {
   display: inline-flex; align-items: center; gap: 0.4rem; min-width: 0; max-width: 100%;

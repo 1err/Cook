@@ -37,7 +37,7 @@ export function RecipeAuthorEditor({ recipeId, author, onSaved, disabled }: {
     }
   }
   return <div className={styles.byline}>
-    <RecipeAuthorCredit author={author} />
+    <RecipeAuthorCredit detail author={author} />
     <AuthorPicker inline value={author} onChange={save} disabled={disabled} />
     <span className={styles.confirmation} role="status">{confirmation > 0 && <>
       <Icon name="check" size={14} />{t("recipe.author.saved")}

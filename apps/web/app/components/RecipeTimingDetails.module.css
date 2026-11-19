@@ -1,7 +1,71 @@
-.timing { min-width: 0; max-width: 100%; }
-.total { margin: 0; }
-.total dt { margin: 0 0 0.25rem; color: var(--cw-color-muted-ink); font-size: 0.8rem; }
-.total dd { margin: 0; color: var(--cw-color-ink); font-size: 1.125rem; font-weight: 600; }
-.breakdown { margin: 0.45rem 0 0; color: var(--cw-color-muted-ink); font-size: 0.875rem; line-height: 1.6; }
-.breakdown strong { color: var(--cw-color-ink); font-weight: 600; }
-.passive { display: inline-block; max-width: 100%; }
+.timing {
+  container-type: inline-size;
+  min-width: 0;
+  border: 1px solid var(--cw-color-divider);
+  border-radius: var(--cw-radius-control);
+  background: color-mix(in srgb, var(--cw-color-subtle-surface) 58%, var(--cw-color-canvas));
+}
+
+.values {
+  display: flex;
+  align-items: stretch;
+  margin: 0;
+  padding: 0.95rem 0.25rem;
+}
+
+.stat {
+  display: grid;
+  flex: 1 1 0;
+  align-content: start;
+  gap: 0.35rem;
+  min-width: 0;
+  padding-inline: clamp(0.55rem, 3.5cqi, 1.2rem);
+}
+
+.stat + .stat { border-inline-start: 1px solid var(--cw-color-divider); }
+
+.stat dt {
+  color: var(--cw-color-muted-ink);
+  font: 500 0.75rem/1.35 var(--cw-font-ui);
+}
+
+.stat dd {
+  margin: 0;
+  color: var(--cw-color-ink);
+  font: 600 clamp(0.9375rem, 4cqi, 1.2rem)/1.25 var(--cw-font-ui);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.approx {
+  margin-inline-end: 0.1em;
+  color: var(--cw-color-muted-ink);
+  font-weight: 400;
+}
+
+.note {
+  margin: 0;
+  padding: 0.8rem 1rem;
+  color: var(--cw-color-muted-ink);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.values + .note { border-top: 1px solid var(--cw-color-divider); }
+.stat:only-child { display: flex; align-items: baseline; gap: 0.75rem; }
+
+@container (max-width: 24rem) {
+  .values { padding-inline: 0; }
+  .stat { flex-basis: auto; padding-inline: 0.55rem; }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
